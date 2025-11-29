@@ -11,6 +11,8 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using static JSE_RevitAddin_MEP_OPENINGS.Models.MepCategoryConstants;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection;
+using JSE_RevitAddin_MEP_OPENINGS.Services.InsulationDetection;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -2065,20 +2067,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ CRITICAL FIX: Use strategy classes to get MEP element size with insulation information
             MepElementSize mepElementSize = GetMepElementSizeWithStrategy(mepElement, mepCategory);
             
+            // ✅ DUCT ACCESSORY FIX: Use strategy dimensions (Damper Width/Height) instead of GetMepElementDimensions
+            // GetMepElementDimensions may fall back to generic "Width"/"Height" which could be duct dimensions
+            // Strategy pattern correctly prioritizes "Damper Width" and "Damper Height" for duct accessories
+            if (string.Equals(mepCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
+            {
+                if (mepElementSize.Width > 0 && mepElementSize.Height > 0)
+                {
+                    finalWidth = mepElementSize.Width;
+                    finalHeight = mepElementSize.Height;
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[CLASH_DEBUG] ✅ DUCT ACCESSORY: Using strategy dimensions (Damper Width/Height): {finalWidth:F3}x{finalHeight:F3} (was {mepWidth:F3}x{mepHeight:F3} from GetMepElementDimensions)");
+                    }
+                }
+                else
+                {
+                    // Fallback to GetMepElementDimensions if strategy didn't return valid dimensions
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Warning($"[CLASH_DEBUG] ⚠️ DUCT ACCESSORY: Strategy returned invalid dimensions (Width={mepElementSize.Width:F3}, Height={mepElementSize.Height:F3}), using GetMepElementDimensions: {mepWidth:F3}x{mepHeight:F3}");
+                    }
+                }
+            }
+            
             // ⚠️ CRITICAL: Get duct shape from family name (Round or Rectangular) ⚠️
             // DO NOT REMOVE: This determines correct sleeve family selection for round vs rectangular ducts
             var ductShape = GetDuctShape(mepElement);
             
-            // ⚠️ CRITICAL: Detect insulation type (Normal or Insulated) ⚠️
-            // DO NOT REMOVE: This determines which clearance value to use (normal vs insulated)
-            var insulationType = GetInsulationType(mepElement);
+            // ✅ OOP METHOD: Use InsulationDetector to detect insulation status and thickness
+            var insulationDetector = new InsulationDetector();
+            var (isInsulated, insulationThickness) = insulationDetector.GetInsulationInfo(mepElement, mepElementSize);
+            var insulationType = isInsulated ? "Insulated" : "Normal";
             
             // Pre-calculate formatted size and system abbreviation to eliminate linked file access during placement
             var formattedSize = FormatMepElementSize(mepElement, mepWidth, mepHeight, ductShape);
             var systemAbbreviation = GetMepSystemAbbreviation(mepElement);
             
-            // For fire dampers: detect MSFD type and connector side
-            var (isMSFD, connectorSide) = GetDamperConnectorInfo(mepElement, mepCategory);
+            // ✅ OOP METHOD: Use DamperConnectorService to detect connector info
+            var damperConnectorInfo = GetDamperConnectorInfo(mepElement, mepCategory);
+            string connectorSide = damperConnectorInfo.ConnectorSide;
+            bool hasMepConnector = damperConnectorInfo.HasMepConnector;
+            // Note: Strategy will determine clearance from UI based on damper type and connector side
             
             // Placement point: intersection point is already at host center for FULL penetrations
             // MepIntersectionService.GetBoundingBoxCenter() averages entry/exit points to get mid-depth
@@ -2132,6 +2163,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 catch { }
             }
             
+            // ✅ PIPE DIAMETER SCHEMA: Extract pipe diameters before object initializer to avoid variable scope issues
+            double pipeOuterDiameter = 0.0;
+            double pipeNominalDiameter = 0.0;
+            if (mepElement is Pipe pipe)
+            {
+                pipeOuterDiameter = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_OUTER_DIAMETER)?.AsDouble() ?? 0.0;
+                pipeNominalDiameter = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_DIAMETER_PARAM)?.AsDouble() ?? 0.0;
+            }
+            
             var clashZone = new ClashZone
             {
                 MepElementId = mepElement.Id,
@@ -2156,6 +2196,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 MepElementSizeData = mepElementSize,
                 DuctShape = ductShape, // Store duct shape (Round/Rectangular) from family name
                 InsulationType = insulationType, // Store insulation type (Normal/Insulated) for clearance selection
+                IsInsulated = isInsulated, // ✅ OOP METHOD: Pre-calculated insulation flag saved to DB for clearance calculations
+                InsulationThickness = insulationThickness, // ✅ OOP METHOD: Pre-calculated insulation thickness saved to DB if insulated
                 DocumentPath = document.PathName,
                 StructuralElementDocumentTitle = structuralElement.Document.Title,
                 // ✅ CRITICAL: Set SourceDocKey and HostDocKey for hierarchical Global XML structure
@@ -2184,6 +2226,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // NEW: Pre-calculated placement data (calculated during refresh, used during placement)
                 MepElementWidth = finalWidth,
                 MepElementHeight = finalHeight,
+                // ✅ PIPE DIAMETER SCHEMA: Populate outer diameter and nominal diameter for pipes (for UI toggle later)
+                MepElementOuterDiameter = pipeOuterDiameter,
+                MepElementNominalDiameter = pipeNominalDiameter,
                 MepElementOrientationDirection = GetMepOrientationDirection(structuralElementType, mepOrientation, wallDirectionType), // ✅ CRITICAL: Use correct method for orientation direction - DO NOT CHANGE TO GetWallOrientationFromType - FIXED 2025-10-27
                 MepElementRotationAngle = CalculateMepElementRotationAngle(structuralElementType, mepOrientation, mepElement), // ✅ FLOOR ROTATION: Calculate rotation angle once during refresh (pass element for vertical elements)
                 PipeOpeningType = pipeOpeningType,
@@ -2192,8 +2237,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 MepElementUniqueId = mepElement?.UniqueId ?? string.Empty, // Pre-calculated unique ID for robust tracking
                 MepElementFormattedSize = formattedSize, // Pre-calculated formatted size (e.g., "600x300", "Ø200")
                 MepElementSystemAbbreviation = systemAbbreviation, // Pre-calculated system abbreviation (e.g., "SA", "RA")
-                DamperConnectorSide = connectorSide, // Pre-calculated connector side for MSFD dampers ("Left", "Right", "Top", "Bottom")
-                IsMSFDDamper = isMSFD, // Pre-calculated MSFD flag for offset calculation during placement
+                HasMepConnector = hasMepConnector, // ✅ OOP METHOD: Direct flag - whether damper has MEP connector (regardless of type)
+                DamperConnectorSide = connectorSide, // ✅ OOP METHOD: Pre-calculated connector side ("Left", "Right", "Top", "Bottom") if MEP connector found
+                IsMSFDDamper = hasMepConnector && !string.IsNullOrEmpty(connectorSide), // ⚠️ DEPRECATED: Kept for backward compatibility
+                IsStandardDamper = damperConnectorInfo.IsStandardDamper, // ✅ OOP METHOD: Use detector to determine if standard damper (for classification only)
                 IsResolved = hasExistingSleeve,
                 
                 // ✅ SESSION FLAG: Mark new clash zones as ready for placement in current refresh session
@@ -3163,43 +3210,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
-        /// Get damper connector info (MSFD type and connector side)
-        /// Returns (isMSFD, connectorSide) where connectorSide is "Left", "Right", "Top", "Bottom", or empty string
+        /// ✅ OOP METHOD: Get damper connector info using DamperConnectorService
+        /// Checks if MEP connector is found and determines which side it's on
+        /// Strategy will handle clearance from UI accordingly based on damper type
         /// </summary>
-        private (bool isMSFD, string connectorSide) GetDamperConnectorInfo(Element mepElement, string mepCategory)
+        private DamperConnectorInfo GetDamperConnectorInfo(Element mepElement, string mepCategory)
         {
             try
             {
-                // Only process duct accessories (dampers)
-                if (mepCategory != "Duct Accessories")
+                // ✅ OOP METHOD: Use centralized service for damper connector detection
+                var damperConnectorService = new DamperConnectorService();
+                var connectorInfo = damperConnectorService.DetectConnectorInfo(mepElement, mepCategory);
+                
+                if (connectorInfo.HasMepConnector)
                 {
-                    return (false, string.Empty);
+                    _log($"[DEBUG] Damper {mepElement?.Id}: Found MEP connector on side '{connectorInfo.ConnectorSide}', Type='{connectorInfo.DamperType}', IsStandard={connectorInfo.IsStandardDamper}");
                 }
                 
-                var damper = mepElement as FamilyInstance;
-                if (damper == null)
-                {
-                    return (false, string.Empty);
-                }
-                
-                // Check if MSFD type by checking family type name
-                string familyTypeName = damper.Symbol?.Name ?? "";
-                bool isMSFD = familyTypeName.Trim().ToUpperInvariant().Contains("MSFD");
-                
-                // Get connector side using FireDamperSleevePlacerService logic
-                string connectorSide = string.Empty;
-                if (isMSFD)
-                {
-                    connectorSide = FireDamperSleevePlacerService.GetConnectorSideWorld(damper, out _);
-                    _log($"[DEBUG] MSFD Damper {damper.Id}: Connector side = {connectorSide}");
-                }
-                
-                return (isMSFD, connectorSide);
+                return connectorInfo;
             }
             catch (Exception ex)
             {
                 _log($"[DEBUG] Error getting damper connector info: {ex.Message}");
-                return (false, string.Empty);
+                return DamperConnectorInfo.None;
             }
         }
         
@@ -3273,8 +3306,54 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 else if (mepElement is Pipe pipe)
                 {
-                    var diameter = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_OUTER_DIAMETER)?.AsDouble() ?? 0;
-                    return (diameter, diameter); // Pipes are round
+                    // ✅ CRITICAL: Use OUTER DIAMETER (not nominal diameter) for pipe sizing
+                    var outerDiameter = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_OUTER_DIAMETER)?.AsDouble() ?? 0;
+                    var nominalDiameter = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_DIAMETER_PARAM)?.AsDouble() ?? 0;
+                    
+                    // ✅ SCHEMA: Store both outer diameter and nominal diameter separately for UI toggle
+                    // Store outer diameter and nominal diameter as class-level fields for later retrieval
+                    // These will be populated in CreateClashZone when creating the ClashZone object
+                    
+                    // ✅ WARNING: If outer diameter is missing or zero, try fallback to nominal diameter (with warning)
+                    var diameter = outerDiameter; // Default to outer diameter for sizing
+                    if (diameter <= 0)
+                    {
+                        if (nominalDiameter > 0)
+                        {
+                            diameter = nominalDiameter;
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                var nominalMm = UnitUtils.ConvertFromInternalUnits(diameter, UnitTypeId.Millimeters);
+                                DebugLogger.Warning($"[PIPE-OD-WARNING] Pipe {pipe.Id}: OUTER DIAMETER not available, using NOMINAL DIAMETER = {nominalMm:F1}mm (this may cause incorrect sizing!)");
+                            }
+                        }
+                        else
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Warning($"[PIPE-OD-ERROR] Pipe {pipe.Id}: No outer diameter or nominal diameter available! Sizing will be incorrect.");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // ✅ LOGGING: Log pipe OD for debugging (verify it's outer diameter, not nominal)
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            var diameterMm = UnitUtils.ConvertFromInternalUnits(diameter, UnitTypeId.Millimeters);
+                            if (nominalDiameter > 0)
+                            {
+                                var nominalMm = UnitUtils.ConvertFromInternalUnits(nominalDiameter, UnitTypeId.Millimeters);
+                                DebugLogger.Info($"[PIPE-OD-DEBUG] Pipe {pipe.Id}: OUTER DIAMETER = {diameterMm:F1}mm, Nominal Diameter = {nominalMm:F1}mm (using OD for sizing)");
+                            }
+                            else
+                            {
+                                DebugLogger.Info($"[PIPE-OD-DEBUG] Pipe {pipe.Id}: OUTER DIAMETER = {diameterMm:F1}mm (using OD for sizing)");
+                            }
+                        }
+                    }
+                    
+                    return (diameter, diameter); // Pipes are round - store OD in both width and height for sizing
                 }
                 else if (mepElement is Autodesk.Revit.DB.Electrical.CableTray cableTray)
                 {

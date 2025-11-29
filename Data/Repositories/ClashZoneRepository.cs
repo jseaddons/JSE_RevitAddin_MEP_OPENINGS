@@ -516,14 +516,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         MepRotationCos, MepRotationSin,
                         MepAngleToXRad, MepAngleToXDeg,
                         MepAngleToYRad, MepAngleToYDeg,
-                        MepWidth, MepHeight, SleeveFamilyName,
+                        MepWidth, MepHeight, MepElementOuterDiameter, MepElementNominalDiameter, SleeveFamilyName,
                         SleevePlacementActiveX, SleevePlacementActiveY, SleevePlacementActiveZ,
                         SourceDocKey, HostDocKey, MepElementUniqueId,
                         IsResolvedFlag, IsClusterResolvedFlag, IsClusteredFlag,
                         MarkedForClusterProcess, AfterClusterSleeveId,
                         HasDamperNearbyFlag, IsCurrentClashFlag, ReadyForPlacementFlag,
                         StructuralThickness, WallThickness, FramingThickness,
-                        MepParameterValuesJson, HostParameterValuesJson
+                        MepParameterValuesJson, HostParameterValuesJson,
+                        HasMepConnector, DamperConnectorSide,
+                        IsInsulated, InsulationThickness
                     ) VALUES (
                         @ComboId, @MepElementId, @HostElementId,
                         @IntersectionX, @IntersectionY, @IntersectionZ,
@@ -542,14 +544,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         @MepRotationCos, @MepRotationSin,
                         @MepAngleToXRad, @MepAngleToXDeg,
                         @MepAngleToYRad, @MepAngleToYDeg,
-                        @MepWidth, @MepHeight, @SleeveFamilyName,
+                        @MepWidth, @MepHeight, @MepElementOuterDiameter, @MepElementNominalDiameter, @SleeveFamilyName,
                         @SleevePlacementActiveX, @SleevePlacementActiveY, @SleevePlacementActiveZ,
                         @SourceDocKey, @HostDocKey, @MepElementUniqueId,
                         @IsResolvedFlag, @IsClusterResolvedFlag, @IsClusteredFlag,
                         @MarkedForClusterProcess, @AfterClusterSleeveId,
                         @HasDamperNearbyFlag, @IsCurrentClashFlag, @ReadyForPlacementFlag,
                         @StructuralThickness, @WallThickness, @FramingThickness,
-                        @MepParameterValuesJson, @HostParameterValuesJson
+                        @MepParameterValuesJson, @HostParameterValuesJson,
+                        @HasMepConnector, @DamperConnectorSide,
+                        @IsInsulated, @InsulationThickness
                     )";
 
                 AddClashZoneParameters(cmd, comboId, clashZone);
@@ -667,6 +671,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         MepAngleToYDeg = @MepAngleToYDeg,
                         MepWidth = @MepWidth,
                         MepHeight = @MepHeight,
+                        MepElementOuterDiameter = @MepElementOuterDiameter,
+                        MepElementNominalDiameter = @MepElementNominalDiameter,
                         SleeveFamilyName = @SleeveFamilyName,
                         SleevePlacementActiveX = @SleevePlacementActiveX,
                         SleevePlacementActiveY = @SleevePlacementActiveY,
@@ -687,6 +693,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         FramingThickness = @FramingThickness,
                         MepParameterValuesJson = @MepParameterValuesJson,
                         HostParameterValuesJson = @HostParameterValuesJson,
+                        HasMepConnector = @HasMepConnector,
+                        DamperConnectorSide = @DamperConnectorSide,
+                        IsInsulated = @IsInsulated,
+                        InsulationThickness = @InsulationThickness,
                         UpdatedAt = CURRENT_TIMESTAMP
                     WHERE ClashZoneId = @ClashZoneId";
 
@@ -794,6 +804,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             cmd.Parameters.AddWithValue("@MepAngleToYDeg", angleToYDeg);
             cmd.Parameters.AddWithValue("@MepWidth", clashZone.MepElementWidth);
             cmd.Parameters.AddWithValue("@MepHeight", clashZone.MepElementHeight);
+            // ✅ PIPE DIAMETER COLUMNS: Add outer diameter and nominal diameter parameters
+            cmd.Parameters.AddWithValue("@MepElementOuterDiameter", clashZone.MepElementOuterDiameter);
+            cmd.Parameters.AddWithValue("@MepElementNominalDiameter", clashZone.MepElementNominalDiameter);
+            
+            // ✅ DIAGNOSTIC: Log MEP dimensions being saved for duct accessories
+            if (!DeploymentConfiguration.DeploymentMode && string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger($"[DB-SAVE-DEBUG] Zone {clashZone.Id}: Saving MepWidth={clashZone.MepElementWidth:F6}ft ({clashZone.MepElementWidth * 304.8:F1}mm), MepHeight={clashZone.MepElementHeight:F6}ft ({clashZone.MepElementHeight * 304.8:F1}mm)");
+            }
             cmd.Parameters.AddWithValue("@SleeveFamilyName", (object)clashZone.SleeveFamilyName ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@SleevePlacementActiveX", activePoint != null ? (object)activePoint.X : DBNull.Value);
             cmd.Parameters.AddWithValue("@SleevePlacementActiveY", activePoint != null ? (object)activePoint.Y : DBNull.Value);
@@ -857,6 +876,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             
             cmd.Parameters.AddWithValue("@MepParameterValuesJson", mepParamsJson);
             cmd.Parameters.AddWithValue("@HostParameterValuesJson", hostParamsJson);
+            
+            // ✅ OOP METHOD: Add damper connector detection parameters
+            cmd.Parameters.AddWithValue("@HasMepConnector", clashZone.HasMepConnector ? 1 : 0);
+            cmd.Parameters.AddWithValue("@DamperConnectorSide", (object)clashZone.DamperConnectorSide ?? string.Empty);
+            
+            // ✅ OOP METHOD: Add insulation detection parameters
+            cmd.Parameters.AddWithValue("@IsInsulated", clashZone.IsInsulated ? 1 : 0);
+            cmd.Parameters.AddWithValue("@InsulationThickness", clashZone.InsulationThickness);
         }
 
         /// <summary>
@@ -3053,6 +3080,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             clashZone.SleeveWidth = GetDouble(reader, "SleeveWidth");
             clashZone.SleeveHeight = GetDouble(reader, "SleeveHeight");
             clashZone.SleeveDiameter = GetDouble(reader, "SleeveDiameter");
+            
+            // ✅ DIRECT LOGGING: Always log sleeve dimensions being loaded for duct accessories
+            if (string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
+            {
+                SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [DB-LOAD-SLEEVE] Zone {clashZone.Id}: SleeveWidth={clashZone.SleeveWidth:F6}ft ({clashZone.SleeveWidth * 304.8:F1}mm), SleeveHeight={clashZone.SleeveHeight:F6}ft ({clashZone.SleeveHeight * 304.8:F1}mm), SleeveDiameter={clashZone.SleeveDiameter:F6}ft ({clashZone.SleeveDiameter * 304.8:F1}mm)\n");
+            }
 
             clashZone.IntersectionPoint = new XYZ(
                 GetDouble(reader, "IntersectionX"),
@@ -3200,6 +3233,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
             clashZone.MepElementWidth = GetNullableDouble(reader, "MepWidth") ?? 0.0;
             clashZone.MepElementHeight = GetNullableDouble(reader, "MepHeight") ?? 0.0;
+            // ✅ PIPE DIAMETER COLUMNS: Load outer diameter and nominal diameter for pipes
+            clashZone.MepElementOuterDiameter = GetNullableDouble(reader, "MepElementOuterDiameter") ?? 0.0;
+            clashZone.MepElementNominalDiameter = GetNullableDouble(reader, "MepElementNominalDiameter") ?? 0.0;
+            
+            // ✅ DIRECT LOGGING: Always log MEP dimensions being loaded for duct accessories
+            if (string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger($"[DB-LOAD-DEBUG] Zone {clashZone.Id}: Loaded MepWidth={clashZone.MepElementWidth:F6}ft ({clashZone.MepElementWidth * 304.8:F1}mm), MepHeight={clashZone.MepElementHeight:F6}ft ({clashZone.MepElementHeight * 304.8:F1}mm)");
+                SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [DB-LOAD-MEP] Zone {clashZone.Id}: MepWidth={clashZone.MepElementWidth:F6}ft ({clashZone.MepElementWidth * 304.8:F1}mm), MepHeight={clashZone.MepElementHeight:F6}ft ({clashZone.MepElementHeight * 304.8:F1}mm)\n");
+            }
 
             clashZone.SleeveFamilyName = GetNullableString(reader, "SleeveFamilyName") ?? string.Empty;
             clashZone.SourceDocKey = GetNullableString(reader, "SourceDocKey") ?? string.Empty;
@@ -3212,6 +3255,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             clashZone.HasDamperNearby = GetBool(reader, "HasDamperNearbyFlag");
             clashZone.IsCurrentClash = GetBool(reader, "IsCurrentClashFlag");
             clashZone.ReadyForPlacement = GetBool(reader, "ReadyForPlacementFlag");
+            
+            // ✅ OOP METHOD: Load damper connector detection values
+            clashZone.HasMepConnector = GetBool(reader, "HasMepConnector");
+            clashZone.DamperConnectorSide = GetNullableString(reader, "DamperConnectorSide") ?? string.Empty;
+            
+            // ✅ OOP METHOD: Load insulation detection values
+            clashZone.IsInsulated = GetBool(reader, "IsInsulated");
+            clashZone.InsulationThickness = GetDouble(reader, "InsulationThickness", 0.0);
+            // Update InsulationType for backward compatibility
+            clashZone.InsulationType = clashZone.IsInsulated ? "Insulated" : "Normal";
             
             // ✅ CRITICAL: Load thickness values for depth calculation
             clashZone.StructuralElementThickness = GetDouble(reader, "StructuralThickness", 0.0);

@@ -283,6 +283,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         #endregion
 
+        /// <summary>
+        /// Enable parallel planning for pipes (experimental)
+        /// When true: Pipes can use parallel planning optimization for pre-computing dimensions
+        /// When false: Pipes use normal sequential processing (safe default)
+        /// Default: false (disabled initially - enable after validation)
+        /// Location: Services/UniversalSleevePlacerService.cs
+        /// </summary>
+        public static bool EnableParallelPlanningForPipes { get; set; } = false;
+
         #endregion
         
         #region Configuration Methods

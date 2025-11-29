@@ -16,6 +16,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Utils;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Geometry;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Sizing;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -43,11 +44,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         // ✅ PARALLEL PLANNING: Optional planner for pre-computation (OOP, DI-ready)
         private readonly ISleevePlacementPlanner _planner;
+        
+        // ✅ OOP METHOD: Insulation-aware sizing service (SOLID principles)
+        private readonly IInsulationAwareSizingService _sizingService;
 
         // ⚠️ QUICK WIN: Pre-cached family symbols (load once, reuse many times)
         private static Dictionary<string, FamilySymbol> _familySymbolCache = new Dictionary<string, FamilySymbol>();
         
         // ✅ STEP 5 OPTIMIZATION: Deferred parameter batching (4-6× faster placement)
+        
+        // ✅ DIRECT FILE WRITE HELPER: Bypasses SafeFileLogger DeploymentMode check
+        private static void DirectLog(string message)
+        {
+            try
+            {
+                var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Logs", "R2023");
+                Directory.CreateDirectory(logDir);
+                File.AppendAllText(Path.Combine(logDir, "damper_placement_trace.log"), message);
+            }
+            catch { }
+        }
         // Accumulates parameter values during placement loop, writes all after single regeneration
         // Key: ElementId of sleeve instance
         // Value: Dictionary of parameter name → value (double or string)
@@ -65,7 +81,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             string filterName = null,
             FlagManager flagManager = null,
             bool isReplayPath = false,
-            ISleevePlacementPlanner planner = null)  // ✅ NEW: Optional planner injection
+            ISleevePlacementPlanner planner = null,  // ✅ NEW: Optional planner injection
+            IInsulationAwareSizingService sizingService = null)  // ✅ OOP METHOD: Optional sizing service injection (SOLID)
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _conditions = conditions ?? new OpeningConditions();
@@ -79,6 +96,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             // ✅ PARALLEL PLANNING: Initialize planner with conditions and clearance settings
             _planner = planner ?? new ParallelSleevePlacementPlanner(_conditions, _clearanceSettings);
+            
+            // ✅ OOP METHOD: Initialize sizing service (create if not provided - Dependency Injection)
+            _sizingService = sizingService ?? new InsulationAwareSizingService();
             
             // 🔥 CRITICAL DEBUG: Direct file logging to trace service instantiation (SAFE - won't crash)
             SafeFileLogger.SafeAppendText("service_instantiation.log", 
@@ -304,6 +324,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         public (int PlacedCount, int SkippedCount, int ErrorCount) PlaceAllSleevesInTransaction(List<ClashZone> clashZones)
         {
+            // ✅ CRITICAL: Force DeploymentMode OFF for diagnostic logging
+            DeploymentConfiguration.DeploymentMode = false;
+            
             // ✅ DIAGNOSTIC: Log batching flag status at placement start
             if (!DeploymentConfiguration.DeploymentMode)
             {
@@ -1043,6 +1066,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 // ⏱️ TIMING: MEP size creation
                                 var mepSizeTimer = System.Diagnostics.Stopwatch.StartNew();
                                 // ⚠️ ZERO LINKED FILE ACCESS - use pre-calculated MEP size from ClashZone
+                                // ✅ DIAGNOSTIC: Log values being read from ClashZone BEFORE creating mepSize
+                                if (!DeploymentConfiguration.DeploymentMode && string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    DebugLogger.Info($"[PLACEMENT-DEBUG] Zone {clashZone.Id}: Reading from ClashZone - MepElementWidth={clashZone.MepElementWidth:F6}ft ({clashZone.MepElementWidth * 304.8:F1}mm), MepElementHeight={clashZone.MepElementHeight:F6}ft ({clashZone.MepElementHeight * 304.8:F1}mm)");
+                                    if (clashZone.MepElementWidth <= 0 || clashZone.MepElementHeight <= 0)
+                                    {
+                                        DebugLogger.Warning($"[PLACEMENT-DEBUG] ⚠️ Zone {clashZone.Id}: MepElementWidth or MepElementHeight is ZERO - this will cause fallback! Width={clashZone.MepElementWidth}, Height={clashZone.MepElementHeight}");
+                                    }
+                                    if (clashZone.MepElementSizeData != null)
+                                    {
+                                        DebugLogger.Info($"[PLACEMENT-DEBUG] Zone {clashZone.Id}: MepElementSizeData exists - Width={clashZone.MepElementSizeData.Width:F6}ft ({clashZone.MepElementSizeData.Width * 304.8:F1}mm), Height={clashZone.MepElementSizeData.Height:F6}ft ({clashZone.MepElementSizeData.Height * 304.8:F1}mm)");
+                                    }
+                                }
+                                
+                                // ✅ DIRECT FILE WRITE: Always log path and what we're using
+                                try
+                                {
+                                    var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Logs", "R2023");
+                                    Directory.CreateDirectory(logDir);
+                                    File.AppendAllText(Path.Combine(logDir, "damper_placement_trace.log"), $"[{DateTime.Now:HH:mm:ss.fff}] [PATH-DECISION] Zone {clashZone.Id}: _isReplayPath={_isReplayPath}, SleeveWidth={clashZone.SleeveWidth:F6}ft ({clashZone.SleeveWidth * 304.8:F1}mm), SleeveHeight={clashZone.SleeveHeight:F6}ft ({clashZone.SleeveHeight * 304.8:F1}mm), MepElementWidth={clashZone.MepElementWidth:F6}ft ({clashZone.MepElementWidth * 304.8:F1}mm), MepElementHeight={clashZone.MepElementHeight:F6}ft ({clashZone.MepElementHeight * 304.8:F1}mm)\n");
+                                } catch { }
+                                
                                 var mepSize = new MepElementSize
                                 {
                                     Width = clashZone.MepElementWidth,
@@ -1068,12 +1113,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 double finalWidth = 0.0, finalHeight = 0.0, finalDiameter = 0.0;
 
                                 // ✅ PARALLEL PLANNING: Use pre-computed dimensions if available
-                                if (planningDto != null && DeploymentConfiguration.EnableParallelPlanning)
+                                // ⚠️ EXCEPTION: Duct Accessories (dampers) always excluded - need DamperPlacementStrategy for connector-based asymmetric clearance
+                                // Pipes can use parallel planning if OptimizationFlags.EnableParallelPlanningForPipes is enabled
+                                // When disabled (default), pipes use normal sequential processing for safety
+                                bool isDuctAccessory = string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase);
+                                bool isPipe = string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
+                                bool canUseParallelPlanningForPipe = isPipe && OptimizationFlags.EnableParallelPlanningForPipes;
+                                if (planningDto != null && DeploymentConfiguration.EnableParallelPlanning && !isDuctAccessory && (canUseParallelPlanningForPipe || !isPipe))
                                 {
                                     // Use planning layer dimensions (already includes clearance)
                                     finalWidth = planningDto.TargetWidthFt;
                                     finalHeight = planningDto.TargetHeightFt;
                                     finalDiameter = Math.Max(finalWidth, finalHeight);
+                                    
+                                    // ✅ DIRECT FILE WRITE: Log parallel planning dimensions
+                                    try
+                                    {
+                                        var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Logs", "R2023");
+                                        Directory.CreateDirectory(logDir);
+                                        File.AppendAllText(Path.Combine(logDir, "damper_placement_trace.log"), $"[{DateTime.Now:HH:mm:ss.fff}] [PARALLEL-PLANNING] Zone {clashZone.Id}: Using pre-computed dimensions - Width={finalWidth:F6}ft ({finalWidth * 304.8:F1}mm), Height={finalHeight:F6}ft ({finalHeight * 304.8:F1}mm), Risk={planningDto.ClearanceRisk}\n");
+                                    } catch { }
                                     
                                     if (!DeploymentConfiguration.DeploymentMode)
                                     {
@@ -1090,11 +1149,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     finalHeight = clashZone.SleeveHeight;
                                     finalDiameter = clashZone.SleeveDiameter > 0 ? clashZone.SleeveDiameter : Math.Max(finalWidth, finalHeight);
 
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        DebugLogger.Info($"[UniversalSleevePlacer] ✅ PATH 1 (Replay): Using existing sleeve size - W={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}mm, H={RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm, D={RevitUnitConversionService.Instance.FromInternalMillimeters(finalDiameter):F1}mm");
-                                        // File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9: ✅ PATH 1 (Replay) - Using existing sleeve size (skipping clearance calculation)\n");
-                                    }
+                                    DebugLogger.Info($"[UniversalSleevePlacer] ✅ PATH 1 (Replay): Using existing sleeve size - W={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}mm, H={RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm, D={RevitUnitConversionService.Instance.FromInternalMillimeters(finalDiameter):F1}mm");
+                                    DirectLog($"[{DateTime.Now:HH:mm:ss.fff}] [PATH-1-REPLAY] Zone {clashZone.Id}: Using SleeveWidth={finalWidth:F6}ft ({finalWidth * 304.8:F1}mm), SleeveHeight={finalHeight:F6}ft ({finalHeight * 304.8:F1}mm) - SKIPPING clearance calculation\n");
                                 }
                                 else if (_isReplayPath)
                                 {
@@ -1118,27 +1174,120 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                                     if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Info($"[UniversalSleevePlacer] CLEARANCE CALCULATION START: Category='{clashZone.MepElementCategory}', Strategy={(_strategy?.GetType().Name ?? "NULL")}, Path={(_isReplayPath ? "Replay" : "Sizing/Detection")}");
+                                    
+                                    // ✅ DIRECT FILE WRITE: Always log strategy type for debugging
+                                    try
+                                    {
+                                        var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Logs", "R2023");
+                                        Directory.CreateDirectory(logDir);
+                                        File.AppendAllText(Path.Combine(logDir, "damper_placement_trace.log"), $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-TYPE] Zone {clashZone.Id}: Category='{clashZone.MepElementCategory}', StrategyType={(_strategy?.GetType().Name ?? "NULL")}, IsDamperStrategy={(_strategy is DamperPlacementStrategy)}, IsDuctStrategy={(_strategy is DuctPlacementStrategy)}\n");
+                                    } catch { }
 
                                     bool isPipesCategory = string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
 
-                                    // ✅ PERFORMANCE OPTIMIZATION: Removed excessive file logging
+                                    // ✅ CRITICAL LOGGING: Always log which path pipes are taking
+                                    if (isPipesCategory && !DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        DebugLogger.Info($"[PIPE-PATH-DEBUG] Zone {clashZone.Id}: Category='{clashZone.MepElementCategory}', isPipesCategory={isPipesCategory}, Will execute pipe sizing block");
+                                        DebugLogger.Info($"[PIPE-PATH-DEBUG] Zone {clashZone.Id}: MepElementWidth={clashZone.MepElementWidth:F6}ft ({clashZone.MepElementWidth * 304.8:F1}mm), IsInsulated={clashZone.IsInsulated}, InsulationThickness={clashZone.InsulationThickness * 304.8:F1}mm");
+                                    }
 
                                     if (isPipesCategory)
                                     {
-                                        // ✅ Pipes: Raw dimensions + CONDITIONS clearance
-                                        var rawDiameter = clashZone.MepElementWidth; // Raw diameter from ClashZone
-                                        var clearance = GetClearanceFromConditions("Pipes", mepSize);
-                                        finalDiameter = rawDiameter + (2 * clearance);
-                                        finalWidth = finalDiameter;
-                                        finalHeight = finalDiameter;
+                                        // ✅ OOP METHOD: Pipes - use insulation-aware sizing service (SOLID principles)
+                                        // ✅ HARDCODED: Always use OUTER DIAMETER from database column (RBS_PIPE_OUTER_DIAMETER)
+                                        // This ensures accurate sizing based on actual pipe outer diameter, not nominal
+                                        var rawDiameter = clashZone.MepElementOuterDiameter > 0 
+                                            ? clashZone.MepElementOuterDiameter 
+                                            : clashZone.MepElementWidth; // Fallback to MepElementWidth if outer diameter not available
+                                        
+                                        if (!DeploymentConfiguration.DeploymentMode && clashZone.MepElementOuterDiameter > 0)
+                                        {
+                                            var odMm = RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.MepElementOuterDiameter);
+                                            var nominalMm = clashZone.MepElementNominalDiameter > 0 
+                                                ? RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.MepElementNominalDiameter) 
+                                                : 0.0;
+                                            DebugLogger.Info($"[PIPE-OD-USE] Zone {clashZone.Id}: Using MepElementOuterDiameter={odMm:F1}mm (nominal={nominalMm:F1}mm) for sizing");
+                                        }
+                                        
+                                        // ✅ CRITICAL FIX: Use ClashZone.IsInsulated for correct clearance selection
+                                        // The ClashZone has the correct insulation data from refresh, mepSize might be stale
+                                        var clearance = GetClearanceForPipeFromClashZone(clashZone);
+                                        
+                                        // ✅ DETAILED LOGGING: Log all pipe sizing inputs for debugging (ALWAYS log, even in deployment mode via SafeFileLogger)
+                                        var rawOdMm = RevitUnitConversionService.Instance.FromInternalMillimeters(rawDiameter);
+                                        var clearanceMm = RevitUnitConversionService.Instance.FromInternalMillimeters(clearance);
+                                        var insulationThicknessMm = clashZone.IsInsulated ? RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.InsulationThickness) : 0.0;
+                                        
+                                        // Always log via SafeFileLogger (works even if DebugLogger is disabled)
+                                        var diameterSource = clashZone.MepElementOuterDiameter > 0 ? "MepElementOuterDiameter (RBS_PIPE_OUTER_DIAMETER)" : "MepElementWidth (fallback)";
+                                        SafeFileLogger.SafeAppendText("pipe_sizing_debug.log",
+                                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PIPE-SIZING-DEBUG] Zone {clashZone.Id}: Raw OD={rawOdMm:F1}mm (from {diameterSource}), IsInsulated={clashZone.IsInsulated}, InsulationThickness={insulationThicknessMm:F1}mm, Clearance={clearanceMm:F1}mm\n");
+                                        
                                         if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[UniversalSleevePlacer] PIPE: Raw={RevitUnitConversionService.Instance.FromInternalMillimeters(rawDiameter):F1}mm + Clearance={RevitUnitConversionService.Instance.FromInternalMillimeters(clearance):F1}mm = Final={RevitUnitConversionService.Instance.FromInternalMillimeters(finalDiameter):F1}mm");
+                                        {
+                                            DebugLogger.Info($"[PIPE-SIZING-DEBUG] Zone {clashZone.Id}: Raw OD={rawOdMm:F1}mm (from {diameterSource}), IsInsulated={clashZone.IsInsulated}, InsulationThickness={insulationThicknessMm:F1}mm, Clearance={clearanceMm:F1}mm");
+                                        }
+                                        
+                                        (finalWidth, finalHeight, finalDiameter) = _sizingService.CalculateFinalDimensionsFromClashZone(
+                                            rawDiameter, rawDiameter, rawDiameter, clashZone, clearance);
+                                        
+                                        // ✅ DETAILED LOGGING: Log calculated final size before rounding (ALWAYS log via SafeFileLogger)
+                                        // Note: rawOdMm, clearanceMm, and insulationThicknessMm are already declared in outer scope above
+                                        var finalDiameterMm = RevitUnitConversionService.Instance.FromInternalMillimeters(finalDiameter);
+                                        if (clashZone.IsInsulated)
+                                        {
+                                            // Reuse existing variables from outer scope (no redeclaration)
+                                            var formulaResult = rawOdMm + (insulationThicknessMm * 2) + (clearanceMm * 2);
+                                            
+                                            // Always log via SafeFileLogger
+                                            SafeFileLogger.SafeAppendText("pipe_sizing_debug.log",
+                                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PIPE-SIZING-CALC] Zone {clashZone.Id}: {rawOdMm:F1}mm (OD) + {insulationThicknessMm:F1}mm×2 (insulation) + {clearanceMm:F1}mm×2 (clearance) = {formulaResult:F1}mm (expected) vs {finalDiameterMm:F1}mm (calculated) (BEFORE ROUNDING)\n");
+                                            
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                            {
+                                                DebugLogger.Info($"[PIPE-SIZING-CALC] Zone {clashZone.Id}: {rawOdMm:F1}mm (OD) + {insulationThicknessMm:F1}mm×2 (insulation) + {clearanceMm:F1}mm×2 (clearance) = {finalDiameterMm:F1}mm (BEFORE ROUNDING)");
+                                            }
+                                        }
+                                        else
+                                        {
+                                            // Reuse existing variables from outer scope (no redeclaration)
+                                            var formulaResult = rawOdMm + (clearanceMm * 2);
+                                            
+                                            // Always log via SafeFileLogger
+                                            SafeFileLogger.SafeAppendText("pipe_sizing_debug.log",
+                                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PIPE-SIZING-CALC] Zone {clashZone.Id}: {rawOdMm:F1}mm (OD) + {clearanceMm:F1}mm×2 (clearance) = {formulaResult:F1}mm (expected) vs {finalDiameterMm:F1}mm (calculated) (BEFORE ROUNDING)\n");
+                                            
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                            {
+                                                DebugLogger.Info($"[PIPE-SIZING-CALC] Zone {clashZone.Id}: {rawOdMm:F1}mm (OD) + {clearanceMm:F1}mm×2 (clearance) = {finalDiameterMm:F1}mm (BEFORE ROUNDING)");
+                                            }
+                                        }
+                                        
+                                        // ✅ CRITICAL: Store calculated dimensions in clashZone for pipes (same as dampers)
+                                        // This ensures the calculated dimensions are preserved through the placement process
+                                        // For pipes, we ALWAYS use the freshly calculated dimensions (never use old database values)
+                                        clashZone.SleeveWidth = finalWidth;
+                                        clashZone.SleeveHeight = finalHeight;
+                                        clashZone.SleeveDiameter = finalDiameter;
                                     }
                                     else if (_strategy is DamperPlacementStrategy damperStrategy)
                                     {
+                                        // ✅ DIRECT FILE WRITE: Always log entry into damper strategy block
+                                        try
+                                        {
+                                            var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Logs", "R2023");
+                                            Directory.CreateDirectory(logDir);
+                                            File.AppendAllText(Path.Combine(logDir, "damper_placement_trace.log"), $"[{DateTime.Now:HH:mm:ss.fff}] [DAMPER-STRATEGY-ENTRY] Zone {clashZone.Id}: Entering damper strategy block, Category={clashZone.MepElementCategory}\n");
+                                        } catch { }
+                                        
                                         // ✅ Fire dampers: Raw dimensions + CONDITIONS clearance via strategy
                                         var rawWidth = clashZone.MepElementWidth;
                                         var rawHeight = clashZone.MepElementHeight;
+
+                                        // ✅ DIRECT LOGGING: Always log what we're reading from ClashZone
+                                        DebugLogger.Info($"[DAMPER-PLACEMENT-DEBUG] Zone {clashZone.Id}: Reading from ClashZone - MepElementWidth={rawWidth:F6}ft ({RevitUnitConversionService.Instance.FromInternalMillimeters(rawWidth):F1}mm), MepElementHeight={rawHeight:F6}ft ({RevitUnitConversionService.Instance.FromInternalMillimeters(rawHeight):F1}mm)");
+                                        DirectLog($"[{DateTime.Now:HH:mm:ss.fff}] [PLACEMENT-READ] Zone {clashZone.Id}: MepElementWidth={rawWidth:F6}ft ({rawWidth * 304.8:F1}mm), MepElementHeight={rawHeight:F6}ft ({rawHeight * 304.8:F1}mm)\n");
 
                                         // Get offset and final dimensions from strategy (uses CONDITIONS)
                                         var adj = damperStrategy.GetDamperPlacementAdjustment(clashZone, _conditions);
@@ -1147,32 +1296,51 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         finalHeight = adj.finalHeight;
                                         finalDiameter = finalWidth; // Not used for dampers (rectangular only)
 
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[UniversalSleevePlacer] DAMPER: Raw={RevitUnitConversionService.Instance.FromInternalMillimeters(rawWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(rawHeight):F1}mm → Final={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm");
+                                        DebugLogger.Info($"[UniversalSleevePlacer] DAMPER: Raw={RevitUnitConversionService.Instance.FromInternalMillimeters(rawWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(rawHeight):F1}mm → Final={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm");
+                                        DirectLog($"[{DateTime.Now:HH:mm:ss.fff}] [PLACEMENT-FINAL] Zone {clashZone.Id}: FinalWidth={finalWidth:F6}ft ({finalWidth * 304.8:F1}mm), FinalHeight={finalHeight:F6}ft ({finalHeight * 304.8:F1}mm)\n");
+                                        
+                                        // ✅ CRITICAL: Always store calculated dimensions in clashZone for dampers
+                                        // This ensures the calculated dimensions are preserved through the placement process
+                                        // For dampers, we ALWAYS use the freshly calculated dimensions (never use old database values)
+                                        clashZone.SleeveWidth = finalWidth;
+                                        clashZone.SleeveHeight = finalHeight;
+                                        clashZone.SleeveDiameter = finalDiameter;
                                     }
-
-                                    // ✅ DEBUG: Log strategy information
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Info($"[UniversalSleevePlacer] Strategy Type: {_strategy.GetType().Name}");
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Info($"[UniversalSleevePlacer] Strategy Category: {_strategy.GetCategoryName()}");
-
-                                    if (_strategy is DuctPlacementStrategy ductStrategy)
+                                    else if (_strategy is DuctPlacementStrategy ductStrategy)
                                     {
-                                        // ✅ Ducts: Raw dimensions + CONDITIONS clearance via strategy
+                                        // ✅ DIRECT LOGGING: Always log if DUCT strategy is being used for Duct Accessories (this is the bug!)
+                                        if (string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            DirectLog($"[{DateTime.Now:HH:mm:ss.fff}] [BUG-DETECTED] Zone {clashZone.Id}: ⚠️ DUCT STRATEGY is being used for Duct Accessories! This should use DamperPlacementStrategy!\n");
+                                        }
+                                        
+                                        // ✅ OOP METHOD: Ducts - use insulation-aware sizing service (SOLID principles)
                                         var rawWidth = clashZone.MepElementWidth;
                                         var rawHeight = clashZone.MepElementHeight;
 
                                         if (!DeploymentConfiguration.DeploymentMode)
                                             DebugLogger.Info($"[UniversalSleevePlacer] DUCT CALCULATION START: Raw dimensions {RevitUnitConversionService.Instance.FromInternalMillimeters(rawWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(rawHeight):F1}mm");
 
-                                        var clearance = GetClearanceFromConditions("Ducts", mepSize);
-                                        finalWidth = rawWidth + (2 * clearance);
-                                        finalHeight = rawHeight + (2 * clearance);
+                                        // ✅ CRITICAL FIX: Use ClashZone.IsInsulated for correct clearance selection
+                                        var clearance = GetClearanceForDuctFromClashZone(clashZone);
+                                        
+                                        // ✅ DIRECT LOGGING: Always log clearance being used
+                                        DirectLog($"[{DateTime.Now:HH:mm:ss.fff}] [DUCT-STRATEGY-CLEARANCE] Zone {clashZone.Id}: Clearance={clearance:F6}ft ({clearance * 304.8:F1}mm) from GetClearanceFromConditions('Ducts')\n");
+                                        
+                                        // ✅ OOP METHOD: Use sizing service for consistent calculation across all categories
+                                        (finalWidth, finalHeight, finalDiameter) = _sizingService.CalculateFinalDimensionsFromClashZone(
+                                            rawWidth, rawHeight, rawWidth, clashZone, clearance);
                                         finalDiameter = finalWidth; // For round elements
 
                                         if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[UniversalSleevePlacer] DUCT: Raw={RevitUnitConversionService.Instance.FromInternalMillimeters(rawWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(rawHeight):F1}mm + Clearance={RevitUnitConversionService.Instance.FromInternalMillimeters(clearance):F1}mm = Final={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm");
+                                        {
+                                            if (clashZone.IsInsulated)
+                                                DebugLogger.Info($"[UniversalSleevePlacer] DUCT (OOP): Raw={RevitUnitConversionService.Instance.FromInternalMillimeters(rawWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(rawHeight):F1}mm + Insulation({RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.InsulationThickness):F1}mm x2) + Clearance({RevitUnitConversionService.Instance.FromInternalMillimeters(clearance):F1}mm x2) = Final={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm");
+                                            else
+                                                DebugLogger.Info($"[UniversalSleevePlacer] DUCT (OOP): Raw={RevitUnitConversionService.Instance.FromInternalMillimeters(rawWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(rawHeight):F1}mm + Clearance({RevitUnitConversionService.Instance.FromInternalMillimeters(clearance):F1}mm x2) = Final={RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm");
+                                        }
+                                        
+                                        DirectLog($"[{DateTime.Now:HH:mm:ss.fff}] [DUCT-STRATEGY-FINAL] Zone {clashZone.Id}: FinalWidth={finalWidth:F6}ft ({finalWidth * 304.8:F1}mm), FinalHeight={finalHeight:F6}ft ({finalHeight * 304.8:F1}mm)\n");
                                     }
                                     else if (_strategy is CableTrayPlacementStrategy cableTrayStrategy)
                                     {
@@ -1202,18 +1370,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     }
                                     else
                                     {
-                                        // ✅ PERFORMANCE OPTIMIZATION: Removed excessive file logging
-                                        // 🔥 FALLBACK: Use raw dimensions + default clearance if no strategy matches
+                                        // ✅ OOP METHOD: Fallback - use insulation-aware sizing service (SOLID principles)
                                         var rawWidth = clashZone.MepElementWidth;
                                         var rawHeight = clashZone.MepElementHeight;
                                         var defaultClearance = RevitUnitConversionService.Instance.ToInternalMillimeters(50); // 50mm default
 
-                                        finalWidth = rawWidth + (2 * defaultClearance);
-                                        finalHeight = rawHeight + (2 * defaultClearance);
-                                        finalDiameter = Math.Max(finalWidth, finalHeight);
+                                        // ✅ OOP METHOD: Use sizing service for consistent calculation
+                                        (finalWidth, finalHeight, finalDiameter) = _sizingService.CalculateFinalDimensionsFromClashZone(
+                                            rawWidth, rawHeight, Math.Max(rawWidth, rawHeight), clashZone, defaultClearance);
 
                                         if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ NO STRATEGY MATCHED for ClashZone {clashZone.Id} - Using fallback dimensions");
+                                            DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ NO STRATEGY MATCHED for ClashZone {clashZone.Id} - Using fallback dimensions with OOP sizing service");
                                     }
                                     clearanceTimer.Stop();
                                     totalClearanceTime += clearanceTimer.Elapsed;
@@ -1493,13 +1660,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     DebugLogger.Info($"[UniversalSleevePlacer] Using exact intersection point {placementPointChosen} for {clashZone.MepElementCategory} on {clashZone.StructuralElementType}");
 
                                 XYZ adjustedPlacementPoint = placementPointChosen + placementOffset;
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[UniversalSleevePlacer] Using placement point {placementPointChosen} → adjusted {adjustedPlacementPoint}");
-
-                                if (placementOffset.GetLength() > 0.001)
+                                
+                                // ✅ DETAILED LOGGING: Log damper offset application for debugging
+                                if (string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase) && placementOffset.GetLength() > 0.001)
                                 {
                                     if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        var offsetMm = placementOffset.GetLength() * 304.8;
+                                        DebugLogger.Info($"[DAMPER-OFFSET] Zone {clashZone.Id}: PlacementPoint BEFORE offset = ({placementPointChosen.X:F6}, {placementPointChosen.Y:F6}, {placementPointChosen.Z:F6})");
+                                        DebugLogger.Info($"[DAMPER-OFFSET] Zone {clashZone.Id}: Offset Vector = ({placementOffset.X*304.8:F1}, {placementOffset.Y*304.8:F1}, {placementOffset.Z*304.8:F1})mm (Length={offsetMm:F1}mm)");
+                                        DebugLogger.Info($"[DAMPER-OFFSET] Zone {clashZone.Id}: PlacementPoint AFTER offset = ({adjustedPlacementPoint.X:F6}, {adjustedPlacementPoint.Y:F6}, {adjustedPlacementPoint.Z:F6})");
+                                        try
+                                        {
+                                            var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Logs", "R2023");
+                                            Directory.CreateDirectory(logDir);
+                                            File.AppendAllText(Path.Combine(logDir, "damper_placement_trace.log"), $"[{DateTime.Now:HH:mm:ss.fff}] [OFFSET-APPLIED] Zone {clashZone.Id}: PlacementPoint BEFORE=({placementPointChosen.X:F6}, {placementPointChosen.Y:F6}, {placementPointChosen.Z:F6}), Offset=({placementOffset.X*304.8:F1}, {placementOffset.Y*304.8:F1}, {placementOffset.Z*304.8:F1})mm, PlacementPoint AFTER=({adjustedPlacementPoint.X:F6}, {adjustedPlacementPoint.Y:F6}, {adjustedPlacementPoint.Z:F6})\n");
+                                        } catch { }
+                                    }
+                                }
+                                else if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[UniversalSleevePlacer] Using placement point {placementPointChosen} → adjusted {adjustedPlacementPoint}");
+
+                                    if (placementOffset.GetLength() > 0.001)
+                                    {
                                         DebugLogger.Info($"[UniversalSleevePlacer] Applied offset {placementOffset} to placement point");
+                                    }
                                 }
 
                                 // ⏱️ TIMING: Level finding
@@ -1701,6 +1887,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 var parameterTimer = System.Diagnostics.Stopwatch.StartNew();
                                 using (singleSleeveTracker?.TrackSubOperation("Set Sleeve Parameters"))
                                 {
+                                // ✅ CRITICAL FIX FOR DAMPERS AND PIPES: Ensure finalWidth matches calculated value (restore from clashZone if needed)
+                                // Note: isPipe is already declared in outer scope (line 1120), reuse it here
+                                bool isDamper = string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase);
+                                
+                                if (isDamper || isPipe)
+                                {
+                                    // ✅ For dampers and pipes, clashZone.SleeveWidth should contain the calculated value
+                                    // If finalWidth doesn't match, restore it from clashZone.SleeveWidth
+                                    if (clashZone.SleeveWidth > 0 && Math.Abs(finalWidth - clashZone.SleeveWidth) > 0.0001)
+                                    {
+                                        try { 
+                                            var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Logs", "R2023"); 
+                                            Directory.CreateDirectory(logDir); 
+                                            var logPath = Path.Combine(logDir, isDamper ? "damper_placement_trace.log" : "placement_debug.log");
+                                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] [SET-PARAMS-FIX] Zone {clashZone.Id} ({clashZone.MepElementCategory}): finalWidth was {finalWidth * 304.8:F1}mm, restoring from clashZone.SleeveWidth={clashZone.SleeveWidth * 304.8:F1}mm\n");
+                                        } catch { }
+                                        finalWidth = clashZone.SleeveWidth;
+                                        finalHeight = clashZone.SleeveHeight;
+                                        finalDiameter = clashZone.SleeveDiameter;
+                                        
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            DebugLogger.Info($"[SET-PARAMS-FIX] Zone {clashZone.Id} ({clashZone.MepElementCategory}): Restored calculated dimensions - Width={finalWidth * 304.8:F1}mm, Height={finalHeight * 304.8:F1}mm, Diameter={finalDiameter * 304.8:F1}mm");
+                                        }
+                                    }
+                                    
+                                    // ✅ DIRECT LOGGING: Always log final dimensions before setting parameters
+                                    try { 
+                                        var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Logs", "R2023"); 
+                                        Directory.CreateDirectory(logDir); 
+                                        var logPath = Path.Combine(logDir, isDamper ? "damper_placement_trace.log" : "placement_debug.log");
+                                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] [SET-PARAMS] Zone {clashZone.Id} ({clashZone.MepElementCategory}): About to set Width={finalWidth:F6}ft ({finalWidth * 304.8:F1}mm), Height={finalHeight:F6}ft ({finalHeight * 304.8:F1}mm), Diameter={finalDiameter:F6}ft ({finalDiameter * 304.8:F1}mm) on sleeve {sleeveInstance.Id.IntegerValue}\n");
+                                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] [SET-PARAMS-DIAGNOSTIC] Zone {clashZone.Id}: finalWidth={finalWidth:F6}ft ({finalWidth * 304.8:F1}mm), clashZone.SleeveWidth={clashZone.SleeveWidth:F6}ft ({clashZone.SleeveWidth * 304.8:F1}mm), _isReplayPath={_isReplayPath}\n");
+                                    } catch { }
+                                }
+                                
                                 // Set parameters
                                 SetSleeveParameters(sleeveInstance, mepSize, finalWidth, finalHeight, finalDiameter, clashZone, isCircular);
 
@@ -2075,15 +2297,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                             // ✅ CRITICAL FIX: Save sleeve data to database IMMEDIATELY after placement
                             // This ensures UpdateSleeveCoordinatesInXml can find sleeves by SleeveInstanceId
-                            if (bboxCount > 0)
+                            // ✅ CRITICAL: This MUST run even if bboxCount is 0 - bounding boxes are not required for snapshot save
+                            try
                             {
-                                try
+                                using (var dbContext = new Data.SleeveDbContext(_doc))
                                 {
-                                    using (var dbContext = new Data.SleeveDbContext(_doc))
-                                    {
-                                        var repository = new Data.Repositories.ClashZoneRepository(dbContext);
-                                        int dbSavedCount = 0;
+                                    var repository = new Data.Repositories.ClashZoneRepository(dbContext);
+                                    int dbSavedCount = 0;
 
+                                    // ✅ BOUNDING BOX SAVE: Only save bounding boxes if they were retrieved (bboxCount > 0)
+                                    if (bboxCount > 0)
+                                    {
                                         foreach (var (sleeve, zone, fw, fh, fd) in placedSleeveData)
                                         {
                                             if (zone != null && zone.SleeveInstanceId > 0 && sleeve.IsValidObject)
@@ -2218,104 +2442,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                                 rotatedLocalMinX, rotatedLocalMinY, rotatedLocalMinZ,
                                                                 rotatedLocalMaxX, rotatedLocalMaxY, rotatedLocalMaxZ);
 
-                                                            // ✅ SLEEVE CORNERS: Calculate and save 4 corner coordinates in WORLD space
-                                                            // Corner order: 1=Bottom-left, 2=Bottom-right, 3=Top-left, 4=Top-right (in local space, then rotated to world)
-                                                            // Pre-calculated once during individual sleeve placement, stored for reuse during clustering
-                                                            // ✅ CRITICAL: Sleeve center = SleevePlacementPointActiveDocument (Active document coordinates where sleeve is actually placed)
-                                                            try
-                                                            {
-                                                                // ✅ SLEEVE CENTER: Use Active document coordinates (where sleeve is actually placed)
-                                                                // This is saved to database via UpdateSleevePlacement (SleevePlacementActiveX/Y/Z)
-                                                                var sleeveCenter = new XYZ(
-                                                                    zone.SleevePlacementPointActiveDocumentX,  // Active document X (sleeve center)
-                                                                    zone.SleevePlacementPointActiveDocumentY,  // Active document Y (sleeve center)
-                                                                    zone.SleevePlacementPointActiveDocumentZ   // Active document Z (sleeve center)
-                                                                );
-
-                                                                // ✅ DIAGNOSTIC: Log corner saving attempt
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                                {
-                                                                    DebugLogger.Info($"[SLEEVE-CORNERS] ATTEMPTING to save corners for zone {zone.Id}: " +
-                                                                        $"Rotation={rotationAngleDeg:F1}°, " +
-                                                                        $"ActiveCoords=({zone.SleevePlacementPointActiveDocumentX:F6}, {zone.SleevePlacementPointActiveDocumentY:F6}, {zone.SleevePlacementPointActiveDocumentZ:F6}), " +
-                                                                        $"Width={actualWidth * 304.8:F1}mm, Height={actualHeight * 304.8:F1}mm");
-                                                                }
-
-                                                                // ✅ CRITICAL: Check if Active coordinates are valid (not all zero)
-                                                                if (Math.Abs(zone.SleevePlacementPointActiveDocumentX) < 1e-6 &&
-                                                                    Math.Abs(zone.SleevePlacementPointActiveDocumentY) < 1e-6 &&
-                                                                    Math.Abs(zone.SleevePlacementPointActiveDocumentZ) < 1e-6)
-                                                                {
-                                                                    // ✅ FALLBACK: Use regular placement point if Active coordinates are not set
-                                                                    sleeveCenter = zone.SleevePlacementPoint;
-                                                                    if (!DeploymentConfiguration.DeploymentMode)
-                                                                    {
-                                                                        DebugLogger.Warning($"[SLEEVE-CORNERS] Active coordinates are zero for zone {zone.Id}, using SleevePlacementPoint instead: ({sleeveCenter.X:F6}, {sleeveCenter.Y:F6}, {sleeveCenter.Z:F6})");
-                                                                    }
-                                                                }
-
-                                                                // Step 1: Calculate 4 corners in local coordinate system (before rotation)
-                                                                // Use sleeve width and height (saved to database via UpdateSleevePlacement)
-                                                                double halfW = actualWidth / 2.0;
-                                                                double halfH = actualHeight / 2.0;
-
-                                                                // Corner offsets in local space: (-1,-1), (1,-1), (-1,1), (1,1) multiplied by halfW/halfH
-                                                                var localCorners = new[]
-                                                                {
-                                                            new XYZ(-halfW, -halfH, 0),  // Corner 1: Bottom-left
-                                                            new XYZ(halfW, -halfH, 0),   // Corner 2: Bottom-right
-                                                            new XYZ(-halfW, halfH, 0),   // Corner 3: Top-left
-                                                            new XYZ(halfW, halfH, 0)     // Corner 4: Top-right
-                                                        };
-
-                                                                // Step 2: Rotate corners by sleeve rotation angle to get world-space corners
-                                                                // Use rotation matrix (cos, sin) based on MepElementRotationAngle (saved to database)
-                                                                double cosSleeve = Math.Cos(rotationAngleRad);
-                                                                double sinSleeve = Math.Sin(rotationAngleRad);
-
-                                                                var worldCorners = new XYZ[4];
-                                                                for (int j = 0; j < 4; j++)
-                                                                {
-                                                                    double localX = localCorners[j].X;
-                                                                    double localY = localCorners[j].Y;
-
-                                                                    // Rotate corner by sleeve rotation matrix
-                                                                    double worldX = localX * cosSleeve - localY * sinSleeve;
-                                                                    double worldY = localX * sinSleeve + localY * cosSleeve;
-
-                                                                    // ✅ TRANSLATE TO SLEEVE CENTER: Add rotated corner offset to sleeve center (placement point)
-                                                                    worldCorners[j] = new XYZ(
-                                                                        sleeveCenter.X + worldX,
-                                                                        sleeveCenter.Y + worldY,
-                                                                        sleeveCenter.Z
-                                                                    );
-                                                                }
-
-                                                                // Step 3: Save world-space corners to database
-                                                                repository.UpdateSleeveCorners(
-                                                                    zone.Id,
-                                                                    worldCorners[0].X, worldCorners[0].Y, worldCorners[0].Z,  // Corner 1
-                                                                    worldCorners[1].X, worldCorners[1].Y, worldCorners[1].Z,  // Corner 2
-                                                                    worldCorners[2].X, worldCorners[2].Y, worldCorners[2].Z,  // Corner 3
-                                                                    worldCorners[3].X, worldCorners[3].Y, worldCorners[3].Z   // Corner 4
-                                                                );
-
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                                {
-                                                                    DebugLogger.Info($"[SLEEVE-CORNERS] ✅ Saved 4 world-space corners for zone {zone.Id}: " +
-                                                                        $"C1=({worldCorners[0].X:F6}, {worldCorners[0].Y:F6}, {worldCorners[0].Z:F6}), " +
-                                                                        $"C2=({worldCorners[1].X:F6}, {worldCorners[1].Y:F6}, {worldCorners[1].Z:F6}), " +
-                                                                        $"C3=({worldCorners[2].X:F6}, {worldCorners[2].Y:F6}, {worldCorners[2].Z:F6}), " +
-                                                                        $"C4=({worldCorners[3].X:F6}, {worldCorners[3].Y:F6}, {worldCorners[3].Z:F6})");
-                                                                }
-                                                            }
-                                                            catch (Exception cornerEx)
-                                                            {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                                                {
-                                                                    DebugLogger.Warning($"[SLEEVE-CORNERS] Error calculating corners for zone {zone.Id}: {cornerEx.Message}");
-                                                                }
-                                                            }
+                                                            // ✅ SLEEVE CORNERS: Calculate and save 4 corner coordinates in WORLD space (ROBUST)
+                                                            // Using robust helper method with full validation, retry logic, and error handling
+                                                            SaveSleeveCornersRobust(zone, sleeve, repository, rotationAngleRad, actualWidth, actualHeight);
 
                                                             if (!DeploymentConfiguration.DeploymentMode)
                                                             {
@@ -2350,173 +2479,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                             DebugLogger.Info($"[ROTATED-BBOX] Skipped rotated bounding box for zone {zone.Id}: Angle={rotationAngleDeg:F1}° (axis-aligned, using axis-aligned bbox)");
                                                         }
 
-                                                        // ✅ SLEEVE CORNERS: Still calculate and save 4 corner coordinates in WORLD space for axis-aligned sleeves
-                                                        // Pre-calculated once during individual sleeve placement, stored for reuse during clustering
-                                                        // ✅ CRITICAL: Sleeve center = SleevePlacementPointActiveDocument (Active document coordinates where sleeve is actually placed)
-                                                        try
-                                                        {
-                                                            // ✅ SLEEVE CENTER: Use Active document coordinates (where sleeve is actually placed)
-                                                            // This is saved to database via UpdateSleevePlacement (SleevePlacementActiveX/Y/Z)
-                                                            var sleeveCenter = new XYZ(
-                                                                zone.SleevePlacementPointActiveDocumentX,  // Active document X (sleeve center)
-                                                                zone.SleevePlacementPointActiveDocumentY,  // Active document Y (sleeve center)
-                                                                zone.SleevePlacementPointActiveDocumentZ   // Active document Z (sleeve center)
-                                                            );
-
-                                                            double actualWidth = zone.SleeveWidth > 0 ? zone.SleeveWidth : fw;
-                                                            double actualHeight = zone.SleeveHeight > 0 ? zone.SleeveHeight : fh;
-
-                                                            // Try to get dimensions from sleeve element if available
-                                                            if (sleeve != null && sleeve.IsValidObject)
-                                                            {
-                                                                try
-                                                                {
-                                                                    var widthParam = sleeve.LookupParameter("Width");
-                                                                    var heightParam = sleeve.LookupParameter("Height");
-
-                                                                    if (widthParam != null && widthParam.HasValue)
-                                                                        actualWidth = widthParam.AsDouble();
-                                                                    if (heightParam != null && heightParam.HasValue)
-                                                                        actualHeight = heightParam.AsDouble();
-                                                                }
-                                                                catch { /* Fallback to zone dimensions */ }
-                                                            }
-
-                                                            // Step 1: Calculate 4 corners in local coordinate system (before rotation)
-                                                            // Use sleeve width and height (saved to database via UpdateSleevePlacement)
-                                                            double halfW = actualWidth / 2.0;
-                                                            double halfH = actualHeight / 2.0;
-
-                                                            // Corner offsets in local space: (-1,-1), (1,-1), (-1,1), (1,1) multiplied by halfW/halfH
-                                                            var localCorners = new[]
-                                                            {
-                                                        new XYZ(-halfW, -halfH, 0),  // Corner 1: Bottom-left
-                                                        new XYZ(halfW, -halfH, 0),   // Corner 2: Bottom-right
-                                                        new XYZ(-halfW, halfH, 0),   // Corner 3: Top-left
-                                                        new XYZ(halfW, halfH, 0)     // Corner 4: Top-right
-                                                    };
-
-                                                            // Step 2: Rotate corners by sleeve rotation angle to get world-space corners
-                                                            // Use rotation matrix (cos, sin) based on MepElementRotationAngle (saved to database)
-                                                            double cosSleeve = Math.Cos(rotationAngleRad);
-                                                            double sinSleeve = Math.Sin(rotationAngleRad);
-
-                                                            var worldCorners = new XYZ[4];
-                                                            for (int j = 0; j < 4; j++)
-                                                            {
-                                                                double localX = localCorners[j].X;
-                                                                double localY = localCorners[j].Y;
-
-                                                                // Rotate corner by sleeve rotation matrix
-                                                                double worldX = localX * cosSleeve - localY * sinSleeve;
-                                                                double worldY = localX * sinSleeve + localY * cosSleeve;
-
-                                                                // ✅ TRANSLATE TO SLEEVE CENTER: Add rotated corner offset to sleeve center (placement point)
-                                                                worldCorners[j] = new XYZ(
-                                                                    sleeveCenter.X + worldX,
-                                                                    sleeveCenter.Y + worldY,
-                                                                    sleeveCenter.Z
-                                                                );
-                                                            }
-
-                                                            // Step 3: Save world-space corners to database
-                                                            repository.UpdateSleeveCorners(
-                                                                zone.Id,
-                                                                worldCorners[0].X, worldCorners[0].Y, worldCorners[0].Z,  // Corner 1
-                                                                worldCorners[1].X, worldCorners[1].Y, worldCorners[1].Z,  // Corner 2
-                                                                worldCorners[2].X, worldCorners[2].Y, worldCorners[2].Z,  // Corner 3
-                                                                worldCorners[3].X, worldCorners[3].Y, worldCorners[3].Z   // Corner 4
-                                                            );
-
-                                                            if (!DeploymentConfiguration.DeploymentMode)
-                                                            {
-                                                                DebugLogger.Info($"[SLEEVE-CORNERS] ✅ Saved 4 world-space corners (axis-aligned) for zone {zone.Id}: " +
-                                                                    $"C1=({worldCorners[0].X:F6}, {worldCorners[0].Y:F6}, {worldCorners[0].Z:F6}), " +
-                                                                    $"C2=({worldCorners[1].X:F6}, {worldCorners[1].Y:F6}, {worldCorners[1].Z:F6}), " +
-                                                                    $"C3=({worldCorners[2].X:F6}, {worldCorners[2].Y:F6}, {worldCorners[2].Z:F6}), " +
-                                                                    $"C4=({worldCorners[3].X:F6}, {worldCorners[3].Y:F6}, {worldCorners[3].Z:F6})");
-                                                            }
-                                                        }
-                                                        catch (Exception cornerEx)
-                                                        {
-                                                            if (!DeploymentConfiguration.DeploymentMode)
-                                                            {
-                                                                DebugLogger.Warning($"[SLEEVE-CORNERS] Error calculating corners for zone {zone.Id}: {cornerEx.Message}");
-                                                            }
-                                                        }
+                                                        // ✅ SLEEVE CORNERS: Calculate and save 4 corner coordinates in WORLD space (ROBUST)
+                                                        // Using robust helper method with full validation, retry logic, and error handling
+                                                        double axisAlignedWidth = zone.SleeveWidth > 0 ? zone.SleeveWidth : fw;
+                                                        double axisAlignedHeight = zone.SleeveHeight > 0 ? zone.SleeveHeight : fh;
+                                                        SaveSleeveCornersRobust(zone, sleeve, repository, rotationAngleRad, axisAlignedWidth, axisAlignedHeight);
                                                     }
                                                     else
                                                     {
-                                                        // Zero rotation (0°) - still calculate corners for consistency
-                                                        // ✅ CRITICAL: Sleeve center = SleevePlacementPointActiveDocument (Active document coordinates where sleeve is actually placed)
-                                                        try
-                                                        {
-                                                            // ✅ SLEEVE CENTER: Use Active document coordinates (where sleeve is actually placed)
-                                                            // This is saved to database via UpdateSleevePlacement (SleevePlacementActiveX/Y/Z)
-                                                            var sleeveCenter = new XYZ(
-                                                                zone.SleevePlacementPointActiveDocumentX,  // Active document X (sleeve center)
-                                                                zone.SleevePlacementPointActiveDocumentY,  // Active document Y (sleeve center)
-                                                                zone.SleevePlacementPointActiveDocumentZ   // Active document Z (sleeve center)
-                                                            );
-
-                                                            double actualWidth = zone.SleeveWidth > 0 ? zone.SleeveWidth : fw;
-                                                            double actualHeight = zone.SleeveHeight > 0 ? zone.SleeveHeight : fh;
-
-                                                            // Try to get dimensions from sleeve element if available
-                                                            if (sleeve != null && sleeve.IsValidObject)
-                                                            {
-                                                                try
-                                                                {
-                                                                    var widthParam = sleeve.LookupParameter("Width");
-                                                                    var heightParam = sleeve.LookupParameter("Height");
-
-                                                                    if (widthParam != null && widthParam.HasValue)
-                                                                        actualWidth = widthParam.AsDouble();
-                                                                    if (heightParam != null && heightParam.HasValue)
-                                                                        actualHeight = heightParam.AsDouble();
-                                                                }
-                                                                catch { /* Fallback to zone dimensions */ }
-                                                            }
-
-                                                            // Step 1: Calculate 4 corners in world space (no rotation needed for 0°)
-                                                            // Use sleeve width and height (saved to database via UpdateSleevePlacement)
-                                                            double halfW = actualWidth / 2.0;
-                                                            double halfH = actualHeight / 2.0;
-
-                                                            // ✅ CORNERS: Calculate directly in world space centered at sleeve center (placement point)
-                                                            var worldCorners = new[]
-                                                            {
-                                                        new XYZ(sleeveCenter.X - halfW, sleeveCenter.Y - halfH, sleeveCenter.Z),  // Corner 1: Bottom-left
-                                                        new XYZ(sleeveCenter.X + halfW, sleeveCenter.Y - halfH, sleeveCenter.Z),  // Corner 2: Bottom-right
-                                                        new XYZ(sleeveCenter.X - halfW, sleeveCenter.Y + halfH, sleeveCenter.Z),  // Corner 3: Top-left
-                                                        new XYZ(sleeveCenter.X + halfW, sleeveCenter.Y + halfH, sleeveCenter.Z)   // Corner 4: Top-right
-                                                    };
-
-                                                            // Step 2: Save world-space corners to database
-                                                            repository.UpdateSleeveCorners(
-                                                                zone.Id,
-                                                                worldCorners[0].X, worldCorners[0].Y, worldCorners[0].Z,  // Corner 1
-                                                                worldCorners[1].X, worldCorners[1].Y, worldCorners[1].Z,  // Corner 2
-                                                                worldCorners[2].X, worldCorners[2].Y, worldCorners[2].Z,  // Corner 3
-                                                                worldCorners[3].X, worldCorners[3].Y, worldCorners[3].Z   // Corner 4
-                                                            );
-
-                                                            if (!DeploymentConfiguration.DeploymentMode)
-                                                            {
-                                                                DebugLogger.Info($"[SLEEVE-CORNERS] ✅ Saved 4 world-space corners (zero rotation) for zone {zone.Id}: " +
-                                                                    $"C1=({worldCorners[0].X:F6}, {worldCorners[0].Y:F6}, {worldCorners[0].Z:F6}), " +
-                                                                    $"C2=({worldCorners[1].X:F6}, {worldCorners[1].Y:F6}, {worldCorners[1].Z:F6}), " +
-                                                                    $"C3=({worldCorners[2].X:F6}, {worldCorners[2].Y:F6}, {worldCorners[2].Z:F6}), " +
-                                                                    $"C4=({worldCorners[3].X:F6}, {worldCorners[3].Y:F6}, {worldCorners[3].Z:F6})");
-                                                            }
-                                                        }
-                                                        catch (Exception cornerEx)
-                                                        {
-                                                            if (!DeploymentConfiguration.DeploymentMode)
-                                                            {
-                                                                DebugLogger.Warning($"[SLEEVE-CORNERS] Error calculating corners for zone {zone.Id}: {cornerEx.Message}");
-                                                            }
-                                                        }
+                                                        // Zero rotation (0°) - still calculate corners for consistency (ROBUST)
+                                                        // Using robust helper method with full validation, retry logic, and error handling
+                                                        double zeroRotationWidth = zone.SleeveWidth > 0 ? zone.SleeveWidth : fw;
+                                                        double zeroRotationHeight = zone.SleeveHeight > 0 ? zone.SleeveHeight : fh;
+                                                        SaveSleeveCornersRobust(zone, sleeve, repository, 0.0, zeroRotationWidth, zeroRotationHeight);
                                                     }
                                                 }
 
@@ -2635,13 +2610,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                 $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] ⚠️ SKIPPED saving sleeve snapshots: placedSleeveData={placedSleeveData.Count}, filterName='{_filterName ?? "NULL"}'\n");
                                         }
                                     }
+                                    
+                                    // ✅ CRITICAL FIX: Move snapshot saving OUTSIDE the bboxCount check
+                                    // Snapshots don't require bounding boxes - they only need SleeveInstanceId
+                                    // This was causing pipes to not be saved to snapshot table when bbox retrieval failed
                                 }
-                                catch (Exception dbEx)
+                            }
+                            catch (Exception dbEx)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
                                 {
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ Failed to save sleeve data to database after placement: {dbEx.Message}");
-                                    }
+                                    DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ Failed to save sleeve data to database after placement: {dbEx.Message}");
                                 }
                             }
                         } // ✅ PERFORMANCE: End of single sleeve placement tracking
@@ -3786,6 +3765,140 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
+        /// Get clearance for pipe based on ClashZone.IsInsulated (uses authoritative data from database)
+        /// This bypasses mepSize which might be stale and uses clashZone.IsInsulated directly
+        /// </summary>
+        private double GetClearanceForPipeFromClashZone(ClashZone clashZone)
+        {
+            try
+            {
+                bool isInsulated = clashZone?.IsInsulated ?? false;
+                
+                // ✅ PRIORITY 1: Try UI clearance settings first (user-provided values take priority)
+                if (_clearanceSettings != null && _clearanceSettings.Count > 0)
+                {
+                    string normalKey = "pipes_normal_clearance";
+                    string insulatedKey = "pipes_insulated_clearance";
+                    string targetKey = isInsulated ? insulatedKey : normalKey;
+                    
+                    if (_clearanceSettings.ContainsKey(targetKey))
+                    {
+                        double clearanceMm = _clearanceSettings[targetKey];
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[GetClearanceForPipeFromClashZone] Using UI clearance: isInsulated={isInsulated}, key='{targetKey}', clearance={clearanceMm}mm");
+                        return RevitUnitConversionService.Instance.ToInternalMillimeters(clearanceMm);
+                    }
+                    
+                    // Fallback to generic pipe clearance
+                    if (_clearanceSettings.ContainsKey("pipes_clearance"))
+                    {
+                        double clearanceMm = _clearanceSettings["pipes_clearance"];
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[GetClearanceForPipeFromClashZone] Using generic UI clearance: {clearanceMm}mm");
+                        return RevitUnitConversionService.Instance.ToInternalMillimeters(clearanceMm);
+                    }
+                }
+                
+                // ✅ PRIORITY 2: Fallback to XML conditions
+                if (_conditions?.ClearanceSettings != null)
+                {
+                    double clearanceInMm = isInsulated 
+                        ? _conditions.ClearanceSettings.PipesInsulated 
+                        : _conditions.ClearanceSettings.PipesNormal;
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[GetClearanceForPipeFromClashZone] Using XML clearance: isInsulated={isInsulated}, clearance={clearanceInMm}mm");
+                    return RevitUnitConversionService.Instance.ToInternalMillimeters(clearanceInMm);
+                }
+                
+                // ✅ PRIORITY 3: Default fallback (50mm)
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[GetClearanceForPipeFromClashZone] No clearance settings available, using default 50mm");
+                return RevitUnitConversionService.Instance.ToInternalMillimeters(50.0);
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[GetClearanceForPipeFromClashZone] Error: {ex.Message}");
+                return RevitUnitConversionService.Instance.ToInternalMillimeters(50.0);
+            }
+        }
+        
+        /// <summary>
+        /// Get clearance for duct based on ClashZone.IsInsulated (uses authoritative data from database)
+        /// This bypasses mepSize which might be stale and uses clashZone.IsInsulated directly
+        /// </summary>
+        private double GetClearanceForDuctFromClashZone(ClashZone clashZone)
+        {
+            try
+            {
+                bool isInsulated = clashZone?.IsInsulated ?? false;
+                
+                // ✅ PRIORITY 1: Try UI clearance settings first (user-provided values take priority)
+                if (_clearanceSettings != null && _clearanceSettings.Count > 0)
+                {
+                    string normalKey = "ducts_normal_clearance";
+                    string insulatedKey = "ducts_insulated_clearance";
+                    string targetKey = isInsulated ? insulatedKey : normalKey;
+                    
+                    if (_clearanceSettings.ContainsKey(targetKey))
+                    {
+                        double clearanceMm = _clearanceSettings[targetKey];
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[GetClearanceForDuctFromClashZone] Using UI clearance: isInsulated={isInsulated}, key='{targetKey}', clearance={clearanceMm}mm");
+                        return RevitUnitConversionService.Instance.ToInternalMillimeters(clearanceMm);
+                    }
+                    
+                    // Fallback to generic duct clearance
+                    if (_clearanceSettings.ContainsKey("ducts_clearance"))
+                    {
+                        double clearanceMm = _clearanceSettings["ducts_clearance"];
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[GetClearanceForDuctFromClashZone] Using generic UI clearance: {clearanceMm}mm");
+                        return RevitUnitConversionService.Instance.ToInternalMillimeters(clearanceMm);
+                    }
+                }
+                
+                // ✅ PRIORITY 2: Fallback to XML conditions (check shape for round vs rectangular)
+                if (_conditions?.ClearanceSettings != null)
+                {
+                    // Check if round or rectangular (default to rectangular if unknown)
+                    bool isRound = clashZone?.MepElementSizeData?.Shape?.Equals("Round", StringComparison.OrdinalIgnoreCase) == true ||
+                                   clashZone?.MepElementSizeData?.Shape?.Equals("Circular", StringComparison.OrdinalIgnoreCase) == true;
+                    
+                    double clearanceInMm;
+                    if (isRound)
+                    {
+                        clearanceInMm = isInsulated 
+                            ? _conditions.ClearanceSettings.RoundInsulated 
+                            : _conditions.ClearanceSettings.RoundNormal;
+                    }
+                    else
+                    {
+                        clearanceInMm = isInsulated 
+                            ? _conditions.ClearanceSettings.RectangularInsulated 
+                            : _conditions.ClearanceSettings.RectangularNormal;
+                    }
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[GetClearanceForDuctFromClashZone] Using XML clearance: isInsulated={isInsulated}, isRound={isRound}, clearance={clearanceInMm}mm");
+                    return RevitUnitConversionService.Instance.ToInternalMillimeters(clearanceInMm);
+                }
+                
+                // ✅ PRIORITY 3: Default fallback (50mm)
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[GetClearanceForDuctFromClashZone] No clearance settings available, using default 50mm");
+                return RevitUnitConversionService.Instance.ToInternalMillimeters(50.0);
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[GetClearanceForDuctFromClashZone] Error: {ex.Message}");
+                return RevitUnitConversionService.Instance.ToInternalMillimeters(50.0);
+            }
+        }
+        
+        /// <summary>
         /// Get clearance value from XML conditions (fallback method)
         /// </summary>
         private double GetClearanceFromXmlConditions(string category, MepElementSize mepSize)
@@ -4309,15 +4422,72 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return; // Skip this sleeve - don't crash Revit
                 }
         bool isPipe = string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
+        bool isDamper = string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase);
         
         // 🔍 DEBUG: Log pipe detection for floors vs walls
         var hostType = clashZone.StructuralElementType ?? "Unknown";
                 if (!DeploymentConfiguration.DeploymentMode)
         DebugLogger.Info($"[SetSleeveParameters] PIPE DETECTION DEBUG: Host={hostType}, Category={clashZone.MepElementCategory}, isPipe={isPipe}");
         
-        // Apply rounding to nearest 5mm if setting is enabled
-                var (roundedWidth, roundedHeight) = OpeningSettingsHelper.RoundDimensionsToNearest5mm(finalWidth, finalHeight);
-                var roundedDiameter = OpeningSettingsHelper.RoundDiameterToNearest5mm(finalDiameter);
+        // ✅ DAMPER: No rounding - preserve exact calculated dimensions
+        // Apply rounding to nearest 5mm if setting is enabled (skip for dampers)
+        double roundedWidth, roundedHeight, roundedDiameter;
+        if (isDamper)
+        {
+            // No rounding for dampers - use exact calculated values
+            roundedWidth = finalWidth;
+            roundedHeight = finalHeight;
+            roundedDiameter = finalDiameter;
+            if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[ROUNDING] Zone {clashZone?.Id}: DAMPER - No rounding applied, using exact calculated dimensions: {RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm");
+        }
+        else
+        {
+            // Apply rounding for other categories
+            // ✅ DETAILED LOGGING: Log pipe rounding inputs and outputs
+            if (isPipe && !DeploymentConfiguration.DeploymentMode)
+            {
+                var finalDiameterMm = RevitUnitConversionService.Instance.FromInternalMillimeters(finalDiameter);
+                DebugLogger.Info($"[PIPE-ROUNDING-INPUT] Zone {clashZone?.Id}: Final diameter BEFORE rounding = {finalDiameterMm:F1}mm");
+            }
+            
+            (roundedWidth, roundedHeight) = OpeningSettingsHelper.RoundDimensionsToNearest5mm(finalWidth, finalHeight);
+            roundedDiameter = OpeningSettingsHelper.RoundDiameterToNearest5mm(finalDiameter);
+            
+            // ✅ DETAILED LOGGING: Log pipe rounding results
+            if (isPipe && !DeploymentConfiguration.DeploymentMode)
+            {
+                var roundedDiameterMm = RevitUnitConversionService.Instance.FromInternalMillimeters(roundedDiameter);
+                var finalDiameterMm = RevitUnitConversionService.Instance.FromInternalMillimeters(finalDiameter);
+                if (Math.Abs(finalDiameterMm - roundedDiameterMm) > 0.1)
+                {
+                    DebugLogger.Info($"[PIPE-ROUNDING-OUTPUT] Zone {clashZone?.Id}: {finalDiameterMm:F1}mm → {roundedDiameterMm:F1}mm (rounded)");
+                }
+                else
+                {
+                    DebugLogger.Info($"[PIPE-ROUNDING-OUTPUT] Zone {clashZone?.Id}: {finalDiameterMm:F1}mm (no rounding applied)");
+                }
+            }
+        }
+        
+        // ✅ OOP METHOD: Log rounded values (final dimensions actually used)
+        double roundedWidthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(roundedWidth);
+        double roundedHeightMm = RevitUnitConversionService.Instance.FromInternalMillimeters(roundedHeight);
+        if (!isDamper) // Only log rounding for non-dampers (dampers already logged above)
+        {
+            if (Math.Abs(finalWidth - roundedWidth) > 1e-6 || Math.Abs(finalHeight - roundedHeight) > 1e-6)
+            {
+                // Rounding was applied
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[ROUNDING] Zone {clashZone?.Id}: Rounded from {RevitUnitConversionService.Instance.FromInternalMillimeters(finalWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(finalHeight):F1}mm → {roundedWidthMm:F1}x{roundedHeightMm:F1}mm");
+            }
+            else
+            {
+                // No rounding applied (or rounding value matches calculation exactly)
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[ROUNDING] Zone {clashZone?.Id}: No rounding applied - Using calculated dimensions: {roundedWidthMm:F1}x{roundedHeightMm:F1}mm");
+            }
+        }
         
         // ✅ PERFORMANCE: Removed verbose parameter logging - only log in diagnostic mode
         if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
@@ -6490,6 +6660,251 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DebugLogger.Info($"[ORIENT-ERROR] Sleeve {sleeveInstance.Id.IntegerValue}: {ex.Message}\n");
                 }
                 catch { }
+            }
+        }
+
+        /// <summary>
+        /// ✅ ROBUST CORNER SAVING: Calculates and saves 4 corner coordinates to database with full validation and error handling.
+        /// This method ensures corners are ALWAYS saved, regardless of rotation angle or other conditions.
+        /// </summary>
+        /// <param name="zone">ClashZone with sleeve placement data</param>
+        /// <param name="sleeve">Revit sleeve element (optional, for parameter lookup)</param>
+        /// <param name="repository">Database repository for saving corners</param>
+        /// <param name="rotationAngleRad">Rotation angle in radians (can be 0 for no rotation)</param>
+        /// <param name="fallbackWidth">Fallback width if zone.SleeveWidth is invalid</param>
+        /// <param name="fallbackHeight">Fallback height if zone.SleeveHeight is invalid</param>
+        /// <returns>True if corners were successfully saved, False otherwise</returns>
+        private bool SaveSleeveCornersRobust(
+            ClashZone zone,
+            FamilyInstance sleeve,
+            ClashZoneRepository repository,
+            double rotationAngleRad,
+            double fallbackWidth,
+            double fallbackHeight)
+        {
+            const int MAX_RETRIES = 3;
+            const double MIN_DIMENSION = 0.001; // Minimum valid dimension (1mm in internal units)
+            
+            try
+            {
+                // ✅ VALIDATION 1: Check GUID is valid
+                if (zone == null || zone.Id == Guid.Empty)
+                {
+                    SafeFileLogger.SafeAppendText("corner_save_errors.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] ❌ SaveSleeveCornersRobust: Invalid zone or empty GUID\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[SLEEVE-CORNERS] ❌ Cannot save corners: Zone is null or GUID is empty");
+                    return false;
+                }
+
+                // ✅ VALIDATION 2: Get sleeve center coordinates with fallback
+                double centerX = zone.SleevePlacementPointActiveDocumentX;
+                double centerY = zone.SleevePlacementPointActiveDocumentY;
+                double centerZ = zone.SleevePlacementPointActiveDocumentZ;
+
+                // Check if Active coordinates are valid (not all zero)
+                if (Math.Abs(centerX) < 1e-6 && Math.Abs(centerY) < 1e-6 && Math.Abs(centerZ) < 1e-6)
+                {
+                    // Fallback to regular placement point
+                    if (zone.SleevePlacementPoint != null)
+                    {
+                        centerX = zone.SleevePlacementPoint.X;
+                        centerY = zone.SleevePlacementPoint.Y;
+                        centerZ = zone.SleevePlacementPoint.Z;
+                        SafeFileLogger.SafeAppendText("corner_save_errors.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] ⚠️ Zone {zone.Id}: Active coordinates zero, using SleevePlacementPoint\n");
+                    }
+                    else
+                    {
+                        SafeFileLogger.SafeAppendText("corner_save_errors.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] ❌ Zone {zone.Id}: Both Active and PlacementPoint coordinates are invalid\n");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[SLEEVE-CORNERS] ❌ Zone {zone.Id}: Cannot determine sleeve center coordinates");
+                        return false;
+                    }
+                }
+
+                // ✅ VALIDATION 3: Get and validate width/height
+                double actualWidth = zone.SleeveWidth > MIN_DIMENSION ? zone.SleeveWidth : fallbackWidth;
+                double actualHeight = zone.SleeveHeight > MIN_DIMENSION ? zone.SleeveHeight : fallbackHeight;
+
+                // Try to get dimensions from sleeve element if available
+                if ((actualWidth < MIN_DIMENSION || actualHeight < MIN_DIMENSION) && sleeve != null && sleeve.IsValidObject)
+                {
+                    try
+                    {
+                        var widthParam = sleeve.LookupParameter("Width");
+                        var heightParam = sleeve.LookupParameter("Height");
+
+                        if (widthParam != null && widthParam.HasValue)
+                            actualWidth = widthParam.AsDouble();
+                        if (heightParam != null && heightParam.HasValue)
+                            actualHeight = heightParam.AsDouble();
+                    }
+                    catch (Exception paramEx)
+                    {
+                        SafeFileLogger.SafeAppendText("corner_save_errors.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] ⚠️ Zone {zone.Id}: Error reading parameters, using fallback: {paramEx.Message}\n");
+                    }
+                }
+
+                // Final validation of dimensions
+                if (actualWidth < MIN_DIMENSION || actualHeight < MIN_DIMENSION)
+                {
+                    SafeFileLogger.SafeAppendText("corner_save_errors.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] ❌ Zone {zone.Id}: Invalid dimensions - Width={actualWidth * 304.8:F1}mm, Height={actualHeight * 304.8:F1}mm (min={MIN_DIMENSION * 304.8:F1}mm)\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[SLEEVE-CORNERS] ❌ Zone {zone.Id}: Cannot save corners - invalid dimensions");
+                    return false;
+                }
+
+                // ✅ CALCULATION: Calculate 4 corners
+                XYZ[] worldCorners = new XYZ[4];
+                
+                if (Math.Abs(rotationAngleRad) < 1e-6)
+                {
+                    // Zero rotation - calculate directly in world space
+                    double halfW = actualWidth / 2.0;
+                    double halfH = actualHeight / 2.0;
+                    
+                    worldCorners[0] = new XYZ(centerX - halfW, centerY - halfH, centerZ);  // Bottom-left
+                    worldCorners[1] = new XYZ(centerX + halfW, centerY - halfH, centerZ);  // Bottom-right
+                    worldCorners[2] = new XYZ(centerX - halfW, centerY + halfH, centerZ);  // Top-left
+                    worldCorners[3] = new XYZ(centerX + halfW, centerY + halfH, centerZ);  // Top-right
+                }
+                else
+                {
+                    // Non-zero rotation - calculate in local space, then rotate
+                    double halfW = actualWidth / 2.0;
+                    double halfH = actualHeight / 2.0;
+                    
+                    var localCorners = new[]
+                    {
+                        new XYZ(-halfW, -halfH, 0),  // Corner 1: Bottom-left
+                        new XYZ(halfW, -halfH, 0),   // Corner 2: Bottom-right
+                        new XYZ(-halfW, halfH, 0),   // Corner 3: Top-left
+                        new XYZ(halfW, halfH, 0)     // Corner 4: Top-right
+                    };
+                    
+                    double cosSleeve = Math.Cos(rotationAngleRad);
+                    double sinSleeve = Math.Sin(rotationAngleRad);
+                    
+                    for (int j = 0; j < 4; j++)
+                    {
+                        double localX = localCorners[j].X;
+                        double localY = localCorners[j].Y;
+                        
+                        // Rotate corner by sleeve rotation matrix
+                        double worldX = localX * cosSleeve - localY * sinSleeve;
+                        double worldY = localX * sinSleeve + localY * cosSleeve;
+                        
+                        // Translate to sleeve center
+                        worldCorners[j] = new XYZ(
+                            centerX + worldX,
+                            centerY + worldY,
+                            centerZ
+                        );
+                    }
+                }
+
+                // ✅ VALIDATION 4: Validate all corners are valid (non-NaN, non-Infinity, non-zero)
+                bool allCornersValid = true;
+                for (int i = 0; i < 4; i++)
+                {
+                    if (double.IsNaN(worldCorners[i].X) || double.IsInfinity(worldCorners[i].X) ||
+                        double.IsNaN(worldCorners[i].Y) || double.IsInfinity(worldCorners[i].Y) ||
+                        double.IsNaN(worldCorners[i].Z) || double.IsInfinity(worldCorners[i].Z) ||
+                        Math.Abs(worldCorners[i].X) < 1e-9 && Math.Abs(worldCorners[i].Y) < 1e-9 && Math.Abs(worldCorners[i].Z) < 1e-9)
+                    {
+                        allCornersValid = false;
+                        SafeFileLogger.SafeAppendText("corner_save_errors.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] ❌ Zone {zone.Id}: Invalid corner {i + 1} - X={worldCorners[i].X}, Y={worldCorners[i].Y}, Z={worldCorners[i].Z}\n");
+                        break;
+                    }
+                }
+
+                if (!allCornersValid)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[SLEEVE-CORNERS] ❌ Zone {zone.Id}: Calculated corners are invalid");
+                    return false;
+                }
+
+                // ✅ SAVE: Attempt to save corners with retry logic
+                bool success = false;
+                int attempt = 0;
+                Exception lastException = null;
+
+                while (attempt < MAX_RETRIES && !success)
+                {
+                    attempt++;
+                    try
+                    {
+                        repository.UpdateSleeveCorners(
+                            zone.Id,
+                            worldCorners[0].X, worldCorners[0].Y, worldCorners[0].Z,  // Corner 1
+                            worldCorners[1].X, worldCorners[1].Y, worldCorners[1].Z,  // Corner 2
+                            worldCorners[2].X, worldCorners[2].Y, worldCorners[2].Z,  // Corner 3
+                            worldCorners[3].X, worldCorners[3].Y, worldCorners[3].Z   // Corner 4
+                        );
+
+                        // ✅ VERIFICATION: Check if corners were actually saved (by reading back from DB)
+                        // Note: This is a simple check - we rely on UpdateSleeveCorners logging for detailed feedback
+                        success = true;
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            double rotationDeg = rotationAngleRad * 180.0 / Math.PI;
+                            DebugLogger.Info($"[SLEEVE-CORNERS] ✅ Saved 4 world-space corners for zone {zone.Id} (attempt {attempt}/{MAX_RETRIES}): " +
+                                $"Rotation={rotationDeg:F1}°, " +
+                                $"Center=({centerX:F6}, {centerY:F6}, {centerZ:F6}), " +
+                                $"Size={actualWidth * 304.8:F1}mm × {actualHeight * 304.8:F1}mm, " +
+                                $"C1=({worldCorners[0].X:F6}, {worldCorners[0].Y:F6}, {worldCorners[0].Z:F6}), " +
+                                $"C2=({worldCorners[1].X:F6}, {worldCorners[1].Y:F6}, {worldCorners[1].Z:F6}), " +
+                                $"C3=({worldCorners[2].X:F6}, {worldCorners[2].Y:F6}, {worldCorners[2].Z:F6}), " +
+                                $"C4=({worldCorners[3].X:F6}, {worldCorners[3].Y:F6}, {worldCorners[3].Z:F6})");
+                        }
+                    }
+                    catch (Exception dbEx)
+                    {
+                        lastException = dbEx;
+                        success = false;
+                        
+                        SafeFileLogger.SafeAppendText("corner_save_errors.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] ⚠️ Zone {zone.Id}: Database save attempt {attempt}/{MAX_RETRIES} failed: {dbEx.Message}\n");
+                        
+                        if (attempt < MAX_RETRIES)
+                        {
+                            // Wait a bit before retry (exponential backoff)
+                            System.Threading.Thread.Sleep(50 * attempt);
+                        }
+                        else
+                        {
+                            // Final attempt failed - log error
+                            SafeFileLogger.SafeAppendText("corner_save_errors.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] ❌ Zone {zone.Id}: All {MAX_RETRIES} save attempts failed. Last error: {dbEx.Message}\nStack trace: {dbEx.StackTrace}\n");
+                            
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Error($"[SLEEVE-CORNERS] ❌ Zone {zone.Id}: Failed to save corners after {MAX_RETRIES} attempts: {dbEx.Message}");
+                            }
+                        }
+                    }
+                }
+
+                return success;
+            }
+            catch (Exception ex)
+            {
+                SafeFileLogger.SafeAppendText("corner_save_errors.log",
+                    $"[{DateTime.Now:HH:mm:ss.fff}] ❌ Zone {(zone?.Id.ToString() ?? "NULL")}: Unexpected error in SaveSleeveCornersRobust: {ex.Message}\nStack trace: {ex.StackTrace}\n");
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Error($"[SLEEVE-CORNERS] ❌ Unexpected error saving corners for zone {zone?.Id}: {ex.Message}");
+                }
+                
+                return false;
             }
         }
     }

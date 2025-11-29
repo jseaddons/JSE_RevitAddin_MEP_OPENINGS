@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Sizing;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 {
@@ -19,17 +20,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         private readonly int _maxDegree;
         private readonly OpeningConditions _conditions;
         private readonly Dictionary<string, double> _clearanceSettings;
+        private readonly IInsulationAwareSizingService _sizingService;
 
         public ParallelSleevePlacementPlanner(
             OpeningConditions conditions = null,
             Dictionary<string, double> clearanceSettings = null,
             int minParallelCount = 12,
-            int? maxDegree = null)
+            int? maxDegree = null,
+            IInsulationAwareSizingService sizingService = null)
         {
             _minParallelCount = minParallelCount < 1 ? 1 : minParallelCount;
             _maxDegree = maxDegree ?? Environment.ProcessorCount;
             _conditions = conditions ?? new OpeningConditions();
             _clearanceSettings = clearanceSettings ?? new Dictionary<string, double>();
+            // ✅ OOP METHOD: Initialize sizing service (SOLID principles)
+            _sizingService = sizingService ?? new InsulationAwareSizingService();
         }
 
         public SleevePlacementPlanningResult Plan(IEnumerable<ClashZone> clashZones)
@@ -66,12 +71,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     // Raw MEP size (convert from internal units to feet)
                     // ✅ CRITICAL FIX: Use MepElementWidth/Height from ClashZone (already in database)
                     // These are populated during refresh and persisted, unlike MepElementSizeData
+                    // ✅ PIPE FIX: For pipes, MepElementWidth should be OUTER DIAMETER (set during refresh)
+                    string mepCategory = zone.MepElementCategory ?? "Unknown";
+                    bool isPipesCategory = string.Equals(mepCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
+                    
                     double rawWidth = zone.MepElementWidth;  // Already in feet
                     double rawHeight = zone.MepElementHeight; // Already in feet
+                    
+                    // ✅ PIPE FIX: For pipes, use OUTER DIAMETER from database column (hardcoded route)
+                    // ✅ HARDCODED: Always use MepElementOuterDiameter (RBS_PIPE_OUTER_DIAMETER) for accurate sizing
+                    if (isPipesCategory)
+                    {
+                        // For pipes, use outer diameter from database column (preferred)
+                        double pipeDiameter = zone.MepElementOuterDiameter > 0 
+                            ? zone.MepElementOuterDiameter 
+                            : (rawWidth > 0 ? rawWidth : rawHeight); // Fallback to MepElementWidth if outer diameter not available
+                        
+                        // Additional fallback to MepElementSizeData if both are missing
+                        if (pipeDiameter <= 0 && zone.MepElementSizeData != null)
+                        {
+                            // Try to get diameter from MepElementSizeData
+                            if (zone.MepElementSizeData.Diameter > 0)
+                            {
+                                pipeDiameter = UnitUtils.ConvertFromInternalUnits(zone.MepElementSizeData.Diameter, UnitTypeId.Feet);
+                            }
+                        }
+                        // Final fallback
+                        if (pipeDiameter <= 0) pipeDiameter = zone.MepElementSize;
+                        if (pipeDiameter <= 0) pipeDiameter = 0.25; // Minimum fallback 3"
+                        
+                        // For pipes, width = height = diameter (round pipes)
+                        rawWidth = pipeDiameter;
+                        rawHeight = pipeDiameter;
+                    }
+                    
                     double rawSize = Math.Max(rawWidth, rawHeight); // Use larger dimension
                     
-                    // Fallback to MepElementSizeData if Width/Height are 0 (backward compatibility)
-                    if (rawSize <= 0 && zone.MepElementSizeData != null)
+                    // Fallback to MepElementSizeData if Width/Height are 0 (backward compatibility, non-pipes)
+                    if (rawSize <= 0 && !isPipesCategory && zone.MepElementSizeData != null)
                     {
                         // MepElementSize stores in internal units, convert to feet
                         if (zone.MepElementSizeData.Diameter > 0)
@@ -91,22 +128,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     if (rawSize <= 0) rawSize = zone.MepElementSize;
                     if (rawSize <= 0) rawSize = 0.25; // Minimum fallback 3"
 
-                    // Insulation thickness (convert from internal units to feet)
-                    double insulation = 0.0;
-                    if (zone.MepElementSizeData != null && zone.MepElementSizeData.InsulationThickness > 0)
+                    // ✅ OOP METHOD: Get clearance from OpeningConditions (same logic as UniversalSleevePlacerService)
+                    // ✅ CRITICAL FIX: Use ClashZone.IsInsulated for correct clearance selection (pipes, ducts, cable trays)
+                    double clearance;
+                    if (isPipesCategory)
                     {
-                        insulation = UnitUtils.ConvertFromInternalUnits(zone.MepElementSizeData.InsulationThickness, UnitTypeId.Feet);
+                        clearance = GetClearanceForPipeFromClashZone(zone);
                     }
-
-                    // ✅ CRITICAL: Get clearance from OpeningConditions (same logic as UniversalSleevePlacerService)
-                    string mepCategory = zone.MepElementCategory ?? "Unknown";
-                    double mepSizeInMm = rawSize * 304.8; // Convert feet to mm for clearance lookup
-                    double clearance = GetClearanceFromConditions(mepCategory, mepSizeInMm);
+                    else if (string.Equals(mepCategory, "Ducts", StringComparison.OrdinalIgnoreCase))
+                    {
+                        clearance = GetClearanceForDuctFromClashZone(zone);
+                    }
+                    else if (string.Equals(mepCategory, "Cable Trays", StringComparison.OrdinalIgnoreCase))
+                    {
+                        clearance = GetClearanceForCableTrayFromClashZone(zone);
+                    }
+                    else
+                    {
+                        clearance = GetClearanceFromConditions(mepCategory, rawSize * 304.8);
+                    }
+                    double clearanceInFeet = clearance; // Already in internal units (feet)
                     
-                    // Target dimensions: raw size + insulation + clearance
-                    // ✅ CRITICAL FIX: Use actual width/height for rectangular ducts
-                    double targetWidth = rawWidth + insulation + clearance;
-                    double targetHeight = rawHeight + insulation + clearance;
+                    // ✅ OOP METHOD: Use sizing service for consistent calculation with insulation awareness
+                    // Formula: Raw + (2 * insulation) + (2 * clearance) - handled by sizing service
+                    // For pipes: Pass diameter as all three parameters (width, height, diameter)
+                    double rawDiameter = isPipesCategory ? rawWidth : Math.Max(rawWidth, rawHeight);
+                    (double targetW, double targetH, _) = _sizingService.CalculateFinalDimensionsFromClashZone(
+                        rawWidth, rawHeight, rawDiameter, zone, clearanceInFeet);
+                    double targetWidth = targetW;
+                    double targetHeight = targetH;
+
+                    // ✅ OOP METHOD: Get insulation thickness from ClashZone (already saved to DB during refresh)
+                    double insulationThicknessFt = zone.IsInsulated && zone.InsulationThickness > 0 
+                        ? zone.InsulationThickness 
+                        : 0.0;
 
                     // Host thickness heuristics
                     double hostThickness = zone.StructuralElementThickness;
@@ -137,7 +192,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                         zone.Id,
                         hostType,
                         rawSize,
-                        insulation,
+                        insulationThicknessFt,
                         targetWidth,
                         targetHeight,
                         clearance,
@@ -181,6 +236,186 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
 
         /// <summary>
+        /// Get clearance for duct based on ClashZone.IsInsulated (uses authoritative data from database)
+        /// This bypasses mepSize which might be stale and uses clashZone.IsInsulated directly
+        /// </summary>
+        private double GetClearanceForDuctFromClashZone(ClashZone clashZone)
+        {
+            try
+            {
+                bool isInsulated = clashZone?.IsInsulated ?? false;
+                
+                // ✅ PRIORITY 1: Try UI clearance settings first (user-provided values take priority)
+                if (_clearanceSettings != null && _clearanceSettings.Count > 0)
+                {
+                    string normalKey = "ducts_normal_clearance";
+                    string insulatedKey = "ducts_insulated_clearance";
+                    string targetKey = isInsulated ? insulatedKey : normalKey;
+                    
+                    if (_clearanceSettings.ContainsKey(targetKey))
+                    {
+                        double clearanceMm = _clearanceSettings[targetKey];
+                        // Convert mm to feet (internal units)
+                        return clearanceMm / 304.8;
+                    }
+                    
+                    // Fallback to generic duct clearance
+                    if (_clearanceSettings.ContainsKey("ducts_clearance"))
+                    {
+                        double clearanceMm = _clearanceSettings["ducts_clearance"];
+                        // Convert mm to feet (internal units)
+                        return clearanceMm / 304.8;
+                    }
+                }
+                
+                // ✅ PRIORITY 2: Fallback to XML conditions (check shape for round vs rectangular)
+                if (_conditions?.ClearanceSettings != null)
+                {
+                    // Check if round or rectangular (default to rectangular if unknown)
+                    bool isRound = clashZone?.MepElementSizeData?.Shape?.Equals("Round", StringComparison.OrdinalIgnoreCase) == true ||
+                                   clashZone?.MepElementSizeData?.Shape?.Equals("Circular", StringComparison.OrdinalIgnoreCase) == true;
+                    
+                    double clearanceInMm;
+                    if (isRound)
+                    {
+                        clearanceInMm = isInsulated 
+                            ? _conditions.ClearanceSettings.RoundInsulated 
+                            : _conditions.ClearanceSettings.RoundNormal;
+                    }
+                    else
+                    {
+                        clearanceInMm = isInsulated 
+                            ? _conditions.ClearanceSettings.RectangularInsulated 
+                            : _conditions.ClearanceSettings.RectangularNormal;
+                    }
+                    
+                    // Convert mm to feet (internal units)
+                    return clearanceInMm / 304.8;
+                }
+                
+                // ✅ PRIORITY 3: Default fallback (50mm)
+                return 50.0 / 304.8; // 50mm in feet
+            }
+            catch
+            {
+                // Fallback on error
+                return 50.0 / 304.8; // 50mm in feet
+            }
+        }
+        
+        /// <summary>
+        /// Get clearance for cable tray based on ClashZone.IsInsulated (uses authoritative data from database)
+        /// This bypasses mepSize which might be stale and uses clashZone.IsInsulated directly
+        /// </summary>
+        private double GetClearanceForCableTrayFromClashZone(ClashZone clashZone)
+        {
+            try
+            {
+                bool isInsulated = clashZone?.IsInsulated ?? false;
+                
+                // ✅ PRIORITY 1: Try UI clearance settings first (user-provided values take priority)
+                if (_clearanceSettings != null && _clearanceSettings.Count > 0)
+                {
+                    // Check for insulated cable tray clearance first
+                    if (isInsulated && _clearanceSettings.ContainsKey("cabletray_insulated_clearance"))
+                    {
+                        double clearanceMm = _clearanceSettings["cabletray_insulated_clearance"];
+                        // Convert mm to feet (internal units)
+                        return clearanceMm / 304.8;
+                    }
+                    
+                    // Fallback to top clearance (primary clearance for cable trays)
+                    if (_clearanceSettings.ContainsKey("cabletray_top_clearance"))
+                    {
+                        double clearanceMm = _clearanceSettings["cabletray_top_clearance"];
+                        // Convert mm to feet (internal units)
+                        return clearanceMm / 304.8;
+                    }
+                    
+                    // Fallback to other clearance
+                    if (_clearanceSettings.ContainsKey("cabletray_other_clearance"))
+                    {
+                        double clearanceMm = _clearanceSettings["cabletray_other_clearance"];
+                        // Convert mm to feet (internal units)
+                        return clearanceMm / 304.8;
+                    }
+                }
+                
+                // ✅ PRIORITY 2: Fallback to XML conditions
+                if (_conditions?.ClearanceSettings != null)
+                {
+                    // Use top clearance as default (primary clearance for cable trays)
+                    double clearanceInMm = _conditions.ClearanceSettings.CableTrayTop;
+                    
+                    // Convert mm to feet (internal units)
+                    return clearanceInMm / 304.8;
+                }
+                
+                // ✅ PRIORITY 3: Default fallback (50mm)
+                return 50.0 / 304.8; // 50mm in feet
+            }
+            catch
+            {
+                // Fallback on error
+                return 50.0 / 304.8; // 50mm in feet
+            }
+        }
+        
+        /// <summary>
+        /// Get clearance for pipe based on ClashZone.IsInsulated (uses authoritative data from database)
+        /// This bypasses mepSize which might be stale and uses clashZone.IsInsulated directly
+        /// </summary>
+        private double GetClearanceForPipeFromClashZone(ClashZone clashZone)
+        {
+            try
+            {
+                bool isInsulated = clashZone?.IsInsulated ?? false;
+                
+                // ✅ PRIORITY 1: Try UI clearance settings first (user-provided values take priority)
+                if (_clearanceSettings != null && _clearanceSettings.Count > 0)
+                {
+                    string normalKey = "pipes_normal_clearance";
+                    string insulatedKey = "pipes_insulated_clearance";
+                    string targetKey = isInsulated ? insulatedKey : normalKey;
+                    
+                    if (_clearanceSettings.ContainsKey(targetKey))
+                    {
+                        double clearanceMm = _clearanceSettings[targetKey];
+                        // Convert mm to feet (internal units)
+                        return clearanceMm / 304.8;
+                    }
+                    
+                    // Fallback to generic pipe clearance
+                    if (_clearanceSettings.ContainsKey("pipes_clearance"))
+                    {
+                        double clearanceMm = _clearanceSettings["pipes_clearance"];
+                        // Convert mm to feet (internal units)
+                        return clearanceMm / 304.8;
+                    }
+                }
+                
+                // ✅ PRIORITY 2: Fallback to XML conditions
+                if (_conditions?.ClearanceSettings != null)
+                {
+                    double clearanceInMm = isInsulated 
+                        ? _conditions.ClearanceSettings.PipesInsulated 
+                        : _conditions.ClearanceSettings.PipesNormal;
+                    
+                    // Convert mm to feet (internal units)
+                    return clearanceInMm / 304.8;
+                }
+                
+                // ✅ PRIORITY 3: Default fallback (50mm)
+                return 50.0 / 304.8; // 50mm in feet
+            }
+            catch
+            {
+                // Fallback on error
+                return 50.0 / 304.8; // 50mm in feet
+            }
+        }
+        
+        /// <summary>
         /// Get clearance from OpeningConditions based on MEP category and size.
         /// Simplified version that matches UniversalSleevePlacerService logic.
         /// </summary>
@@ -211,11 +446,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     }
                     else if (string.Equals(category, "Pipes", StringComparison.OrdinalIgnoreCase))
                     {
+                        // ⚠️ NOTE: This method should not be called for pipes - use GetClearanceForPipeFromClashZone instead
                         clearanceMm = _conditions.ClearanceSettings.PipesNormal;
                     }
                     else if (string.Equals(category, "Cable Trays", StringComparison.OrdinalIgnoreCase))
                     {
                         clearanceMm = _conditions.ClearanceSettings.CableTrayTop;
+                    }
+                    else if (string.Equals(category, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // ✅ FIX: Duct Accessories (dampers) should use DuctAccessoryOtherNormal clearance
+                        clearanceMm = _conditions.ClearanceSettings.DuctAccessoryOtherNormal;
                     }
                     
                     // Convert mm to feet

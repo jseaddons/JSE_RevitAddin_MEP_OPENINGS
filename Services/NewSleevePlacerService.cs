@@ -7,6 +7,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Sizing;
 using JSE_RevitAddin_MEP_OPENINGS.Utils;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
@@ -30,6 +31,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly bool _isReplayPath;
         private readonly string _filterName;
         
+        // ✅ OOP METHOD: Insulation-aware sizing service (SOLID principles)
+        private readonly IInsulationAwareSizingService _sizingService;
+        
         // Family symbol cache for performance
         private static Dictionary<string, FamilySymbol> _familySymbolCache = new Dictionary<string, FamilySymbol>();
 
@@ -43,7 +47,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             IFamilyManager familyManager,
             FlagManager flagManager,
             bool isReplayPath = false,
-            string filterName = null)
+            string filterName = null,
+            IInsulationAwareSizingService sizingService = null)  // ✅ OOP METHOD: Optional sizing service injection (SOLID)
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _conditions = conditions ?? new OpeningConditions();
@@ -55,6 +60,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _flagManager = flagManager ?? new FlagManager(doc);
             _isReplayPath = isReplayPath;
             _filterName = filterName;
+            
+            // ✅ OOP METHOD: Initialize sizing service (create if not provided - Dependency Injection)
+            _sizingService = sizingService ?? new InsulationAwareSizingService();
         }
 
         public (int placed, int skipped, int errors) PlaceAllSleevesInTransaction(List<ClashZone> clashZones)
@@ -286,29 +294,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         private (double width, double height, double diameter, bool isCircular) CalculateSleeveDimensions(ClashZone zone)
         {
-            // Use strategy to calculate clearance
+            // ✅ OOP METHOD: Use strategy to calculate clearance
             double clearance = GetClearance(zone);
             
-            double width = 0;
-            double height = 0;
-            double diameter = 0;
-            bool isCircular = false;
+            double rawWidth = zone.MepElementWidth;
+            double rawHeight = zone.MepElementHeight;
+            double rawDiameter = zone.MepElementDiameter > 0 ? zone.MepElementDiameter : 0;
+            
+            // ✅ OOP METHOD: Use insulation-aware sizing service for consistent calculation (SOLID principles)
+            // Formula: RawSize + (2 × InsulationThickness) + (2 × Clearance)
+            (double finalWidth, double finalHeight, double finalDiameter) = _sizingService.CalculateFinalDimensionsFromClashZone(
+                rawWidth, rawHeight, rawDiameter, zone, clearance);
+            
+            bool isCircular = rawDiameter > 0;
 
-            if (zone.MepElementDiameter > 0)
-            {
-                // Circular MEP
-                isCircular = true;
-                diameter = zone.MepElementDiameter + (2 * clearance);
-            }
-            else
-            {
-                // Rectangular MEP
-                isCircular = false;
-                width = zone.MepElementWidth + (2 * clearance);
-                height = zone.MepElementHeight + (2 * clearance);
-            }
-
-            return (width, height, diameter, isCircular);
+            return (finalWidth, finalHeight, finalDiameter, isCircular);
         }
 
         private double GetClearance(ClashZone zone)

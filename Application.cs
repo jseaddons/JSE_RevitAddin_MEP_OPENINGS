@@ -151,6 +151,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS
         var button5 = panel.AddPushButton<TestProfileManagementCommand>("JSE Openings");
         button5.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
         button5.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+        button5.ToolTip = "JSE MEP Openings - Version 3.0";
 
         // ✅ NEW: Update XML Command - updates XML after manual cluster sleeve adjustments
         var buttonUpdateXml = panel.AddPushButton<UpdateXmlCommand>("Update XML");

@@ -688,12 +688,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (snapshotIndex.BySleeve.Count == 0 && snapshotIndex.ByCluster.Count == 0)
                 {
+                    // ✅ IMPROVED: Check if sleeves exist in database before failing
+                    // Snapshots are created during placement, but if they weren't created for any reason,
+                    // we should inform the user that Refresh will recreate them from existing sleeves
+                    int sleevesInDb = 0;
+                    try
+                    {
+                        using (var dbContext = new SleeveDbContext(doc, msg => { }))
+                        {
+                            using (var checkCmd = dbContext.Connection.CreateCommand())
+                            {
+                                checkCmd.CommandText = @"
+                                    SELECT COUNT(*) FROM ClashZones 
+                                    WHERE SleeveInstanceId IS NOT NULL AND SleeveInstanceId > 0";
+                                var count = checkCmd.ExecuteScalar();
+                                sleevesInDb = count != null && count != DBNull.Value ? Convert.ToInt32(count) : 0;
+                            }
+                        }
+                    }
+                    catch { }
+                    
                     result.Success = false;
-                    result.Message = "No sleeve parameter snapshots found. Run Refresh before transferring parameters.";
-                    result.Errors.Add("SleeveSnapshots table is empty");
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Warning("[PARAM_TRANSFER] No sleeve snapshots found in SQLite.");
-                    File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [PARAM_TRANSFER] No sleeve snapshots found in SQLite.\n");
+                    if (sleevesInDb > 0)
+                    {
+                        result.Message = $"No sleeve parameter snapshots found, but {sleevesInDb} sleeve(s) exist in database. Snapshots are created during placement or Refresh. Please run Refresh to create snapshots from existing sleeves, then try transferring parameters again.";
+                        result.Errors.Add($"SleeveSnapshots table is empty (but {sleevesInDb} sleeves found in ClashZones)");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[PARAM_TRANSFER] No sleeve snapshots found in SQLite, but {sleevesInDb} sleeves exist in database. User needs to run Refresh to create snapshots.");
+                    }
+                    else
+                    {
+                        result.Message = "No sleeve parameter snapshots found. Please place sleeves and run Refresh before transferring parameters.";
+                        result.Errors.Add("SleeveSnapshots table is empty");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning("[PARAM_TRANSFER] No sleeve snapshots found in SQLite and no sleeves in database.");
+                    }
+                    File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [PARAM_TRANSFER] No sleeve snapshots found in SQLite. Sleeves in DB: {sleevesInDb}\n");
                     return result;
                 }
                 

@@ -479,6 +479,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public string InsulationType { get; set; } = "Normal";
         
         /// <summary>
+        /// ✅ OOP METHOD: Whether this MEP element is insulated (detected via IInsulationDetector)
+        /// Pre-calculated during refresh and saved to DB for clearance calculations during placement
+        /// </summary>
+        public bool IsInsulated { get; set; } = false;
+        
+        /// <summary>
+        /// ✅ OOP METHOD: Insulation thickness in Revit internal units (feet)
+        /// Pre-calculated during refresh and saved to DB if element is insulated
+        /// Used by strategies to calculate appropriate clearance for insulated elements
+        /// </summary>
+        public double InsulationThickness { get; set; } = 0.0;
+        
+        /// <summary>
         /// The formatted size of the MEP element (e.g., "600x300", "Ø200")
         /// Pre-calculated during refresh to avoid linked file access during placement
         /// </summary>
@@ -491,16 +504,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public string MepElementSystemAbbreviation { get; set; } = string.Empty;
         
         /// <summary>
-        /// For fire dampers: connector side direction ("Left", "Right", "Top", "Bottom")
-        /// Used to determine offset direction for MSFD dampers
+        /// ✅ OOP METHOD: Connector side direction ("Left", "Right", "Top", "Bottom")
+        /// Set when MEP connector is found and side is detected
+        /// Used by strategy to determine which side gets MEP clearance (from UI settings)
         /// </summary>
         public string DamperConnectorSide { get; set; } = string.Empty;
         
         /// <summary>
-        /// For fire dampers: whether this is an MSFD (multi-smoke fire damper) type
-        /// MSFD dampers require offset placement toward connector side
+        /// ✅ OOP METHOD: Whether this damper has an MEP connector detected
+        /// Set to true when connector is found (regardless of damper type)
+        /// Strategy will use this flag along with DamperConnectorSide to determine clearance from UI settings
         /// </summary>
+        public bool HasMepConnector { get; set; } = false;
+        
+        /// <summary>
+        /// ⚠️ DEPRECATED: Use HasMepConnector instead
+        /// Kept for backward compatibility during migration
+        /// Set to true when connector is found and side is detected
+        /// </summary>
+        [Obsolete("Use HasMepConnector instead")]
         public bool IsMSFDDamper { get; set; } = false;
+        
+        /// <summary>
+        /// ✅ OOP METHOD: Whether this is a standard damper family (detected via IDamperTypeDetector)
+        /// Standard dampers use Other clearance (50mm) on all 4 sides
+        /// Non-standard dampers (MSD, Motorized, MSFD, MD) use MEP + Other clearance based on connector side
+        /// Strategy uses this to determine appropriate clearance logic from UI settings
+        /// </summary>
+        public bool IsStandardDamper { get; set; } = false;
         
         /// <summary>
         /// The document path where this clash was detected
@@ -660,6 +691,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// Pre-calculated MEP element height including clearance (no linked file access needed during placement)
         /// </summary>
         public double MepElementHeight { get; set; }
+        
+        /// <summary>
+        /// ✅ PIPE OUTER DIAMETER: Pre-calculated pipe outer diameter (RBS_PIPE_OUTER_DIAMETER) in Revit internal units (feet)
+        /// Stored during refresh for pipes to enable selection between nominal and outer diameter
+        /// Used for sizing calculations - outer diameter is preferred for accurate sleeve sizing
+        /// </summary>
+        public double MepElementOuterDiameter { get; set; } = 0.0;
+        
+        /// <summary>
+        /// ✅ PIPE NOMINAL DIAMETER: Pre-calculated pipe nominal diameter (RBS_PIPE_DIAMETER_PARAM) in Revit internal units (feet)
+        /// Stored during refresh for pipes to enable selection between nominal and outer diameter
+        /// Used as fallback or when user prefers nominal diameter for sizing
+        /// </summary>
+        public double MepElementNominalDiameter { get; set; } = 0.0;
         
         /// <summary>
         /// Pre-calculated MEP element orientation vector (no linked file access needed during placement)

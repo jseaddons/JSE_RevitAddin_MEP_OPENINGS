@@ -24,6 +24,51 @@ This document establishes mandatory coding standards that MUST be followed befor
 
 ---
 
+## 🚨 ABSOLUTE: NEVER BREAK PRINCIPLES, DOCTRINES, OR ARCHITECTURE
+
+**MANDATORY RULE**: You MUST NEVER compromise, bypass, or modify core principles, doctrines, or established code architecture on your own initiative.
+
+**IMMUTABLE PRINCIPLES** (DO NOT MODIFY):
+1. ✅ **3-Point Validation** - MEP+Host+Point validation is CORE and cannot be compromised
+2. ✅ **Architectural Patterns** - Service layer separation, OOP structure, dependency injection patterns
+3. ✅ **Data Flow Principles** - Database-first, XML fallback, flag hierarchy
+4. ✅ **Validation Rules** - Established validation logic, duplicate detection methods
+5. ✅ **Core Algorithms** - Intersection detection logic, placement strategies, sizing calculations
+
+**MANDATORY PROCESS**:
+1. ✅ **READ CODING STANDARDS FIRST** - Always read this document before making ANY changes
+2. ✅ **IDENTIFY PRINCIPLES** - Determine which principles/doctrines apply to the area you're working on
+3. ✅ **DISCUSS WITH USER** - If a fix seems to require breaking a principle, DISCUSS with user first
+4. ✅ **PROPOSE ALTERNATIVES** - If principle conflict exists, propose alternative solutions that preserve principles
+5. ✅ **GET EXPLICIT APPROVAL** - Never modify principles without explicit user approval
+
+**NEVER**:
+- ❌ Compromise on core principles to "fix" a problem
+- ❌ Bypass validation rules (e.g., skip 3-point validation)
+- ❌ Modify architectural patterns without discussion
+- ❌ Change established algorithms without user consent
+- ❌ Assume "it's just stale data" and change code - discuss data cleanup first
+- ❌ Modify doctrines based on "whims" or assumptions
+
+**Examples of PRINCIPLE VIOLATIONS**:
+- ❌ **WRONG**: Skipping 3-point validation (MEP+Host+Point) for dampers because intersection points changed
+- ❌ **WRONG**: Modifying duplicate detection to use MEP+Host only when point matching fails
+- ❌ **WRONG**: Changing architecture to work around stale data instead of cleaning data
+- ❌ **WRONG**: Compromising validation principles to handle edge cases
+
+**Examples of CORRECT APPROACH**:
+- ✅ **CORRECT**: Identify that stale data is causing duplicates → Suggest deleting DB and refreshing
+- ✅ **CORRECT**: Maintain 3-point validation → Fix intersection point calculation properly
+- ✅ **CORRECT**: Preserve architecture → Work within established patterns
+- ✅ **CORRECT**: Discuss principle conflicts → Propose alternatives that preserve principles
+
+**CRITICAL REMINDER**: 
+> "We cannot compromise on 3-point validation. Don't play around with code to your whims and fancy. If this is due to stale data, I can delete the DB and start afresh without discussion. Why would you change principles?"
+
+**Read this section time and again** - Principles, doctrines, and architecture are IMMUTABLE without explicit user approval and discussion.
+
+---
+
 ## 🚨 STRICT: NO FALLBACKS WITHOUT USER CONSENT
 
 **MANDATORY RULE**: Before adding ANY fallback logic, defensive checks, or error handling that continues execution:
@@ -69,15 +114,54 @@ if (sectionBox == null)
 
 ---
 
+## 🚨 MANDATORY: ALWAYS CREATE BACKUP BEFORE RUNNING PYTHON SCRIPTS
+
+**CRITICAL SAFETY RULE**: Before running ANY Python script, you MUST create a backup of all files/data that the script will modify or access.
+
+**MANDATORY PROCESS**:
+1. ✅ **IDENTIFY FILES** - Determine which files, databases, or data the Python script will access or modify
+2. ✅ **CREATE BACKUP** - Make a complete backup copy of all identified files/data BEFORE running the script
+3. ✅ **VERIFY BACKUP** - Ensure backup is complete and can be restored if needed
+4. ✅ **THEN RUN SCRIPT** - Only after backup is confirmed, proceed with running the Python script
+
+**BACKUP REQUIREMENTS**:
+- ✅ **Database Files** - Backup SQLite databases (.db files) before any Python script that modifies them
+- ✅ **Configuration Files** - Backup config files, XML files, JSON files before Python scripts that read/write them
+- ✅ **Data Files** - Backup any data files the script processes or modifies
+- ✅ **Project Files** - If script modifies project structure, backup entire project directory
+
+**NEVER**:
+- ❌ Run Python scripts without creating backups first
+- ❌ Assume "it will be fine" - Python scripts can cause unforeseen havoc
+- ❌ Skip backup "because it's just a small change"
+- ❌ Run destructive operations without restore capability
+
+**RATIONALE**:
+> "Always keep a backup before running any Python script. So even if Python code creates havoc unforeseen, we can restore."
+
+**Examples**:
+- ✅ **CORRECT**: Before running a Python script that modifies a SQLite database → Create backup copy of .db file
+- ✅ **CORRECT**: Before running a Python script that processes XML files → Backup all XML files first
+- ✅ **CORRECT**: Before running a Python script that modifies project structure → Create full project backup
+- ❌ **WRONG**: Running Python script immediately without backup → Risk of data loss if script fails
+
+**Recovery Plan**: Always know HOW to restore from backup before running the script.
+
+---
+
 ## 🚨 MANDATORY: Check Before Editing Code
 
 Before making ANY code change, verify:
-1. ✅ Have I discussed the changes with the user and gotten consent?
-2. ✅ Am I following OOP principles?
-3. ✅ Am I using existing infrastructure instead of creating new?
-4. ✅ Am I understanding the architecture before changing it?
-5. ✅ Am I fixing root causes, not symptoms?
-6. ✅ Am I respecting user requirements?
+1. ✅ **HAVE I READ THE CODING STANDARDS?** - Especially the "NEVER BREAK PRINCIPLES" section above
+2. ✅ **AM I PRESERVING PRINCIPLES?** - Am I maintaining 3-point validation, architectural patterns, core algorithms?
+3. ✅ **IS THIS A DATA ISSUE?** - Should I suggest data cleanup (delete DB) instead of changing code principles?
+4. ✅ **IF RUNNING PYTHON SCRIPT: HAVE I CREATED BACKUP?** - Always backup all files/data before running Python scripts
+5. ✅ Have I discussed the changes with the user and gotten consent?
+6. ✅ Am I following OOP principles?
+7. ✅ Am I using existing infrastructure instead of creating new?
+8. ✅ Am I understanding the architecture before changing it?
+9. ✅ Am I fixing root causes, not symptoms?
+10. ✅ Am I respecting user requirements?
 
 ---
 
@@ -514,22 +598,26 @@ Memory (runtime state)
 
 ## Summary: Mandatory Checklist Before Code Changes
 
-1. ✅ **GET USER CONSENT** - ALWAYS discuss and get explicit approval before editing code
-2. ✅ **NO FALLBACKS WITHOUT CONSENT** - Never add fallback logic without asking user first - STRICT INSTRUCTION
-3. ✅ **STOP ON ERRORS** - If user says no fallback, return error/empty result - don't continue execution
-4. ✅ **DON'T EDIT WITHOUT CONSENT** - Especially TestProfileManagementCommand or other entry points - ask first
-5. ✅ **Read existing code** - Understand architecture before changing
-6. ✅ **Check existing service classes** - Use existing OOP methods
-7. ✅ **Use SafeFileLogger** - Never bypass logging wrapper
-8. ✅ **Use FlagManager** - Never manipulate flags directly
-9. ✅ **Use GlobalIndexService** - Never access Global XML directly
-10. ✅ **Fix root causes** - Never create workarounds
-11. ✅ **Respect user requirements** - Never add expensive operations without consent
-12. ✅ **Follow OOP principles** - Single responsibility, use existing infrastructure
-13. ✅ **Check for duplicates** - Don't create duplicate methods or services
-14. ✅ **NEVER CREATE 2 SERVICES FOR ONE FUNCTION** - Makes troubleshooting very hard - extend existing services instead
-15. ✅ **NEVER COMPROMISE EFFICIENCY** - Do not violate efficiency principles under any circumstances
-16. ✅ **Test thoroughly** - Verify changes don't break existing functionality
+1. ✅ **NEVER BREAK PRINCIPLES** - Read coding standards first - Principles, doctrines, and architecture are IMMUTABLE without explicit user approval
+2. ✅ **CREATE BACKUP BEFORE PYTHON SCRIPTS** - Always backup all files/data before running ANY Python script - prevents unforeseen havoc
+3. ✅ **GET USER CONSENT** - ALWAYS discuss and get explicit approval before editing code
+4. ✅ **NO FALLBACKS WITHOUT CONSENT** - Never add fallback logic without asking user first - STRICT INSTRUCTION
+5. ✅ **STOP ON ERRORS** - If user says no fallback, return error/empty result - don't continue execution
+6. ✅ **DON'T EDIT WITHOUT CONSENT** - Especially TestProfileManagementCommand or other entry points - ask first
+7. ✅ **PRESERVE PRINCIPLES** - Never compromise on core principles (3-point validation, architectural patterns) to "fix" issues
+8. ✅ **DISCUSS DATA CLEANUP** - If issue is stale data, suggest deleting DB - don't change code principles
+9. ✅ **Read existing code** - Understand architecture before changing
+10. ✅ **Check existing service classes** - Use existing OOP methods
+11. ✅ **Use SafeFileLogger** - Never bypass logging wrapper
+12. ✅ **Use FlagManager** - Never manipulate flags directly
+13. ✅ **Use GlobalIndexService** - Never access Global XML directly
+14. ✅ **Fix root causes** - Never create workarounds
+15. ✅ **Respect user requirements** - Never add expensive operations without consent
+16. ✅ **Follow OOP principles** - Single responsibility, use existing infrastructure
+17. ✅ **Check for duplicates** - Don't create duplicate methods or services
+18. ✅ **NEVER CREATE 2 SERVICES FOR ONE FUNCTION** - Makes troubleshooting very hard - extend existing services instead
+19. ✅ **NEVER COMPROMISE EFFICIENCY** - Do not violate efficiency principles under any circumstances
+20. ✅ **Test thoroughly** - Verify changes don't break existing functionality
 
 ---
 

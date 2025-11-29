@@ -1,7 +1,8 @@
 # Sleeve Placement Methodology - Refactored Architecture
 
-**Document Version:** 2.0 (December 2025)  
-**Status:** Current Architecture - Database-Driven, Refactored Services Only
+**Document Version:** 2.1 (December 2025)  
+**Status:** Current Architecture - Database-Driven, Refactored Services Only  
+**Last Updated:** Added damper intersection point calculation using insertion point (LocationPoint) for proper centering
 
 ---
 
@@ -58,7 +59,8 @@ This document describes the **current refactored architecture** for sleeve place
 | **ValidationService** | `refresh refactor/validation_service.cs` | 3-point validation for existing zones |
 | **ClashZoneRepository** | `Data/Repositories/ClashZoneRepository.cs` | Database operations for clash zones |
 | **FilterRepository** | `Data/Repositories/FilterRepository.cs` | Database operations for filters |
-| **UniversalSleevePlacerService** | `Services/UniversalSleevePlacerService.cs` | Individual sleeve placement |
+| **UniversalSleevePlacerService** | `Services/UniversalSleevePlacerService.cs` | Individual sleeve placement (Current) |
+| **NewSleevePlacerService** | `Services/NewSleevePlacerService.cs` | Individual sleeve placement (Future - OOP architecture, SOLID principles) |
 | **UniversalClusterService** | `Services/UniversalClusterService.cs` | Cluster sleeve formation and placement (Legacy - 8,765 lines) |
 | **RefactoredClusterService** | `Services/Clustering/RefactoredClusterService.cs` | ✅ Modern cluster orchestrator (598 lines) - Phase 1-10 services |
 | **ClusterServiceFactory** | `Services/Clustering/ClusterServiceFactory.cs` | Factory for creating fully-wired clustering services |
@@ -388,7 +390,212 @@ All database operations are wrapped in SQLite transactions:
 
 ## 6. Service Components
 
-### 6.0 Clustering Services (Phase 1-10)
+### 6.0 OOP Damper and Insulation Architecture (SOLID Principles)
+
+**✅ NEW: Object-Oriented Refactoring for Damper Detection and Insulation Awareness**
+
+The system now uses a fully OOP architecture for damper connector detection and insulation-aware sizing, following SOLID principles.
+
+#### 6.0.1 Damper Detection Services
+
+**Location:** `Services/DamperDetection/`
+
+**Services:**
+- **`IDamperTypeDetector`** - Interface for detecting damper type from family/type name
+- **`DamperTypeDetector`** - Implementation that classifies dampers (MSFD, MSD, MD, Motorized, Standard)
+- **`IDamperConnectorDetector`** - Interface for detecting MEP connector presence and direction
+- **`DamperConnectorDetector`** - Implementation that detects connector side using world/local coordinates
+- **`DamperConnectorService`** - Orchestrator that combines type detection and connector detection
+
+**Key Methods:**
+- `DetectDamperType(familyTypeName)` - Returns damper type string (MSFD, MSD, MD, Motorized, Standard)
+- `RequiresMepSideClearance(damperType)` - Determines if damper requires asymmetric clearance
+- `IsStandardDamper(damperType)` - Checks if damper uses symmetric clearance
+- `HasMepConnector(damper)` - Checks if damper has MEP connector
+- `DetectConnectorSide(damper, useWorldCoordinates, out connector)` - Detects connector direction (Left, Right, Top, Bottom)
+
+**Usage in ClashZoneService:**
+```csharp
+var damperConnectorService = new DamperConnectorService();
+var connectorInfo = damperConnectorService.DetectConnectorInfo(mepElement, mepCategory);
+
+// Populate ClashZone properties:
+clashZone.IsMSFDDamper = connectorInfo.HasMepConnector && !string.IsNullOrEmpty(connectorInfo.ConnectorSide);
+clashZone.IsStandardDamper = connectorInfo.IsStandardDamper;
+clashZone.DamperConnectorSide = connectorInfo.ConnectorSide;
+clashZone.MepElementSizeData.DamperType = connectorInfo.DamperType;
+```
+
+**SOLID Principles Applied:**
+- **Single Responsibility:** Each service has one clear purpose (type detection vs connector detection)
+- **Open/Closed:** Can extend for new damper types without modifying existing code
+- **Liskov Substitution:** Interfaces allow different implementations
+- **Interface Segregation:** Focused interfaces (IDamperTypeDetector, IDamperConnectorDetector)
+- **Dependency Inversion:** High-level code depends on abstractions (interfaces)
+
+#### 6.0.1.1 Damper Intersection Point Calculation
+
+**Location:** `Services/MepIntersectionService.cs` - `FindDamperIntersectionsInternal()`
+
+**Purpose:** Calculate the intersection point for dampers at the center of the damper body (excluding connectors), projected onto the wall plane.
+
+**Critical Fix:** For dampers, the intersection point must be at the **center of the damper's width and height** (geometric center of damper body), not the intersection bounding box center.
+
+**Problem:**
+- Using intersection bounding box center can be off-center if the damper is not perfectly centered on the wall
+- Using damper bounding box center may include connector geometry, shifting the center away from the damper body center
+- This causes incorrect offset calculations and lopsided sleeve placement
+
+**Solution:**
+1. **Use Damper's Insertion Point** - Use `FamilyInstance.Location` (LocationPoint) or `GetTransform().Origin`
+   - This is the geometric center of the damper body, excluding connectors
+   - Connectors are separate entities and do not affect the insertion point
+2. **Project onto Wall Plane** - Project the damper's insertion point onto the wall face along the wall normal
+3. **Use as Intersection Point** - This projected point becomes the intersection point stored in ClashZone
+
+**Implementation:**
+```csharp
+// For dampers, use damper's insertion point (LocationPoint) as center
+XYZ damperCenter;
+if (damperElement is FamilyInstance familyInstance)
+{
+    // Use insertion point - this is the geometric center of the damper body, excluding connectors
+    var locationPoint = familyInstance.Location as LocationPoint;
+    if (locationPoint != null)
+    {
+        damperCenter = locationPoint.Point;
+        // Transform if damper is in a linked document
+        if (damperLinkTransform != null)
+        {
+            damperCenter = damperLinkTransform.OfPoint(damperCenter);
+        }
+    }
+    else
+    {
+        // Fallback to transform origin (geometric center)
+        var transform = familyInstance.GetTransform();
+        damperCenter = transform.Origin;
+        if (damperLinkTransform != null)
+        {
+            damperCenter = damperLinkTransform.OfPoint(damperCenter);
+        }
+    }
+}
+
+// Project damper center onto wall plane
+if (structuralElement is Wall wall)
+{
+    var wallNormal = wall.Orientation;
+    var wallLocation = wall.Location as LocationCurve;
+    XYZ wallFaceOrigin = wallLocation?.Curve?.GetEndPoint(0) ?? damperCenter;
+    
+    // Project damper center onto wall plane
+    double distance = (damperCenter - wallFaceOrigin).DotProduct(wallNormal);
+    intersectionPoint = damperCenter - wallNormal.Multiply(distance);
+}
+```
+
+**Why This Matters:**
+- **Correct Centering:** Intersection point is at the true center of damper body (width × height)
+- **Proper Offset Calculation:** When offset is applied (25mm toward connector side), it starts from the correct center
+- **Accurate Clearance Distribution:** Results in 100mm clearance on connector side, 50mm on other side
+
+**Data Flow:**
+1. **Refresh Phase:** `MepIntersectionService.FindDamperIntersectionsInternal()` calculates intersection point using damper's insertion point
+2. **Database Save:** Intersection point saved to `ClashZones.IntersectionPointX/Y/Z`
+3. **Placement Phase:** `UniversalSleevePlacerService` uses intersection point as base placement point, then applies offset from `DamperPlacementStrategy`
+
+**Key Point:** The damper's insertion point (LocationPoint) is the geometric center of the damper body, excluding connectors. Connectors are separate Revit entities and do not affect the insertion point calculation.
+
+#### 6.0.2 Insulation Detection Services
+
+**Location:** `Services/InsulationDetection/`
+
+**Services:**
+- **`IInsulationDetector`** - Interface for detecting insulation status and thickness
+- **`InsulationDetector`** - Implementation that checks insulation parameters and MepElementSize data
+
+**Key Methods:**
+- `IsInsulated(element)` - Returns true if element has insulation
+- `GetInsulationThickness(element)` - Returns insulation thickness in Revit internal units (feet)
+- `GetInsulationInfo(element, mepElementSize)` - Returns tuple (isInsulated, thickness) with priority to MepElementSize data
+
+**Usage in ClashZoneService:**
+```csharp
+var insulationDetector = new InsulationDetector();
+var (isInsulated, thickness) = insulationDetector.GetInsulationInfo(mepElement, mepElementSize);
+
+// Populate ClashZone properties:
+clashZone.IsInsulated = isInsulated;
+clashZone.InsulationThickness = thickness;
+```
+
+**Database Persistence:**
+- `IsInsulated` and `InsulationThickness` are saved to `ClashZones` table during refresh
+- Used by placement services for consistent sizing calculations
+
+#### 6.0.3 Insulation-Aware Sizing Service
+
+**Location:** `Services/Sizing/`
+
+**Services:**
+- **`IInsulationAwareSizingService`** - Interface for calculating final sleeve dimensions with insulation
+- **`InsulationAwareSizingService`** - Implementation that applies insulation thickness to sizing calculations
+
+**Key Methods:**
+- `CalculateFinalDimensions(rawWidth, rawHeight, rawDiameter, isInsulated, insulationThickness, clearance)` - Core calculation
+- `CalculateFinalDimensionsFromClashZone(rawWidth, rawHeight, rawDiameter, clashZone, clearance)` - Convenience method using ClashZone properties
+
+**Formula Applied:**
+```
+FinalSize = RawSize + (2 × InsulationThickness) + (2 × Clearance)
+```
+
+**Usage in Placement Services:**
+```csharp
+var sizingService = new InsulationAwareSizingService();
+var (finalWidth, finalHeight, finalDiameter) = sizingService.CalculateFinalDimensionsFromClashZone(
+    rawWidth, rawHeight, rawDiameter, clashZone, clearance);
+```
+
+**Integration Points:**
+- **UniversalSleevePlacerService** - Uses sizing service for pipes, ducts, and fallback cases
+- **NewSleevePlacerService** - Uses sizing service for all MEP categories (future replacement for UniversalSleevePlacerService)
+- **DamperPlacementStrategy** - Uses sizing service for symmetric cases, calculates insulation contribution for asymmetric cases
+- **CableTrayPlacementStrategy** - Uses sizing service for consistent insulation handling
+- **ParallelSleevePlacementPlanner** - Uses sizing service for planning calculations
+
+**SOLID Principles Applied:**
+- **Single Responsibility:** Only responsible for dimension calculations with insulation
+- **Open/Closed:** Can be extended for category-specific logic without modification
+- **Dependency Inversion:** Placement services depend on `IInsulationAwareSizingService` interface
+
+#### 6.0.4 ClashZone Model Extensions
+
+**Location:** `Models/ClashZone.cs`
+
+**New Properties:**
+- `IsInsulated` (bool) - Whether MEP element is insulated (detected via IInsulationDetector)
+- `InsulationThickness` (double) - Insulation thickness in Revit internal units (feet)
+- `IsMSFDDamper` (bool) - Whether MEP connector was detected and side determined
+- `IsStandardDamper` (bool) - Whether this is a standard damper family
+- `DamperConnectorSide` (string) - Connector side direction (Left, Right, Top, Bottom)
+
+**Data Flow:**
+1. **Refresh Phase:** `ClashZoneService_Legacy` uses OOP services to populate insulation and damper properties
+2. **Database Save:** Properties saved to `ClashZones` table
+3. **Placement Phase:** Placement services read properties from ClashZone and use OOP sizing service
+
+#### 6.0.5 Benefits of OOP Architecture
+
+✅ **Consistency:** All placement services use the same OOP methods for insulation and damper detection  
+✅ **Maintainability:** Changes to detection logic isolated to specific services  
+✅ **Testability:** Interfaces allow easy mocking for unit tests  
+✅ **Extensibility:** New damper types or insulation detection methods can be added without modifying existing code  
+✅ **SOLID Compliance:** Follows all five SOLID principles  
+✅ **Database-First:** Insulation and damper data saved to database during refresh, used during placement
+
+### 6.1 Clustering Services (Phase 1-10)
 
 **✅ NEW: Refactored Clustering Architecture**
 
@@ -549,8 +756,15 @@ The clustering system is now organized into 10 distinct service phases, each wit
 
 **Placement Paths:**
 - **PATH 1 (Replay):** Load zones from DB → Sync flags → Check sleeve exists → Place if missing → Update flags → Cluster
-- **PATH 2 (Sizing):** Load conditions from DB → Calculate size → Place sleeve → Update flags → Cluster
-- **PATH 3 Invalidated:** Load conditions from DB → Run detection for moved elements → Delete affected sleeves → Reset flags for deleted → Place new sleeves → Update flags for placed → Recalculate clusters → Handle cluster removal/addition
+- **PATH 2 (Sizing):** Load conditions from DB → Calculate size (with OOP sizing service) → Place sleeve → Update flags → Cluster
+- **PATH 3 Invalidated:** Load conditions from DB → Run detection for moved elements → Delete affected sleeves → Reset flags for deleted → Place new sleeves (with OOP sizing service) → Update flags for placed → Recalculate clusters → Handle cluster removal/addition
+
+**NewSleevePlacerService (Future):**
+- ✅ **OOP Architecture:** Uses `IInsulationAwareSizingService` for consistent sizing calculations
+- ✅ **SOLID Principles:** Dependency injection, single responsibility, open/closed principle
+- ✅ **Insulation-Aware:** Automatically accounts for insulation thickness from ClashZone properties
+- ✅ **Smart Replay:** Can use saved data for faster placement when conditions haven't changed
+- ✅ **Ready for Future Use:** Fully integrated with OOP damper and insulation detection services
 
 ### 7.2 Coordinate Update and Bounding Box Persistence
 

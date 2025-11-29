@@ -2110,8 +2110,77 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         Max = intersectionMax
                     };
 
-                    var center = BoundingBoxService.GetBoundingBoxCenter(intersectionBBox);
-                    results.Add((structuralElement, intersectionBBox, center));
+                    // ✅ FIX: For dampers, use damper's insertion point (LocationPoint) as center - this is the geometric center of damper body
+                    // This excludes connectors and ensures placement point is at center of damper's width and height
+                    // Fallback to bounding box center if LocationPoint is not available
+                    XYZ damperCenter;
+                    if (damperElement is FamilyInstance familyInstance)
+                    {
+                        // Use insertion point (LocationPoint) - this is the geometric center of the damper body, excluding connectors
+                        var locationPoint = familyInstance.Location as LocationPoint;
+                        if (locationPoint != null)
+                        {
+                            damperCenter = locationPoint.Point;
+                            // Transform if damper is in a linked document
+                            if (damperLinkTransform != null)
+                            {
+                                damperCenter = damperLinkTransform.OfPoint(damperCenter);
+                            }
+                        }
+                        else
+                        {
+                            // Fallback to transform origin (geometric center)
+                            var transform = familyInstance.GetTransform();
+                            damperCenter = transform.Origin;
+                            if (damperLinkTransform != null)
+                            {
+                                damperCenter = damperLinkTransform.OfPoint(damperCenter);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Fallback to bounding box center if not a FamilyInstance
+                        damperCenter = BoundingBoxService.GetBoundingBoxCenter(hostDamperBBox);
+                    }
+                    
+                    // Project damper center onto wall plane (structural element face)
+                    // For walls, project along wall normal; for floors/framing, use intersection bbox center as fallback
+                    XYZ intersectionPoint;
+                    if (structuralElement is Wall wall)
+                    {
+                        // Get wall normal and project damper center onto wall face
+                        var wallNormal = wall.Orientation;
+                        if (linkTransform != null)
+                        {
+                            wallNormal = linkTransform.OfVector(wallNormal);
+                        }
+                        
+                        // Get wall face origin (use wall location curve start point)
+                        var wallLocation = wall.Location as LocationCurve;
+                        XYZ wallFaceOrigin = wallLocation?.Curve?.GetEndPoint(0) ?? damperCenter;
+                        if (linkTransform != null && wallFaceOrigin != null)
+                        {
+                            wallFaceOrigin = linkTransform.OfPoint(wallFaceOrigin);
+                        }
+                        
+                        // Project damper center onto wall plane
+                        double distance = (damperCenter - wallFaceOrigin).DotProduct(wallNormal);
+                        intersectionPoint = damperCenter - wallNormal.Multiply(distance);
+                        
+                        if (OptimizationFlags.UseDiagnosticMode)
+                            log($"[DamperIntersection] Using damper insertion point ({damperCenter.X:F3}, {damperCenter.Y:F3}, {damperCenter.Z:F3}) projected onto wall = ({intersectionPoint.X:F3}, {intersectionPoint.Y:F3}, {intersectionPoint.Z:F3})");
+                    }
+                    else
+                    {
+                        // For floors/framing, use intersection bbox center (fallback)
+                        intersectionPoint = BoundingBoxService.GetBoundingBoxCenter(intersectionBBox);
+                        
+                        if (OptimizationFlags.UseDiagnosticMode)
+                            log($"[DamperIntersection] Using intersection bbox center for non-wall element: ({intersectionPoint.X:F3}, {intersectionPoint.Y:F3}, {intersectionPoint.Z:F3})");
+                    }
+                    
+                    results.Add((structuralElement, intersectionBBox, intersectionPoint));
                 }
                 catch (Exception ex)
                 {

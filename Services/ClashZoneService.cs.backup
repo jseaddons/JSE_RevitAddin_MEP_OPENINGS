@@ -2046,6 +2046,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ CRITICAL FIX: Use strategy classes to get MEP element size with insulation information
             MepElementSize mepElementSize = GetMepElementSizeWithStrategy(mepElement, mepCategory);
             
+            // ✅ DUCT ACCESSORY FIX: Use strategy dimensions (Damper Width/Height) instead of GetMepElementDimensions
+            // GetMepElementDimensions may fall back to generic "Width"/"Height" which could be duct dimensions
+            // Strategy pattern correctly prioritizes "Damper Width" and "Damper Height" for duct accessories
+            if (string.Equals(mepCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
+            {
+                if (mepElementSize.Width > 0 && mepElementSize.Height > 0)
+                {
+                    finalWidth = mepElementSize.Width;
+                    finalHeight = mepElementSize.Height;
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[CLASH_DEBUG] ✅ DUCT ACCESSORY: Using strategy dimensions (Damper Width/Height): {finalWidth:F3}x{finalHeight:F3} (was {mepWidth:F3}x{mepHeight:F3} from GetMepElementDimensions)");
+                    }
+                }
+                else
+                {
+                    // Fallback to GetMepElementDimensions if strategy didn't return valid dimensions
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Warning($"[CLASH_DEBUG] ⚠️ DUCT ACCESSORY: Strategy returned invalid dimensions (Width={mepElementSize.Width:F3}, Height={mepElementSize.Height:F3}), using GetMepElementDimensions: {mepWidth:F3}x{mepHeight:F3}");
+                    }
+                }
+            }
+            
             // ⚠️ CRITICAL: Get duct shape from family name (Round or Rectangular) ⚠️
             // DO NOT REMOVE: This determines correct sleeve family selection for round vs rectangular ducts
             var ductShape = GetDuctShape(mepElement);

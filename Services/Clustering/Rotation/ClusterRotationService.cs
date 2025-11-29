@@ -66,8 +66,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 if (cluster == null || cluster.Count == 0)
                     return 0.0;
 
-                // ✅ CRITICAL: Check if cluster contains pipes or round ducts (circular elements)
-                // Circular elements (pipes and round ducts) should always be placed straight to WCS (axis-aligned), no rotation needed
+                // ✅ CRITICAL: Check if cluster contains round ducts (circular elements)
+                // Round ducts should always be placed straight to WCS (axis-aligned), no rotation needed
+                // ⚠️ PIPES ARE NOT INCLUDED: Pipes are circular but still need wall rotation for alignment
+                //    - X-wall pipes: Need 90° rotation to align with wall
+                //    - Y-wall pipes: Need 0° rotation to align with wall
+                //    - The rotation is for WALL ALIGNMENT, not for the pipe itself
                 bool isCircularElementCluster = false;
                 string circularElementType = "";
                 foreach (var sleeveData in cluster)
@@ -79,14 +83,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     if (clashZone == null)
                         continue;
 
-                    // Check if this is a pipe (circular element)
-                    if (string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
+                    // ✅ DIAGNOSTIC: Log actual category name to identify pipe detection issues
+                    if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        isCircularElementCluster = true;
-                        circularElementType = "PIPE";
-                        break;
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [PIPE-CATEGORY-DEBUG] Sleeve {sleeveData.SleeveInstanceId}: MepElementCategory='{clashZone.MepElementCategory}'\n");
                     }
-                    
+
+                    // ⚠️ PIPES REMOVED FROM THIS CHECK - Pipes need wall rotation even though they're circular
                     // Check if this is a round duct (circular element)
                     bool isDuct = string.Equals(clashZone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase) ||
                                   string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase);
@@ -108,14 +112,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     }
                 }
 
-                // ✅ CIRCULAR ELEMENT FIX: Pipes and round ducts are circular elements - always place straight to WCS (no rotation)
+                // ✅ CIRCULAR ELEMENT FIX:
+                // For FLOORS: Pipes/Round Ducts should be 0.0° (align to global grid)
+                // For WALLS: They MUST follow wall rotation (0° or 90°) to align the cluster box with the wall
                 if (isCircularElementCluster)
                 {
-                    if (!DeploymentConfiguration.DeploymentMode)
+                    // Check if we are on a wall or framing (need to calculate these flags early)
+                    bool isWallOrFraming = false;
+                    foreach (var sleeve in cluster)
                     {
-                        DebugLogger.Info($"[CLUSTER-ANGLE] {circularElementType} cluster detected: Returning 0.0° (straight axis-aligned to WCS, no rotation needed for circular elements)");
+                        var cz = sleeve.ClashZone as ClashZone;
+                        if (cz != null)
+                        {
+                            // Check StructuralElementType ("Wall", "Structural Framing")
+                            // OR WallDirectionType ("X-WALL", "Y-WALL", "FRAMING")
+                            if (cz.StructuralElementType == "Wall" || 
+                                cz.StructuralElementType == "Structural Framing" || 
+                                cz.WallDirectionType == "X-WALL" || 
+                                cz.WallDirectionType == "Y-WALL" || 
+                                cz.WallDirectionType == "FRAMING")
+                            {
+                                isWallOrFraming = true;
+                                break;
+                            }
+                        }
                     }
-                    return 0.0;
+
+                    // Only return 0.0 early if we are NOT on a wall/framing
+                    // If we ARE on a wall, we must fall through to the wall rotation logic below
+                    if (!isWallOrFraming)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[CLUSTER-ANGLE] {circularElementType} cluster on FLOOR detected: Returning 0.0° (straight axis-aligned to WCS)");
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [CIRCULAR-RETURN] ✅ {circularElementType} cluster on FLOOR → Returning 0.0°\n");
+                        }
+                        return 0.0;
+                    }
+                    else
+                    {
+                         if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [CIRCULAR-WALL-LOGIC] ⚠️ {circularElementType} cluster on WALL/FRAMING → Falling through to Wall Rotation Logic (needs alignment)\n");
+                        }
+                    }
                 }
 
                 // ✅ WALL/STRUCTURAL FRAMING: Rotation based on X-wall vs Y-wall (same as individual sleeves)
@@ -550,10 +592,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
             // Rotated bounding boxes are only saved for rotated axis-aligned sleeves (45°, 225°, etc.)
             // But individual sleeves might be straight axis-aligned (0°, 90°) so rotatedBboxes.Count=0
             // However, corners are ALWAYS saved for all sleeves, so we can use corner-based calculation
+            // ✅ APPLIES TO ALL CATEGORIES: Cable Trays, Ducts, Pipes (all rectangular elements with rotated axis)
+            // This was originally debugged for cable trays but works universally for all categories
             if (Math.Abs(rotationAngle) > 1e-6)
             {
                 // ✅ WATERTIGHT ALGORITHM: Use corner-based calculation for accurate sizing
                 // This works even if rotated bounding boxes aren't in database, as long as corners are available
+                // ✅ UNIVERSAL: Applies to ALL categories - Cable Trays, Ducts, Pipes (rectangular elements with rotated axis)
+                // Corners are saved during individual sleeve placement for all categories, so this works universally
                 try
                 {
                     // ✅ DIAGNOSTIC: Log before attempting corner-based calculation
@@ -684,12 +730,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             double cosA = Math.Cos(-rotationAngle); // Negative for inverse rotation
                             double sinA = Math.Sin(-rotationAngle);
                             
-                            // Find centroid of all corners to use as rotation origin
+                            // ✅ Use corner centroid as rotation origin for accurate geometric center
+                            // Corner centroid works correctly when MEP elements have different orientations
                             double originX = allCorners.Average(c => c.X);
                             double originY = allCorners.Average(c => c.Y);
                             
                             SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                $"[{DateTime.Now:HH:mm:ss}]   Origin: ({originX:F6}, {originY:F6}), cosA={cosA:F6}, sinA={sinA:F6}\n");
+                                $"[{DateTime.Now:HH:mm:ss}]   Origin (corner centroid): ({originX:F6}, {originY:F6}), PlacementPoint=({placementPoint.X:F6}, {placementPoint.Y:F6}), cosA={cosA:F6}, sinA={sinA:F6}\n");
                             
                             // Rotate each corner and find min/max in rotated space
                             double minRotX = double.MaxValue, maxRotX = double.MinValue;

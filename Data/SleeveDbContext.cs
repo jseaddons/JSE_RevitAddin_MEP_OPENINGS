@@ -539,6 +539,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     AddColumnIfMissing("ClashZones", "MepAngleToYDeg", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "MepWidth", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "MepHeight", "REAL", transaction);
+                    // ✅ PIPE DIAMETER COLUMNS: Add outer diameter and nominal diameter columns for pipes
+                    if (AddColumnIfMissing("ClashZones", "MepElementOuterDiameter", "REAL DEFAULT 0.0", transaction))
+                        _logger("[SQLite] ✅ Added MepElementOuterDiameter column to ClashZones (pipe outer diameter in feet)");
+                    if (AddColumnIfMissing("ClashZones", "MepElementNominalDiameter", "REAL DEFAULT 0.0", transaction))
+                        _logger("[SQLite] ✅ Added MepElementNominalDiameter column to ClashZones (pipe nominal diameter in feet)");
                     AddColumnIfMissing("ClashZones", "SleeveFamilyName", "TEXT", transaction);
                     AddColumnIfMissing("ClashZones", "SleevePlacementActiveX", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "SleevePlacementActiveY", "REAL", transaction);
@@ -595,6 +600,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                         _logger("[SQLite] ✅ Added WallThickness column to ClashZones");
                     if (AddColumnIfMissing("ClashZones", "FramingThickness", "REAL DEFAULT 0.0", transaction))
                         _logger("[SQLite] ✅ Added FramingThickness column to ClashZones");
+                    
+                    // ✅ OOP METHOD: Add damper connector detection columns (for connector-based clearance logic)
+                    if (AddColumnIfMissing("ClashZones", "HasMepConnector", "INTEGER DEFAULT 0", transaction))
+                        _logger("[SQLite] ✅ Added HasMepConnector column to ClashZones (0=false, 1=true)");
+                    if (AddColumnIfMissing("ClashZones", "DamperConnectorSide", "TEXT DEFAULT ''", transaction))
+                        _logger("[SQLite] ✅ Added DamperConnectorSide column to ClashZones (Left/Right/Top/Bottom)");
+                    
+                    // ✅ OOP METHOD: Add insulation detection columns (for insulation-aware sizing)
+                    if (AddColumnIfMissing("ClashZones", "IsInsulated", "INTEGER DEFAULT 0", transaction))
+                        _logger("[SQLite] ✅ Added IsInsulated column to ClashZones (0=false, 1=true)");
+                    if (AddColumnIfMissing("ClashZones", "InsulationThickness", "REAL DEFAULT 0.0", transaction))
+                        _logger("[SQLite] ✅ Added InsulationThickness column to ClashZones (thickness in feet)");
                     
                     // ✅ PARAMETER VALUES: Store parameter values as JSON for SleeveSnapshots
                     // These are collected during refresh and needed when snapshots are saved after placement

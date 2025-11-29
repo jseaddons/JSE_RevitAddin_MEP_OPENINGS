@@ -3,6 +3,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Electrical;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Utils;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Sizing;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
 {
@@ -12,6 +13,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
     /// </summary>
     public class CableTrayPlacementStrategy : ISleevePlacementStrategy
     {
+        private readonly IInsulationAwareSizingService _sizingService;
+        
+        public CableTrayPlacementStrategy()
+            : this(new InsulationAwareSizingService())
+        {
+        }
+        
+        /// <summary>
+        /// Constructor with dependency injection for testing (SOLID principles)
+        /// </summary>
+        public CableTrayPlacementStrategy(IInsulationAwareSizingService sizingService)
+        {
+            _sizingService = sizingService ?? throw new ArgumentNullException(nameof(sizingService));
+        }
         public MepElementSize GetMepElementSize(Element mepElement)
         {
             var cableTray = mepElement as CableTray;
@@ -223,28 +238,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                         DebugLogger.Info($"[CableTrayStrategy] 🔥 Key: '{kvp.Key}' = {kvp.Value}mm");
                     }
                     
-                    // ✅ FIX: Handle insulation-specific keys for cable trays
-                    // Cable trays are typically not insulated, so use normal clearance
-                    if (uiClearanceSettings.ContainsKey("cabletray_top_normal"))
+                    // ✅ CRITICAL FIX: Use ClashZone.IsInsulated to select correct clearance (authoritative data from database)
+                    bool isInsulated = clashZone?.IsInsulated ?? false;
+                    
+                    // ✅ FIX: Handle insulation-specific keys for cable trays using ClashZone.IsInsulated
+                    string topNormalKey = "cabletray_top_normal";
+                    string topInsulatedKey = "cabletray_top_insulated";
+                    string otherNormalKey = "cabletray_other_normal";
+                    string otherInsulatedKey = "cabletray_other_insulated";
+                    
+                    // Select top clearance based on insulation status
+                    string topTargetKey = isInsulated ? topInsulatedKey : topNormalKey;
+                    if (uiClearanceSettings.ContainsKey(topTargetKey))
                     {
-                        topClearanceMm = uiClearanceSettings["cabletray_top_normal"];
-                        DebugLogger.Info($"[CableTrayStrategy] ✅ Using UI top clearance (normal): {topClearanceMm}mm");
+                        topClearanceMm = uiClearanceSettings[topTargetKey];
+                        DebugLogger.Info($"[CableTrayStrategy] ✅ Using UI top clearance (isInsulated={isInsulated}, key='{topTargetKey}'): {topClearanceMm}mm");
                     }
-                    else if (uiClearanceSettings.ContainsKey("cabletray_top_insulated"))
+                    else if (isInsulated && uiClearanceSettings.ContainsKey(topNormalKey))
                     {
-                        topClearanceMm = uiClearanceSettings["cabletray_top_insulated"];
-                        DebugLogger.Info($"[CableTrayStrategy] ✅ Using UI top clearance (insulated): {topClearanceMm}mm");
+                        // Fallback: if insulated key not found, use normal key
+                        topClearanceMm = uiClearanceSettings[topNormalKey];
+                        DebugLogger.Info($"[CableTrayStrategy] ⚠️ Insulated key '{topInsulatedKey}' not found, using normal key: {topClearanceMm}mm");
                     }
                     
-                    if (uiClearanceSettings.ContainsKey("cabletray_other_normal"))
+                    // Select other clearance based on insulation status
+                    string otherTargetKey = isInsulated ? otherInsulatedKey : otherNormalKey;
+                    if (uiClearanceSettings.ContainsKey(otherTargetKey))
                     {
-                        otherClearanceMm = uiClearanceSettings["cabletray_other_normal"];
-                        DebugLogger.Info($"[CableTrayStrategy] ✅ Using UI other clearance (normal): {otherClearanceMm}mm");
+                        otherClearanceMm = uiClearanceSettings[otherTargetKey];
+                        DebugLogger.Info($"[CableTrayStrategy] ✅ Using UI other clearance (isInsulated={isInsulated}, key='{otherTargetKey}'): {otherClearanceMm}mm");
                     }
-                    else if (uiClearanceSettings.ContainsKey("cabletray_other_insulated"))
+                    else if (isInsulated && uiClearanceSettings.ContainsKey(otherNormalKey))
                     {
-                        otherClearanceMm = uiClearanceSettings["cabletray_other_insulated"];
-                        DebugLogger.Info($"[CableTrayStrategy] ✅ Using UI other clearance (insulated): {otherClearanceMm}mm");
+                        // Fallback: if insulated key not found, use normal key
+                        otherClearanceMm = uiClearanceSettings[otherNormalKey];
+                        DebugLogger.Info($"[CableTrayStrategy] ⚠️ Insulated key '{otherInsulatedKey}' not found, using normal key: {otherClearanceMm}mm");
                     }
                 }
                 // 2. Fallback to XML conditions (second priority)
@@ -261,6 +289,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                 
                 double topClearance = UnitUtils.ConvertToInternalUnits(topClearanceMm, UnitTypeId.Millimeters);
                 double otherClearance = UnitUtils.ConvertToInternalUnits(otherClearanceMm, UnitTypeId.Millimeters);
+
+                // ✅ OOP METHOD: Get insulation contribution using sizing service (SOLID principles)
+                double insulationContribution = 0.0;
+                if (clashZone.IsInsulated && clashZone.InsulationThickness > 0)
+                {
+                    insulationContribution = 2 * clashZone.InsulationThickness; // Both sides
+                    DebugLogger.Info($"[CableTrayStrategy] CABLE TRAY INSULATED: Insulation contribution={UnitUtils.ConvertFromInternalUnits(insulationContribution, UnitTypeId.Millimeters):F1}mm total (on both sides)");
+                }
 
                 // 🛠️ ENHANCED: Smart offset direction based on cable tray orientation and host type
                 XYZ offsetVector;
@@ -318,9 +354,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                     offsetVector = new XYZ(0, 0, standardOffsetAmount); // Always offset upward
                 }
 
-                // Calculate final size with asymmetric clearances
-                double finalWidth = trayWidth + (2 * otherClearance); // Left and right use other clearance
-                double finalHeight = trayHeight + topClearance + otherClearance; // Top uses top clearance, bottom uses other
+                // ✅ OOP METHOD: Calculate final size with insulation contribution + asymmetric clearances
+                // Formula: Width/Height + insulation contribution + clearance on each side
+                double finalWidth = trayWidth + insulationContribution + (2 * otherClearance); // Left and right use other clearance
+                double finalHeight = trayHeight + insulationContribution + topClearance + otherClearance; // Top uses top clearance, bottom uses other
                 
                 // ⚠️ DIAGNOSTIC: Log final calculated dimensions
                 double finalWidthMm = UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters);

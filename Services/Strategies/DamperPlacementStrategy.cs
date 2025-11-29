@@ -3,6 +3,8 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Mechanical;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Utils;
+using JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Sizing;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
 {
@@ -13,10 +15,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
     public class DamperPlacementStrategy : ISleevePlacementStrategy
     {
         private readonly Document _doc;
+        private readonly IDamperTypeDetector _damperTypeDetector;
+        private readonly IInsulationAwareSizingService _sizingService;
         
         public DamperPlacementStrategy(Document doc)
+            : this(doc, new DamperTypeDetector(), new InsulationAwareSizingService())
+        {
+        }
+        
+        /// <summary>
+        /// Constructor with dependency injection for testing (SOLID principles)
+        /// </summary>
+        public DamperPlacementStrategy(Document doc, IDamperTypeDetector typeDetector, IInsulationAwareSizingService sizingService)
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
+            _damperTypeDetector = typeDetector ?? throw new ArgumentNullException(nameof(typeDetector));
+            _sizingService = sizingService ?? throw new ArgumentNullException(nameof(sizingService));
         }
         public MepElementSize GetMepElementSize(Element mepElement)
         {
@@ -46,31 +60,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
             // Dampers don't have insulation
             size.IsInsulated = false;
             
-            // Store damper type for clearance calculation
+            // ✅ OOP METHOD: Use IDamperTypeDetector to detect damper type
             string familyTypeName = damper.Symbol?.Name ?? "";
-            string typeNameUpper = familyTypeName.Trim().ToUpperInvariant();
-            
-            // Detect specific damper types (case insensitive)
-            if (typeNameUpper.Contains("MSFD"))
-            {
-                size.DamperType = "MSFD";
-            }
-            else if (typeNameUpper.Contains("MSD"))
-            {
-                size.DamperType = "MSD";
-            }
-            else if (typeNameUpper.Contains("MD"))
-            {
-                size.DamperType = "MD";
-            }
-            else if (typeNameUpper.Contains("MOTORIZED"))
-            {
-                size.DamperType = "Motorized";
-            }
-            else
-            {
-                size.DamperType = "Standard";
-            }
+            size.DamperType = _damperTypeDetector.DetectDamperType(familyTypeName);
             
             DebugLogger.Info($"[DamperStrategy] Detected damper type: '{size.DamperType}' from family: '{familyTypeName}'");
             
@@ -83,17 +75,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
             string damperType = mepSize.DamperType ?? "";
             DebugLogger.Info($"[DamperStrategy] Damper type from MepElementSize: '{damperType}'");
             
-            // Apply appropriate clearance based on damper type
+            // ✅ OOP METHOD: Use IDamperTypeDetector to determine clearance requirements
             double clearanceInMm;
-            if (damperType.Contains("MSFD"))
+            if (_damperTypeDetector.RequiresMepSideClearance(damperType))
             {
-                clearanceInMm = conditions?.ClearanceSettings?.DuctAccessoryMepNormal ?? 100.0; // MSFD uses MEP side clearance
-                DebugLogger.Info($"[DamperStrategy] MSFD damper - using MEP side clearance: {clearanceInMm}mm");
-            }
-            else if (damperType.Contains("MSD") || damperType.Contains("MD") || damperType.Contains("Motorized"))
-            {
-                clearanceInMm = conditions?.ClearanceSettings?.DuctAccessoryMepNormal ?? 100.0; // MSD, MD, Motorized use MEP side clearance
-                DebugLogger.Info($"[DamperStrategy] {(damperType.Contains("MSD") ? "MSD" : damperType.Contains("MD") ? "MD" : "Motorized")} damper - using MEP side clearance: {clearanceInMm}mm");
+                clearanceInMm = conditions?.ClearanceSettings?.DuctAccessoryMepNormal ?? 100.0; // Non-standard dampers use MEP side clearance
+                DebugLogger.Info($"[DamperStrategy] {damperType} damper - using MEP side clearance: {clearanceInMm}mm");
             }
             else
             {
@@ -152,64 +139,148 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                 double damperWidth = clashZone.MepElementWidth;
                 double damperHeight = clashZone.MepElementHeight;
                 
+                // ✅ DIRECT LOGGING: Always log what values we're reading from ClashZone
+                DebugLogger.Info($"[DamperStrategy] Zone {clashZone.Id}: Reading MepElementWidth={damperWidth:F6}ft ({damperWidth * 304.8:F1}mm), MepElementHeight={damperHeight:F6}ft ({damperHeight * 304.8:F1}mm)");
+                SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-READ] Zone {clashZone.Id}: MepElementWidth={damperWidth:F6}ft ({damperWidth * 304.8:F1}mm), MepElementHeight={damperHeight:F6}ft ({damperHeight * 304.8:F1}mm)\n");
+                
                 // Get clearance from OpeningConditions (loaded from UI via CONDITIONS XML)
                 double otherClearanceMm = conditions.ClearanceSettings.DuctAccessoryOtherNormal;
                 double mepClearanceMm = conditions.ClearanceSettings.DuctAccessoryMepNormal;
                 
-                double baseClearance = UnitUtils.ConvertToInternalUnits(otherClearanceMm, UnitTypeId.Millimeters);
+                double otherClearance = UnitUtils.ConvertToInternalUnits(otherClearanceMm, UnitTypeId.Millimeters);
+                double mepClearance = UnitUtils.ConvertToInternalUnits(mepClearanceMm, UnitTypeId.Millimeters);
+                
+                // ✅ OOP METHOD: Get insulation contribution using sizing service (SOLID principles)
+                double insulationContribution = 0.0;
+                if (clashZone.IsInsulated && clashZone.InsulationThickness > 0)
+                {
+                    insulationContribution = 2 * clashZone.InsulationThickness; // Both sides
+                    DebugLogger.Info($"[DamperStrategy] DAMPER INSULATED: Insulation contribution={RevitUnitConversionService.Instance.FromInternalMillimeters(insulationContribution):F1}mm total (on both sides)");
+                }
+                
+                // ✅ OOP METHOD: Log connector detection results (connector-based logic, not damper type)
+                DebugLogger.Info($"[DamperStrategy] 🔍 CONNECTOR DETECTION: HasMepConnector={clashZone.HasMepConnector}, DamperConnectorSide='{clashZone.DamperConnectorSide}'");
+                SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-CONNECTOR-DETECTION] Zone {clashZone.Id}: HasMepConnector={clashZone.HasMepConnector}, DamperConnectorSide='{clashZone.DamperConnectorSide}'\n");
                 
                 DebugLogger.Info($"[DamperStrategy] Clearances from conditions: MEP={mepClearanceMm}mm, Other={otherClearanceMm}mm");
+                SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-CLEARANCE] Zone {clashZone.Id}: MEP={mepClearanceMm}mm, Other={otherClearanceMm}mm\n");
                 
-                if (clashZone.IsMSFDDamper && !string.IsNullOrEmpty(clashZone.DamperConnectorSide))
+                // ✅ OOP METHOD: Check if connector was detected (regardless of damper type)
+                // If connector exists, use MEP+Other on width (MEP side 100mm + Other side 50mm = 150mm total)
+                // If no connector, use Other clearance on all sides (50mm + 50mm = 100mm total)
+                if (clashZone.HasMepConnector && !string.IsNullOrEmpty(clashZone.DamperConnectorSide))
                 {
                     // MSFD Damper: Asymmetric clearance
-                    double mepSideClearance = UnitUtils.ConvertToInternalUnits(mepClearanceMm, UnitTypeId.Millimeters);
-                    double otherSideClearance = baseClearance;
-                    
-                    // Calculate offset toward connector side
-                    double offsetAmount = (mepSideClearance - otherSideClearance) / 2.0;
+                    double mepSideClearance = mepClearance;
+                    double otherSideClearance = otherClearance;
                     
                     // Determine which dimension gets the asymmetric clearance
                     double left = otherSideClearance, right = otherSideClearance;
                     double top = otherSideClearance, bottom = otherSideClearance;
                     
+                    // ✅ OFFSET ALONG WALL AXIS: Calculate offset to achieve correct clearance distribution
+                    // Methodology: 
+                    // 1. Sleeve is sized: Base (500mm) + MEP clearance (100mm) + Other clearance (50mm) = 650mm total
+                    // 2. When centered on damper: clearance is 75mm on each side
+                    // 3. To achieve 100mm on connector side and 50mm on other side, move by difference/2
+                    //    Offset = (mepClearance - otherClearance) / 2 = (100 - 50) / 2 = 25mm toward connector
+                    // 4. After move: Connector side = 75 + 25 = 100mm ✓, Other side = 75 - 25 = 50mm ✓
+                    double offsetAmount = (mepSideClearance - otherSideClearance) / 2.0;
                     XYZ offsetVector = XYZ.Zero;
+                    
+                    // Get wall orientation to determine offset direction
+                    string hostOrientation = clashZone.HostOrientation ?? string.Empty;
+                    bool isXWall = string.Equals(hostOrientation, "X", StringComparison.OrdinalIgnoreCase);
+                    bool isYWall = string.Equals(hostOrientation, "Y", StringComparison.OrdinalIgnoreCase);
+                    
+                    // Only apply offset for walls (not floors/framing)
+                    bool isWallHost = string.Equals(clashZone.StructuralElementType, "Wall", StringComparison.OrdinalIgnoreCase) ||
+                                      string.Equals(clashZone.StructuralElementType, "Walls", StringComparison.OrdinalIgnoreCase);
+                    
+                    if (isWallHost && offsetAmount > 0.0001) // Only if there's a significant offset
+                    {
+                        // Determine offset direction based on connector side
+                        // For Left/Right connectors: offset along wall axis
+                        // For Top/Bottom connectors: offset along wall axis
+                        // X-wall: offset along X-axis | Y-wall: offset along Y-axis
+                        bool offsetPositive = clashZone.DamperConnectorSide == "Right" || clashZone.DamperConnectorSide == "Top";
+                        
+                        if (isXWall)
+                        {
+                            // X-wall: offset along X-axis (wall runs along X-axis)
+                            offsetVector = offsetPositive 
+                                ? new XYZ(offsetAmount, 0, 0) 
+                                : new XYZ(-offsetAmount, 0, 0);
+                        }
+                        else if (isYWall)
+                        {
+                            // Y-wall: offset along Y-axis (wall runs along Y-axis)
+                            offsetVector = offsetPositive 
+                                ? new XYZ(0, offsetAmount, 0) 
+                                : new XYZ(0, -offsetAmount, 0);
+                        }
+                    }
                     
                     switch (clashZone.DamperConnectorSide)
                     {
                         case "Left":
                             left = mepSideClearance;
-                            offsetVector = new XYZ(-offsetAmount, 0, 0); // Offset left
                             break;
                         case "Right":
                             right = mepSideClearance;
-                            offsetVector = new XYZ(offsetAmount, 0, 0); // Offset right
                             break;
                         case "Top":
                             top = mepSideClearance;
-                            offsetVector = new XYZ(0, 0, offsetAmount); // Offset up
                             break;
                         case "Bottom":
                             bottom = mepSideClearance;
-                            offsetVector = new XYZ(0, 0, -offsetAmount); // Offset down
                             break;
                     }
                     
-                    double finalWidth = damperWidth + left + right;
-                    double finalHeight = damperHeight + top + bottom;
+                    // ✅ OOP METHOD: Formula: Base + insulation contribution + asymmetric clearance on each side
+                    double finalWidth = damperWidth + insulationContribution + left + right;
+                    double finalHeight = damperHeight + insulationContribution + top + bottom;
                     
-                    DebugLogger.Info($"[DamperStrategy] MSFD - Connector={clashZone.DamperConnectorSide}, MEP={mepSideClearance:F4}ft, Other={otherSideClearance:F4}ft, Offset={offsetAmount:F4}ft");
-                    DebugLogger.Info($"[DamperStrategy] MSFD - Size: {finalWidth:F4} x {finalHeight:F4}, Offset: {offsetVector}");
+                    // ✅ DETAILED LOGGING: Log offset calculation details for debugging
+                    string offsetInfo = offsetVector.GetLength() > 0.0001 
+                        ? $"Offset={offsetAmount*304.8:F1}mm along wall axis ({hostOrientation}-wall)" 
+                        : "NO OFFSET";
+                    DebugLogger.Info($"[DamperStrategy] MSFD - Connector={clashZone.DamperConnectorSide}, MEP={mepSideClearance:F4}ft ({mepSideClearance*304.8:F1}mm), Other={otherSideClearance:F4}ft ({otherSideClearance*304.8:F1}mm)");
+                    DebugLogger.Info($"[DamperStrategy] MSFD - Offset Calculation: (MEP={mepSideClearance*304.8:F1}mm - Other={otherSideClearance*304.8:F1}mm) / 2 = {offsetAmount*304.8:F1}mm toward connector side");
+                    DebugLogger.Info($"[DamperStrategy] MSFD - Wall Info: HostOrientation='{hostOrientation}', IsXWall={isXWall}, IsYWall={isYWall}, IsWallHost={isWallHost}");
+                    DebugLogger.Info($"[DamperStrategy] MSFD - Offset Vector: {offsetVector} (Length={offsetVector.GetLength()*304.8:F1}mm)");
+                    DebugLogger.Info($"[DamperStrategy] MSFD - Calculation: Base({damperWidth:F6}ft={damperWidth*304.8:F1}mm) + Clearance({(left+right):F6}ft={(left+right)*304.8:F1}mm) = Final({finalWidth:F6}ft={finalWidth*304.8:F1}mm)");
+                    SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-MSFD-FINAL] Zone {clashZone.Id}: Base({damperWidth*304.8:F1}mm) + Clearance({(left+right)*304.8:F1}mm) = Final({finalWidth*304.8:F1}mm x {finalHeight*304.8:F1}mm), {offsetInfo}\n");
+                    SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-OFFSET-DETAIL] Zone {clashZone.Id}: OffsetAmount={offsetAmount*304.8:F1}mm, HostOrientation='{hostOrientation}', OffsetVector=({offsetVector.X*304.8:F1}, {offsetVector.Y*304.8:F1}, {offsetVector.Z*304.8:F1})mm\n");
                     
                     return (offsetVector, finalWidth, finalHeight);
                 }
                 else
                 {
-                    // Standard Damper: Symmetric clearance (same on all sides)
-                    double finalWidth = damperWidth + (2 * baseClearance);
-                    double finalHeight = damperHeight + (2 * baseClearance);
+                    // Damper has NO connector - use symmetric clearance on all sides
+                    // ✅ OOP METHOD: No connector = symmetric Other clearance on all 4 sides
+                    // ✅ OOP METHOD: Use sizing service for symmetric clearance case (SOLID principles)
+                    (double finalW, double finalH, _) = _sizingService.CalculateFinalDimensionsFromClashZone(
+                        damperWidth, damperHeight, 0, clashZone, otherClearance);
+                    double finalWidth = finalW;
+                    double finalHeight = finalH;
                     
-                    DebugLogger.Info($"[DamperStrategy] Standard - Clearance={baseClearance:F4}ft, Size: {finalWidth:F4} x {finalHeight:F4}, No offset");
+                    // ✅ OOP METHOD: Show actual calculation from sizing service (includes insulation if present)
+                    double insulationThicknessMm = clashZone.IsInsulated && clashZone.InsulationThickness > 0 
+                        ? RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.InsulationThickness) 
+                        : 0.0;
+                    double clearanceMm = RevitUnitConversionService.Instance.FromInternalMillimeters(otherClearance);
+                    
+                    if (clashZone.IsInsulated && insulationThicknessMm > 0)
+                    {
+                        DebugLogger.Info($"[DamperStrategy] Standard (OOP): Base({damperWidth*304.8:F1}mm) + Insulation({insulationThicknessMm*2:F1}mm) + Clearance({clearanceMm*2:F1}mm) = Final({finalWidth*304.8:F1}mm)");
+                        SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-STANDARD-FINAL] Zone {clashZone.Id}: Base({damperWidth*304.8:F1}mm) + Insulation({insulationThicknessMm*2:F1}mm) + Clearance({clearanceMm*2:F1}mm) = Final({finalWidth*304.8:F1}mm x {finalHeight*304.8:F1}mm)\n");
+                    }
+                    else
+                    {
+                        DebugLogger.Info($"[DamperStrategy] Standard (OOP): Base({damperWidth*304.8:F1}mm) + Clearance({clearanceMm*2:F1}mm) = Final({finalWidth*304.8:F1}mm)");
+                        SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-STANDARD-FINAL] Zone {clashZone.Id}: Base({damperWidth*304.8:F1}mm) + Clearance({clearanceMm*2:F1}mm) = Final({finalWidth*304.8:F1}mm x {finalHeight*304.8:F1}mm)\n");
+                    }
                     
                     return (XYZ.Zero, finalWidth, finalHeight);
                 }

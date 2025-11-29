@@ -152,6 +152,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 var p = LookupParam(element, key);
+                
                 // Special fallback for System Type when not found by name
                 if (p == null && key.Equals("System Type", StringComparison.OrdinalIgnoreCase))
                 {
@@ -185,6 +186,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                     }
                 }
+                
                 if (p == null) 
                 {
                     // DEBUG: Log missing parameters
