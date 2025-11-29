@@ -2503,117 +2503,115 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         {
                                             DebugLogger.Info($"[UniversalSleevePlacer] ✅ DATABASE: Saved sleeve data for {dbSavedCount} clash zones immediately after placement");
                                         }
+                                    } // End if (bboxCount > 0) - bbox saving complete
 
-                                        // ✅ CRITICAL FIX: Save sleeve snapshots after placement
-                                        // Snapshots are only saved when sleeves have SleeveInstanceId > 0 (after placement)
-                                        // ✅ DOES NOT DEPEND ON XML - only requires filterName and placed sleeves
-                                        
-                                        // ✅ ALWAYS LOG: Diagnostic to see if code path is reached (using SafeFileLogger since DebugLogger.IsEnabled=false)
-                                        SafeFileLogger.SafeAppendText("database_operations.log",
-                                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] 🔍🔍🔍 SNAPSHOT SAVE CHECK: placedSleeveData.Count={placedSleeveData.Count}, _filterName='{_filterName ?? "NULL"}', WillAttemptSave={placedSleeveData.Count > 0 && !string.IsNullOrWhiteSpace(_filterName)}\n");
-                                        
-                                        if (placedSleeveData.Count > 0 && !string.IsNullOrWhiteSpace(_filterName))
+                                    // ✅ CRITICAL FIX: Save sleeve snapshots after placement (MOVED OUTSIDE bboxCount check)
+                                    // Snapshots are only saved when sleeves have SleeveInstanceId > 0 (after placement)
+                                    // ✅ DOES NOT DEPEND ON XML - only requires filterName and placed sleeves
+                                    
+                                    // ✅ ALWAYS LOG: Diagnostic to see if code path is reached (using SafeFileLogger since DebugLogger.IsEnabled=false)
+                                    SafeFileLogger.SafeAppendText("database_operations.log",
+                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] 🔍🔍🔍 SNAPSHOT SAVE CHECK: placedSleeveData.Count={placedSleeveData.Count}, _filterName='{_filterName ?? "NULL"}', WillAttemptSave={placedSleeveData.Count > 0 && !string.IsNullOrWhiteSpace(_filterName)}\n");
+                                    
+                                    if (placedSleeveData.Count > 0 && !string.IsNullOrWhiteSpace(_filterName))
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode)
                                         {
-                                            if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[UniversalSleevePlacer] ✅ Attempting to save sleeve snapshots: FilterName='{_filterName}', PlacedSleeveData={placedSleeveData.Count}");
+                                        }
+                                        try
+                                        {
+                                            // Get FilterId from filter name
+                                            // ✅ CRITICAL FIX: Strip .xml extension if present (database stores filter name without extension)
+                                            string filterNameForLookup = _filterName;
+                                            if (!string.IsNullOrWhiteSpace(filterNameForLookup) && filterNameForLookup.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
                                             {
-                                                DebugLogger.Info($"[UniversalSleevePlacer] ✅ Attempting to save sleeve snapshots: FilterName='{_filterName}', PlacedSleeveData={placedSleeveData.Count}");
+                                                filterNameForLookup = filterNameForLookup.Substring(0, filterNameForLookup.Length - 4);
                                             }
-                                            try
+                                            
+                                            int filterId = -1;
+                                            using (var filterCmd = dbContext.Connection.CreateCommand())
                                             {
-                                                // Get FilterId from filter name
-                                                // ✅ CRITICAL FIX: Strip .xml extension if present (database stores filter name without extension)
-                                                string filterNameForLookup = _filterName;
-                                                if (!string.IsNullOrWhiteSpace(filterNameForLookup) && filterNameForLookup.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+                                                filterCmd.CommandText = @"
+                                        SELECT FilterId FROM Filters 
+                                        WHERE FilterName = @FilterName 
+                                        LIMIT 1";
+                                                filterCmd.Parameters.AddWithValue("@FilterName", filterNameForLookup);
+                                                var filterResult = filterCmd.ExecuteScalar();
+                                                if (filterResult != null)
                                                 {
-                                                    filterNameForLookup = filterNameForLookup.Substring(0, filterNameForLookup.Length - 4);
+                                                    filterId = Convert.ToInt32(filterResult);
                                                 }
+                                            }
+
+                                            if (filterId > 0)
+                                            {
+                                                // ✅ DIAGNOSTIC: Log placedSleeveData details BEFORE filtering (using SafeFileLogger)
+                                                int totalPlaced = placedSleeveData.Count;
+                                                int withZone = placedSleeveData.Count(p => p.zone != null);
+                                                int withSleeveId = placedSleeveData.Count(p => p.zone != null && p.zone.SleeveInstanceId > 0);
+                                                var sampleSleeveIds = placedSleeveData
+                                                    .Where(p => p.zone != null && p.zone.SleeveInstanceId > 0)
+                                                    .Take(5)
+                                                    .Select(p => $"ZoneId={p.zone.Id}, SleeveId={p.zone.SleeveInstanceId}")
+                                                    .ToList();
+                                                SafeFileLogger.SafeAppendText("database_operations.log",
+                                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] 🔍 DIAGNOSTIC: placedSleeveData - Total={totalPlaced}, WithZone={withZone}, WithSleeveId={withSleeveId}, Samples={string.Join(", ", sampleSleeveIds)}\n");
                                                 
-                                                int filterId = -1;
-                                                using (var filterCmd = dbContext.Connection.CreateCommand())
+                                                // Get placed zones with SleeveInstanceId > 0
+                                                var placedZones = placedSleeveData
+                                                    .Where(p => p.zone != null && p.zone.SleeveInstanceId > 0)
+                                                    .Select(p => p.zone)
+                                                    .Distinct()
+                                                    .ToList();
+
+                                                // ✅ DIAGNOSTIC: Log filtered results (using SafeFileLogger)
+                                                int individualCount = placedZones.Count(z => z.SleeveInstanceId > 0 && z.ClusterSleeveInstanceId <= 0);
+                                                int clusterCount = placedZones.Count(z => z.ClusterSleeveInstanceId > 0);
+                                                SafeFileLogger.SafeAppendText("database_operations.log",
+                                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] 🔍 DIAGNOSTIC: placedZones after filter - Total={placedZones.Count}, Individual={individualCount}, Cluster={clusterCount}\n");
+
+                                                if (placedZones.Count > 0)
                                                 {
-                                                    filterCmd.CommandText = @"
-                                                SELECT FilterId FROM Filters 
-                                                WHERE FilterName = @FilterName 
-                                                LIMIT 1";
-                                                    filterCmd.Parameters.AddWithValue("@FilterName", filterNameForLookup);
-                                                    var filterResult = filterCmd.ExecuteScalar();
-                                                    if (filterResult != null)
-                                                    {
-                                                        filterId = Convert.ToInt32(filterResult);
-                                                    }
-                                                }
-
-                                                if (filterId > 0)
-                                                {
-                                                    // ✅ DIAGNOSTIC: Log placedSleeveData details BEFORE filtering (using SafeFileLogger)
-                                                    int totalPlaced = placedSleeveData.Count;
-                                                    int withZone = placedSleeveData.Count(p => p.zone != null);
-                                                    int withSleeveId = placedSleeveData.Count(p => p.zone != null && p.zone.SleeveInstanceId > 0);
-                                                    var sampleSleeveIds = placedSleeveData
-                                                        .Where(p => p.zone != null && p.zone.SleeveInstanceId > 0)
-                                                        .Take(5)
-                                                        .Select(p => $"ZoneId={p.zone.Id}, SleeveId={p.zone.SleeveInstanceId}")
-                                                        .ToList();
+                                                    // ✅ ALWAYS LOG: Saving snapshots (using SafeFileLogger since DebugLogger.IsEnabled=false)
                                                     SafeFileLogger.SafeAppendText("database_operations.log",
-                                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] 🔍 DIAGNOSTIC: placedSleeveData - Total={totalPlaced}, WithZone={withZone}, WithSleeveId={withSleeveId}, Samples={string.Join(", ", sampleSleeveIds)}\n");
-                                                    
-                                                    // Get placed zones with SleeveInstanceId > 0
-                                                    var placedZones = placedSleeveData
-                                                        .Where(p => p.zone != null && p.zone.SleeveInstanceId > 0)
-                                                        .Select(p => p.zone)
-                                                        .Distinct()
-                                                        .ToList();
+                                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] ✅ Saving sleeve snapshots: FilterId={filterId}, PlacedZones={placedZones.Count}\n");
+                                                    repository.SaveSleeveSnapshotsForPlacedSleeves(filterId, placedZones);
 
-                                                    // ✅ DIAGNOSTIC: Log filtered results (using SafeFileLogger)
-                                                    int individualCount = placedZones.Count(z => z.SleeveInstanceId > 0 && z.ClusterSleeveInstanceId <= 0);
-                                                    int clusterCount = placedZones.Count(z => z.ClusterSleeveInstanceId > 0);
                                                     SafeFileLogger.SafeAppendText("database_operations.log",
-                                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] 🔍 DIAGNOSTIC: placedZones after filter - Total={placedZones.Count}, Individual={individualCount}, Cluster={clusterCount}\n");
-
-                                                    if (placedZones.Count > 0)
-                                                    {
-                                                        // ✅ ALWAYS LOG: Saving snapshots (using SafeFileLogger since DebugLogger.IsEnabled=false)
-                                                        SafeFileLogger.SafeAppendText("database_operations.log",
-                                                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] ✅ Saving sleeve snapshots: FilterId={filterId}, PlacedZones={placedZones.Count}\n");
-                                                        repository.SaveSleeveSnapshotsForPlacedSleeves(filterId, placedZones);
-
-                                                        SafeFileLogger.SafeAppendText("database_operations.log",
-                                                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] ✅ DATABASE: Saved sleeve snapshots for {placedZones.Count} placed sleeves\n");
-                                                    }
-                                                    else
-                                                    {
-                                                        // ✅ CRITICAL: Always log this warning (using SafeFileLogger since DebugLogger.IsEnabled=false)
-                                                        SafeFileLogger.SafeAppendText("database_operations.log",
-                                                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] ⚠️⚠️⚠️ No placed zones with SleeveInstanceId > 0 (placedSleeveData={placedSleeveData.Count}) - Individual sleeves will NOT be saved to snapshot table!\n");
-                                                    }
+                                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] ✅ DATABASE: Saved sleeve snapshots for {placedZones.Count} placed sleeves\n");
                                                 }
                                                 else
                                                 {
-                                                    // ✅ ALWAYS LOG: FilterId not found (using SafeFileLogger)
+                                                    // ✅ CRITICAL: Always log this warning (using SafeFileLogger since DebugLogger.IsEnabled=false)
                                                     SafeFileLogger.SafeAppendText("database_operations.log",
-                                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] ⚠️ FilterId not found for FilterName='{_filterName}' - cannot save sleeve snapshots\n");
+                                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] ⚠️⚠️⚠️ No placed zones with SleeveInstanceId > 0 (placedSleeveData={placedSleeveData.Count}) - Individual sleeves will NOT be saved to snapshot table!\n");
                                                 }
                                             }
-                                            catch (Exception snapshotEx)
+                                            else
                                             {
-                                                // ✅ ALWAYS LOG: Exception details (using SafeFileLogger)
+                                                // ✅ ALWAYS LOG: FilterId not found (using SafeFileLogger)
                                                 SafeFileLogger.SafeAppendText("database_operations.log",
-                                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] ⚠️ Failed to save sleeve snapshots: {snapshotEx.Message}\n");
-                                                SafeFileLogger.SafeAppendText("database_operations.log",
-                                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] Stack trace: {snapshotEx.StackTrace}\n");
+                                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] ⚠️ FilterId not found for FilterName='{_filterName}' - cannot save sleeve snapshots\n");
                                             }
                                         }
-                                        else
+                                        catch (Exception snapshotEx)
                                         {
-                                            // ✅ ALWAYS LOG: Why snapshot save was skipped (using SafeFileLogger since DebugLogger.IsEnabled=false)
+                                            // ✅ ALWAYS LOG: Exception details (using SafeFileLogger)
                                             SafeFileLogger.SafeAppendText("database_operations.log",
-                                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] ⚠️ SKIPPED saving sleeve snapshots: placedSleeveData={placedSleeveData.Count}, filterName='{_filterName ?? "NULL"}'\n");
+                                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] ⚠️ Failed to save sleeve snapshots: {snapshotEx.Message}\n");
+                                            SafeFileLogger.SafeAppendText("database_operations.log",
+                                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] Stack trace: {snapshotEx.StackTrace}\n");
                                         }
                                     }
+                                    else
+                                    {
+                                        // ✅ ALWAYS LOG: Why snapshot save was skipped (using SafeFileLogger since DebugLogger.IsEnabled=false)
+                                        SafeFileLogger.SafeAppendText("database_operations.log",
+                                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] ⚠️ SKIPPED saving sleeve snapshots: placedSleeveData={placedSleeveData.Count}, filterName='{_filterName ?? "NULL"}'\n");
+                                    }
                                     
-                                    // ✅ CRITICAL FIX: Move snapshot saving OUTSIDE the bboxCount check
-                                    // Snapshots don't require bounding boxes - they only need SleeveInstanceId
-                                    // This was causing pipes to not be saved to snapshot table when bbox retrieval failed
+                                    // ✅ ALWAYS LOG: Diagnostic to see if code path is reached (using SafeFileLogger since DebugLogger.IsEnabled=false)
                                 }
                             }
                             catch (Exception dbEx)
