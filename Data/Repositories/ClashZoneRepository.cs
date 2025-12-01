@@ -516,7 +516,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         MepRotationCos, MepRotationSin,
                         MepAngleToXRad, MepAngleToXDeg,
                         MepAngleToYRad, MepAngleToYDeg,
-                        MepWidth, MepHeight, MepElementOuterDiameter, MepElementNominalDiameter, SleeveFamilyName,
+                        MepWidth, MepHeight, MepElementOuterDiameter, MepElementNominalDiameter, MepElementSizeParameterValue, SleeveFamilyName,
                         SleevePlacementActiveX, SleevePlacementActiveY, SleevePlacementActiveZ,
                         SourceDocKey, HostDocKey, MepElementUniqueId,
                         IsResolvedFlag, IsClusterResolvedFlag, IsClusteredFlag,
@@ -544,7 +544,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         @MepRotationCos, @MepRotationSin,
                         @MepAngleToXRad, @MepAngleToXDeg,
                         @MepAngleToYRad, @MepAngleToYDeg,
-                        @MepWidth, @MepHeight, @MepElementOuterDiameter, @MepElementNominalDiameter, @SleeveFamilyName,
+                        @MepWidth, @MepHeight, @MepElementOuterDiameter, @MepElementNominalDiameter, @MepElementSizeParameterValue, @SleeveFamilyName,
                         @SleevePlacementActiveX, @SleevePlacementActiveY, @SleevePlacementActiveZ,
                         @SourceDocKey, @HostDocKey, @MepElementUniqueId,
                         @IsResolvedFlag, @IsClusterResolvedFlag, @IsClusteredFlag,
@@ -568,6 +568,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
         private void UpdateClashZone(int clashZoneId, int comboId, ClashZone clashZone, SQLiteTransaction transaction)
         {
+            // ✅ DIAGNOSTIC: Log the values being passed to UpdateClashZone
+            if (!DeploymentConfiguration.DeploymentMode && string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
+            {
+                var odMm = clashZone.MepElementOuterDiameter > 0 ? (clashZone.MepElementOuterDiameter * 304.8) : 0.0;
+                var nomMm = clashZone.MepElementNominalDiameter > 0 ? (clashZone.MepElementNominalDiameter * 304.8) : 0.0;
+                _logger($"[DB-UPDATE-DEBUG] Zone {clashZone.Id} (ClashZoneId={clashZoneId}): UpdateClashZone called with - OuterDiameter={clashZone.MepElementOuterDiameter:F6}ft ({odMm:F1}mm), NominalDiameter={clashZone.MepElementNominalDiameter:F6}ft ({nomMm:F1}mm), SizeParameterValue='{clashZone.MepElementSizeParameterValue ?? "NULL"}', MepElementFormattedSize='{clashZone.MepElementFormattedSize ?? "NULL"}'");
+                SafeFileLogger.SafeAppendText("save_db_diagnostic.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Zone {clashZone.Id} (ClashZoneId={clashZoneId}): UpdateClashZone - OuterDiameter={clashZone.MepElementOuterDiameter:F6}ft ({odMm:F1}mm), NominalDiameter={clashZone.MepElementNominalDiameter:F6}ft ({nomMm:F1}mm), SizeParameterValue='{clashZone.MepElementSizeParameterValue ?? "NULL"}'\n");
+            }
+            
             using (var cmd = _context.Connection.CreateCommand())
             {
                 cmd.Transaction = transaction;
@@ -673,6 +683,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         MepHeight = @MepHeight,
                         MepElementOuterDiameter = @MepElementOuterDiameter,
                         MepElementNominalDiameter = @MepElementNominalDiameter,
+                        MepElementSizeParameterValue = @MepElementSizeParameterValue,
                         SleeveFamilyName = @SleeveFamilyName,
                         SleevePlacementActiveX = @SleevePlacementActiveX,
                         SleevePlacementActiveY = @SleevePlacementActiveY,
@@ -807,6 +818,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             // ✅ PIPE DIAMETER COLUMNS: Add outer diameter and nominal diameter parameters
             cmd.Parameters.AddWithValue("@MepElementOuterDiameter", clashZone.MepElementOuterDiameter);
             cmd.Parameters.AddWithValue("@MepElementNominalDiameter", clashZone.MepElementNominalDiameter);
+            // ✅ SIZE PARAMETER VALUE: Add Size parameter value as string for snapshot table and parameter transfer
+            cmd.Parameters.AddWithValue("@MepElementSizeParameterValue", (object)clashZone.MepElementSizeParameterValue ?? DBNull.Value);
+            
+            // ✅ DIAGNOSTIC: Log pipe diameters and size parameter value being saved
+            if (!DeploymentConfiguration.DeploymentMode && string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
+            {
+                var odMm = clashZone.MepElementOuterDiameter > 0 ? (clashZone.MepElementOuterDiameter * 304.8) : 0.0;
+                var nomMm = clashZone.MepElementNominalDiameter > 0 ? (clashZone.MepElementNominalDiameter * 304.8) : 0.0;
+                _logger($"[DB-SAVE-DEBUG] Zone {clashZone.Id}: Saving Pipe - OuterDiameter={clashZone.MepElementOuterDiameter:F6}ft ({odMm:F1}mm), NominalDiameter={clashZone.MepElementNominalDiameter:F6}ft ({nomMm:F1}mm), SizeParameterValue='{clashZone.MepElementSizeParameterValue ?? "NULL"}', MepElementFormattedSize='{clashZone.MepElementFormattedSize ?? "NULL"}'");
+                SafeFileLogger.SafeAppendText("save_db_diagnostic.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Zone {clashZone.Id}: Pipe diameters - OuterDiameter={clashZone.MepElementOuterDiameter:F6}ft ({odMm:F1}mm), NominalDiameter={clashZone.MepElementNominalDiameter:F6}ft ({nomMm:F1}mm), SizeParameterValue='{clashZone.MepElementSizeParameterValue ?? "NULL"}'\n");
+            }
             
             // ✅ DIAGNOSTIC: Log MEP dimensions being saved for duct accessories
             if (!DeploymentConfiguration.DeploymentMode && string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
@@ -913,8 +936,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             int bothCount = placedZones.Count(z => z != null && z.SleeveInstanceId > 0 && z.ClusterSleeveInstanceId > 0);
             int invalidCount = placedZones.Count(z => z == null || (z.SleeveInstanceId <= 0 && z.ClusterSleeveInstanceId <= 0));
             
+            // ✅ CRITICAL: Log category breakdown to identify if pipes are being filtered out
+            var categoryBreakdown = placedZones
+                .Where(z => z != null)
+                .GroupBy(z => z.MepElementCategory ?? "Unknown")
+                .Select(g => $"{g.Key}={g.Count()}({g.Count(z => z.SleeveInstanceId > 0)} with SleeveId)")
+                .ToList();
+            
+            // ✅ CRITICAL: Log pipe-specific details
+            int pipeCount = placedZones.Count(z => z != null && string.Equals(z.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase));
+            int pipeWithSleeveId = placedZones.Count(z => z != null && string.Equals(z.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase) && z.SleeveInstanceId > 0);
+            var pipeSamples = placedZones
+                .Where(z => z != null && string.Equals(z.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
+                .Take(5)
+                .Select(z => $"{z.Id}:SleeveId={z.SleeveInstanceId}, Category={z.MepElementCategory}")
+                .ToList();
+            
             // ✅ CRITICAL: Always log this diagnostic (even in deployment mode) to debug missing individual sleeves
-            string diagnosticMsg = $"[SQLite] SaveSleeveSnapshotsForPlacedSleeves: Total={placedZones.Count}, Individual={individualCount}, Cluster={clusterCount}, Both={bothCount}, Invalid={invalidCount}";
+            string diagnosticMsg = $"[SQLite] SaveSleeveSnapshotsForPlacedSleeves: Total={placedZones.Count}, Individual={individualCount}, Cluster={clusterCount}, Both={bothCount}, Invalid={invalidCount}, Categories=[{string.Join(", ", categoryBreakdown)}], Pipes={pipeCount}({pipeWithSleeveId} with SleeveId)";
             _logger(diagnosticMsg);
             if (!DeploymentConfiguration.DeploymentMode)
             {
@@ -922,11 +961,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 var individualSamples = placedZones
                     .Where(z => z != null && z.SleeveInstanceId > 0 && z.ClusterSleeveInstanceId <= 0)
                     .Take(5)
-                    .Select(z => $"{z.Id}:SleeveId={z.SleeveInstanceId}")
+                    .Select(z => $"{z.Id}:SleeveId={z.SleeveInstanceId}, Category={z.MepElementCategory}")
                     .ToList();
                 if (individualSamples.Any())
                 {
                     _logger($"[SQLite] SaveSleeveSnapshotsForPlacedSleeves: Individual sleeve samples: {string.Join(", ", individualSamples)}");
+                }
+                
+                // ✅ CRITICAL: Always log pipe samples if any exist
+                if (pipeSamples.Any())
+                {
+                    _logger($"[SQLite] SaveSleeveSnapshotsForPlacedSleeves: Pipe samples: {string.Join(", ", pipeSamples)}");
                 }
             }
 
@@ -1212,13 +1257,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 return;
             }
 
-            // ✅ DIAGNOSTIC: Log zone breakdown before grouping
+            // ✅ DIAGNOSTIC: Log zone breakdown before grouping (INCLUDES CATEGORY BREAKDOWN FOR PIPES)
+            var validCategoryBreakdown = validZones
+                .Where(p => p.Zone != null)
+                .GroupBy(p => p.Zone.MepElementCategory ?? "Unknown")
+                .Select(g => $"{g.Key}={g.Count()}")
+                .ToList();
+            int validPipes = validZones.Count(p => p.Zone != null && string.Equals(p.Zone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase));
+            int validPipeIndividual = validZones.Count(p => p.Zone != null && string.Equals(p.Zone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase) && p.Zone.SleeveInstanceId > 0 && p.Zone.ClusterSleeveInstanceId <= 0);
+            
             if (!DeploymentConfiguration.DeploymentMode)
             {
                 int individualZones = validZones.Count(p => p.Zone.SleeveInstanceId > 0 && p.Zone.ClusterSleeveInstanceId <= 0);
                 int clusterZones = validZones.Count(p => p.Zone.ClusterSleeveInstanceId > 0);
                 int bothZones = validZones.Count(p => p.Zone.SleeveInstanceId > 0 && p.Zone.ClusterSleeveInstanceId > 0);
-                _logger($"[SQLite] InsertOrUpdateSleeveSnapshotsInternal: Valid zones breakdown - Individual={individualZones}, Cluster={clusterZones}, Both={bothZones}, Total={validZones.Count}");
+                _logger($"[SQLite] InsertOrUpdateSleeveSnapshotsInternal: Valid zones breakdown - Individual={individualZones}, Cluster={clusterZones}, Both={bothZones}, Total={validZones.Count}, Categories=[{string.Join(", ", validCategoryBreakdown)}], Pipes={validPipes}({validPipeIndividual} individual)");
             }
 
             var groups = validZones.GroupBy(p =>
@@ -1233,16 +1286,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 return ("sleeve", zone.SleeveInstanceId > 0 ? zone.SleeveInstanceId : -1);
             });
 
-            // ✅ DIAGNOSTIC: Log grouping results
-            if (!DeploymentConfiguration.DeploymentMode)
+            // ✅ DIAGNOSTIC: Log grouping results (INCLUDING PIPE-SPECIFIC TRACKING)
+            int groupsCount = groups.Count();
+            int clusterGroups = groups.Count((IGrouping<(string, int), (int ComboId, ClashZone Zone)> g) => string.Equals(g.Key.Item1, "cluster", StringComparison.OrdinalIgnoreCase));
+            int sleeveGroups = groups.Count((IGrouping<(string, int), (int ComboId, ClashZone Zone)> g) => string.Equals(g.Key.Item1, "sleeve", StringComparison.OrdinalIgnoreCase));
+            int skippedGroups = groups.Count((IGrouping<(string, int), (int ComboId, ClashZone Zone)> g) => g.Key.Item2 <= 0);
+            
+            // ✅ CRITICAL: Count pipes in each group type for diagnostic purposes
+            int pipeGroups = 0;
+            int pipeZonesInGroups = 0;
+            int pipeZonesSkipped = 0;
+            foreach (var group in groups)
             {
-                int groupsCount = groups.Count();
-                int clusterGroups = groups.Count((IGrouping<(string, int), (int ComboId, ClashZone Zone)> g) => string.Equals(g.Key.Item1, "cluster", StringComparison.OrdinalIgnoreCase));
-                int sleeveGroups = groups.Count((IGrouping<(string, int), (int ComboId, ClashZone Zone)> g) => string.Equals(g.Key.Item1, "sleeve", StringComparison.OrdinalIgnoreCase));
-                int skippedGroups = groups.Count((IGrouping<(string, int), (int ComboId, ClashZone Zone)> g) => g.Key.Item2 <= 0);
-                string logMsg = $"[SQLite] InsertOrUpdateSleeveSnapshotsInternal: Grouped into {groupsCount} groups (Cluster={clusterGroups}, Sleeve={sleeveGroups}, Skipped={skippedGroups})";
-                _logger(logMsg);
+                var zonesInGroup = group.Select(g => g.Zone).Where(z => z != null).ToList();
+                int pipesInGroup = zonesInGroup.Count(z => string.Equals(z.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase));
+                if (pipesInGroup > 0)
+                {
+                    pipeGroups++;
+                    pipeZonesInGroups += pipesInGroup;
+                }
+                if (group.Key.Item2 <= 0)
+                {
+                    pipeZonesSkipped += pipesInGroup;
+                }
             }
+            
+            string logMsg = $"[SQLite] InsertOrUpdateSleeveSnapshotsInternal: Grouped into {groupsCount} groups (Cluster={clusterGroups}, Sleeve={sleeveGroups}, Skipped={skippedGroups}), Pipes: {pipeGroups} groups with {pipeZonesInGroups} zones ({pipeZonesSkipped} skipped)";
+            _logger(logMsg);
 
             foreach (var group in groups)
             {
@@ -1250,21 +1320,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 bool isCluster = string.Equals(key.Item1, "cluster", StringComparison.OrdinalIgnoreCase);
                 int groupId = key.Item2;
 
-                // ✅ DIAGNOSTIC: Log every group before processing
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    var sampleZone = group.Select(g => g.Zone).FirstOrDefault(z => z != null);
-                    string sampleInfo = sampleZone != null 
-                        ? $"Sample: ZoneId={sampleZone.Id}, SleeveId={sampleZone.SleeveInstanceId}, ClusterId={sampleZone.ClusterSleeveInstanceId}, HasMepParams={sampleZone.MepParameterValues?.Count > 0}, HasHostParams={sampleZone.HostParameterValues?.Count > 0}"
-                        : "No valid zones in group";
-                    _logger($"[SQLite] InsertOrUpdateSleeveSnapshotsInternal: Processing group - isCluster={isCluster}, groupId={groupId}, zoneCount={group.Count()}, {sampleInfo}");
-                }
+                // ✅ DIAGNOSTIC: Log every group before processing (WITH PIPE-SPECIFIC INFO)
+                var sampleZone = group.Select(g => g.Zone).FirstOrDefault(z => z != null);
+                var zonesInGroup = group.Select(g => g.Zone).Where(z => z != null).ToList();
+                int pipesInGroup = zonesInGroup.Count(z => string.Equals(z.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase));
+                string sampleInfo = sampleZone != null 
+                    ? $"Sample: ZoneId={sampleZone.Id}, SleeveId={sampleZone.SleeveInstanceId}, ClusterId={sampleZone.ClusterSleeveInstanceId}, Category={sampleZone.MepElementCategory}, HasMepParams={sampleZone.MepParameterValues?.Count > 0}, HasHostParams={sampleZone.HostParameterValues?.Count > 0}"
+                    : "No valid zones in group";
+                _logger($"[SQLite] InsertOrUpdateSleeveSnapshotsInternal: Processing group - isCluster={isCluster}, groupId={groupId}, zoneCount={group.Count()}, Pipes={pipesInGroup}, {sampleInfo}");
 
                 if (groupId <= 0)
                 {
-                    if (!DeploymentConfiguration.DeploymentMode)
+                    // ✅ CRITICAL: Always log skipped groups, especially if they contain pipes
+                    int skippedPipes = zonesInGroup.Count(z => string.Equals(z.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase));
+                    _logger($"[SQLite] ⚠️⚠️⚠️ Skipping group with invalid groupId={groupId}, isCluster={isCluster}, zoneCount={group.Count()}, Pipes={skippedPipes}");
+                    if (skippedPipes > 0)
                     {
-                        _logger($"[SQLite] ⚠️ Skipping group with invalid groupId={groupId}, isCluster={isCluster}, zoneCount={group.Count()}");
+                        var pipeSamples = zonesInGroup
+                            .Where(z => string.Equals(z.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
+                            .Take(3)
+                            .Select(z => $"ZoneId={z.Id}, SleeveId={z.SleeveInstanceId}, ClusterId={z.ClusterSleeveInstanceId}")
+                            .ToList();
+                        _logger($"[SQLite] ⚠️⚠️⚠️ SKIPPED PIPES: {string.Join(", ", pipeSamples)}");
                     }
                     continue;
                 }
@@ -1692,6 +1769,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             foreach (var zone in zones)
             {
                 var bag = useHost ? zone.HostParameterValues : zone.MepParameterValues;
+                
+                // ✅ CRITICAL FIX FOR ALL CATEGORIES: Ensure Size parameter is included from MepElementSizeParameterValue
+                // This ensures snapshot table saves the exact text value from the Size parameter (e.g., "20 mmø", "200 mm dia symbol")
+                // MepElementSizeParameterValue is the raw Size parameter value read during refresh - different from MepElementFormattedSize which may be calculated
+                if (!useHost && !string.IsNullOrWhiteSpace(zone.MepElementSizeParameterValue))
+                {
+                    // Check if Size is already in MepParameterValues
+                    bool hasSizeInParams = bag != null && bag.Any(kv => 
+                        kv != null && IsSizeParameter(kv.Key?.Trim() ?? string.Empty));
+                    
+                    // If Size is missing from MepParameterValues, add it from MepElementSizeParameterValue
+                    if (!hasSizeInParams)
+                    {
+                        // Initialize list if needed
+                        if (bag == null)
+                        {
+                            bag = new List<Models.SerializableKeyValue>();
+                            zone.MepParameterValues = bag;
+                        }
+                        // Add Size parameter with text value from MepElementSizeParameterValue (raw Size parameter value)
+                        bag.Add(new Models.SerializableKeyValue { Key = "Size", Value = zone.MepElementSizeParameterValue });
+                    }
+                }
+                // ✅ FALLBACK: If MepElementSizeParameterValue is empty, fall back to MepElementFormattedSize
+                else if (!useHost && !string.IsNullOrWhiteSpace(zone.MepElementFormattedSize))
+                {
+                    bool hasSizeInParams = bag != null && bag.Any(kv => 
+                        kv != null && IsSizeParameter(kv.Key?.Trim() ?? string.Empty));
+                    
+                    if (!hasSizeInParams)
+                    {
+                        if (bag == null)
+                        {
+                            bag = new List<Models.SerializableKeyValue>();
+                            zone.MepParameterValues = bag;
+                        }
+                        bag.Add(new Models.SerializableKeyValue { Key = "Size", Value = zone.MepElementFormattedSize });
+                    }
+                }
+                
                 if (bag == null) continue;
 
                 foreach (var kv in bag)
@@ -3236,6 +3353,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             // ✅ PIPE DIAMETER COLUMNS: Load outer diameter and nominal diameter for pipes
             clashZone.MepElementOuterDiameter = GetNullableDouble(reader, "MepElementOuterDiameter") ?? 0.0;
             clashZone.MepElementNominalDiameter = GetNullableDouble(reader, "MepElementNominalDiameter") ?? 0.0;
+            // ✅ SIZE PARAMETER VALUE: Load Size parameter value as string for snapshot table and parameter transfer
+            clashZone.MepElementSizeParameterValue = GetNullableString(reader, "MepElementSizeParameterValue") ?? string.Empty;
             
             // ✅ DIRECT LOGGING: Always log MEP dimensions being loaded for duct accessories
             if (string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
@@ -4223,6 +4342,60 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 }
                 throw;
             }
+        }
+
+        /// <summary>
+        /// PUBLIC: Fetch MEP snapshot parameter values for provided sleeve element instance ids.
+        /// Lightweight helper for batch parameter transfer – does NOT modify clash zones.
+        /// Returns dictionary: SleeveInstanceId -> (ParameterName -> ParameterValue).
+        /// Safely returns empty dictionary on any failure.
+        /// </summary>
+        public Dictionary<int, Dictionary<string, string>> GetSnapshotMepParametersForSleeveIds(IEnumerable<int> sleeveInstanceIds)
+        {
+            var result = new Dictionary<int, Dictionary<string, string>>();
+            if (sleeveInstanceIds == null) return result;
+            var ids = sleeveInstanceIds.Where(i => i > 0).Distinct().ToList();
+            if (ids.Count == 0) return result;
+
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    var placeholders = string.Join(",", ids.Select((_, i) => $"@Id{i}"));
+                    cmd.CommandText = $@"SELECT SleeveInstanceId, MepParametersJson FROM SleeveSnapshots WHERE SleeveInstanceId IN ({placeholders})";
+                    for (int i = 0; i < ids.Count; i++)
+                    {
+                        cmd.Parameters.AddWithValue($"@Id{i}", ids[i]);
+                    }
+
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            var sleeveId = GetInt(reader, "SleeveInstanceId", -1);
+                            if (sleeveId <= 0) continue;
+                            var mepParamsJson = GetNullableString(reader, "MepParametersJson");
+                            var dict = DeserializeDictionary(mepParamsJson);
+                            result[sleeveId] = dict ?? new Dictionary<string, string>();
+                        }
+                    }
+                }
+
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[ClashZoneRepository] ✅ Loaded snapshot MEP parameters for {result.Count} sleeves (requested {ids.Count})");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Warning($"[ClashZoneRepository] ⚠️ Error loading snapshot parameters: {ex.Message}");
+                }
+                return new Dictionary<int, Dictionary<string, string>>();
+            }
+
+            return result;
         }
     }
 }

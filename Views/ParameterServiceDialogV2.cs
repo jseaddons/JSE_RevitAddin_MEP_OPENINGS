@@ -1349,6 +1349,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     };
 
                     // ExecuteTransferConfiguration creates its own transaction, so we don't need to wrap it
+                    // Note: 3-arg overload exists; UIDocument filtering not needed here
                     var result = transferService.ExecuteTransferConfiguration(_document, openings, config);
                     
                     progressForm.Close();

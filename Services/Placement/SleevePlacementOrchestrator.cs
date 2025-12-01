@@ -18,13 +18,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
     {
         private readonly IReadOnlyList<IPlacementStage> _stages;
         private readonly IOptimizationConfig _config;
+        private readonly Data.Repositories.IClashZoneRepository _clashZoneRepository; // optional
+        private readonly Services.Interfaces.IParameterBatchingService _parameterBatchingService; // optional
+        private readonly Services.Interfaces.IParameterSnapshotTransferService _snapshotTransferService; // optional
 
         public SleevePlacementOrchestrator(
             IReadOnlyList<IPlacementStage> stages,
-            IOptimizationConfig config)
+            IOptimizationConfig config,
+            Data.Repositories.IClashZoneRepository clashZoneRepository = null,
+            Services.Interfaces.IParameterBatchingService parameterBatchingService = null,
+            Services.Interfaces.IParameterSnapshotTransferService snapshotTransferService = null)
         {
             _stages = stages ?? throw new ArgumentNullException(nameof(stages));
             _config = config ?? throw new ArgumentNullException(nameof(config));
+            _clashZoneRepository = clashZoneRepository;
+            _parameterBatchingService = parameterBatchingService;
+            _snapshotTransferService = snapshotTransferService;
         }
 
         public OrchestratorResult Execute(Document doc, IReadOnlyList<ClashZone> zones, IPerformanceMonitor perf)
@@ -115,6 +124,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             var finalPlacedCount = currentContext.PlacedInstances.Count;
             var finalErrorCount = currentContext.Errors.Count + stageErrors.Count;
             var overallSuccess = finalPlacedCount > 0 || (finalErrorCount == 0 && zones.Count == 0);
+
+            // OPTIONAL SNAPSHOT PARAMETER TRANSFER (post-pipeline)
+            if (OptimizationFlags.EnableSnapshotParameterTransfer && OptimizationFlags.UseBatchedParameterWrites &&
+                _snapshotTransferService != null && _parameterBatchingService != null && _clashZoneRepository != null &&
+                currentContext.PlacedInstances.Any())
+            {
+                try
+                {
+                    var sleeveElementIds = currentContext.PlacedInstances.Select(fi => fi.Id).ToList();
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[SNAPSHOT-PARAMS] 🚀 Starting snapshot transfer for {sleeveElementIds.Count} placed sleeves (CorrelationId={context.CorrelationId})");
+
+                    var deferredCount = _snapshotTransferService.TransferSnapshotParameters(doc, sleeveElementIds, _clashZoneRepository, _parameterBatchingService);
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[SNAPSHOT-PARAMS] 📥 Deferred {deferredCount} parameters; regenerating document once...");
+
+                    // Single regeneration prior to batch flush
+                    doc.Regenerate();
+
+                    var flushed = _parameterBatchingService.FlushDeferredParameters(doc);
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[SNAPSHOT-PARAMS] ✅ Flush complete: wrote {flushed} parameters for {sleeveElementIds.Count} sleeves");
+                }
+                catch (Exception snapEx)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[SNAPSHOT-PARAMS] ⚠️ Snapshot transfer failed: {snapEx.Message}");
+                }
+            }
 
             if (!DeploymentConfiguration.DeploymentMode)
             {

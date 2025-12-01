@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
@@ -34,7 +35,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public ParameterTransferResult TransferFromReferenceElementsInTransaction(
             Document doc,
             List<ElementId> openingIds,
-            ParameterMapping mapping)
+            ParameterMapping mapping,
+            UIDocument uiDoc = null)
         {
             var result = new ParameterTransferResult();
 
@@ -613,7 +615,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             using (var t = new Transaction(doc, "Execute Parameter Transfer Configuration (wrapper)"))
             {
                 t.Start();
-                var r = ExecuteTransferConfigurationInTransaction(doc, openingIds, config);
+                var r = ExecuteTransferConfigurationInTransaction(doc, openingIds, config, null);
                 t.Commit();
                 
                                 if (!DeploymentConfiguration.DeploymentMode)
@@ -632,7 +634,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public ParameterTransferResult ExecuteTransferConfigurationInTransaction(
             Document doc,
             List<ElementId> openingIds,
-            ParameterTransferConfiguration config)
+            ParameterTransferConfiguration config,
+            UIDocument uiDoc = null)
         {
             var result = new ParameterTransferResult();
             var allResults = new List<ParameterTransferResult>();
@@ -740,7 +743,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     switch (mapping.TransferType)
                     {
                         case TransferType.ReferenceToOpening:
-                            mappingResult = TransferFromReferenceElementsInTransaction(doc, openingIds, mapping, snapshotIndex, successfullyTransferredSleeveIds);
+                            mappingResult = TransferFromReferenceElementsInTransaction(doc, openingIds, mapping, snapshotIndex, successfullyTransferredSleeveIds, uiDoc);
                             break;
                         case TransferType.HostToOpening:
                             mappingResult = TransferFromHostElementsInTransaction(doc, openingIds, mapping, snapshotIndex, successfullyTransferredSleeveIds);
@@ -813,10 +816,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             List<ElementId> openingIds,
             ParameterMapping mapping,
             SleeveSnapshotIndex snapshotIndex,
-            HashSet<int> successfullyTransferredSleeveIds = null)
+            HashSet<int> successfullyTransferredSleeveIds = null,
+            UIDocument uiDoc = null)
         {
             // Delegate to core with a resolver for MEP bags
-            return TransferFromElementsWithSnapshot(doc, openingIds, mapping, snapshotIndex, useHost:false, successfullyTransferredSleeveIds);
+            return TransferFromElementsWithSnapshot(doc, openingIds, mapping, snapshotIndex, useHost:false, successfullyTransferredSleeveIds, uiDoc);
         }
 
         public ParameterTransferResult TransferFromHostElementsInTransaction(
@@ -836,7 +840,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             ParameterMapping mapping,
             SleeveSnapshotIndex snapshotIndex,
             bool useHost,
-            HashSet<int> successfullyTransferredSleeveIds = null)
+            HashSet<int> successfullyTransferredSleeveIds = null,
+            UIDocument uiDoc = null)
         {
             var result = new ParameterTransferResult();
             var transferredCount = 0;
@@ -1583,16 +1588,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
-        private List<Element> GetMepElementsInOpening(Document doc, Element opening)
+        private List<Element> GetMepElementsInOpening(Document doc, Element opening, UIDocument uiDoc = null)
         {
             var mepElements = new List<Element>();
             
             try
             {
+                // ✅ SECTION BOX FILTERING: Get section box bounds if available
+                BoundingBoxXYZ sectionBoxBounds = null;
+                if (uiDoc != null && uiDoc.ActiveView is View3D view3D && view3D.IsSectionBoxActive)
+                {
+                    sectionBoxBounds = Helpers.SectionBoxHelper.GetSectionBoxBounds(view3D);
+                }
+                
                 // 1) MEPCurve sources (ducts, pipes, trays)
                 var curveCollector = new FilteredElementCollector(doc)
                     .OfClass(typeof(MEPCurve))
                     .WhereElementIsNotElementType();
+                
+                // ✅ SECTION BOX FILTER: Apply bounding box filter if section box is active
+                if (sectionBoxBounds != null)
+                {
+                    var outline = new Outline(sectionBoxBounds.Min, sectionBoxBounds.Max);
+                    var sectionBoxFilter = new BoundingBoxIntersectsFilter(outline);
+                    curveCollector = curveCollector.WherePasses(sectionBoxFilter);
+                }
+                
                 foreach (Element mepElement in curveCollector)
                 {
                     if (ElementsIntersect(opening, mepElement))
@@ -1614,8 +1635,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     var fiCollector = new FilteredElementCollector(doc)
                         .OfCategory(bic)
-                        .WhereElementIsNotElementType()
-                        .ToElements();
+                        .WhereElementIsNotElementType();
+                    
+                    // ✅ SECTION BOX FILTER: Apply bounding box filter if section box is active
+                    if (sectionBoxBounds != null)
+                    {
+                        var outline = new Outline(sectionBoxBounds.Min, sectionBoxBounds.Max);
+                        var sectionBoxFilter = new BoundingBoxIntersectsFilter(outline);
+                        fiCollector = fiCollector.WherePasses(sectionBoxFilter);
+                    }
+                    
                     foreach (Element e in fiCollector)
                     {
                         if (ElementsIntersect(opening, e))

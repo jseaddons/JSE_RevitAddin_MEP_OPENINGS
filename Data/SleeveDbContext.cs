@@ -544,6 +544,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                         _logger("[SQLite] ✅ Added MepElementOuterDiameter column to ClashZones (pipe outer diameter in feet)");
                     if (AddColumnIfMissing("ClashZones", "MepElementNominalDiameter", "REAL DEFAULT 0.0", transaction))
                         _logger("[SQLite] ✅ Added MepElementNominalDiameter column to ClashZones (pipe nominal diameter in feet)");
+                    // ✅ SIZE PARAMETER VALUE: Add string column for Size parameter value (e.g., "20 mmø", "200 mm dia symbol")
+                    // This is the exact text from the Size parameter, stored for transfer to sleeve MEP_Size parameter
+                    if (AddColumnIfMissing("ClashZones", "MepElementSizeParameterValue", "TEXT DEFAULT ''", transaction))
+                        _logger("[SQLite] ✅ Added MepElementSizeParameterValue column to ClashZones (Size parameter as string)");
                     AddColumnIfMissing("ClashZones", "SleeveFamilyName", "TEXT", transaction);
                     AddColumnIfMissing("ClashZones", "SleevePlacementActiveX", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "SleevePlacementActiveY", "REAL", transaction);

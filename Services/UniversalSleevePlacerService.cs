@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.Diagnostics;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
@@ -157,14 +158,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch { }
 
-            // Fallback: derive from stored formatted size (e.g., Ø200)
+            // Fallback: derive from stored formatted size (e.g., "Ø200" or "20 mmø")
+            // ⚠️ NOTE: This fallback should rarely be needed since MepElementOuterDiameter is always populated during refresh
+            // But we handle both formats for backward compatibility
             try
             {
                 var size = cz.MepElementFormattedSize ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(size))
+                    return 0.0;
+                
+                // Handle "Ø200" format (old calculated format)
                 if (size.StartsWith("Ø"))
                 {
                     var mm = double.Parse(size.TrimStart('Ø'));
                     return RevitUnitConversionService.Instance.ToInternalMillimeters(mm);
+                }
+                
+                // Handle "20 mmø" format (from Size parameter - extract number before "mm")
+                // This is a fallback only - primary path uses MepElementOuterDiameter
+                var mmMatch = Regex.Match(size, @"(\d+(?:\.\d+)?)\s*mm");
+                if (mmMatch.Success && double.TryParse(mmMatch.Groups[1].Value, out double mmValue))
+                {
+                    return RevitUnitConversionService.Instance.ToInternalMillimeters(mmValue);
                 }
             }
             catch { }
@@ -2001,10 +2016,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         // ✅ PERFORMANCE OPTIMIZATION: Defer bounding box retrieval until after batch regeneration
                                         // Store sleeve data for batch processing instead of immediate bounding box call
                                         placedSleeveIds.Add(sleeveInstance.Id);
-                                        placedSleeveData.Add((sleeveInstance, clashZone, finalWidth, finalHeight, finalDiameter));
-
-                                        // ✅ CRITICAL FIX: Set the actual Revit element ID immediately (needed for validation)
+                                        
+                                        // ✅ CRITICAL FIX: Set the actual Revit element ID immediately (needed for validation AND snapshot save)
                                         clashZone.SleeveInstanceId = sleeveInstance.Id.IntegerValue;
+                                        
+                                        // ✅ CRITICAL: Verify SleeveInstanceId is set before adding to placedSleeveData (for snapshot save)
+                                        if (clashZone.SleeveInstanceId <= 0)
+                                        {
+                                            SafeFileLogger.SafeAppendText("database_operations.log",
+                                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] ⚠️⚠️⚠️ WARNING: ClashZone {clashZone.Id} (Category={clashZone.MepElementCategory}) added to placedSleeveData with INVALID SleeveInstanceId={clashZone.SleeveInstanceId}\n");
+                                        }
+                                        
+                                        placedSleeveData.Add((sleeveInstance, clashZone, finalWidth, finalHeight, finalDiameter));
+                                        
+                                        // ✅ DIAGNOSTIC: Log pipe-specific placement for snapshot tracking
+                                        if (string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            SafeFileLogger.SafeAppendText("database_operations.log",
+                                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] ✅ PIPE PLACED: ZoneId={clashZone.Id}, SleeveId={clashZone.SleeveInstanceId}, added to placedSleeveData (Total pipes in list will be tracked later)\n");
+                                        }
 
                                         // ⚠️ NOTE: Bounding box will be retrieved after batch regeneration (see batch processing at end of method)
 
@@ -2217,6 +2247,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             else if (!DeploymentConfiguration.DeploymentMode)
                             {
                                 DebugLogger.Info($"[BATCH-PARAMS] ⚠️ SKIPPED FLUSH: UseBatchedParameterWrites={OptimizationFlags.UseBatchedParameterWrites}, _deferredParameters.Count={_deferredParameters?.Count ?? 0}");
+                            }
+
+                            // ✅ SNAPSHOT PARAMETER TRANSFER: Load snapshot MEP parameters from DB and apply to placed sleeves
+                            if (OptimizationFlags.EnableSnapshotParameterTransfer && placedSleeveIds.Count > 0)
+                            {
+                                try
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[SNAPSHOT-PARAMS] 🚀 Starting snapshot transfer for {placedSleeveIds.Count} placed sleeves");
+
+                                    using (var dbContext = new Data.SleeveDbContext(_doc))
+                                    {
+                                        var repository = new Data.Repositories.ClashZoneRepository(dbContext);
+                                        var batchingService = new Services.ParameterBatchingService();
+                                        var snapshotTransferService = new Services.ParameterSnapshotTransferService();
+
+                                        var deferredCount = snapshotTransferService.TransferSnapshotParameters(_doc, placedSleeveIds, repository, batchingService);
+                                        
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[SNAPSHOT-PARAMS] 📥 Deferred {deferredCount} snapshot parameters; flushing...");
+
+                                        var flushed = batchingService.FlushDeferredParameters(_doc);
+                                        
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[SNAPSHOT-PARAMS] ✅ Flush complete: wrote {flushed} snapshot parameters for {placedSleeveIds.Count} sleeves");
+                                    }
+                                }
+                                catch (Exception snapEx)
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Warning($"[SNAPSHOT-PARAMS] ⚠️ Snapshot transfer failed: {snapEx.Message}");
+                                }
                             }
 
                             // ✅ PERFORMANCE OPTIMIZATION: Batch bounding box retrieval after regeneration
@@ -2522,27 +2584,51 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         try
                                         {
                                             // Get FilterId from filter name
-                                            // ✅ CRITICAL FIX: Strip .xml extension if present (database stores filter name without extension)
-                                            string filterNameForLookup = _filterName;
-                                            if (!string.IsNullOrWhiteSpace(filterNameForLookup) && filterNameForLookup.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+                                            // ✅ CRITICAL FIX: Normalize filter name (removes .xml and category suffixes like _pipes)
+                                            // Database stores base filter name (e.g., "Plumbing") not category-specific (e.g., "Plumbing_pipes")
+                                            string filterNameForLookup = FilterNameHelper.NormalizeBaseName(_filterName);
+                                            
+                                            // ✅ CRITICAL FIX: Get category from placed zones (all zones should have same category for a single filter run)
+                                            string categoryForLookup = null;
+                                            var firstPlacedZone = placedSleeveData.FirstOrDefault(p => p.zone != null && p.zone.MepElementCategory != null);
+                                            if (firstPlacedZone.zone != null)
                                             {
-                                                filterNameForLookup = filterNameForLookup.Substring(0, filterNameForLookup.Length - 4);
+                                                categoryForLookup = firstPlacedZone.zone.MepElementCategory;
                                             }
                                             
                                             int filterId = -1;
                                             using (var filterCmd = dbContext.Connection.CreateCommand())
                                             {
-                                                filterCmd.CommandText = @"
+                                                // ✅ CRITICAL FIX: Include Category in WHERE clause (database stores FilterName + Category combination)
+                                                if (!string.IsNullOrWhiteSpace(categoryForLookup))
+                                                {
+                                                    filterCmd.CommandText = @"
+                                        SELECT FilterId FROM Filters 
+                                        WHERE FilterName = @FilterName AND Category = @Category
+                                        LIMIT 1";
+                                                    filterCmd.Parameters.AddWithValue("@FilterName", filterNameForLookup);
+                                                    filterCmd.Parameters.AddWithValue("@Category", categoryForLookup);
+                                                }
+                                                else
+                                                {
+                                                    // Fallback: try without category (for backward compatibility)
+                                                    filterCmd.CommandText = @"
                                         SELECT FilterId FROM Filters 
                                         WHERE FilterName = @FilterName 
                                         LIMIT 1";
-                                                filterCmd.Parameters.AddWithValue("@FilterName", filterNameForLookup);
+                                                    filterCmd.Parameters.AddWithValue("@FilterName", filterNameForLookup);
+                                                }
+                                                
                                                 var filterResult = filterCmd.ExecuteScalar();
                                                 if (filterResult != null)
                                                 {
                                                     filterId = Convert.ToInt32(filterResult);
                                                 }
                                             }
+                                            
+                                            // ✅ DIAGNOSTIC: Log lookup details
+                                            SafeFileLogger.SafeAppendText("database_operations.log",
+                                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] 🔍 FILTER LOOKUP: OriginalFilterName='{_filterName}', NormalizedFilterName='{filterNameForLookup}', Category='{categoryForLookup ?? "NULL"}', FilterId={filterId}\n");
 
                                             if (filterId > 0)
                                             {
@@ -2550,26 +2636,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                 int totalPlaced = placedSleeveData.Count;
                                                 int withZone = placedSleeveData.Count(p => p.zone != null);
                                                 int withSleeveId = placedSleeveData.Count(p => p.zone != null && p.zone.SleeveInstanceId > 0);
+                                                
+                                                // ✅ CRITICAL: Log category breakdown to identify if pipes are being filtered out
+                                                var categoryBreakdown = placedSleeveData
+                                                    .Where(p => p.zone != null)
+                                                    .GroupBy(p => p.zone.MepElementCategory ?? "Unknown")
+                                                    .Select(g => $"{g.Key}={g.Count()}({g.Count(p => p.zone.SleeveInstanceId > 0)} with SleeveId)")
+                                                    .ToList();
+                                                
+                                                // ✅ CRITICAL: Log pipe-specific details
+                                                int pipeCount = placedSleeveData.Count(p => p.zone != null && string.Equals(p.zone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase));
+                                                int pipeWithSleeveId = placedSleeveData.Count(p => p.zone != null && string.Equals(p.zone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase) && p.zone.SleeveInstanceId > 0);
+                                                var pipeSamples = placedSleeveData
+                                                    .Where(p => p.zone != null && string.Equals(p.zone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
+                                                    .Take(5)
+                                                    .Select(p => $"ZoneId={p.zone.Id}, SleeveId={p.zone.SleeveInstanceId}, Category={p.zone.MepElementCategory}")
+                                                    .ToList();
+                                                
                                                 var sampleSleeveIds = placedSleeveData
                                                     .Where(p => p.zone != null && p.zone.SleeveInstanceId > 0)
                                                     .Take(5)
-                                                    .Select(p => $"ZoneId={p.zone.Id}, SleeveId={p.zone.SleeveInstanceId}")
+                                                    .Select(p => $"ZoneId={p.zone.Id}, SleeveId={p.zone.SleeveInstanceId}, Category={p.zone.MepElementCategory}")
                                                     .ToList();
                                                 SafeFileLogger.SafeAppendText("database_operations.log",
-                                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] 🔍 DIAGNOSTIC: placedSleeveData - Total={totalPlaced}, WithZone={withZone}, WithSleeveId={withSleeveId}, Samples={string.Join(", ", sampleSleeveIds)}\n");
+                                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] 🔍 DIAGNOSTIC: placedSleeveData - Total={totalPlaced}, WithZone={withZone}, WithSleeveId={withSleeveId}, Categories=[{string.Join(", ", categoryBreakdown)}], Pipes={pipeCount}({pipeWithSleeveId} with SleeveId), PipeSamples=[{string.Join(", ", pipeSamples)}], AllSamples=[{string.Join(", ", sampleSleeveIds)}]\n");
                                                 
-                                                // Get placed zones with SleeveInstanceId > 0
+                                                // Get placed zones with SleeveInstanceId > 0 (INCLUDES ALL CATEGORIES - pipes, ducts, etc.)
                                                 var placedZones = placedSleeveData
                                                     .Where(p => p.zone != null && p.zone.SleeveInstanceId > 0)
                                                     .Select(p => p.zone)
                                                     .Distinct()
                                                     .ToList();
 
-                                                // ✅ DIAGNOSTIC: Log filtered results (using SafeFileLogger)
+                                                // ✅ DIAGNOSTIC: Log filtered results with category breakdown (using SafeFileLogger)
                                                 int individualCount = placedZones.Count(z => z.SleeveInstanceId > 0 && z.ClusterSleeveInstanceId <= 0);
                                                 int clusterCount = placedZones.Count(z => z.ClusterSleeveInstanceId > 0);
+                                                var placedCategoryBreakdown = placedZones
+                                                    .GroupBy(z => z.MepElementCategory ?? "Unknown")
+                                                    .Select(g => $"{g.Key}={g.Count()}")
+                                                    .ToList();
+                                                int placedPipes = placedZones.Count(z => string.Equals(z.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase));
                                                 SafeFileLogger.SafeAppendText("database_operations.log",
-                                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] 🔍 DIAGNOSTIC: placedZones after filter - Total={placedZones.Count}, Individual={individualCount}, Cluster={clusterCount}\n");
+                                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] 🔍 DIAGNOSTIC: placedZones after filter - Total={placedZones.Count}, Individual={individualCount}, Cluster={clusterCount}, Categories=[{string.Join(", ", placedCategoryBreakdown)}], Pipes={placedPipes}\n");
 
                                                 if (placedZones.Count > 0)
                                                 {
@@ -4344,6 +4452,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     if (p == null || p.IsReadOnly) return;
                     
+                    // ✅ CRITICAL FIX FOR MEP_Size: Check StorageType before setting
+                    // If parameter is Double type, we cannot set string value - log warning
+                    if (logicalName == "MEP_Size")
+                    {
+                        if (p.StorageType != StorageType.String)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("parameter_service_debug.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] ⚠️ CRITICAL: MEP_Size parameter is {p.StorageType} (expected String). Cannot set text value '{value}'. Parameter should be String type.\n");
+                                DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ MEP_Size parameter is {p.StorageType} (expected String). Cannot set text value '{value}'.");
+                            }
+                            return; // Don't try to set if it's not a String parameter
+                        }
+                    }
+                    
                     if (OptimizationFlags.UseBatchedParameterWrites)
                     {
                         if (!_deferredParameters.ContainsKey(sleeveInstance.Id))
@@ -4352,7 +4476,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         return;
                     }
                     
-                    p.Set(value);
+                    // ✅ CRITICAL FIX: Only set if parameter is String type (for MEP_Size)
+                    if (logicalName == "MEP_Size" && p.StorageType != StorageType.String)
+                    {
+                        return; // Already logged above
+                    }
+                    
+                    try
+                    {
+                        p.Set(value);
+                        
+                        if (!DeploymentConfiguration.DeploymentMode && logicalName == "MEP_Size")
+                        {
+                            SafeFileLogger.SafeAppendText("parameter_service_debug.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] ✅ Set MEP_Size = '{value}' (String) for sleeve {sleeveInstance.Id.IntegerValue}\n");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode && logicalName == "MEP_Size")
+                        {
+                            SafeFileLogger.SafeAppendText("parameter_service_debug.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] ❌ ERROR: Failed to set MEP_Size='{value}' on sleeve {sleeveInstance.Id.IntegerValue}: {ex.Message}\n");
+                        }
+                    }
                 }
                 
                 // ✅ BATCHING HELPER: Defer int parameter writes
@@ -4907,7 +5054,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var mepSizeParam = GetParam("MEP_Size");
                     if (mepSizeParam != null)
                     {
-                        TimedSetString(mepSizeParam, clashZone.MepElementFormattedSize, "MEP_Size");
+                        // ✅ SIZE PARAMETER VALUE: Use MepElementSizeParameterValue (raw Size parameter value) instead of MepElementFormattedSize
+                        // MepElementSizeParameterValue contains the exact text from the Size parameter (e.g., "20 mmø", "200 mm dia symbol")
+                        // Fallback to MepElementFormattedSize if MepElementSizeParameterValue is empty
+                        var sizeValue = !string.IsNullOrWhiteSpace(clashZone.MepElementSizeParameterValue) 
+                            ? clashZone.MepElementSizeParameterValue 
+                            : clashZone.MepElementFormattedSize;
+                        TimedSetString(mepSizeParam, sizeValue, "MEP_Size");
                     }
                     
                     var systemAbbrParam = GetParam("System_Abbreviation");
@@ -5037,6 +5190,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     if (p == null || p.IsReadOnly) return;
                     
+                    // ✅ CRITICAL FIX FOR MEP_Size: Check StorageType before setting
+                    // If parameter is Double type, we cannot set string value - log warning
+                    if (logicalName == "MEP_Size")
+                    {
+                        if (p.StorageType != StorageType.String)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("parameter_service_debug.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SetSleeveMetadata] ⚠️ CRITICAL: MEP_Size parameter is {p.StorageType} (expected String). Cannot set text value '{value}'. Parameter should be String type.\n");
+                                DebugLogger.Warning($"[SetSleeveMetadata] ⚠️ MEP_Size parameter is {p.StorageType} (expected String). Cannot set text value '{value}'.");
+                            }
+                            return; // Don't try to set if it's not a String parameter
+                        }
+                    }
+                    
                     if (OptimizationFlags.UseBatchedParameterWrites)
                     {
                         if (!_deferredParameters.ContainsKey(sleeveInstance.Id))
@@ -5045,7 +5214,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         return;
                     }
                     
-                    p.Set(value);
+                    // ✅ CRITICAL FIX: Only set if parameter is String type (for MEP_Size)
+                    if (logicalName == "MEP_Size" && p.StorageType != StorageType.String)
+                    {
+                        return; // Already logged above
+                    }
+                    
+                    try
+                    {
+                        p.Set(value);
+                        
+                        if (!DeploymentConfiguration.DeploymentMode && logicalName == "MEP_Size")
+                        {
+                            SafeFileLogger.SafeAppendText("parameter_service_debug.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SetSleeveMetadata] ✅ Set MEP_Size = '{value}' (String) for sleeve {sleeveInstance.Id.IntegerValue}\n");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode && logicalName == "MEP_Size")
+                        {
+                            SafeFileLogger.SafeAppendText("parameter_service_debug.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SetSleeveMetadata] ❌ ERROR: Failed to set MEP_Size='{value}' on sleeve {sleeveInstance.Id.IntegerValue}: {ex.Message}\n");
+                        }
+                    }
                 }
                 
                 // ✅ BATCHING HELPER: Defer int parameter writes

@@ -65,6 +65,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Log sleeve event
         /// </summary>
         void LogSleeveEvent(int clashZoneId, string eventType, string? payload = null);
+
+        /// <summary>
+        /// Retrieve MEP snapshot parameter key/value pairs for a list of sleeve element instance ids.
+        /// Returns a dictionary keyed by SleeveInstanceId with a dictionary of parameter name->value (string).
+        /// Empty dictionary returned if none found or input invalid. Host/cluster parameters are excluded for now.
+        /// </summary>
+        /// <param name="sleeveInstanceIds">Collection of Revit element ids for sleeves.</param>
+        /// <returns>Dictionary<int, Dictionary<string,string>></returns>
+        System.Collections.Generic.Dictionary<int, System.Collections.Generic.Dictionary<string, string>> GetSnapshotMepParametersForSleeveIds(System.Collections.Generic.IEnumerable<int> sleeveInstanceIds);
     }
 }
 

@@ -2101,8 +2101,63 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var (isInsulated, insulationThickness) = insulationDetector.GetInsulationInfo(mepElement, mepElementSize);
             var insulationType = isInsulated ? "Insulated" : "Normal";
             
+            // ✅ PIPE DIAMETER SCHEMA: Extract pipe diameters early (before formatted size calculation)
+            // This ensures pipeNominalDiameter is available for GetMepElementSizeString fallback
+            double pipeOuterDiameter = 0.0;
+            double pipeNominalDiameter = 0.0;
+            if (mepElement is Pipe pipe)
+            {
+                try
+                {
+                    var outerDiamParam = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_OUTER_DIAMETER);
+                    if (outerDiamParam != null)
+                    {
+                        pipeOuterDiameter = outerDiamParam.AsDouble();
+                    }
+                    
+                    var nominalDiamParam = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_DIAMETER_PARAM);
+                    if (nominalDiamParam != null)
+                    {
+                        pipeNominalDiameter = nominalDiamParam.AsDouble();
+                    }
+                    
+                    // ✅ DIAGNOSTIC LOGGING: Log pipe diameter extraction
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        var odMm = pipeOuterDiameter > 0 ? (pipeOuterDiameter * 304.8) : 0.0;
+                        var nomMm = pipeNominalDiameter > 0 ? (pipeNominalDiameter * 304.8) : 0.0;
+                        SafeFileLogger.SafeAppendText("Refresh_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] 🔍 PIPE DIAMETERS: Element {mepElement.Id.IntegerValue}, OuterDiameter={pipeOuterDiameter:F6}ft ({odMm:F1}mm), NominalDiameter={pipeNominalDiameter:F6}ft ({nomMm:F1}mm), Doc={mepElement.Document?.Title}\n");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("Refresh_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ⚠️ ERROR extracting pipe diameters for element {mepElement.Id.IntegerValue}: {ex.Message}\n");
+                    }
+                }
+            }
+            
             // Pre-calculate formatted size and system abbreviation to eliminate linked file access during placement
-            var formattedSize = FormatMepElementSize(mepElement, mepWidth, mepHeight, ductShape);
+            // ✅ OPTIMIZED FOR ALL CATEGORIES: Read Size parameter as string directly from element (element is already in memory during refresh)
+            // This gives us the exact value displayed in schedules (e.g., "20 mmø" for pipes, "600x300" for ducts) without any calculations
+            // Falls back to calculated format if Size parameter is not available
+            // NOTE: pipeNominalDiameter is only used as fallback for pipes - other categories use mepWidth/mepHeight
+            var formattedSize = GetMepElementSizeString(mepElement, mepWidth, mepHeight, ductShape, pipeNominalDiameter);
+            
+            // ✅ SIZE PARAMETER VALUE: Extract raw Size parameter value as string for snapshot table and parameter transfer
+            // This is the exact text from the Size parameter (e.g., "20 mmø", "200 mm dia symbol") - different from formattedSize which may be calculated
+            string sizeParameterValue = GetMepElementSizeParameterValue(mepElement);
+            
+            // ✅ DIAGNOSTIC LOGGING: Log the formatted size and size parameter values for debugging
+            if (!DeploymentConfiguration.DeploymentMode && mepElement != null)
+            {
+                var category = mepElement.Category?.Name ?? "Unknown";
+                SafeFileLogger.SafeAppendText("Refresh_debug.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ✅ MepElementFormattedSize for {category} (ID={mepElement.Id.IntegerValue}): '{formattedSize}', MepElementSizeParameterValue: '{sizeParameterValue}'\n");
+            }
             var systemAbbreviation = GetMepSystemAbbreviation(mepElement);
             
             // ✅ OOP METHOD: Use DamperConnectorService to detect connector info
@@ -2163,14 +2218,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 catch { }
             }
             
-            // ✅ PIPE DIAMETER SCHEMA: Extract pipe diameters before object initializer to avoid variable scope issues
-            double pipeOuterDiameter = 0.0;
-            double pipeNominalDiameter = 0.0;
-            if (mepElement is Pipe pipe)
-            {
-                pipeOuterDiameter = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_OUTER_DIAMETER)?.AsDouble() ?? 0.0;
-                pipeNominalDiameter = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_DIAMETER_PARAM)?.AsDouble() ?? 0.0;
-            }
+            // ✅ NOTE: pipeOuterDiameter and pipeNominalDiameter are already extracted above (before formatted size calculation)
             
             var clashZone = new ClashZone
             {
@@ -2236,7 +2284,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 MepElementLevelElevation = levelElevation,
                 MepElementUniqueId = mepElement?.UniqueId ?? string.Empty, // Pre-calculated unique ID for robust tracking
                 MepElementFormattedSize = formattedSize, // Pre-calculated formatted size (e.g., "600x300", "Ø200")
+                MepElementSizeParameterValue = sizeParameterValue, // ✅ SIZE PARAMETER VALUE: Raw Size parameter as string (e.g., "20 mmø", "200 mm dia symbol") for snapshot table and parameter transfer
                 MepElementSystemAbbreviation = systemAbbreviation, // Pre-calculated system abbreviation (e.g., "SA", "RA")
+                
+                // ✅ DIAGNOSTIC: Log ClashZone creation with pipe diameters and size parameter value
+                // This helps verify the values are being set correctly in the ClashZone object
+                // (Logging after object creation to ensure all values are set)
                 HasMepConnector = hasMepConnector, // ✅ OOP METHOD: Direct flag - whether damper has MEP connector (regardless of type)
                 DamperConnectorSide = connectorSide, // ✅ OOP METHOD: Pre-calculated connector side ("Left", "Right", "Top", "Bottom") if MEP connector found
                 IsMSFDDamper = hasMepConnector && !string.IsNullOrEmpty(connectorSide), // ⚠️ DEPRECATED: Kept for backward compatibility
@@ -2247,17 +2300,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // This ensures the UI button is enabled and placement processes these zones
                 // (Zones loaded from database during refresh also get this flag set in xml_cache_manager.cs)
                 ReadyForPlacement = true,
-                
-                DetectedAt = DateTime.Now,
-                LastUpdated = DateTime.Now
             };
+            
+            // ✅ DIAGNOSTIC: Log ClashZone creation with pipe diameters and size parameter value (after object creation)
+            if (!DeploymentConfiguration.DeploymentMode && string.Equals(mepCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
+            {
+                var odMm = clashZone.MepElementOuterDiameter > 0 ? (clashZone.MepElementOuterDiameter * 304.8) : 0.0;
+                var nomMm = clashZone.MepElementNominalDiameter > 0 ? (clashZone.MepElementNominalDiameter * 304.8) : 0.0;
+                SafeFileLogger.SafeAppendText("Refresh_debug.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ✅ ClashZone CREATED: ZoneId={clashZone.Id}, OuterDiameter={clashZone.MepElementOuterDiameter:F6}ft ({odMm:F1}mm), NominalDiameter={clashZone.MepElementNominalDiameter:F6}ft ({nomMm:F1}mm), SizeParameterValue='{clashZone.MepElementSizeParameterValue ?? "NULL"}', MepElementFormattedSize='{clashZone.MepElementFormattedSize ?? "NULL"}'\n");
+            }
             
             // ✅ CRITICAL: Log thickness values to verify they're being retrieved correctly from linked files
             // Log in millimeters for readability
             if (!DeploymentConfiguration.DeploymentMode)
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[CLASH-ZONE-CREATE] Thickness values for Structural Element {structuralElement?.Id?.IntegerValue ?? -1} (Document='{structuralElement?.Document?.Title ?? "null"}'): Structural={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.StructuralElementThickness):F1}mm, Wall={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.WallThickness):F1}mm, Framing={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.FramingThickness):F1}mm");
+                DebugLogger.Info($"[CLASH-ZONE-CREATE] Thickness values for Structural Element {structuralElement?.Id?.IntegerValue ?? -1} (Document='{structuralElement?.Document?.Title ?? "null"}'): Structural={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.StructuralElementThickness):F1}mm, Wall={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.WallThickness):F1}mm, Framing={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.FramingThickness):F1}mm");
             }
             
             // ✅ CRITICAL: Set deterministic GUID for stable identification across detection runs
@@ -3121,20 +3179,161 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
-        /// Format MEP element size as string (e.g., "600x300", "Ø200")
+        /// ✅ SIZE PARAMETER VALUE: Extract raw Size parameter value as string from MEP element
+        /// This is the exact text from the Size parameter (e.g., "20 mmø", "200 mm dia symbol")
+        /// Different from GetMepElementSizeString which may fall back to calculated format
         /// </summary>
-        private string FormatMepElementSize(Element mepElement, double width, double height, string shape)
+        /// <param name="mepElement">The MEP element</param>
+        /// <returns>Raw Size parameter value as string, or empty string if not available</returns>
+        private string GetMepElementSizeParameterValue(Element mepElement)
+        {
+            try
+            {
+                if (mepElement == null) return string.Empty;
+                
+                var sizeParam = mepElement.LookupParameter("Size");
+                if (sizeParam == null)
+                {
+                    // ✅ DIAGNOSTIC: Log if Size parameter not found
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("Refresh_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ⚠️ Size parameter not found for element {mepElement.Id.IntegerValue}, Category={mepElement.Category?.Name}, Doc={mepElement.Document?.Title}\n");
+                    }
+                    return string.Empty;
+                }
+                
+                // Try AsString() first (for string parameters)
+                if (sizeParam.StorageType == StorageType.String)
+                {
+                    var sizeString = sizeParam.AsString();
+                    if (!string.IsNullOrWhiteSpace(sizeString))
+                    {
+                        // ✅ DIAGNOSTIC: Log successful extraction
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("Refresh_debug.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ✅ Size parameter (String): Element {mepElement.Id.IntegerValue}, Value='{sizeString}', Doc={mepElement.Document?.Title}\n");
+                        }
+                        return sizeString.Trim();
+                    }
+                }
+                // Try AsValueString() as fallback (for numeric parameters that display as formatted strings)
+                else
+                {
+                    var sizeString = sizeParam.AsValueString();
+                    if (!string.IsNullOrWhiteSpace(sizeString))
+                    {
+                        // ✅ DIAGNOSTIC: Log successful extraction
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("Refresh_debug.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ✅ Size parameter (ValueString): Element {mepElement.Id.IntegerValue}, Value='{sizeString}', StorageType={sizeParam.StorageType}, Doc={mepElement.Document?.Title}\n");
+                        }
+                        return sizeString.Trim();
+                    }
+                }
+                
+                // ✅ DIAGNOSTIC: Log if parameter exists but value is empty
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("Refresh_debug.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ⚠️ Size parameter exists but value is empty for element {mepElement.Id.IntegerValue}, StorageType={sizeParam.StorageType}, Doc={mepElement.Document?.Title}\n");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("Refresh_debug.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ❌ ERROR reading Size parameter for element {mepElement?.Id.IntegerValue ?? -1}: {ex.Message}, Doc={mepElement?.Document?.Title}\n");
+                    DebugLogger.Warning($"[ClashZoneService] Error reading Size parameter value: {ex.Message}");
+                }
+            }
+            return string.Empty; // Return empty if Size parameter not available
+        }
+        
+        /// <summary>
+        /// Get MEP element size as string - OPTIMIZED FOR ALL CATEGORIES: Reads Size parameter directly for exact schedule display
+        /// Works for: Pipes, Ducts, Cable Trays, Duct Accessories, Pipe Accessories, etc.
+        /// </summary>
+        /// <param name="mepElement">The MEP element (already in memory during refresh - zero cost, no linked file access)</param>
+        /// <param name="width">Width in internal units (feet) - for pipes, this is outer diameter; for ducts/trays, this is width</param>
+        /// <param name="height">Height in internal units (feet) - for pipes, same as width (diameter); for ducts/trays, this is height</param>
+        /// <param name="shape">Shape of the element (Round/Circular or Rectangular)</param>
+        /// <param name="nominalDiameter">Nominal diameter for pipes only (in internal units) - used as fallback for pipes</param>
+        /// <returns>Size string matching schedule display (e.g., "20 mmø" for pipes, "600x300" for ducts, "400x200" for cable trays)</returns>
+        private string GetMepElementSizeString(Element mepElement, double width, double height, string shape, double nominalDiameter = 0)
+        {
+            try
+            {
+                // ✅ OPTIMIZED APPROACH FOR ALL CATEGORIES: Read Size parameter as string directly from element
+                // This gives us the exact value shown in schedules (e.g., "20 mmø" for pipes, "600x300" for ducts) without calculations
+                // Element is already in memory during refresh, so this is a zero-cost operation (no linked file access)
+                // Works for: Pipes, Ducts, Cable Trays, Duct Accessories, Pipe Accessories, Conduits, etc.
+                var sizeParam = mepElement?.LookupParameter("Size");
+                if (sizeParam != null)
+                {
+                    // Try AsString() first (for string parameters)
+                    if (sizeParam.StorageType == StorageType.String)
+                    {
+                        var sizeString = sizeParam.AsString();
+                        if (!string.IsNullOrWhiteSpace(sizeString))
+                        {
+                            // Return the actual Size parameter value (matches schedule display exactly)
+                            return sizeString.Trim();
+                        }
+                    }
+                    // Try AsValueString() as fallback (for numeric parameters that display as formatted strings)
+                    else
+                    {
+                        var sizeString = sizeParam.AsValueString();
+                        if (!string.IsNullOrWhiteSpace(sizeString))
+                        {
+                            // Return the formatted value string (e.g., "20 mmø" from a numeric parameter)
+                            return sizeString.Trim();
+                        }
+                    }
+                }
+                
+                // ✅ FALLBACK: If Size parameter not available or empty, calculate formatted size
+                // This maintains backward compatibility for cases where Size parameter doesn't exist
+                // Uses numeric values (width, height) stored in ClashZone for calculation
+                return FormatMepElementSize(mepElement, width, height, shape, nominalDiameter);
+            }
+            catch
+            {
+                // Fallback to calculated format on error
+                return FormatMepElementSize(mepElement, width, height, shape, nominalDiameter);
+            }
+        }
+        
+        /// <summary>
+        /// Format MEP element size as string (e.g., "600x300", "Ø200") - Used as fallback when Size parameter is not available
+        /// Works for ALL categories: Pipes, Ducts, Cable Trays, Duct Accessories, etc.
+        /// </summary>
+        /// <param name="mepElement">The MEP element</param>
+        /// <param name="width">Width in internal units (feet) - for pipes, this is outer diameter; for ducts/trays, this is width</param>
+        /// <param name="height">Height in internal units (feet) - for pipes, same as width (diameter); for ducts/trays, this is height</param>
+        /// <param name="shape">Shape of the element (Round/Circular or Rectangular)</param>
+        /// <param name="nominalDiameter">Optional nominal diameter for pipes only (in internal units) - used for Size parameter display instead of outer diameter</param>
+        /// <returns>Formatted size string (e.g., "Ø200" for round pipes, "600x300" for rectangular ducts/trays)</returns>
+        private string FormatMepElementSize(Element mepElement, double width, double height, string shape, double nominalDiameter = 0)
         {
             try
             {
                 if (shape == "Round" || shape == "Circular")
                 {
-                    // Convert from feet to mm and format as "Ø200"
-                    double diameterMm = RevitUnitConversionService.Instance.FromInternalMillimeters(width);
+                    // ✅ FALLBACK FOR ROUND ELEMENTS (Pipes, Round Ducts): Use nominal diameter for pipes, width for others
+                    // For pipes: Outer diameter is used for sleeve sizing, but Size parameter should show nominal diameter (e.g., "Ø20" not "Ø25")
+                    // For round ducts: Use width (which is the diameter)
+                    double diameterToUse = (nominalDiameter > 0) ? nominalDiameter : width;
+                    double diameterMm = RevitUnitConversionService.Instance.FromInternalMillimeters(diameterToUse);
                     return $"Ø{Math.Round(diameterMm, 0)}";
                 }
                 else
                 {
+                    // ✅ FALLBACK FOR RECTANGULAR ELEMENTS (Ducts, Cable Trays, Accessories): Format as "WxH"
                     // Convert from feet to mm and format as "600x300"
                     double widthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(width);
                     double heightMm = RevitUnitConversionService.Instance.FromInternalMillimeters(height);

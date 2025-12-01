@@ -246,6 +246,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// ✅ VERIFIED: Set to true (2025-11-24) - Individual sleeve parameter batching enabled
         /// </summary>
         public static bool UseBatchedParameterWrites { get; set; } = true;
+
+        /// <summary>
+        /// Enable snapshot parameter transfer from SQLite SleeveSnapshots into placed sleeve instances after pipeline placement.
+        /// When true: After placement pipeline finishes, retrieves snapshot MEP parameters and defers (or immediately writes) them.
+        /// When false: Skips snapshot transfer entirely.
+        /// Default: true (safe - transfer only uses existing parameters).
+        /// Location: Services/Placement/SleevePlacementOrchestrator.cs (post-pipeline section)
+        /// </summary>
+        public static bool EnableSnapshotParameterTransfer { get; set; } = true;
         
         #region Refactoring Flags (Phase 1 - Safe Rollout)
         

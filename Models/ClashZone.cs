@@ -498,6 +498,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public string MepElementFormattedSize { get; set; } = string.Empty;
         
         /// <summary>
+        /// ✅ SIZE PARAMETER VALUE: The exact text value from the "Size" parameter on the MEP element (e.g., "20 mmø", "200 mm dia symbol")
+        /// This is the raw parameter value as displayed in Revit schedules, stored as string for transfer to sleeve MEP_Size parameter
+        /// Different from MepElementFormattedSize which may be calculated/derived
+        /// Stored during refresh and saved in snapshot table JSON for parameter transfer
+        /// </summary>
+        public string MepElementSizeParameterValue { get; set; } = string.Empty;
+        
+        /// <summary>
         /// The system abbreviation of the MEP element (e.g., "SA", "RA", "EX")
         /// Pre-calculated during refresh to avoid linked file access during placement
         /// </summary>
