@@ -497,15 +497,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     else
                     {
-                        // Update existing zone with parameters from new zone
+                        // ✅ CRITICAL FIX: Update existing zone with ALL fresh data from new zone (current refresh is source of truth)
+                        // This ensures that fresh data from current refresh (diameters, size parameter, dimensions) always overwrites old database values
+                        // The whole app reliability is based on one source of truth: what is found in current refresh
                         var existingZone = allZones.FirstOrDefault(z => z.Id == newZone.Id);
-                        if (existingZone != null && newZone.MepParameterValues != null && newZone.MepParameterValues.Count > 0)
+                        if (existingZone != null)
                         {
-                            existingZone.MepParameterValues = newZone.MepParameterValues;
-                        }
-                        if (existingZone != null && newZone.HostParameterValues != null && newZone.HostParameterValues.Count > 0)
-                        {
-                            existingZone.HostParameterValues = newZone.HostParameterValues;
+                            // ✅ CRITICAL: Copy ALL fresh MEP element data from new zone (current refresh is source of truth)
+                            // This includes: diameters, size parameter value, dimensions, formatted size, etc.
+                            existingZone.MepElementWidth = newZone.MepElementWidth;
+                            existingZone.MepElementHeight = newZone.MepElementHeight;
+                            existingZone.MepElementOuterDiameter = newZone.MepElementOuterDiameter; // ✅ CRITICAL: Fresh outer diameter from current refresh
+                            existingZone.MepElementNominalDiameter = newZone.MepElementNominalDiameter; // ✅ CRITICAL: Fresh nominal diameter from current refresh
+                            existingZone.MepElementSizeParameterValue = newZone.MepElementSizeParameterValue; // ✅ CRITICAL: Fresh Size parameter value from current refresh
+                            existingZone.MepElementFormattedSize = newZone.MepElementFormattedSize;
+                            existingZone.MepElementSystemAbbreviation = newZone.MepElementSystemAbbreviation;
+                            existingZone.MepElementUniqueId = newZone.MepElementUniqueId;
+                            existingZone.IsInsulated = newZone.IsInsulated;
+                            existingZone.InsulationThickness = newZone.InsulationThickness;
+                            existingZone.MepElementSizeData = newZone.MepElementSizeData;
+                            existingZone.DuctShape = newZone.DuctShape;
+                            existingZone.InsulationType = newZone.InsulationType;
+                            
+                            // Update parameters
+                            if (newZone.MepParameterValues != null && newZone.MepParameterValues.Count > 0)
+                            {
+                                existingZone.MepParameterValues = newZone.MepParameterValues;
+                            }
+                            if (newZone.HostParameterValues != null && newZone.HostParameterValues.Count > 0)
+                            {
+                                existingZone.HostParameterValues = newZone.HostParameterValues;
+                            }
+                            
+                            // ✅ DIAGNOSTIC: Log the update to verify fresh values are being applied
+                            if (!DeploymentConfiguration.DeploymentMode && string.Equals(newZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
+                            {
+                                var odMm = newZone.MepElementOuterDiameter > 0 ? (newZone.MepElementOuterDiameter * 304.8) : 0.0;
+                                var nomMm = newZone.MepElementNominalDiameter > 0 ? (newZone.MepElementNominalDiameter * 304.8) : 0.0;
+                                SafeFileLogger.SafeAppendText("save_db_diagnostic.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [REFRESH-MERGE] ✅ UPDATED existing zone {newZone.Id} with fresh data: OuterDiameter={newZone.MepElementOuterDiameter:F6}ft ({odMm:F1}mm), NominalDiameter={newZone.MepElementNominalDiameter:F6}ft ({nomMm:F1}mm), SizeParameterValue='{newZone.MepElementSizeParameterValue ?? "NULL"}'\n");
+                            }
                         }
                     }
                 }

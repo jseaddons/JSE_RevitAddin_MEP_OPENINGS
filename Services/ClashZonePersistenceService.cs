@@ -254,6 +254,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", 
                             $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] 🔄 Attempting to save {validZones.Count} zones to SQLite for category '{category}', filter '{baseFilterName}'\n");
                         
+                        // ✅ DIAGNOSTIC: Log ClashZone values BEFORE saving to database
+                        if (!DeploymentConfiguration.DeploymentMode && string.Equals(category, "Pipes", StringComparison.OrdinalIgnoreCase))
+                        {
+                            foreach (var zone in validZones.Take(5)) // Log first 5 pipes
+                            {
+                                var odMm = zone.MepElementOuterDiameter > 0 ? (zone.MepElementOuterDiameter * 304.8) : 0.0;
+                                var nomMm = zone.MepElementNominalDiameter > 0 ? (zone.MepElementNominalDiameter * 304.8) : 0.0;
+                                SafeFileLogger.SafeAppendText("save_db_diagnostic.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZonePersistence] 🔍 BEFORE SAVE: Zone {zone.Id}, OuterDiameter={zone.MepElementOuterDiameter:F6}ft ({odMm:F1}mm), NominalDiameter={zone.MepElementNominalDiameter:F6}ft ({nomMm:F1}mm), SizeParameterValue='{zone.MepElementSizeParameterValue ?? "NULL"}', MepElementFormattedSize='{zone.MepElementFormattedSize ?? "NULL"}'\n");
+                            }
+                        }
+                        
                         _sqliteRepository.InsertOrUpdateClashZones(validZones, baseFilterName, category);
                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] ✅ PHASE 2: Saved to SQLite (PRIMARY): {validZones.Count} zones for '{category}'");

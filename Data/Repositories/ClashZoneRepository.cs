@@ -1770,41 +1770,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             {
                 var bag = useHost ? zone.HostParameterValues : zone.MepParameterValues;
                 
-                // ✅ CRITICAL FIX FOR ALL CATEGORIES: Ensure Size parameter is included from MepElementSizeParameterValue
+                // ✅ CRITICAL FIX FOR ALL CATEGORIES: Ensure Size parameter uses MepElementSizeParameterValue (current refresh is source of truth)
                 // This ensures snapshot table saves the exact text value from the Size parameter (e.g., "20 mmø", "200 mm dia symbol")
                 // MepElementSizeParameterValue is the raw Size parameter value read during refresh - different from MepElementFormattedSize which may be calculated
-                if (!useHost && !string.IsNullOrWhiteSpace(zone.MepElementSizeParameterValue))
+                // ✅ CRITICAL: Always use fresh value from current refresh, even if Size already exists in MepParameterValues with old value
+                if (!useHost)
                 {
-                    // Check if Size is already in MepParameterValues
-                    bool hasSizeInParams = bag != null && bag.Any(kv => 
-                        kv != null && IsSizeParameter(kv.Key?.Trim() ?? string.Empty));
-                    
-                    // If Size is missing from MepParameterValues, add it from MepElementSizeParameterValue
-                    if (!hasSizeInParams)
+                    // Initialize list if needed
+                    if (bag == null)
                     {
-                        // Initialize list if needed
-                        if (bag == null)
-                        {
-                            bag = new List<Models.SerializableKeyValue>();
-                            zone.MepParameterValues = bag;
-                        }
-                        // Add Size parameter with text value from MepElementSizeParameterValue (raw Size parameter value)
+                        bag = new List<Models.SerializableKeyValue>();
+                        zone.MepParameterValues = bag;
+                    }
+                    
+                    // ✅ CRITICAL: Remove existing Size parameter if it exists (to replace with fresh value from current refresh)
+                    // This ensures old values (like "0.082") are replaced with fresh values (like "20 mmø") from current refresh
+                    bag.RemoveAll(kv => kv != null && IsSizeParameter(kv.Key?.Trim() ?? string.Empty));
+                    
+                    // ✅ PRIORITY 1: Use MepElementSizeParameterValue (raw Size parameter value from current refresh)
+                    if (!string.IsNullOrWhiteSpace(zone.MepElementSizeParameterValue))
+                    {
                         bag.Add(new Models.SerializableKeyValue { Key = "Size", Value = zone.MepElementSizeParameterValue });
                     }
-                }
-                // ✅ FALLBACK: If MepElementSizeParameterValue is empty, fall back to MepElementFormattedSize
-                else if (!useHost && !string.IsNullOrWhiteSpace(zone.MepElementFormattedSize))
-                {
-                    bool hasSizeInParams = bag != null && bag.Any(kv => 
-                        kv != null && IsSizeParameter(kv.Key?.Trim() ?? string.Empty));
-                    
-                    if (!hasSizeInParams)
+                    // ✅ PRIORITY 2: Fallback to MepElementFormattedSize if MepElementSizeParameterValue is empty
+                    else if (!string.IsNullOrWhiteSpace(zone.MepElementFormattedSize))
                     {
-                        if (bag == null)
-                        {
-                            bag = new List<Models.SerializableKeyValue>();
-                            zone.MepParameterValues = bag;
-                        }
                         bag.Add(new Models.SerializableKeyValue { Key = "Size", Value = zone.MepElementFormattedSize });
                     }
                 }
