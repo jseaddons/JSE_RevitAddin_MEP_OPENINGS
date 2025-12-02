@@ -4712,10 +4712,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         // ⚠️ FLOOR FIX: For duct sleeves on floors, rotate orientation by 90 degrees and swap width/height
         // NOTE: Cable trays should NOT have width/height swapped - they maintain their original orientation
+        // NOTE: Dampers are NOT allowed on floors - only Ducts, Pipes, and Cable Trays
         bool isFloorHost = string.Equals(clashZone.StructuralElementType, "Floor", StringComparison.OrdinalIgnoreCase) ||
                           string.Equals(clashZone.StructuralElementType, "Floors", StringComparison.OrdinalIgnoreCase);
         bool isDuct = string.Equals(clashZone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase) ||
-                      string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase);
+                  string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase);
         bool isCableTray = string.Equals(clashZone.MepElementCategory, "Cable Trays", StringComparison.OrdinalIgnoreCase) ||
                           string.Equals(clashZone.MepElementCategory, "Cable Tray Fittings", StringComparison.OrdinalIgnoreCase);
 
@@ -4771,31 +4772,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         bool isWallHost = clashZone.StructuralElementType == "Wall" || clashZone.StructuralElementType == "Walls";
         bool isFramingHost = string.Equals(clashZone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
         
-        // ⚠️ BUG FIX: For structural framing, swap width and depth based on orientation
-        if (isFramingHost && !treatAsCircular)
-        {
-            // Get host orientation from ClashZone
-            string hostOrientation = clashZone.HostOrientation ?? "";
-            
-            if (hostOrientation == "X")
-            {
-                // X-framing: swap width and depth
-                double tempWidth = roundedWidth;
-                roundedWidth = roundedHeight;  // Use height as width
-                roundedHeight = tempWidth;     // Use original width as height
-                                if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Info($"[UniversalSleevePlacer] X-FRAMING SWAP: Width={RevitUnitConversionService.Instance.FromInternalMillimeters(roundedWidth):F1}mm, Height={RevitUnitConversionService.Instance.FromInternalMillimeters(roundedHeight):F1}mm");
-            }
-            else if (hostOrientation == "Y")
-            {
-                // Y-framing: swap width and depth
-                double tempWidth = roundedWidth;
-                roundedWidth = roundedHeight;  // Use height as width
-                roundedHeight = tempWidth;     // Use original width as height
-                                if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Info($"[UniversalSleevePlacer] Y-FRAMING SWAP: Width={RevitUnitConversionService.Instance.FromInternalMillimeters(roundedWidth):F1}mm, Height={RevitUnitConversionService.Instance.FromInternalMillimeters(roundedHeight):F1}mm");
-            }
-        }
+        // ✅ REMOVED: Framing swap logic - inconsistent with cluster logic and wall logic
+        // Cluster placement uses RCS (Relative Coordinate System) which handles alignment correctly without swap
+        // Walls also don't need swap - same data flow, same dimensions
+        // Framing should follow the same pattern: no swap needed
         
                 var depthParam = GetParam("Depth");
                 var wallWidthParam = GetParam("Wall Width");

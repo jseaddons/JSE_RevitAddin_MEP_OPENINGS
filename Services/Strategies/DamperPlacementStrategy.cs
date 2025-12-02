@@ -159,8 +159,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                 }
                 
                 // ✅ OOP METHOD: Log connector detection results (connector-based logic, not damper type)
-                DebugLogger.Info($"[DamperStrategy] 🔍 CONNECTOR DETECTION: HasMepConnector={clashZone.HasMepConnector}, DamperConnectorSide='{clashZone.DamperConnectorSide}'");
-                SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-CONNECTOR-DETECTION] Zone {clashZone.Id}: HasMepConnector={clashZone.HasMepConnector}, DamperConnectorSide='{clashZone.DamperConnectorSide}'\n");
+                // ✅ NEW: DamperConnectorSide now returns world coordinate directions: "+X", "-X", "+Y", "-Y", "+Z", "-Z"
+                DebugLogger.Info($"[DamperStrategy] 🔍 CONNECTOR DETECTION: HasMepConnector={clashZone.HasMepConnector}, DamperConnectorSide='{clashZone.DamperConnectorSide}' (World Coordinate Direction)");
+                SafeFileLogger.SafeAppendText("damper_placement_trace.log", 
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-CONNECTOR-DETECTION] Zone {clashZone.Id}: " +
+                    $"HasMepConnector={clashZone.HasMepConnector}, " +
+                    $"DamperConnectorSide='{clashZone.DamperConnectorSide}' (World Coordinate Direction), " +
+                    $"HostOrientation='{clashZone.HostOrientation ?? "Unknown"}', " +
+                    $"StructuralElementType='{clashZone.StructuralElementType ?? "Unknown"}'\n");
                 
                 DebugLogger.Info($"[DamperStrategy] Clearances from conditions: MEP={mepClearanceMm}mm, Other={otherClearanceMm}mm");
                 SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-CLEARANCE] Zone {clashZone.Id}: MEP={mepClearanceMm}mm, Other={otherClearanceMm}mm\n");
@@ -193,41 +199,234 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                     bool isXWall = string.Equals(hostOrientation, "X", StringComparison.OrdinalIgnoreCase);
                     bool isYWall = string.Equals(hostOrientation, "Y", StringComparison.OrdinalIgnoreCase);
                     
+                    // ✅ NEW: Get connector direction (world coordinate: "+X", "-X", "+Y", "-Y", "+Z", "-Z")
+                    string connectorDir = clashZone.DamperConnectorSide ?? string.Empty;
+                    
                     // Only apply offset for walls (not floors/framing)
                     bool isWallHost = string.Equals(clashZone.StructuralElementType, "Wall", StringComparison.OrdinalIgnoreCase) ||
                                       string.Equals(clashZone.StructuralElementType, "Walls", StringComparison.OrdinalIgnoreCase);
                     
+                    // ✅ WALL-ONLY FIX: If connector is vertical (+Z/-Z), the damper's family Width/Height are rotated
+                    // relative to the wall axes. Swap the base damperWidth/damperHeight before adding clearances.
+                    if (isWallHost && (connectorDir == "+Z" || connectorDir == "-Z"))
+                    {
+                        double originalWidth = damperWidth;
+                        double originalHeight = damperHeight;
+                        damperWidth = originalHeight;
+                        damperHeight = originalWidth;
+                        DebugLogger.Info($"[DamperStrategy] WALL Z-CONNECTOR: Swapped base dimensions for vertical connector: Width {originalWidth:F6}ft→{damperWidth:F6}ft, Height {originalHeight:F6}ft→{damperHeight:F6}ft");
+                        SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-Z-SWAP] Zone {clashZone.Id}: WALL host, vertical connector ({connectorDir}) → swapped base dims W {originalWidth*304.8:F1}mm→{damperWidth*304.8:F1}mm, H {originalHeight*304.8:F1}mm→{damperHeight*304.8:F1}mm\n");
+                    }
+
                     if (isWallHost && offsetAmount > 0.0001) // Only if there's a significant offset
                     {
-                        // Determine offset direction based on connector side
-                        // For Left/Right connectors: offset along wall axis
-                        // For Top/Bottom connectors: offset along wall axis
-                        // X-wall: offset along X-axis | Y-wall: offset along Y-axis
-                        bool offsetPositive = clashZone.DamperConnectorSide == "Right" || clashZone.DamperConnectorSide == "Top";
+                        // ✅ CRITICAL FIX: Offset should ONLY be along wall axis (width direction), NOT perpendicular to wall
+                        // For X-wall: width is along X-axis, so offset only in X direction
+                        // For Y-wall: width is along Y-axis, so offset only in Y direction
+                        // Z direction (vertical) is always valid for offset
+                        // Perpendicular directions (through wall depth) should NOT cause offset
                         
-                        if (isXWall)
+                        switch (connectorDir)
                         {
-                            // X-wall: offset along X-axis (wall runs along X-axis)
-                            offsetVector = offsetPositive 
-                                ? new XYZ(offsetAmount, 0, 0) 
-                                : new XYZ(-offsetAmount, 0, 0);
+                            case "+X":
+                                // +X direction: Map to wall width axis based on wall orientation
+                                if (isXWall)
+                                {
+                                    // X-wall: width is along X-axis, so +X = right side → offset in +X direction
+                                    offsetVector = new XYZ(offsetAmount, 0, 0);
+                                }
+                                else if (isYWall)
+                                {
+                                    // Y-wall: width is along Y-axis, +X connector maps to "right" side → offset in +Y direction
+                                    offsetVector = new XYZ(0, offsetAmount, 0);
+                                }
+                                break;
+                            
+                            case "-X":
+                                // -X direction: Map to wall width axis based on wall orientation
+                                if (isXWall)
+                                {
+                                    // X-wall: width is along X-axis, so -X = left side → offset in -X direction
+                                    offsetVector = new XYZ(-offsetAmount, 0, 0);
+                                }
+                                else if (isYWall)
+                                {
+                                    // Y-wall: width is along Y-axis, -X connector maps to "left" side → offset in -Y direction
+                                    offsetVector = new XYZ(0, -offsetAmount, 0);
+                                }
+                                break;
+                            
+                            case "+Y":
+                                // +Y direction: Map to wall width axis based on wall orientation
+                                if (isYWall)
+                                {
+                                    // Y-wall: width is along Y-axis, so +Y = right side → offset in +Y direction
+                                    offsetVector = new XYZ(0, offsetAmount, 0);
+                                }
+                                else if (isXWall)
+                                {
+                                    // X-wall: width is along X-axis, +Y connector maps to "right" side → offset in +X direction
+                                    offsetVector = new XYZ(offsetAmount, 0, 0);
+                                }
+                                break;
+                            
+                            case "-Y":
+                                // -Y direction: Map to wall width axis based on wall orientation
+                                if (isYWall)
+                                {
+                                    // Y-wall: width is along Y-axis, so -Y = left side → offset in -Y direction
+                                    offsetVector = new XYZ(0, -offsetAmount, 0);
+                                }
+                                else if (isXWall)
+                                {
+                                    // X-wall: width is along X-axis, -Y connector maps to "left" side → offset in -X direction
+                                    offsetVector = new XYZ(-offsetAmount, 0, 0);
+                                }
+                                break;
+                            
+                            case "+Z":
+                                // +Z direction: vertical offset (always valid, not affected by wall orientation)
+                                offsetVector = new XYZ(0, 0, offsetAmount);
+                                break;
+                            
+                            case "-Z":
+                                // -Z direction: vertical offset (always valid, not affected by wall orientation)
+                                offsetVector = new XYZ(0, 0, -offsetAmount);
+                                break;
+                            
+                            default:
+                                // Fallback for old format ("Left", "Right", etc.) - keep for backward compatibility during transition
+                                bool isLeftRight = connectorDir == "Left" || connectorDir == "Right";
+                                bool isTopBottom = connectorDir == "Top" || connectorDir == "Bottom";
+                                bool offsetPositive = connectorDir == "Right" || connectorDir == "Top";
+                                
+                                if (isLeftRight)
+                                {
+                                    // Left/Right: offset along wall width axis
+                                    if (isXWall)
+                                        offsetVector = offsetPositive ? new XYZ(offsetAmount, 0, 0) : new XYZ(-offsetAmount, 0, 0);
+                                    else if (isYWall)
+                                        offsetVector = offsetPositive ? new XYZ(0, offsetAmount, 0) : new XYZ(0, -offsetAmount, 0);
+                                }
+                                else if (isTopBottom)
+                                {
+                                    // Top/Bottom: vertical offset (always valid)
+                                    offsetVector = offsetPositive ? new XYZ(0, 0, offsetAmount) : new XYZ(0, 0, -offsetAmount);
+                                }
+                                break;
                         }
-                        else if (isYWall)
-                        {
-                            // Y-wall: offset along Y-axis (wall runs along Y-axis)
-                            offsetVector = offsetPositive 
-                                ? new XYZ(0, offsetAmount, 0) 
-                                : new XYZ(0, -offsetAmount, 0);
-                        }
+                        
+                        DebugLogger.Info($"[DamperStrategy] MSFD - Offset calculation: ConnectorDirection='{connectorDir}', HostOrientation='{hostOrientation}', IsXWall={isXWall}, IsYWall={isYWall}, IsWallHost={isWallHost}, OffsetVector=({offsetVector.X*304.8:F1}, {offsetVector.Y*304.8:F1}, {offsetVector.Z*304.8:F1})mm");
+                        SafeFileLogger.SafeAppendText("damper_placement_trace.log", 
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-OFFSET-CALC] Zone {clashZone.Id}: " +
+                            $"ConnectorDirection='{connectorDir}', " +
+                            $"HostOrientation='{hostOrientation}', " +
+                            $"OffsetAmount={offsetAmount*304.8:F1}mm, " +
+                            $"OffsetVector=({offsetVector.X*304.8:F1}, {offsetVector.Y*304.8:F1}, {offsetVector.Z*304.8:F1})mm\n");
                     }
                     
-                    switch (clashZone.DamperConnectorSide)
+                    // ✅ NEW: Map world coordinate directions to clearance sides (wall-aware)
+                    // Direct mapping: connector direction in WCS → MEP clearance on that side
+                    // For X/Y directions: depends on wall orientation (which axis is width)
+                    // For Z direction: always affects height (top/bottom)
+                    switch (connectorDir)
                     {
-                        case "Left":
-                            left = mepSideClearance;
+                        case "+X":
+                            // +X direction: MEP clearance on +X side
+                            if (isXWall)
+                            {
+                                // X-wall: width is along X-axis, so +X = right side of width
+                                right = mepSideClearance;
+                            }
+                            else if (isYWall)
+                            {
+                                // Y-wall: +X is through-wall (depth), but width is along Y-axis
+                                // For Y-wall, +X direction means right side of width (perpendicular to wall)
+                                right = mepSideClearance;
+                            }
+                            else
+                            {
+                                // Fallback: assume right side
+                                right = mepSideClearance;
+                            }
                             break;
+                        
+                        case "-X":
+                            // -X direction: MEP clearance on -X side
+                            if (isXWall)
+                            {
+                                // X-wall: width is along X-axis, so -X = left side of width
+                                left = mepSideClearance;
+                            }
+                            else if (isYWall)
+                            {
+                                // Y-wall: -X is through-wall (depth), but width is along Y-axis
+                                // For Y-wall, -X direction means left side of width (perpendicular to wall)
+                                left = mepSideClearance;
+                            }
+                            else
+                            {
+                                // Fallback: assume left side
+                                left = mepSideClearance;
+                            }
+                            break;
+                        
+                        case "+Y":
+                            // +Y direction: MEP clearance on +Y side
+                            if (isYWall)
+                            {
+                                // Y-wall: width is along Y-axis, so +Y = right side of width
+                                right = mepSideClearance;
+                            }
+                            else if (isXWall)
+                            {
+                                // X-wall: +Y is through-wall (depth), but width is along X-axis
+                                // For X-wall, +Y direction means right side of width (perpendicular to wall)
+                                right = mepSideClearance;
+                            }
+                            else
+                            {
+                                // Fallback: assume right side
+                                right = mepSideClearance;
+                            }
+                            break;
+                        
+                        case "-Y":
+                            // -Y direction: MEP clearance on -Y side
+                            if (isYWall)
+                            {
+                                // Y-wall: width is along Y-axis, so -Y = left side of width
+                                left = mepSideClearance;
+                            }
+                            else if (isXWall)
+                            {
+                                // X-wall: -Y is through-wall (depth), but width is along X-axis
+                                // For X-wall, -Y direction means left side of width (perpendicular to wall)
+                                left = mepSideClearance;
+                            }
+                            else
+                            {
+                                // Fallback: assume left side
+                            left = mepSideClearance;
+                            }
+                            break;
+                        
+                        case "+Z":
+                            // +Z direction: MEP clearance on top (vertical, always affects height)
+                            top = mepSideClearance;
+                            break;
+                        
+                        case "-Z":
+                            // -Z direction: MEP clearance on bottom (vertical, always affects height)
+                            bottom = mepSideClearance;
+                            break;
+                        
+                        // Backward compatibility: old format ("Left", "Right", "Top", "Bottom")
                         case "Right":
                             right = mepSideClearance;
+                            break;
+                        case "Left":
+                            left = mepSideClearance;
                             break;
                         case "Top":
                             top = mepSideClearance;
@@ -237,21 +436,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                             break;
                     }
                     
-                    // ✅ OOP METHOD: Formula: Base + insulation contribution + asymmetric clearance on each side
+                    // ✅ CRITICAL: Store individual clearance values in ClashZone for sleeve parameter setting
+                    // These values are based on world coordinate directions (+X, -X, +Y, -Y, +Z, -Z)
+                    clashZone.ClearanceLeft = left;
+                    clashZone.ClearanceRight = right;
+                    clashZone.ClearanceTop = top;
+                    clashZone.ClearanceBottom = bottom;
+                    
                     double finalWidth = damperWidth + insulationContribution + left + right;
                     double finalHeight = damperHeight + insulationContribution + top + bottom;
                     
-                    // ✅ DETAILED LOGGING: Log offset calculation details for debugging
+                    // ✅ DETAILED LOGGING: Log clearance assignment and offset calculation details
+                    string clearanceSide = "Unknown";
+                    if (left == mepSideClearance) clearanceSide = "Left";
+                    else if (right == mepSideClearance) clearanceSide = "Right";
+                    else if (top == mepSideClearance) clearanceSide = "Top";
+                    else if (bottom == mepSideClearance) clearanceSide = "Bottom";
+                    
                     string offsetInfo = offsetVector.GetLength() > 0.0001 
-                        ? $"Offset={offsetAmount*304.8:F1}mm along wall axis ({hostOrientation}-wall)" 
+                        ? $"Offset={offsetAmount*304.8:F1}mm toward {connectorDir} direction" 
                         : "NO OFFSET";
-                    DebugLogger.Info($"[DamperStrategy] MSFD - Connector={clashZone.DamperConnectorSide}, MEP={mepSideClearance:F4}ft ({mepSideClearance*304.8:F1}mm), Other={otherSideClearance:F4}ft ({otherSideClearance*304.8:F1}mm)");
-                    DebugLogger.Info($"[DamperStrategy] MSFD - Offset Calculation: (MEP={mepSideClearance*304.8:F1}mm - Other={otherSideClearance*304.8:F1}mm) / 2 = {offsetAmount*304.8:F1}mm toward connector side");
+                    
+                    DebugLogger.Info($"[DamperStrategy] MSFD - ConnectorDirection='{connectorDir}' (WCS), HostOrientation='{hostOrientation}', MEPClearanceSide='{clearanceSide}'");
+                    DebugLogger.Info($"[DamperStrategy] MSFD - Clearance: MEP={mepSideClearance:F4}ft ({mepSideClearance*304.8:F1}mm) on {clearanceSide}, Other={otherSideClearance:F4}ft ({otherSideClearance*304.8:F1}mm) on opposite side");
+                    DebugLogger.Info($"[DamperStrategy] MSFD - Offset Calculation: (MEP={mepSideClearance*304.8:F1}mm - Other={otherSideClearance*304.8:F1}mm) / 2 = {offsetAmount*304.8:F1}mm toward {connectorDir} direction");
                     DebugLogger.Info($"[DamperStrategy] MSFD - Wall Info: HostOrientation='{hostOrientation}', IsXWall={isXWall}, IsYWall={isYWall}, IsWallHost={isWallHost}");
                     DebugLogger.Info($"[DamperStrategy] MSFD - Offset Vector: {offsetVector} (Length={offsetVector.GetLength()*304.8:F1}mm)");
-                    DebugLogger.Info($"[DamperStrategy] MSFD - Calculation: Base({damperWidth:F6}ft={damperWidth*304.8:F1}mm) + Clearance({(left+right):F6}ft={(left+right)*304.8:F1}mm) = Final({finalWidth:F6}ft={finalWidth*304.8:F1}mm)");
-                    SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-MSFD-FINAL] Zone {clashZone.Id}: Base({damperWidth*304.8:F1}mm) + Clearance({(left+right)*304.8:F1}mm) = Final({finalWidth*304.8:F1}mm x {finalHeight*304.8:F1}mm), {offsetInfo}\n");
-                    SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-OFFSET-DETAIL] Zone {clashZone.Id}: OffsetAmount={offsetAmount*304.8:F1}mm, HostOrientation='{hostOrientation}', OffsetVector=({offsetVector.X*304.8:F1}, {offsetVector.Y*304.8:F1}, {offsetVector.Z*304.8:F1})mm\n");
+                    DebugLogger.Info($"[DamperStrategy] MSFD - Calculation: Base({damperWidth:F6}ft={damperWidth*304.8:F1}mm) + Clearance({(left+right):F6}ft={(left+right)*304.8:F1}mm width, {(top+bottom):F6}ft={(top+bottom)*304.8:F1}mm height) = Final({finalWidth:F6}ft={finalWidth*304.8:F1}mm x {finalHeight*304.8:F1}mm)");
+                    SafeFileLogger.SafeAppendText("damper_placement_trace.log", 
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-MSFD-FINAL] Zone {clashZone.Id}: " +
+                        $"ConnectorDirection='{connectorDir}' (WCS), HostOrientation='{hostOrientation}', MEPClearanceSide='{clearanceSide}', " +
+                        $"Base({damperWidth*304.8:F1}mm) + Clearance({(left+right)*304.8:F1}mm width, {(top+bottom)*304.8:F1}mm height) = " +
+                        $"Final({finalWidth*304.8:F1}mm x {finalHeight*304.8:F1}mm), {offsetInfo}\n");
+                    SafeFileLogger.SafeAppendText("damper_placement_trace.log", 
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-CLEARANCE-ASSIGNMENT] Zone {clashZone.Id}: " +
+                        $"ConnectorDirection='{connectorDir}', HostOrientation='{hostOrientation}', " +
+                        $"MEPClearance={mepSideClearance*304.8:F1}mm on {clearanceSide}, " +
+                        $"OtherClearance={otherSideClearance*304.8:F1}mm on opposite side\n");
+                    SafeFileLogger.SafeAppendText("damper_placement_trace.log", 
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-OFFSET-DETAIL] Zone {clashZone.Id}: " +
+                        $"OffsetAmount={offsetAmount*304.8:F1}mm, ConnectorDirection='{connectorDir}', " +
+                        $"OffsetVector=({offsetVector.X*304.8:F1}, {offsetVector.Y*304.8:F1}, {offsetVector.Z*304.8:F1})mm\n");
                     
                     return (offsetVector, finalWidth, finalHeight);
                 }
@@ -259,6 +484,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                 {
                     // Damper has NO connector - use symmetric clearance on all sides
                     // ✅ OOP METHOD: No connector = symmetric Other clearance on all 4 sides
+                    // ✅ CRITICAL: Store symmetric clearance values in ClashZone for sleeve parameter setting
+                    clashZone.ClearanceLeft = otherClearance;
+                    clashZone.ClearanceRight = otherClearance;
+                    clashZone.ClearanceTop = otherClearance;
+                    clashZone.ClearanceBottom = otherClearance;
+                    
                     // ✅ OOP METHOD: Use sizing service for symmetric clearance case (SOLID principles)
                     (double finalW, double finalH, _) = _sizingService.CalculateFinalDimensionsFromClashZone(
                         damperWidth, damperHeight, 0, clashZone, otherClearance);
@@ -275,9 +506,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                     {
                         DebugLogger.Info($"[DamperStrategy] Standard (OOP): Base({damperWidth*304.8:F1}mm) + Insulation({insulationThicknessMm*2:F1}mm) + Clearance({clearanceMm*2:F1}mm) = Final({finalWidth*304.8:F1}mm)");
                         SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-STANDARD-FINAL] Zone {clashZone.Id}: Base({damperWidth*304.8:F1}mm) + Insulation({insulationThicknessMm*2:F1}mm) + Clearance({clearanceMm*2:F1}mm) = Final({finalWidth*304.8:F1}mm x {finalHeight*304.8:F1}mm)\n");
-                    }
-                    else
-                    {
+                }
+                else
+                {
                         DebugLogger.Info($"[DamperStrategy] Standard (OOP): Base({damperWidth*304.8:F1}mm) + Clearance({clearanceMm*2:F1}mm) = Final({finalWidth*304.8:F1}mm)");
                         SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-STANDARD-FINAL] Zone {clashZone.Id}: Base({damperWidth*304.8:F1}mm) + Clearance({clearanceMm*2:F1}mm) = Final({finalWidth*304.8:F1}mm x {finalHeight*304.8:F1}mm)\n");
                     }

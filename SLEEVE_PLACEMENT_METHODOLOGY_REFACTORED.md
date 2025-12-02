@@ -507,6 +507,281 @@ if (structuralElement is Wall wall)
 
 **Key Point:** The damper's insertion point (LocationPoint) is the geometric center of the damper body, excluding connectors. Connectors are separate Revit entities and do not affect the insertion point calculation.
 
+#### 6.0.1.2 Damper MEP Connector Side Detection and Clearance Assignment
+
+**Location:** `Services/DamperDetection/DamperConnectorDetector.cs` and `Services/Strategies/DamperPlacementStrategy.cs`
+
+**Purpose:** Detect which side of a damper has an MEP connector and assign asymmetric clearance accordingly (100mm on MEP connector side, 50mm on other side).
+
+**Overview:**
+- **Detection Method:** Rotation-aware approach using damper's transform to map connector's family-space direction to world coordinates
+- **Detection Result:** World coordinate direction (`"+X"`, `"-X"`, `"+Y"`, `"-Y"`, `"+Z"`, `"-Z"`)
+- **Clearance Assignment:** Maps world coordinate direction to sleeve clearance sides (Left, Right, Top, Bottom) based on wall orientation
+- **Placement Offset:** Calculates offset vector to achieve correct clearance distribution (25mm toward connector side)
+
+##### Detection Logic (Rotation-Aware Approach)
+
+**Service:** `DamperConnectorDetector.DetectConnectorSideWorld()`
+
+**Key Principle:** Uses the damper's transform to map the connector's family-space `BasisX` direction to world coordinates. This correctly handles damper rotation (e.g., family +X → world -Y when rotated 270°).
+
+**Why Rotation-Aware is Needed:**
+- Dampers can be rotated or flipped within the linked file
+- The connector's `BasisX` is in the connector's local coordinate system (aligned with damper family)
+- We need to transform it to world coordinates to determine which world direction the connector faces
+- Example: If a damper is rotated 270°, a connector that points in the family's +X direction becomes -Y in world space
+
+**Algorithm:**
+1. **Get Damper Center:**
+   - Use transform origin: `damper.GetTransform().Origin`
+   - This is the geometric center of the damper body, excluding connectors
+   - More accurate than bounding box center (which may include connector geometry)
+
+2. **Select MEP Connector:**
+   - **Single Connector:** Use it directly
+   - **Multiple Connectors:** Select the one that is:
+     - Furthest from damper center (by distance)
+     - AND whose BasisX direction (facing direction) aligns with its position relative to center
+     - Score: `distance * (1.0 + alignment)` where alignment is dot product of normalized position and BasisX
+
+3. **Get Connector's Local Direction:**
+   ```csharp
+   XYZ connectorBasisXLocal = connector.CoordinateSystem.BasisX; // Family space
+   ```
+
+4. **Transform to World Coordinates:**
+   ```csharp
+   Transform damperTransform = damper.GetTransform();
+   XYZ connectorBasisXWorld = damperTransform.OfVector(connectorBasisXLocal);
+   ```
+   - The damper's transform represents how the family is oriented in world space
+   - `OfVector()` transforms the local direction vector to world coordinates
+   - This correctly accounts for rotation (e.g., 270° rotation maps family +X to world -Y)
+
+5. **Determine Dominant World Axis:**
+   - Calculate absolute values: `absX`, `absY`, `absZ` from `connectorBasisXWorld`
+   - Find which world axis has the largest component (threshold: 0.7)
+   - Use the sign of that component to determine direction:
+     - If `absZ >= max(absX, absY) && absZ > 0.7` → `+Z` or `-Z` (vertical)
+     - Else if `absY >= absX && absY > 0.7` → `+Y` or `-Y` (horizontal)
+     - Else if `absX > 0.7` → `+X` or `-X` (horizontal)
+
+6. **Position-Based Fallback (if ambiguous):**
+   - If no clear direction from transformed BasisX (all components < 0.7)
+   - Use connector position relative to damper center:
+     ```csharp
+     XYZ connectorToCenter = connectorOrigin - damperCenter;
+     ```
+   - Determine dominant axis from position vector (same logic as step 5)
+
+7. **Return World Coordinate Direction:**
+   - Returns: `"+X"`, `"-X"`, `"+Y"`, `"-Y"`, `"+Z"`, `"-Z"`
+   - Example: If connector's transformed BasisX is `(0, -0.9, 0)` → returns `"-Y"`
+
+**Why Rotation-Aware Works:**
+- ✅ **Handles Rotation:** Correctly maps family-space directions to world coordinates
+- ✅ **Handles Flips:** Damper flips are accounted for in the transform
+- ✅ **Accurate for Rotated Dampers:** Works correctly when damper is rotated (e.g., 270° rotation)
+- ✅ **Preserves Verticality:** Vertical connectors (+Z/-Z) remain vertical after rotation
+- ✅ **Fallback Safety:** Position-based fallback handles ambiguous cases
+
+##### Comprehensive Logging
+
+**Log File:** `damper_connector_debug.log`
+
+**Logged Information:**
+```
+[HH:mm:ss.fff] [DetectConnectorSideWorld] 
+  Damper ID={id}, 
+  Document='{title}', 
+  Family='{family}', 
+  Type='{type}', 
+  TotalConnectors={count}, 
+  MaxDistance={distance}ft ({distance}mm), 
+  DamperCenter=({x}, {y}, {z}) [Transform Origin], 
+  ConnectorOrigin=({x}, {y}, {z}), 
+  ConnectorBasisXLocal=({x}, {y}, {z}) [family space], 
+  ConnectorBasisXWorld=({x}, {y}, {z}) [world space after transform], 
+  WorldAbs: X={absX}, Y={absY}, Z={absZ}, 
+  WallOrientation='{orientation}' ({wallAwareInfo}), 
+  DetectedDirection='{direction}' (based on ROTATION: connector direction transformed to world coordinates)
+```
+
+**Purpose:**
+- Verify detection correctness
+- Debug incorrect detections
+- Trace connector selection logic
+- Understand rotation transformation (family space → world space)
+- Verify wall orientation is passed correctly
+
+##### Clearance Assignment Logic
+
+**Service:** `DamperPlacementStrategy.GetDamperPlacementAdjustment()`
+
+**Input:** 
+- `ClashZone.DamperConnectorSide` (world coordinate direction: `"+X"`, `"-X"`, `"+Y"`, `"-Y"`, `"+Z"`, `"-Z"`)
+- `ClashZone.HostOrientation` (wall orientation: `"X"` or `"Y"`)
+- `ClashZone.StructuralElementType` (host type: `"Wall"`, `"Floor"`, etc.)
+
+**Clearance Values:**
+- **MEP Side Clearance:** 100mm (from `DuctAccessoryMepNormal` setting)
+- **Other Side Clearance:** 50mm (from `DuctAccessoryOtherNormal` setting)
+
+**Mapping Logic (Wall-Aware):**
+
+**For X-Walls (width along X-axis):**
+- `"+X"` → Right side → `ClearanceRight = 100mm`, `ClearanceLeft = 50mm`
+- `"-X"` → Left side → `ClearanceLeft = 100mm`, `ClearanceRight = 50mm`
+- `"+Y"` → Right side (perpendicular to wall) → `ClearanceRight = 100mm`, `ClearanceLeft = 50mm`
+- `"-Y"` → Left side (perpendicular to wall) → `ClearanceLeft = 100mm`, `ClearanceRight = 50mm`
+
+**For Y-Walls (width along Y-axis):**
+- `"+Y"` → Right side → `ClearanceRight = 100mm`, `ClearanceLeft = 50mm`
+- `"-Y"` → Left side → `ClearanceLeft = 100mm`, `ClearanceRight = 50mm`
+- `"+X"` → Right side (perpendicular to wall) → `ClearanceRight = 100mm`, `ClearanceLeft = 50mm`
+- `"-X"` → Left side (perpendicular to wall) → `ClearanceLeft = 100mm`, `ClearanceRight = 50mm`
+
+**For Vertical (Z-axis):**
+- `"+Z"` → Top → `ClearanceTop = 100mm`, `ClearanceBottom = 50mm`
+- `"-Z"` → Bottom → `ClearanceBottom = 100mm`, `ClearanceTop = 50mm`
+
+**Storage in ClashZone:**
+```csharp
+clashZone.ClearanceLeft = left;      // 100mm or 50mm
+clashZone.ClearanceRight = right;    // 100mm or 50mm
+clashZone.ClearanceTop = top;        // 100mm or 50mm
+clashZone.ClearanceBottom = bottom; // 100mm or 50mm
+```
+
+##### Placement Offset Calculation
+
+**Purpose:** Move sleeve toward connector side to achieve correct clearance distribution.
+
+**Problem:** If sleeve is centered on damper, clearance is equally distributed (75mm on each side).
+
+**Solution:** Offset sleeve by `(MEP_clearance - Other_clearance) / 2` toward connector side.
+
+**Formula:**
+```
+OffsetAmount = (100mm - 50mm) / 2 = 25mm toward connector direction
+```
+
+**After Offset:**
+- Connector side: 75mm + 25mm = **100mm** ✓
+- Other side: 75mm - 25mm = **50mm** ✓
+
+**Offset Vector Calculation:**
+
+**For X-Walls:**
+- `"+X"` connector → Offset in `+X` direction: `(offsetAmount, 0, 0)`
+- `"-X"` connector → Offset in `-X` direction: `(-offsetAmount, 0, 0)`
+- `"+Y"` connector → Offset in `+X` direction (maps to right side): `(offsetAmount, 0, 0)`
+- `"-Y"` connector → Offset in `-X` direction (maps to left side): `(-offsetAmount, 0, 0)`
+
+**For Y-Walls:**
+- `"+Y"` connector → Offset in `+Y` direction: `(0, offsetAmount, 0)`
+- `"-Y"` connector → Offset in `-Y` direction: `(0, -offsetAmount, 0)`
+- `"+X"` connector → Offset in `+Y` direction (maps to right side): `(0, offsetAmount, 0)`
+- `"-X"` connector → Offset in `-Y` direction (maps to left side): `(0, -offsetAmount, 0)`
+
+**For Vertical:**
+- `"+Z"` connector → Offset in `+Z` direction: `(0, 0, offsetAmount)`
+- `"-Z"` connector → Offset in `-Z` direction: `(0, 0, -offsetAmount)`
+
+**Critical Rule:** Offset is **ONLY along wall axis (width direction)**, NOT perpendicular to wall.
+
+##### Final Sleeve Dimensions
+
+**Formula:**
+```
+FinalWidth = BaseWidth + InsulationContribution + ClearanceLeft + ClearanceRight
+FinalHeight = BaseHeight + InsulationContribution + ClearanceTop + ClearanceBottom
+```
+
+**Example (MSFD Damper with connector on -Y side, Y-wall):**
+- Base: 500mm × 500mm
+- Insulation: 0mm (dampers don't have insulation)
+- Clearance: Left=100mm, Right=50mm, Top=50mm, Bottom=50mm
+- **Final:** 650mm × 600mm
+- **Offset:** 25mm in `-Y` direction (along wall width axis)
+
+##### Placement Flow Integration
+
+**1. Refresh Phase:**
+- `ClashZoneService_Legacy.CreateClashZone()` calls `DamperConnectorService.DetectConnectorInfo()`
+- `DamperConnectorDetector.DetectConnectorSideWorld()` detects connector side
+- Stores `HasMepConnector` and `DamperConnectorSide` in `ClashZone`
+- Saves to database: `ClashZones.HasMepConnector`, `ClashZones.DamperConnectorSide`
+
+**2. Placement Phase:**
+- `UniversalSleevePlacerService` calls `DamperPlacementStrategy.GetDamperPlacementAdjustment()`
+- Strategy reads `ClashZone.DamperConnectorSide` (world coordinate direction)
+- Maps world direction to clearance sides based on wall orientation
+- Calculates offset vector and final dimensions
+- Stores individual clearance values in `ClashZone` (for sleeve parameter setting)
+- Returns `(offsetVector, finalWidth, finalHeight)`
+
+**3. Sleeve Placement:**
+- `UniversalSleevePlacerService` applies offset to placement point:
+  ```csharp
+  adjustedPlacementPoint = placementPointChosen + placementOffset;
+  ```
+- Sets sleeve dimensions: `Width = finalWidth`, `Height = finalHeight`
+- Sets individual clearance parameters on sleeve:
+  ```csharp
+  ClearanceLeft = clashZone.ClearanceLeft;
+  ClearanceRight = clashZone.ClearanceRight;
+  ClearanceTop = clashZone.ClearanceTop;
+  ClearanceBottom = clashZone.ClearanceBottom;
+  ```
+
+##### Logging for Placement
+
+**Log File:** `damper_placement_trace.log`
+
+**Logged Information:**
+- Connector detection results (`HasMepConnector`, `DamperConnectorSide`)
+- Clearance values from conditions (MEP=100mm, Other=50mm)
+- Clearance assignment (which side gets MEP clearance)
+- Offset calculation (offset amount and vector)
+- Final dimensions calculation
+- Wall orientation and mapping logic
+
+**Example Log Entry:**
+```
+[HH:mm:ss.fff] [STRATEGY-CONNECTOR-DETECTION] Zone {id}: 
+  HasMepConnector=True, 
+  DamperConnectorSide='-Y' (World Coordinate Direction), 
+  HostOrientation='Y', 
+  StructuralElementType='Wall'
+
+[HH:mm:ss.fff] [STRATEGY-CLEARANCE-ASSIGNMENT] Zone {id}: 
+  ConnectorDirection='-Y', 
+  HostOrientation='Y', 
+  MEPClearance=100.0mm on Left, 
+  OtherClearance=50.0mm on opposite side
+
+[HH:mm:ss.fff] [STRATEGY-OFFSET-DETAIL] Zone {id}: 
+  OffsetAmount=25.0mm, 
+  ConnectorDirection='-Y', 
+  OffsetVector=(0.0, -25.0, 0.0)mm
+
+[HH:mm:ss.fff] [STRATEGY-MSFD-FINAL] Zone {id}: 
+  Base(500.0mm) + Clearance(150.0mm width, 100.0mm height) = 
+  Final(650.0mm x 600.0mm), Offset=25.0mm toward -Y direction
+```
+
+##### Benefits of Rotation-Aware Detection
+
+✅ **Handles Rotation:** Correctly maps family-space connector directions to world coordinates using damper's transform  
+✅ **Accurate for Rotated Dampers:** Works correctly when damper is rotated (e.g., 270° rotation maps family +X to world -Y)  
+✅ **Preserves Verticality:** Vertical connectors (+Z/-Z) remain vertical after rotation, don't become horizontal  
+✅ **Handles Flips:** Damper flips are accounted for in the transform  
+✅ **Fallback Safety:** Position-based fallback handles ambiguous cases when transformed direction is unclear  
+✅ **Comprehensive Logging:** Full traceability for debugging (shows both local and world-space directions)  
+✅ **Wall-Aware Mapping:** Correctly maps world directions to clearance sides based on wall orientation  
+✅ **Database Persistence:** Detection results saved to database for consistency  
+
 #### 6.0.2 Insulation Detection Services
 
 **Location:** `Services/InsulationDetection/`
@@ -1227,316 +1502,32 @@ New Zones (not in existing):
 
 ---
 
-## 10. PATH 3 Invalidated Zones Placement Flow
+## 10. Damper Connector Detection and Sleeve Placement (Critical Refactor)
 
-### 10.1 Distinct Placement Logic for Invalidated Zones
+### 10.1 Connector Detection Process
 
-**Service:** `UniversalSleevePlacerService` (with PATH 3 invalidated mode)
+- Each damper (duct accessory) is analyzed to determine its connector side using world coordinates: `+X`, `-X`, `+Y`, `-Y`, `+Z`, `-Z`.
+- The connector side is detected by evaluating the damper's position and orientation relative to the host wall or floor, using the `DamperConnectorDetector` and position vector logic.
+- The detected connector direction is stored in the `ClashZone` as `DamperConnectorSide` and used throughout placement and sizing.
 
-**Flow:**
-```
-1. Load conditions from database (Filters table, OpeningSettings column)
-2. Run intersection detection for moved MEP/host elements
-3. Delete placed sleeves affected by invalid clash zone
-4. Reset flags for deleted sleeves → Set IsResolved = true (so they won't be placed again)
-5. Calculate sleeve size (read clearance settings from DB, apply to MEP dimensions)
-6. Place new sleeves with calculated size (NO flag check before placement)
-7. Update flags for placed sleeves → Set IsResolved = true, SleeveInstanceId
-8. Always run clustering recalculation
-9. Check if cluster needed for affected zones:
-   - If cluster not needed → Remove cluster sleeve
-   - If cluster needed → Add cluster sleeve
-10. Update cluster flags accordingly
-```
+### 10.2 Sleeve Sizing for Top/Bottom Connections (+Z/-Z)
 
-**Key Differences from PATH 1 and PATH 2:**
-- **No flag check before placement** (like PATH 2)
-- **Deletes affected sleeves first** (unique to PATH 3)
-- **Resets flags for deleted sleeves** (unique to PATH 3)
-- **Updates flags for placed sleeves** (like PATH 1 and PATH 2)
-- **Handles cluster removal/addition** based on need (unique to PATH 3)
+- For most damper families, the parameters `Damper Width` and `Damper Height` are defined relative to the damper's product orientation, not the host wall axes.
+- When the connector is on the left or right (`+X`, `-X`, `+Y`, `-Y`), the damper's width aligns with the wall's horizontal axis, and height aligns with the vertical axis.
+- **Critical Case:** When the connector is on the top or bottom (`+Z`, `-Z`), the damper's width and height are rotated 90° relative to the wall axes. This means:
+    - The family parameter `Width` now aligns with the wall's vertical axis.
+    - The family parameter `Height` now aligns with the wall's horizontal axis.
+- **Bug Fix:** To ensure correct sleeve placement, the system swaps the damper's base width and height before adding clearances when the connector is vertical (+Z/-Z) and the host is a wall.
+    - This swap is performed in `DamperPlacementStrategy.GetDamperPlacementAdjustment`.
+    - Logging is added to `damper_placement_trace.log` for traceability.
 
-**Flag Management:**
-- Resets flags for deleted sleeves: `IsResolved = true` (prevents re-placement)
-- Updates flags for placed sleeves: `IsResolved = true`, `SleeveInstanceId`
-- Updates cluster flags: `IsClusterResolved = true`, `ClusterSleeveInstanceId` (or clears if cluster removed)
+### 10.3 Why the Swap Is Needed
+
+- Without swapping, sleeves placed for top/bottom connectors would have their dimensions transposed, resulting in incorrect opening sizes in the wall.
+- The swap ensures that:
+    - For left/right connectors, sleeve width = damper width, sleeve height = damper height.
+    - For top/bottom connectors, sleeve width = damper height, sleeve height = damper width (after swap).
+- This logic guarantees that all damper sleeves are placed with correct orientation and sizing, regardless of connector direction.
 
 ---
-
-## 11. UI State Persistence
-
-### 11.1 Filter UI State
-
-**Stored in:** `Filters` table
-
-**Fields:**
-- `SelectedHostCategories` - JSON array of selected host categories (Walls, Floors, Structural Framing, etc.)
-- `OpeningSettings` - JSON object containing opening configuration
-
-### 11.2 Save Operations
-
-**Service:** `FilterRepository.SaveFilterUIState()`
-
-**Called From:**
-- `FilterManagementService.SaveFilter()`
-- `FilterManagementService.CreateFilter()`
-- `FilterManagementService.CopyFilter()`
-- `FilterManagementService.SaveFilterAuto()`
-
-### 11.3 Load Operations
-
-**Service:** `FilterRepository.LoadFilterUIState()`
-
-**Called From:**
-- `FilterManagementService.CreateFilterFromCurrentUIState()`
-- `FilterManagementService.LoadFilterFromXmlFile()`
-
----
-
-## 12. Migration Notes
-
-### 12.1 Legacy Services Removed
-
-- ❌ `Services/RefreshService.cs` - **EXCLUDED from compilation**
-- ❌ All references to legacy refresh service removed
-
-### 12.2 Current Services Only
-
-- ✅ `RefreshServiceRefactored` - **PRIMARY SERVICE**
-- ✅ `RefreshPathDeterminer` - **PATH SELECTION LOGIC**
-- ✅ `IntersectionProcessor` - **INTERSECTION DETECTION**
-- ✅ `ValidationService` - **3-POINT VALIDATION**
-- ✅ `ClashZoneRepository` - **DATABASE OPERATIONS**
-- ✅ `FilterRepository` - **FILTER OPERATIONS**
-
-### 12.3 XML Role
-
-- **PRIMARY:** Database (SQLite)
-- **FALLBACK:** XML (only if database has no data)
-- **WRITE:** XML writes disabled when `DeploymentConfiguration.DisableXmlCreation = true`
-
----
-
-## 13. Error Handling and Resilience
-
-### 13.1 Error Handling Strategy
-
-The refactored architecture implements comprehensive error handling at every critical operation point to ensure system resilience and data integrity.
-
-#### 13.1.1 Error Categories
-
-**Critical Errors (Operation Cancellation):**
-- Database connection failures
-- Transaction commit failures
-- Invalid data structure errors
-- Missing required configuration
-
-**Non-Critical Errors (Continue with Logging):**
-- Individual sleeve placement failures
-- Flag update failures for single zones
-- Cluster calculation errors (fallback to skip)
-- Element deletion failures (log warning, continue)
-
-#### 13.1.2 Error Handling Points
-
-**Database Operations:**
-```
-CreateFilter → CheckCreateFilter → RollbackCreateFilter (on failure) → Cancel
-SaveUIState → CheckSaveUIState → RollbackSaveUIState (on failure) → Cancel
-SaveDB2 → CheckSaveDB2 → RollbackSaveDB2 (on failure) → Cancel
-Commit2 → CheckCommit2 → RollbackCommit2 (on failure) → Cancel
-```
-
-**Data Loading:**
-```
-LoadFilter → CheckLoadFilter → LogLoadFilterError (on failure) → Cancel
-LoadExisting1 → CheckLoadExisting1 → LogLoadExistingError (on failure) → Cancel
-LoadConditions2 → CheckLoadConditions2 → LogLoadConditionsError2 (on failure) → Cancel
-```
-
-**Sleeve Placement:**
-```
-PlaceSleeve1 → CheckPlaceSleeve1 → LogPlaceError1 (on failure) → Continue with Next Zone
-PlaceSleeve2 → CheckPlaceSleeve2 → LogPlaceError2 (on failure) → Continue with Next Zone
-PlaceSleeve3 → CheckPlaceSleeve3 → LogPlaceError3 (on failure) → Continue with Next Zone
-```
-
-**Flag Updates:**
-```
-UpdateFlags1 → CheckUpdateFlags1 → LogFlagError1 (on failure) → Continue with Next Zone
-UpdateFlags2 → CheckUpdateFlags2 → LogFlagError2 (on failure) → Continue with Next Zone
-UpdateFlags3 → CheckUpdateFlags3 → LogFlagError3 (on failure) → Continue with Next Zone
-```
-
-**Clustering Operations:**
-```
-TryCalcCluster1 → ClusterCalcError1 (on failure) → LogError28 → ResetFlag
-TryDelIndiv1 → DelError1 (on failure) → LogError33 → Continue Anyway
-```
-
-### 13.2 Transaction Management
-
-**All database operations are wrapped in transactions:**
-
-1. **Transaction Start:** Before any database write operation
-2. **Error Detection:** After each critical operation
-3. **Rollback on Failure:** If any critical operation fails, rollback entire transaction
-4. **Commit on Success:** Only commit if all operations succeed
-
-**Example Flow:**
-```csharp
-using (var transaction = connection.BeginTransaction())
-{
-    try
-    {
-        // Create filter
-        if (!CreateFilter(transaction)) throw new Exception("Filter creation failed");
-        
-        // Save UI state
-        if (!SaveUIState(transaction)) throw new Exception("UI state save failed");
-        
-        // Commit only if all succeed
-        transaction.Commit();
-    }
-    catch (Exception ex)
-    {
-        transaction.Rollback();
-        LogError(ex);
-        Cancel();
-    }
-}
-```
-
-### 13.3 Error Logging
-
-**All errors are logged with context:**
-- Error type and message
-- Operation that failed
-- Affected data (filter, file combo, clash zone)
-- Timestamp
-- Stack trace (for debugging)
-
-**Log Levels:**
-- **Error:** Critical failures requiring user attention
-- **Warning:** Non-critical failures that don't stop execution
-- **Info:** Normal operation flow tracking
-
-### 13.4 Fallback Mechanisms
-
-**Database Connection Failure:**
-- Show user-friendly error message
-- Suggest checking SQLite file location
-- Cancel operation (no partial data)
-
-**Data Load Failure:**
-- Fallback to XML if database has no data
-- If XML also fails, cancel operation
-- Log both attempts for debugging
-
-**Sleeve Placement Failure:**
-- Log error for specific zone
-- Continue with next zone
-- Don't fail entire operation
-- Report failures in summary
-
-**Cluster Calculation Failure:**
-- Log error
-- Skip clustering for affected category
-- Continue with other categories
-- Reset flag to allow retry
-
-### 13.5 User Feedback
-
-**Error Messages:**
-- Clear, actionable error messages
-- No technical jargon for end users
-- Suggestions for resolution when possible
-
-**Progress Reporting:**
-- Show progress during long operations
-- Report partial success (e.g., "5 of 10 sleeves placed")
-- Summary of errors at completion
-
----
-
-## 14. Key Principles
-
-1. **Database-First** - All operations prioritize database over XML
-2. **Path Strategy** - Three distinct paths based on file combo state
-3. **Repository Pattern** - Database operations abstracted through repositories
-4. **Transaction Safety** - All database operations wrapped in transactions
-5. **Fallback Support** - XML used only when database has no data
-6. **Clear Separation** - Each service has distinct responsibilities
-7. **Performance** - Single XML load, database-first reads, optimized queries
-8. **Error Resilience** - Comprehensive error handling with graceful degradation
-9. **Data Integrity** - Transaction rollback prevents partial data corruption
-10. **User Experience** - Clear error messages and progress reporting
-11. **Service Separation** - Phase 1-10 extracted services with clear responsibilities
-12. **Factory Pattern** - Clean dependency injection via ClusterServiceFactory
-13. **Refactored Architecture** - Modern RefactoredClusterService (598 lines) replaces legacy (8,765 lines)
-
----
-
-## 15. Clustering Service Architecture Summary
-
-### 15.1 RefactoredClusterService vs UniversalClusterService
-
-**Legacy Service (`UniversalClusterService`):**
-- **Size:** 8,765 lines (monolithic)
-- **Structure:** Single class with mixed concerns
-- **Services:** Phase 6-10 partially extracted (optional dependencies)
-- **Status:** ⚠️ Legacy - Maintained for backward compatibility
-- **Location:** `Services/UniversalClusterService.cs`
-
-**Refactored Service (`RefactoredClusterService`):**
-- **Size:** 598 lines (93% reduction)
-- **Structure:** Clean orchestrator with 10 extracted service phases
-- **Services:** Phase 1-10 fully extracted (required dependencies via DI)
-- **Status:** ✅ Modern - Recommended for new code
-- **Location:** `Services/Clustering/RefactoredClusterService.cs`
-
-### 15.2 Service Factory Usage
-
-**Creating Services:**
-
-```csharp
-// ✅ Modern: Create RefactoredClusterService (all Phase 1-10 services)
-var refactoredService = ClusterServiceFactory.CreateRefactored(
-    doc: document,
-    flagManager: flagManager,
-    filterService: filterService,
-    timeoutLimitMs: 300000
-);
-
-// ⚠️ Legacy: Create UniversalClusterService (Phase 6-10 services only)
-var legacyService = ClusterServiceFactory.CreateWithAllServices(
-    doc: document,
-    flagManager: flagManager,
-    filterService: filterService,
-    timeoutLimitMs: 300000
-);
-```
-
-### 15.3 Migration Recommendation
-
-**For New Code:**
-- Use `ClusterServiceFactory.CreateRefactored()` to get `RefactoredClusterService`
-- All Phase 1-10 services are automatically wired
-- Clean dependency injection, easy to test and maintain
-
-**For Existing Code:**
-- Continue using `UniversalClusterService` for backward compatibility
-- Plan gradual migration to `RefactoredClusterService`
-- Test thoroughly before switching
-
-**Migration Checklist:**
-- ✅ RefactoredClusterService created
-- ✅ ClusterServiceFactory updated
-- ✅ All Phase 1-10 services extracted
-- ⏳ Migration of callers (in progress)
-- ⏳ Phase out UniversalClusterService (planned)
-
----
-
-**End of Document**
 
