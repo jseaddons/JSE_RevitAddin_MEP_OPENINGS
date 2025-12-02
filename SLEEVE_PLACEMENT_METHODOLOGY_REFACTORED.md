@@ -1142,24 +1142,62 @@ The clustering system is now organized into 10 distinct service phases, each wit
 
 **Connector Detection:**
 - Each damper (duct accessory) is analyzed to determine its connector side using world coordinates: `+X`, `-X`, `+Y`, `-Y`, `+Z`, `-Z`.
-- The connector side is detected by evaluating the damper's position and orientation relative to the host wall or floor, using the `DamperConnectorDetector` and position vector logic.
-- The detected connector direction is stored in the `ClashZone` as `DamperConnectorSide` and used throughout placement and sizing.
+- The process is designed to robustly handle damper flipping, rotation, and arbitrary placement in the model, ensuring the connector direction is always mapped correctly to the host wall orientation.
 
-**Top/Bottom Connection (+Z/-Z) and Width/Height Swap:**
-- For most damper families, the parameters `Damper Width` and `Damper Height` are defined relative to the damper's product orientation, not the host wall axes.
-- When the connector is on the left or right (`+X`, `-X`, `+Y`, `-Y`), the damper's width aligns with the wall's horizontal axis, and height aligns with the vertical axis.
-- **Critical Case:** When the connector is on the top or bottom (`+Z`, `-Z`), the damper's width and height are rotated 90° relative to the wall axes. This means:
-    - The family parameter `Width` now aligns with the wall's vertical axis.
-    - The family parameter `Height` now aligns with the wall's horizontal axis.
-- **Bug Fix:** To ensure correct sleeve placement, the system swaps the damper's base width and height before adding clearances when the connector is vertical (+Z/-Z) and the host is a wall.
-    - This swap is performed in `DamperPlacementStrategy.GetDamperPlacementAdjustment`.
-    - Logging is added to `damper_placement_trace.log` for traceability.
+**Step-by-Step Logic:**
+1. **Find Damper Center:**
+   - Use the damper’s insertion point (`FamilyInstance.Location` as `LocationPoint`) or, if unavailable, its transform origin (`FamilyInstance.GetTransform().Origin`).
+   - This is the geometric center of the damper body, excluding connectors, and is critical for correct offset and clearance calculations.
 
-**Why the Swap Is Needed:**
-- Without swapping, sleeves placed for top/bottom connectors would have their dimensions transposed, resulting in incorrect opening sizes in the wall.
-- The swap ensures that:
-    - For left/right connectors, sleeve width = damper width, sleeve height = damper height.
-    - For top/bottom connectors, sleeve width = damper height, sleeve height = damper width (after swap).
-- This logic guarantees that all damper sleeves are placed with correct orientation and sizing, regardless of connector direction.
+2. **Select the Correct Connector:**
+   - If the damper has multiple connectors, select the one furthest from the damper center, and whose facing direction (BasisX) best aligns with its position vector from the center.
+   - This ensures the main airflow connector is chosen, not accessory connectors.
 
----
+3. **Get Connector’s Local Direction (BasisX):**
+   - Obtain the connector’s BasisX vector in family space:
+     ```csharp
+     XYZ connectorBasisXLocal = connector.CoordinateSystem.BasisX;
+     ```
+   - BasisX represents the direction the connector is facing in the damper’s local (family) coordinate system.
+
+4. **Transform BasisX to World Coordinates:**
+   - Use the damper’s transform to map the local BasisX to world coordinates:
+     ```csharp
+     Transform damperTransform = damper.GetTransform();
+     XYZ connectorBasisXWorld = damperTransform.OfVector(connectorBasisXLocal);
+     ```
+   - This step is critical: it accounts for any rotation, flipping, or mirroring applied to the damper instance in the project or linked file.
+   - For example, a damper rotated 270° will have its family +X mapped to world -Y.
+
+5. **Determine Dominant World Axis:**
+   - Calculate the absolute values of the X, Y, Z components of `connectorBasisXWorld`.
+   - The largest component (above a threshold, e.g., 0.7) determines the world direction:
+     - If Z is dominant: connector is vertical (`+Z` or `-Z`)
+     - If Y is dominant: connector is horizontal (`+Y` or `-Y`)
+     - If X is dominant: connector is horizontal (`+X` or `-X`)
+   - The sign of the component determines positive or negative direction.
+   - This step is what makes the detection robust to flipping and rotation: the transform always maps the connector’s facing direction to the correct world axis.
+
+6. **Fallback (if ambiguous):**
+   - If no component is dominant (all < 0.7), use the connector’s position vector relative to the damper center to determine the side.
+   - This ensures even non-standard families or ambiguous geometry are handled.
+
+7. **Map to Host Wall Orientation:**
+   - The detected world direction (`+X`, `-X`, `+Y`, `-Y`, `+Z`, `-Z`) is then mapped to the host wall’s orientation (X-wall or Y-wall) for clearance assignment and sleeve placement.
+   - For example, on an X-wall, world +X is the wall’s horizontal axis; on a Y-wall, world +Y is the wall’s horizontal axis.
+   - This mapping ensures that the connector side is always interpreted correctly relative to the wall, regardless of how the damper is placed or rotated.
+
+8. **Result and Logging:**
+   - The detected connector direction is stored in the `ClashZone` as `DamperConnectorSide` and used throughout placement and sizing.
+   - Detailed logs are written to `damper_connector_debug.log` showing:
+     - Damper and connector positions
+     - Local and world BasisX vectors
+     - Wall orientation
+     - Final detected direction
+   - This logging is essential for debugging and verifying correct detection, especially in complex or flipped scenarios.
+
+**Why This Works:**
+- Handles damper rotation, flipping, and mirroring in the model.
+- Ensures connector direction is always mapped to the correct world axis and host wall orientation.
+- Provides robust detection for both standard and non-standard damper families.
+- Enables correct clearance assignment and sleeve placement, even for vertical connectors (+Z/-Z) and rotated families.
