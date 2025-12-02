@@ -194,6 +194,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public double RequiredClearance { get; set; }
         
         /// <summary>
+        /// Individual clearance values for damper placement (in internal units - feet)
+        /// Set by DamperPlacementStrategy based on world coordinate directions (+X, -X, +Y, -Y, +Z, -Z)
+        /// </summary>
+        public double ClearanceLeft { get; set; } = 0.0;
+        public double ClearanceRight { get; set; } = 0.0;
+        public double ClearanceTop { get; set; } = 0.0;
+        public double ClearanceBottom { get; set; } = 0.0;
+        
+        /// <summary>
         /// Whether this clash zone has been resolved (individual sleeve placed)
         /// ✅ FLAG PERSISTENCE: Stored in both Global XML and Filter XML so refresh + placement share a single view of flag state
         /// (Global XML remains the source of truth; Filter XML copy assists diagnostics and legacy tools.)

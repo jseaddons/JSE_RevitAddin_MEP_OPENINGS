@@ -1,4 +1,6 @@
 using Autodesk.Revit.DB;
+using System;
+using System.IO;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
@@ -34,7 +36,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
         /// Detects complete connector information for a damper element.
         /// Returns DamperConnectorInfo.None if the element is not a damper or has no connector.
         /// </summary>
-        public DamperConnectorInfo DetectConnectorInfo(Element mepElement, string mepCategory)
+        /// <param name="wallOrientation">Wall orientation ("X" or "Y") to prioritize wall width axis during detection</param>
+        public DamperConnectorInfo DetectConnectorInfo(Element mepElement, string mepCategory, string wallOrientation = null)
         {
             // Only process duct accessories (dampers)
             if (mepCategory != "Duct Accessories")
@@ -63,7 +66,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
             {
                 // Non-standard dampers (MSFD, MSD, MD, Motorized) use world coordinates
                 bool useWorldCoordinates = requiresMepClearance;
-                connectorSide = _connectorDetector.DetectConnectorSide(damper, useWorldCoordinates, out _);
+                // ✅ DIAGNOSTIC: Log wall orientation being passed
+                SafeFileLogger.SafeAppendText("damper_connector_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [DamperConnectorService] Calling DetectConnectorSide with wallOrientation='{wallOrientation ?? "NULL"}' for damper {damper?.Id?.IntegerValue ?? -1}\n");
+                // ✅ BUILD STAMP at service level for traceability
+                try
+                {
+                    var asm = typeof(DamperConnectorService).Assembly;
+                    string asmLoc = asm.Location;
+                    DateTime asmWrite = File.Exists(asmLoc) ? File.GetLastWriteTime(asmLoc) : DateTime.MinValue;
+                    string asmVer = asm.GetName().Version?.ToString() ?? "unknown";
+                    SafeFileLogger.SafeAppendText("damper_connector_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [BUILD-STAMP:SERVICE] AssemblyLastWrite={asmWrite:yyyy-MM-dd HH:mm:ss}, Version={asmVer}, Assembly={asmLoc}\n");
+                }
+                catch { }
+                connectorSide = _connectorDetector.DetectConnectorSide(damper, useWorldCoordinates, out _, wallOrientation);
             }
             else if (hasMepConnector && isStandard)
             {

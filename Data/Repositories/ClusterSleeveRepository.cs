@@ -423,7 +423,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// <summary>
         /// ✅ COMMA-SEPARATED VALUES: Load MEP data from SleeveSnapshots table for cluster sleeves
         /// Returns comma-separated strings for GUIDs, sizes, system names, and element IDs
-        /// Queries individual sleeve snapshots (SourceType='Individual') that correspond to the clash zones
+        /// ✅ CRITICAL FIX: Queries SleeveSnapshots.MepParametersJson to get Size parameter (aggregated from snapshot)
+        /// Falls back to ClashZones.MepElementSizeParameterValue if snapshot not found
         /// </summary>
         private (string clashZoneGuids, string mepSizes, string mepSystemNames, string mepElementIds) GetCommaSeparatedMepData(List<Guid> clashZoneIds)
         {
@@ -432,19 +433,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             
             try
             {
-                // Query ClashZones to get MEP element IDs, then find corresponding snapshots
+                // ✅ CRITICAL FIX: Query SleeveSnapshots first to get Size from MepParametersJson (aggregated Size parameter)
+                // This ensures cluster sleeves get the same Size parameter format as individual sleeves (from snapshot table)
                 using (var cmd = _context.Connection.CreateCommand())
                 {
                     // Build WHERE clause for GUIDs
                     var guidPlaceholders = string.Join(", ", clashZoneIds.Select((_, i) => $"@Guid{i}"));
+                    
+                    // ✅ PRIORITY 1: Query SleeveSnapshots to get Size from MepParametersJson
                     cmd.CommandText = $@"
                         SELECT DISTINCT
-                            cz.ClashZoneGuid,
+                            ss.ClashZoneGuid,
+                            ss.MepParametersJson,
+                            ss.MepElementIdsJson,
                             cz.MepElementId,
+                            cz.MepElementSizeParameterValue,
+                            cz.MepElementFormattedSize,
                             cz.MepElementSizeData,
                             cz.MepElementSystemName,
                             cz.MepElementSystemAbbreviation
                         FROM ClashZones cz
+                        LEFT JOIN SleeveSnapshots ss ON UPPER(ss.ClashZoneGuid) = UPPER(cz.ClashZoneGuid)
                         WHERE UPPER(cz.ClashZoneGuid) IN ({guidPlaceholders})
                           AND cz.ClashZoneGuid != '' AND cz.ClashZoneGuid IS NOT NULL
                         ORDER BY cz.ClashZoneGuid";
@@ -465,16 +474,78 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         while (reader.Read())
                         {
                             var guid = reader.IsDBNull(0) ? null : reader.GetString(0);
-                            var mepElementId = reader.IsDBNull(1) ? (long?)null : reader.GetInt64(1);
-                            var mepSizeDataJson = reader.IsDBNull(2) ? null : reader.GetString(2);
-                            var systemName = reader.IsDBNull(3) ? null : reader.GetString(3);
-                            var systemAbbr = reader.IsDBNull(4) ? null : reader.GetString(4);
+                            var mepParamsJson = reader.IsDBNull(1) ? null : reader.GetString(1); // ✅ PRIORITY 1: MepParametersJson from SleeveSnapshots
+                            var mepElementIdsJson = reader.IsDBNull(2) ? null : reader.GetString(2);
+                            var mepElementId = reader.IsDBNull(3) ? (long?)null : reader.GetInt64(3);
+                            var mepSizeParameterValue = reader.IsDBNull(4) ? null : reader.GetString(4); // ✅ FALLBACK: MepElementSizeParameterValue from ClashZones
+                            var mepFormattedSize = reader.IsDBNull(5) ? null : reader.GetString(5); // ✅ FALLBACK: MepElementFormattedSize
+                            var mepSizeDataJson = reader.IsDBNull(6) ? null : reader.GetString(6);
+                            var systemName = reader.IsDBNull(7) ? null : reader.GetString(7);
+                            var systemAbbr = reader.IsDBNull(8) ? null : reader.GetString(8);
                             
                             if (!string.IsNullOrWhiteSpace(guid))
                                 guidList.Add(guid);
                             
-                            // Extract MEP size from MepElementSizeData JSON or use default
-                            if (!string.IsNullOrWhiteSpace(mepSizeDataJson))
+                            // ✅ CRITICAL FIX: Prioritize Size from SleeveSnapshots.MepParametersJson (aggregated Size parameter)
+                            // This ensures cluster sleeves get the same Size parameter format as individual sleeves
+                            string sizeValue = null;
+                            
+                            // Priority 1: Extract Size from SleeveSnapshots.MepParametersJson (aggregated Size parameter from snapshot)
+                            if (!string.IsNullOrWhiteSpace(mepParamsJson) && mepParamsJson != "{}")
+                            {
+                                try
+                                {
+                                    var mepParams = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(mepParamsJson);
+                                    if (mepParams != null && mepParams.TryGetValue("Size", out var sizeFromSnapshot))
+                                    {
+                                        if (!string.IsNullOrWhiteSpace(sizeFromSnapshot))
+                                        {
+                                            sizeValue = sizeFromSnapshot.Trim();
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                            {
+                                                _logger($"[ClusterSleeve] ✅ Got Size='{sizeValue}' from SleeveSnapshots.MepParametersJson for ClashZoneGuid={guid}");
+                                            }
+                                        }
+                                    }
+                                    else if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        var keys = mepParams != null ? mepParams.Keys.ToList() : new List<string>();
+                                        _logger($"[ClusterSleeve] ⚠️ Size parameter not found in SleeveSnapshots.MepParametersJson for ClashZoneGuid={guid}, JSON keys: {string.Join(", ", keys)}");
+                                    }
+                                }
+                                catch (Exception jsonEx)
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        _logger($"[ClusterSleeve] ⚠️ Error parsing MepParametersJson for ClashZoneGuid={guid}: {jsonEx.Message}");
+                                    }
+                                }
+                            }
+                            else if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                _logger($"[ClusterSleeve] ⚠️ No SleeveSnapshots.MepParametersJson found for ClashZoneGuid={guid}, falling back to ClashZones");
+                            }
+                            
+                            // Priority 2: Use MepElementSizeParameterValue from ClashZones (raw Size parameter value, e.g., "20 mmø", "200 mm dia symbol")
+                            if (string.IsNullOrWhiteSpace(sizeValue) && !string.IsNullOrWhiteSpace(mepSizeParameterValue))
+                            {
+                                sizeValue = mepSizeParameterValue.Trim();
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    _logger($"[ClusterSleeve] ✅ Got Size='{sizeValue}' from ClashZones.MepElementSizeParameterValue for ClashZoneGuid={guid}");
+                                }
+                            }
+                            else if (string.IsNullOrWhiteSpace(sizeValue) && !DeploymentConfiguration.DeploymentMode)
+                            {
+                                _logger($"[ClusterSleeve] ⚠️ ClashZones.MepElementSizeParameterValue is empty for ClashZoneGuid={guid}");
+                            }
+                            // Priority 3: Fall back to MepElementFormattedSize (formatted size, e.g., "Ø20")
+                            else if (string.IsNullOrWhiteSpace(sizeValue) && !string.IsNullOrWhiteSpace(mepFormattedSize))
+                            {
+                                sizeValue = mepFormattedSize.Trim();
+                            }
+                            // Priority 4: Fall back to JSON parsing (legacy support)
+                            else if (string.IsNullOrWhiteSpace(sizeValue) && !string.IsNullOrWhiteSpace(mepSizeDataJson))
                             {
                                 try
                                 {
@@ -483,25 +554,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     {
                                         if (sizeData.TryGetValue("FormattedSize", out var formattedSizeObj) && formattedSizeObj != null)
                                         {
-                                            sizeList.Add(formattedSizeObj.ToString());
+                                            sizeValue = formattedSizeObj.ToString();
                                         }
                                         else if (sizeData.TryGetValue("Shape", out var shapeObj) && shapeObj?.ToString() == "Round")
                                         {
                                             if (sizeData.TryGetValue("Diameter", out var diamObj))
                                             {
                                                 var diamMm = Convert.ToDouble(diamObj) * 304.8; // Convert feet to mm
-                                                sizeList.Add($"Ø{diamMm:F0}");
+                                                sizeValue = $"Ø{diamMm:F0}";
                                             }
                                         }
                                         else if (sizeData.TryGetValue("Width", out var widthObj) && sizeData.TryGetValue("Height", out var heightObj))
                                         {
                                             var widthMm = Convert.ToDouble(widthObj) * 304.8;
                                             var heightMm = Convert.ToDouble(heightObj) * 304.8;
-                                            sizeList.Add($"{widthMm:F0}×{heightMm:F0}");
+                                            sizeValue = $"{widthMm:F0}×{heightMm:F0}";
                                         }
                                     }
                                 }
                                 catch { /* Ignore JSON parse errors */ }
+                            }
+                            
+                            if (!string.IsNullOrWhiteSpace(sizeValue))
+                            {
+                                sizeList.Add(sizeValue);
                             }
                             
                             // Extract system name

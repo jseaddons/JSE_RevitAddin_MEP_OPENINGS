@@ -2400,6 +2400,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
                             foreach (var cz in individualClashZones)
                             {
+                                // ✅ CRITICAL FIX: Ensure Size parameter is available from MepElementSizeParameterValue
+                                // If Size is not in MepParameterValues, add it from MepElementSizeParameterValue
+                                if (cz.MepParameterValues == null)
+                                {
+                                    cz.MepParameterValues = new List<Models.SerializableKeyValue>();
+                                }
+                                
+                                // ✅ CRITICAL FIX FOR PIPES: Remove any existing Size parameter first (same as individual sleeves)
+                                // This ensures we replace old float values (e.g., "0.082") with fresh text values (e.g., "20 mmø") from database
+                                // Same logic as AggregateParameterValues for individual zones - always use fresh value from current refresh
+                                cz.MepParameterValues.RemoveAll(kv => kv != null && 
+                                    (kv.Key?.Equals("Size", StringComparison.OrdinalIgnoreCase) == true ||
+                                     kv.Key?.Equals("MEP Size", StringComparison.OrdinalIgnoreCase) == true ||
+                                     kv.Key?.Equals("Service Size", StringComparison.OrdinalIgnoreCase) == true ||
+                                     kv.Key?.Equals("MepElementFormattedSize", StringComparison.OrdinalIgnoreCase) == true));
+                                
+                                // ✅ PRIORITY 1: Use MepElementSizeParameterValue (raw Size parameter value from database, e.g., "20 mmø")
+                                if (!string.IsNullOrWhiteSpace(cz.MepElementSizeParameterValue))
+                                {
+                                    cz.MepParameterValues.Add(new Models.SerializableKeyValue 
+                                    { 
+                                        Key = "Size", 
+                                        Value = cz.MepElementSizeParameterValue 
+                                    });
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                        $"[{DateTime.Now:HH:mm:ss}] ✅ Cluster {clusterInstanceId}: Added Size='{cz.MepElementSizeParameterValue}' from MepElementSizeParameterValue for ClashZoneGuid={cz.Id} (replaced any existing Size parameter)\n");
+                                }
+                                // ✅ PRIORITY 2: Fallback to MepElementFormattedSize if MepElementSizeParameterValue is empty
+                                else if (!string.IsNullOrWhiteSpace(cz.MepElementFormattedSize))
+                                {
+                                    cz.MepParameterValues.Add(new Models.SerializableKeyValue 
+                                    { 
+                                        Key = "Size", 
+                                        Value = cz.MepElementFormattedSize 
+                                    });
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                        $"[{DateTime.Now:HH:mm:ss}] ✅ Cluster {clusterInstanceId}: Added Size='{cz.MepElementFormattedSize}' from MepElementFormattedSize for ClashZoneGuid={cz.Id} (fallback, MepElementSizeParameterValue was empty)\n");
+                                }
+                                else
+                                {
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ Cluster {clusterInstanceId}: No Size parameter available for ClashZoneGuid={cz.Id} (both MepElementSizeParameterValue and MepElementFormattedSize are empty)\n");
+                                }
+                                
                                 // ⚠️ PROTECTED: MEP Parameter Aggregation Logic
                                 // Aggregate MEP parameters
                                 if (cz.MepParameterValues != null)
@@ -2492,8 +2536,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                 HostDocKey = individualClashZones.FirstOrDefault()?.HostDocKey ?? string.Empty,
                             };
 
+                            // ✅ CRITICAL DEBUG: Log if Size parameter was found in aggregated params
+                            var sizeKvp = mepParamsDict.FirstOrDefault(kvp => string.Equals(kvp.Key, "Size", StringComparison.OrdinalIgnoreCase));
+                            bool hasSizeInAggregated = sizeKvp.Key != null;
+                            string sizeValue = hasSizeInAggregated ? sizeKvp.Value : "NOT FOUND";
                             SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                                $"[{DateTime.Now:HH:mm:ss}] ✅ Cluster {clusterInstanceId}: Aggregated {mepParamsDict.Count} MEP params, {hostParamsDict.Count} Host params\n");
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ Cluster {clusterInstanceId}: Aggregated {mepParamsDict.Count} MEP params, {hostParamsDict.Count} Host params. Size parameter: {(hasSizeInAggregated ? $"FOUND='{sizeValue}'" : "MISSING")}\n");
 
                             clusterZones.Add(clusterZone);
                         }

@@ -2160,8 +2160,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             var systemAbbreviation = GetMepSystemAbbreviation(mepElement);
             
-            // ✅ OOP METHOD: Use DamperConnectorService to detect connector info
-            var damperConnectorInfo = GetDamperConnectorInfo(mepElement, mepCategory);
+            // ✅ WALL-AWARE DETECTION: Get wall orientation before detection to prioritize wall width axis
+            string wallOrientation = WallDirectionService.GetHostOrientation(structuralElement);
+            
+            // ✅ DIAGNOSTIC: Log wall orientation for debugging
+            if (!DeploymentConfiguration.DeploymentMode && mepCategory == "Duct Accessories")
+            {
+                SafeFileLogger.SafeAppendText("damper_connector_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [ClashZoneService] WallOrientation='{wallOrientation ?? "NULL"}' for StructuralElement={structuralElement?.Id?.IntegerValue ?? -1}, Type={structuralElement?.GetType()?.Name ?? "Unknown"}\n");
+                // ✅ BUILD STAMP near wall-orientation log for absolute certainty
+                try
+                {
+                    var asm = typeof(ClashZoneService).Assembly;
+                    string asmLoc = asm.Location;
+                    var asmWrite = System.IO.File.Exists(asmLoc) ? System.IO.File.GetLastWriteTime(asmLoc) : DateTime.MinValue;
+                    string asmVer = asm.GetName().Version?.ToString() ?? "unknown";
+                    SafeFileLogger.SafeAppendText("damper_connector_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [BUILD-STAMP:CLASH] AssemblyLastWrite={asmWrite:yyyy-MM-dd HH:mm:ss}, Version={asmVer}, Assembly={asmLoc}\n");
+                }
+                catch { }
+            }
+            
+            // ✅ OOP METHOD: Use DamperConnectorService to detect connector info (with wall orientation for wall-aware detection)
+            var damperConnectorInfo = GetDamperConnectorInfo(mepElement, mepCategory, wallOrientation);
             string connectorSide = damperConnectorInfo.ConnectorSide;
             bool hasMepConnector = damperConnectorInfo.HasMepConnector;
             // Note: Strategy will determine clearance from UI based on damper type and connector side
@@ -3413,13 +3434,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Checks if MEP connector is found and determines which side it's on
         /// Strategy will handle clearance from UI accordingly based on damper type
         /// </summary>
-        private DamperConnectorInfo GetDamperConnectorInfo(Element mepElement, string mepCategory)
+        /// <param name="wallOrientation">Wall orientation ("X" or "Y") to prioritize wall width axis during detection</param>
+        private DamperConnectorInfo GetDamperConnectorInfo(Element mepElement, string mepCategory, string wallOrientation = null)
         {
             try
             {
-                // ✅ OOP METHOD: Use centralized service for damper connector detection
+                // ✅ OOP METHOD: Use centralized service for damper connector detection (with wall orientation)
                 var damperConnectorService = new DamperConnectorService();
-                var connectorInfo = damperConnectorService.DetectConnectorInfo(mepElement, mepCategory);
+                var connectorInfo = damperConnectorService.DetectConnectorInfo(mepElement, mepCategory, wallOrientation);
                 
                 if (connectorInfo.HasMepConnector)
                 {

@@ -30,12 +30,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS
                 string logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs");
                 Directory.CreateDirectory(logDir);
                 string startupLogPath = Path.Combine(logDir, "addin_startup.log");
+                string r2023Dir = Path.Combine(logDir, "R2023");
+                Directory.CreateDirectory(r2023Dir);
+                string buildStampPath = Path.Combine(r2023Dir, "build_stamp.log");
                 
                 File.AppendAllText(startupLogPath, $"[{DateTime.Now}] ========================================\n");
                 File.AppendAllText(startupLogPath, $"[{DateTime.Now}] ADD-IN STARTUP BUILD 2025-11-20 14:30\n");
                 File.AppendAllText(startupLogPath, $"[{DateTime.Now}] ========================================\n");
                 File.AppendAllText(startupLogPath, $"[{DateTime.Now}] Assembly: {System.Reflection.Assembly.GetExecutingAssembly().Location}\n");
                 File.AppendAllText(startupLogPath, $"[{DateTime.Now}] Process: {System.Diagnostics.Process.GetCurrentProcess().ProcessName}\n");
+
+                // Write a hard build stamp with assembly info to R2023 folder
+                var asm = System.Reflection.Assembly.GetExecutingAssembly();
+                string asmLoc = asm.Location;
+                DateTime asmWrite = File.Exists(asmLoc) ? File.GetLastWriteTime(asmLoc) : DateTime.MinValue;
+                string asmVersion = asm.GetName().Version?.ToString() ?? "unknown";
+                File.AppendAllText(buildStampPath, $"[{DateTime.Now:HH:mm:ss.fff}] *** STARTUP BUILD STAMP ***\n");
+                File.AppendAllText(buildStampPath, $"AssemblyLocation={asmLoc}\n");
+                File.AppendAllText(buildStampPath, $"AssemblyLastWrite={asmWrite:yyyy-MM-dd HH:mm:ss}\n");
+                File.AppendAllText(buildStampPath, $"AssemblyVersion={asmVersion}\n");
+                File.AppendAllText(buildStampPath, $"StartupPID={System.Diagnostics.Process.GetCurrentProcess().Id}\n\n");
+
+                // Show a quick prompt with build timestamp on every run
+                try
+                {
+                    var td = new TaskDialog("JSE Openings — Build Info");
+                    td.MainInstruction = "Add-in Loaded";
+                    td.MainContent =
+                        $"Build Timestamp: {asmWrite:yyyy-MM-dd HH:mm:ss}\n" +
+                        $"Version: {asmVersion}\n" +
+                        $"Assembly: {asmLoc}";
+                    td.CommonButtons = TaskDialogCommonButtons.Close;
+                    td.Show();
+                }
+                catch { }
             }
             catch (Exception startupEx)
             {

@@ -519,6 +519,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             existingZone.DuctShape = newZone.DuctShape;
                             existingZone.InsulationType = newZone.InsulationType;
                             
+                            // ✅ CRITICAL: Copy fresh damper connector detection data from current refresh
+                            // This ensures world coordinate directions (-Y, +X, etc.) overwrite old values (Right, Left, etc.)
+                            existingZone.HasMepConnector = newZone.HasMepConnector;
+                            existingZone.DamperConnectorSide = newZone.DamperConnectorSide;
+                            
                             // Update parameters
                             if (newZone.MepParameterValues != null && newZone.MepParameterValues.Count > 0)
                             {
@@ -536,6 +541,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 var nomMm = newZone.MepElementNominalDiameter > 0 ? (newZone.MepElementNominalDiameter * 304.8) : 0.0;
                                 SafeFileLogger.SafeAppendText("save_db_diagnostic.log",
                                     $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [REFRESH-MERGE] ✅ UPDATED existing zone {newZone.Id} with fresh data: OuterDiameter={newZone.MepElementOuterDiameter:F6}ft ({odMm:F1}mm), NominalDiameter={newZone.MepElementNominalDiameter:F6}ft ({nomMm:F1}mm), SizeParameterValue='{newZone.MepElementSizeParameterValue ?? "NULL"}'\n");
+                            }
+                            
+                            // ✅ DIAGNOSTIC: Log damper connector detection updates
+                            if (!DeploymentConfiguration.DeploymentMode && string.Equals(newZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
+                            {
+                                SafeFileLogger.SafeAppendText("save_db_diagnostic.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [REFRESH-MERGE] ✅ UPDATED existing zone {newZone.Id} (Duct Accessories) with fresh connector data: HasMepConnector={newZone.HasMepConnector}, DamperConnectorSide='{newZone.DamperConnectorSide ?? "NULL"}'\n");
                             }
                         }
                     }

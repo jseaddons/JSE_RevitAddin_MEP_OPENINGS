@@ -114,6 +114,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             try
             {
+                // ✅ OPTIMIZATION 5: Pre-cache all elements and parameters to avoid repeated API calls
+                var elementCache = new Dictionary<ElementId, Element>();
+                var parameterCache = new Dictionary<ElementId, Dictionary<string, Parameter>>();
+
+                foreach (var elementId in parametersToFlush.Keys)
+                {
+                    try
+                    {
+                        var element = doc.GetElement(elementId);
+                        if (element != null && element.IsValidObject)
+                        {
+                            elementCache[elementId] = element;
+                            
+                            // Pre-cache parameters for this element
+                            if (parametersToFlush.TryGetValue(elementId, out var paramsDict))
+                            {
+                                var paramDict = new Dictionary<string, Parameter>();
+                                foreach (var paramName in paramsDict.Keys)
+                                {
+                                    var param = element.LookupParameter(paramName);
+                                    if (param != null)
+                                    {
+                                        paramDict[paramName] = param;
+                                    }
+                                }
+                                if (paramDict.Count > 0)
+                                {
+                                    parameterCache[elementId] = paramDict;
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                }
+
+                if (!DeploymentConfiguration.DeploymentMode && elementCache.Count > 0)
+                {
+                    DebugLogger.Info($"[BATCH-PARAMS] ✅ Pre-cached {elementCache.Count} elements and {parameterCache.Count} parameter sets for flush");
+                }
+
                 foreach (var kvp in parametersToFlush)
                 {
                     var elementId = kvp.Key;
@@ -121,14 +161,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     try
                     {
-                        var element = doc.GetElement(elementId);
-                        if (element == null)
+                        // ✅ OPTIMIZATION 5: Use cached element
+                        if (!elementCache.TryGetValue(elementId, out var element))
                         {
                             failCount += parameters.Count;
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Warning($"[BATCH-PARAMS] ❌ Element {elementId.IntegerValue} not found, skipping {parameters.Count} parameters");
+                                DebugLogger.Warning($"[BATCH-PARAMS] ❌ Element {elementId.IntegerValue} not found, skipping {parameters.Count} parameters");
                             }
                             continue;
                         }
@@ -137,7 +176,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             try
                             {
-                                var param = element.LookupParameter(paramKvp.Key);
+                                // ✅ OPTIMIZATION 5: Use cached parameter if available
+                                Parameter param = null;
+                                if (parameterCache.TryGetValue(elementId, out var paramDict) && paramDict.TryGetValue(paramKvp.Key, out param))
+                                {
+                                    // Use cached parameter
+                                }
+                                else
+                                {
+                                    param = element.LookupParameter(paramKvp.Key);
+                                }
+
                                 if (param == null || param.IsReadOnly)
                                 {
                                     failCount++;
@@ -173,8 +222,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 failCount++;
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Warning($"[BATCH-PARAMS] Failed to set parameter '{paramKvp.Key}' on element {elementId.IntegerValue}: {paramEx.Message}");
+                                    DebugLogger.Warning($"[BATCH-PARAMS] Failed to set parameter '{paramKvp.Key}' on element {elementId.IntegerValue}: {paramEx.Message}");
                                 }
                             }
                         }
@@ -184,8 +232,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         failCount += parameters.Count;
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Error($"[BATCH-PARAMS] Failed to process element {elementId.IntegerValue}: {elementEx.Message}");
+                            DebugLogger.Error($"[BATCH-PARAMS] Failed to process element {elementId.IntegerValue}: {elementEx.Message}");
                         }
                     }
                 }

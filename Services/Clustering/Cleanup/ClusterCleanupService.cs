@@ -73,22 +73,80 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                             $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Sleeve {id} is identified as cluster sleeve (ClusterParam={clusterValue}, SleeveInstanceId={sleeveInstanceValue}) - SKIPPING\n");
                         continue;
                     }
+                    // ✅ DIAGNOSTIC: Log individual sleeve parameters for debugging
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Individual sleeve {id} added to check list - ClusterParam={clusterValue}, SleeveInstanceId={sleeveInstanceValue}\n");
                     individualSleeves.Add(s);
                 }
 
                 SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Found {individualSleeves.Count} individual sleeves to check\n");
+                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Found {individualSleeves.Count} individual sleeves to check (IDs: {string.Join(", ", individualSleeves.Select(s => s.Id.IntegerValue))})\n");
 
                 if (individualSleeves.Count == 0) return 0;
 
                 // Build cluster sleeve bounding boxes (axis-aligned)
-                var clusterBboxes = placedClusters
-                    .Select(c => c?.get_BoundingBox(null))
-                    .Where(b => b != null && b.Enabled)
-                    .ToList();
+                // ✅ CRITICAL: Use active view for bounding box calculation (matches methodology requirement)
+                // According to methodology: "Check for other individual sleeves that fall within the cluster bounding box"
+                // The bounding box must be calculated from the actual placed cluster sleeve element
+                var clusterBboxes = new List<BoundingBoxXYZ>();
+                var clusterBboxMap = new Dictionary<int, BoundingBoxXYZ>(); // Map cluster ID to bbox for logging
+                foreach (var cluster in placedClusters)
+                {
+                    if (cluster == null) continue;
+                    int clusterId = cluster.Id.IntegerValue;
+                    
+                    // ✅ CRITICAL FIX: Refresh element and get fresh bounding box
+                    // Sometimes bounding boxes are stale after placement, so we get the element fresh
+                    var freshCluster = doc.GetElement(cluster.Id) as FamilyInstance;
+                    if (freshCluster == null)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ CLEANUP: Cluster {clusterId} not found in document - SKIPPING\n");
+                        continue;
+                    }
+                    
+                    // ✅ METHODOLOGY ADHERENCE: Get bounding box from actual placed cluster sleeve
+                    // Use null view to get bounding box in all views (most reliable)
+                    var bbox = freshCluster.get_BoundingBox(null);
+                    if (bbox != null && bbox.Enabled)
+                    {
+                        // ✅ DIAGNOSTIC: Also get cluster dimensions from parameters for verification
+                        var widthParam = freshCluster.LookupParameter("Width");
+                        var heightParam = freshCluster.LookupParameter("Height");
+                        var depthParam = freshCluster.LookupParameter("Depth");
+                        double paramWidth = widthParam?.AsDouble() ?? 0.0;
+                        double paramHeight = heightParam?.AsDouble() ?? 0.0;
+                        double paramDepth = depthParam?.AsDouble() ?? 0.0;
+                        
+                        double bboxWidth = (bbox.Max.X - bbox.Min.X) * 304.8;
+                        double bboxHeight = (bbox.Max.Y - bbox.Min.Y) * 304.8;
+                        double bboxDepth = (bbox.Max.Z - bbox.Min.Z) * 304.8;
+                        
+                        clusterBboxes.Add(bbox);
+                        clusterBboxMap[clusterId] = bbox;
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Cluster {clusterId} bbox - " +
+                            $"Min=({bbox.Min.X:F3}, {bbox.Min.Y:F3}, {bbox.Min.Z:F3}), " +
+                            $"Max=({bbox.Max.X:F3}, {bbox.Max.Y:F3}, {bbox.Max.Z:F3}), " +
+                            $"BBoxSize=({bboxWidth:F1}mm x {bboxHeight:F1}mm x {bboxDepth:F1}mm), " +
+                            $"Params=(W={paramWidth*304.8:F1}mm, H={paramHeight*304.8:F1}mm, D={paramDepth*304.8:F1}mm)\n");
+                        
+                        // ✅ DIAGNOSTIC: Warn if bounding box seems too small compared to parameters
+                        if (paramWidth > 0.001 && bboxWidth < paramWidth * 0.5)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] ⚠️ CLEANUP: Cluster {clusterId} bbox width ({bboxWidth:F1}mm) is much smaller than parameter width ({paramWidth*304.8:F1}mm) - possible stale bbox\n");
+                        }
+                    }
+                    else
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ CLEANUP: Cluster {clusterId} has no bounding box or bbox is disabled - SKIPPING\n");
+                    }
+                }
 
                 SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Built {clusterBboxes.Count} cluster bounding boxes\n");
+                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Built {clusterBboxes.Count} cluster bounding boxes from {placedClusters.Count} placed clusters\n");
 
                 if (clusterBboxes.Count == 0) return 0;
 
@@ -106,55 +164,88 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                         continue;
                     }
                     
-                    var ibbox = individual.get_BoundingBox(null);
-                    if (ibbox == null || !ibbox.Enabled) continue;
-                    
-                    foreach (var cbbox in clusterBboxes)
+                    // ✅ IMPROVED LOGIC: Get individual sleeve bounding box for overlap check
+                    // Check if individual sleeve's bounding box overlaps with cluster bounding box
+                    // This is more robust than just checking placement point
+                    var individualBbox = individual.get_BoundingBox(null);
+                    if (individualBbox == null || !individualBbox.Enabled)
                     {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Individual sleeve {individualId} has no bounding box or is disabled - SKIPPING\n");
+                        continue;
+                    }
+                    
+                    // Get placement point for logging
+                    XYZ sleevePlacementPoint = null;
+                    if (individual.Location is LocationPoint locationPoint)
+                    {
+                        sleevePlacementPoint = locationPoint.Point;
+                    }
+                    else
+                    {
+                        sleevePlacementPoint = (individualBbox.Min + individualBbox.Max) / 2.0;
+                    }
+                    
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Checking individual sleeve {individualId} - " +
+                        $"PlacementPoint=({sleevePlacementPoint.X:F3}, {sleevePlacementPoint.Y:F3}, {sleevePlacementPoint.Z:F3}), " +
+                        $"BBox=({individualBbox.Min.X:F3},{individualBbox.Min.Y:F3},{individualBbox.Min.Z:F3}) to ({individualBbox.Max.X:F3},{individualBbox.Max.Y:F3},{individualBbox.Max.Z:F3})\n");
+                    
+                    bool matchedAnyCluster = false;
+                    int clusterIndex = 0;
+                    foreach (var kvp in clusterBboxMap)
+                    {
+                        int clusterId = kvp.Key;
+                        var cbbox = kvp.Value;
+                        clusterIndex++;
                         if (cbbox == null) continue;
                         
-                        // ✅ EDGE CASE: Use more lenient containment check (allows partial overlap)
-                        // Original: strict containment (all corners inside)
-                        // New: center point inside OR significant overlap
-                        XYZ individualCenter = (ibbox.Min + ibbox.Max) / 2.0;
-                        bool centerInside = individualCenter.X >= cbbox.Min.X && individualCenter.X <= cbbox.Max.X &&
-                                           individualCenter.Y >= cbbox.Min.Y && individualCenter.Y <= cbbox.Max.Y &&
-                                           individualCenter.Z >= cbbox.Min.Z && individualCenter.Z <= cbbox.Max.Z;
+                        // ✅ IMPROVED LOGIC: Check bounding box overlap instead of just placement point
+                        // Two bounding boxes overlap if they intersect on all three axes
+                        // This catches edge cases where placement point is outside but bounding box overlaps
+                        bool bboxOverlaps = individualBbox.Max.X >= cbbox.Min.X && individualBbox.Min.X <= cbbox.Max.X &&
+                                           individualBbox.Max.Y >= cbbox.Min.Y && individualBbox.Min.Y <= cbbox.Max.Y &&
+                                           individualBbox.Max.Z >= cbbox.Min.Z && individualBbox.Min.Z <= cbbox.Max.Z;
                         
-                        // Also check if there's significant overlap (at least 50% of individual sleeve volume)
-                        bool hasSignificantOverlap = ibbox.Min.X < cbbox.Max.X && ibbox.Max.X > cbbox.Min.X &&
-                                                    ibbox.Min.Y < cbbox.Max.Y && ibbox.Max.Y > cbbox.Min.Y &&
-                                                    ibbox.Min.Z < cbbox.Max.Z && ibbox.Max.Z > cbbox.Min.Z;
+                        // Also check if placement point is inside (for small sleeves where bbox might not overlap)
+                        bool placementPointInside = sleevePlacementPoint.X >= cbbox.Min.X && sleevePlacementPoint.X <= cbbox.Max.X &&
+                                                    sleevePlacementPoint.Y >= cbbox.Min.Y && sleevePlacementPoint.Y <= cbbox.Max.Y &&
+                                                    sleevePlacementPoint.Z >= cbbox.Min.Z && sleevePlacementPoint.Z <= cbbox.Max.Z;
                         
-                        // Calculate overlap volume
-                        double overlapVolume = 0.0;
-                        if (hasSignificantOverlap)
-                        {
-                            double overlapX = Math.Max(0, Math.Min(ibbox.Max.X, cbbox.Max.X) - Math.Max(ibbox.Min.X, cbbox.Min.X));
-                            double overlapY = Math.Max(0, Math.Min(ibbox.Max.Y, cbbox.Max.Y) - Math.Max(ibbox.Min.Y, cbbox.Min.Y));
-                            double overlapZ = Math.Max(0, Math.Min(ibbox.Max.Z, cbbox.Max.Z) - Math.Max(ibbox.Min.Z, cbbox.Min.Z));
-                            overlapVolume = overlapX * overlapY * overlapZ;
-                            
-                            double individualVolume = (ibbox.Max.X - ibbox.Min.X) * (ibbox.Max.Y - ibbox.Min.Y) * (ibbox.Max.Z - ibbox.Min.Z);
-                            double overlapRatio = individualVolume > 0 ? overlapVolume / individualVolume : 0.0;
-                            hasSignificantOverlap = overlapRatio >= 0.5; // At least 50% overlap
-                        }
+                        // Delete if either bounding box overlaps OR placement point is inside
+                        bool shouldDelete = bboxOverlaps || placementPointInside;
                         
-                        if (centerInside || hasSignificantOverlap)
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP:   vs Cluster #{clusterIndex} (ID={clusterId}) bbox - " +
+                            $"Cluster=({cbbox.Min.X:F3},{cbbox.Min.Y:F3},{cbbox.Min.Z:F3}) to ({cbbox.Max.X:F3},{cbbox.Max.Y:F3},{cbbox.Max.Z:F3}), " +
+                            $"IndividualBBox=({individualBbox.Min.X:F3},{individualBbox.Min.Y:F3},{individualBbox.Min.Z:F3}) to ({individualBbox.Max.X:F3},{individualBbox.Max.Y:F3},{individualBbox.Max.Z:F3}), " +
+                            $"PlacementPoint=({sleevePlacementPoint.X:F3},{sleevePlacementPoint.Y:F3},{sleevePlacementPoint.Z:F3}), " +
+                            $"bboxOverlaps={bboxOverlaps}, placementPointInside={placementPointInside}, shouldDelete={shouldDelete}\n");
+                        
+                        // ✅ CRITICAL: Delete if bounding box overlaps OR placement point is inside cluster bbox
+                        if (shouldDelete)
                         {
                             // ✅ CRITICAL SAFETY CHECK: Triple-check this is NOT a cluster sleeve before marking for deletion
                             if (clusterSleeveIds.Contains(individualId))
                             {
                                 SafeFileLogger.SafeAppendText("cluster_debug.log", 
                                     $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ CRITICAL SAFETY: Sleeve {individualId} matched containment check but is a cluster sleeve - NOT MARKING FOR DELETION\n");
+                                matchedAnyCluster = true;
                                 break;
                             }
                             
                             SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                                $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Individual sleeve {individualId} is within cluster bbox (centerInside={centerInside}, hasOverlap={hasSignificantOverlap}) - MARKING FOR DELETION\n");
+                                $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ✅ Individual sleeve {individualId} placement point is inside cluster #{clusterIndex} (ID={clusterId}) bbox - MARKING FOR DELETION\n");
                             toDelete.Add(individual.Id);
+                            matchedAnyCluster = true;
                             break;
                         }
+                    }
+                    
+                    if (!matchedAnyCluster)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ❌ Individual sleeve {individualId} placement point is NOT inside any cluster bbox - KEEPING\n");
                     }
                 }
 

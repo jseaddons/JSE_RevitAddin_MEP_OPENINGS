@@ -85,8 +85,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 
             try
             {
+                // MEP_ElementId - ✅ CRITICAL: Set MEP Element ID (required for parameter transfer and clustering)
+                var param = sleeve.LookupParameter("MEP_ElementId");
+                if (param != null && !param.IsReadOnly && clashZone.MepElementId != null)
+                {
+                    try
+                    {
+                        param.Set(clashZone.MepElementId.IntegerValue);
+                        written++;
+                        
+                        if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
+                        {
+                            SafeFileLogger.SafeAppendText("parameter_service_debug.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [BatchMetadataWriter] ✅ Set MEP_ElementId = {clashZone.MepElementId.IntegerValue} for sleeve {sleeve.Id}\n");
+                        }
+                    }
+                    catch (Exception setEx)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("parameter_service_debug.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [BatchMetadataWriter] ❌ ERROR: Failed to set MEP_ElementId={clashZone.MepElementId?.IntegerValue} on sleeve {sleeve.Id}: {setEx.Message}\n");
+                        }
+                        failed++;
+                    }
+                }
+                else
+                {
+                    if (param == null && !DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("parameter_service_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [BatchMetadataWriter] ⚠️ MEP_ElementId parameter not found on sleeve {sleeve.Id}\n");
+                    }
+                    else if (clashZone.MepElementId == null && !DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("parameter_service_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [BatchMetadataWriter] ⚠️ ClashZone {clashZone.Id} has null MepElementId for sleeve {sleeve.Id}\n");
+                    }
+                    failed++;
+                }
+
                 // MEP_UniqueId
-                var param = sleeve.LookupParameter("MEP_UniqueId");
+                param = sleeve.LookupParameter("MEP_UniqueId");
                 if (param != null && !param.IsReadOnly)
                 {
                     param.Set(clashZone.MepElementUniqueId);

@@ -1395,13 +1395,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     _logger($"[SQLite] ⚠️ SleeveSnapshots: {zones.Count} zones, but only {zonesWithMepParams} have MEP params, {zonesWithHostParams} have Host params. This may result in empty JSON.");
                 }
                 
+                // ✅ CRITICAL DEBUG: Log Size parameter availability before aggregation
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    var zonesWithSizeParam = zones.Count(z => !string.IsNullOrWhiteSpace(z.MepElementSizeParameterValue));
+                    var sampleSizeValues = zones
+                        .Where(z => !string.IsNullOrWhiteSpace(z.MepElementSizeParameterValue))
+                        .Take(3)
+                        .Select(z => $"ZoneId={z.Id}, Size='{z.MepElementSizeParameterValue}'")
+                        .ToList();
+                    _logger($"[SQLite] SleeveSnapshots: Before aggregation - {zonesWithSizeParam}/{zones.Count} zones have MepElementSizeParameterValue. Samples: {string.Join(", ", sampleSizeValues)}");
+                }
+                
                 var mepParams = AggregateParameterValues(zones, useHost: false);
                 var hostParams = AggregateParameterValues(zones, useHost: true);
                 
-                // ✅ DEBUG: Log aggregated parameter counts
+                // ✅ DEBUG: Log aggregated parameter counts and check if Size is present
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    _logger($"[SQLite] SleeveSnapshots: Aggregated {mepParams.Count} MEP params, {hostParams.Count} Host params for {zones.Count} zones (isCluster={isCluster}, groupId={groupId})");
+                    var sizeKvp = mepParams.FirstOrDefault(kvp => string.Equals(kvp.Key, "Size", StringComparison.OrdinalIgnoreCase));
+                    bool hasSizeParam = sizeKvp.Key != null;
+                    string sizeValue = hasSizeParam ? sizeKvp.Value : "NOT FOUND";
+                    _logger($"[SQLite] SleeveSnapshots: Aggregated {mepParams.Count} MEP params, {hostParams.Count} Host params for {zones.Count} zones (isCluster={isCluster}, groupId={groupId}). Size parameter: {(hasSizeParam ? $"FOUND='{sizeValue}'" : "MISSING")}");
                 }
 
                 var mepElementIds = zones
@@ -1774,6 +1789,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 // This ensures snapshot table saves the exact text value from the Size parameter (e.g., "20 mmø", "200 mm dia symbol")
                 // MepElementSizeParameterValue is the raw Size parameter value read during refresh - different from MepElementFormattedSize which may be calculated
                 // ✅ CRITICAL: Always use fresh value from current refresh, even if Size already exists in MepParameterValues with old value
+                // ✅ EXCEPTION: For cluster zones, preserve the aggregated Size parameter (already aggregated from individual zones in SaveClusterSleeveSnapshots)
                 if (!useHost)
                 {
                     // Initialize list if needed
@@ -1783,19 +1799,61 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         zone.MepParameterValues = bag;
                     }
                     
-                    // ✅ CRITICAL: Remove existing Size parameter if it exists (to replace with fresh value from current refresh)
-                    // This ensures old values (like "0.082") are replaced with fresh values (like "20 mmø") from current refresh
-                    bag.RemoveAll(kv => kv != null && IsSizeParameter(kv.Key?.Trim() ?? string.Empty));
+                    // ✅ CRITICAL FIX FOR CLUSTER ZONES: Don't remove/re-add Size for cluster zones - preserve aggregated value
+                    // Cluster zones have Size already aggregated from individual zones in SaveClusterSleeveSnapshots
+                    // Individual zones have MepElementSizeParameterValue populated from database
+                    bool isClusterZone = zone.ClusterSleeveInstanceId > 0;
+                    bool hasSizeInParams = bag.Any(kv => kv != null && IsSizeParameter(kv.Key?.Trim() ?? string.Empty));
                     
-                    // ✅ PRIORITY 1: Use MepElementSizeParameterValue (raw Size parameter value from current refresh)
-                    if (!string.IsNullOrWhiteSpace(zone.MepElementSizeParameterValue))
+                    if (!isClusterZone)
                     {
-                        bag.Add(new Models.SerializableKeyValue { Key = "Size", Value = zone.MepElementSizeParameterValue });
+                        // ✅ For individual zones: Remove existing Size parameter if it exists (to replace with fresh value from current refresh)
+                        // This ensures old values (like "0.082") are replaced with fresh values (like "20 mmø") from current refresh
+                        bag.RemoveAll(kv => kv != null && IsSizeParameter(kv.Key?.Trim() ?? string.Empty));
+                        
+                        // ✅ PRIORITY 1: Use MepElementSizeParameterValue (raw Size parameter value from current refresh)
+                        if (!string.IsNullOrWhiteSpace(zone.MepElementSizeParameterValue))
+                        {
+                            bag.Add(new Models.SerializableKeyValue { Key = "Size", Value = zone.MepElementSizeParameterValue });
+                        }
+                        // ✅ PRIORITY 2: Fallback to MepElementFormattedSize if MepElementSizeParameterValue is empty
+                        else if (!string.IsNullOrWhiteSpace(zone.MepElementFormattedSize))
+                        {
+                            bag.Add(new Models.SerializableKeyValue { Key = "Size", Value = zone.MepElementFormattedSize });
+                        }
                     }
-                    // ✅ PRIORITY 2: Fallback to MepElementFormattedSize if MepElementSizeParameterValue is empty
-                    else if (!string.IsNullOrWhiteSpace(zone.MepElementFormattedSize))
+                    else if (!hasSizeInParams)
                     {
-                        bag.Add(new Models.SerializableKeyValue { Key = "Size", Value = zone.MepElementFormattedSize });
+                        // ✅ For cluster zones: Only add Size if it's missing (shouldn't happen if SaveClusterSleeveSnapshots worked correctly)
+                        // This is a fallback in case Size wasn't aggregated properly
+                        if (!string.IsNullOrWhiteSpace(zone.MepElementSizeParameterValue))
+                        {
+                            bag.Add(new Models.SerializableKeyValue { Key = "Size", Value = zone.MepElementSizeParameterValue });
+                        }
+                        else if (!string.IsNullOrWhiteSpace(zone.MepElementFormattedSize))
+                        {
+                            bag.Add(new Models.SerializableKeyValue { Key = "Size", Value = zone.MepElementFormattedSize });
+                        }
+                    }
+                    
+                    // ✅ CRITICAL FIX: Add MEP_ElementId to MepParameterValues for parameter transfer
+                    // MEP_ElementId is required for parameter transfer command to work correctly
+                    // For individual sleeves, use the zone's MepElementId
+                    // For cluster sleeves, this will be aggregated (comma-separated) below
+                    if (!useHost && zone.MepElementId != null && zone.MepElementId.IntegerValue > 0)
+                    {
+                        // Check if MEP_ElementId already exists in bag
+                        bool hasMepElementId = bag.Any(kv => kv != null && 
+                            string.Equals(kv.Key?.Trim(), "MEP_ElementId", StringComparison.OrdinalIgnoreCase));
+                        
+                        if (!hasMepElementId)
+                        {
+                            bag.Add(new Models.SerializableKeyValue 
+                            { 
+                                Key = "MEP_ElementId", 
+                                Value = zone.MepElementId.IntegerValue.ToString() 
+                            });
+                        }
                     }
                 }
                 
@@ -3066,6 +3124,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
         /// <summary>
         /// Loads parameter values from ClashZones table for a specific zone
+        /// ✅ CRITICAL FIX: Also loads MepElementSizeParameterValue to ensure Size parameter is available for snapshot aggregation
         /// </summary>
         private void LoadParameterValuesFromDatabase(ClashZone zone, SQLiteTransaction transaction)
         {
@@ -3078,7 +3137,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 {
                     cmd.Transaction = transaction;
                     cmd.CommandText = @"
-                        SELECT MepParameterValuesJson, HostParameterValuesJson
+                        SELECT MepParameterValuesJson, HostParameterValuesJson, MepElementSizeParameterValue
                         FROM ClashZones
                         WHERE ClashZoneGuid = @ClashZoneGuid
                         LIMIT 1";
@@ -3090,6 +3149,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         {
                             var mepParamsJson = GetNullableString(reader, "MepParameterValuesJson");
                             var hostParamsJson = GetNullableString(reader, "HostParameterValuesJson");
+                            // ✅ CRITICAL FIX: Load MepElementSizeParameterValue from database
+                            var mepElementSizeParameterValue = GetNullableString(reader, "MepElementSizeParameterValue");
+
+                            // ✅ CRITICAL: Populate MepElementSizeParameterValue if it's empty (ensures Size parameter is available for aggregation)
+                            if (!string.IsNullOrWhiteSpace(mepElementSizeParameterValue) && string.IsNullOrWhiteSpace(zone.MepElementSizeParameterValue))
+                            {
+                                zone.MepElementSizeParameterValue = mepElementSizeParameterValue;
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    _logger($"[SQLite] ✅ Loaded MepElementSizeParameterValue='{mepElementSizeParameterValue}' for zone {zone.Id} from database");
+                                }
+                            }
 
                             // Deserialize MEP parameters
                             if (!string.IsNullOrWhiteSpace(mepParamsJson) && mepParamsJson != "{}")
@@ -3368,6 +3439,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             // ✅ OOP METHOD: Load damper connector detection values
             clashZone.HasMepConnector = GetBool(reader, "HasMepConnector");
             clashZone.DamperConnectorSide = GetNullableString(reader, "DamperConnectorSide") ?? string.Empty;
+            
+            // ✅ PIPE DIAMETER COLUMNS: Load outer diameter and nominal diameter
+            clashZone.MepElementOuterDiameter = GetDouble(reader, "MepElementOuterDiameter", 0.0);
+            clashZone.MepElementNominalDiameter = GetDouble(reader, "MepElementNominalDiameter", 0.0);
+            
+            // ✅ SIZE PARAMETER VALUE: Load Size parameter value as string (critical for cluster snapshots)
+            clashZone.MepElementSizeParameterValue = GetNullableString(reader, "MepElementSizeParameterValue") ?? string.Empty;
             
             // ✅ OOP METHOD: Load insulation detection values
             clashZone.IsInsulated = GetBool(reader, "IsInsulated");

@@ -14,8 +14,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
         /// <param name="damper">The damper FamilyInstance to check</param>
         /// <param name="useWorldCoordinates">If true, uses world coordinates (for non-standard dampers). If false, uses local coordinates (for standard dampers)</param>
         /// <param name="connector">Output parameter containing the detected connector, or null if not found</param>
+        /// <param name="wallOrientation">Optional wall orientation ("X" or "Y") to prioritize wall width axis during detection</param>
         /// <returns>Connector side direction ("Left", "Right", "Top", "Bottom") or empty string if not detected</returns>
-        string DetectConnectorSide(FamilyInstance damper, bool useWorldCoordinates, out Connector connector);
+        string DetectConnectorSide(FamilyInstance damper, bool useWorldCoordinates, out Connector connector, string wallOrientation = null);
 
         /// <summary>
         /// Checks if a damper has at least one MEP connector.

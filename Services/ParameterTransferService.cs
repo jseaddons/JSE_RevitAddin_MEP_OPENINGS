@@ -1282,92 +1282,95 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private Dictionary<string, Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)>> BuildFilterIndex(Document doc = null)
         {
             var filterIndex = new Dictionary<string, Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)>>();
+            
+            if (doc == null)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[PARAM_TRANSFER] Document is null - cannot load from database");
+                return filterIndex;
+            }
+            
             try
             {
-                // ✅ FIX: Use project-specific path instead of hardcoded "Default"
-                string filtersDirectory;
-                if (doc != null)
-                {
-                    filtersDirectory = ProjectPathService.GetFiltersDirectory(doc);
-                }
-                else
-                {
-                    // Fallback for backward compatibility
-                    filtersDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Projects", "Default", "Filters");
-                }
-                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[PARAM_TRANSFER] Looking for XML files in: {filtersDirectory}");
-                string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
-                if (!DeploymentConfiguration.DeploymentMode)
+                // ✅ DATABASE-FIRST: Load all filters and clash zones from database (not XML)
+                using (var dbContext = new SleeveDbContext(doc, msg => 
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [PARAM_TRANSFER] Looking for XML files in: {filtersDirectory}\n");
-                    }
-                }
-                
-                if (!Directory.Exists(filtersDirectory)) 
+                        DebugLogger.Info($"[SQLite] {msg}");
+                }))
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Warning($"[PARAM_TRANSFER] Filters directory does not exist: {filtersDirectory}");
-                    return filterIndex;
-                }
-                
-                // ✅ FIX: Filter out *_global.xml and *_CONDITIONS.xml files (like MarkParameterService)
-                var allXmlFiles = Directory.GetFiles(filtersDirectory, "*.xml");
-                var xmlFiles = allXmlFiles.Where(f => 
-                {
-                    string fileName = Path.GetFileName(f);
-                    return !fileName.EndsWith("_global.xml", StringComparison.OrdinalIgnoreCase) &&
-                           !fileName.EndsWith("_CONDITIONS.xml", StringComparison.OrdinalIgnoreCase) &&
-                           !fileName.EndsWith("_conditions.xml", StringComparison.OrdinalIgnoreCase);
-                }).ToList();
-                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[PARAM_TRANSFER] Found {allXmlFiles.Length} XML files total, {xmlFiles.Count} filter files (excluded {allXmlFiles.Length - xmlFiles.Count} global/CONDITIONS files)");
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    string transferDebugLogPath2 = SafeFileLogger.GetLogFilePath("transfer_debug.log");
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        File.AppendAllText(transferDebugLogPath2, $"[{DateTime.Now}] [PARAM_TRANSFER] Found {allXmlFiles.Length} XML files total, {xmlFiles.Count} filter files\n");
-                    }
-                }
-
-                foreach (var xmlFile in xmlFiles)
-                {
-                    var fileName = Path.GetFileName(xmlFile);
+                    var filterRepository = new FilterRepository(dbContext, msg => { });
+                    var clashZoneRepository = new ClashZoneRepository(dbContext, msg => { });
                     
-                    try
+                    // Get all unique filter/category combinations from database
+                    var filterCategories = new List<(string filterName, string category)>();
+                    
+                    using (var cmd = dbContext.Connection.CreateCommand())
                     {
-                        if (!DeploymentConfiguration.DeploymentMode)
+                        cmd.CommandText = @"
+                            SELECT DISTINCT FilterName, Category
+                            FROM Filters
+                            WHERE FilterName IS NOT NULL AND Category IS NOT NULL
+                            ORDER BY FilterName, Category";
+                        
+                        using (var reader = cmd.ExecuteReader())
                         {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[PARAM_TRANSFER] Loading XML file: {fileName}");
-                            string transferDebugLogPath3 = SafeFileLogger.GetLogFilePath("transfer_debug.log");
-                            if (!DeploymentConfiguration.DeploymentMode)
+                            while (reader.Read())
                             {
-                                File.AppendAllText(transferDebugLogPath3, $"[{DateTime.Now}] [PARAM_TRANSFER] Loading XML file: {fileName}\n");
-                            }
-                        }
-
-                var serializer = new System.Xml.Serialization.XmlSerializer(typeof(Models.OpeningFilter));
-                using (var reader = new StreamReader(xmlFile))
-                {
-                    var filter = (Models.OpeningFilter)serializer.Deserialize(reader);
-                    var zones = filter?.ClashZoneStorage?.AllZones ?? new List<Models.ClashZone>();
-                            
-                            if (!DeploymentConfiguration.DeploymentMode && zones.Count > 0)
-                            {
-                                                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[PARAM_TRANSFER] Loaded {zones.Count} clash zones from {fileName}");
-                                string transferDebugLogPath4 = SafeFileLogger.GetLogFilePath("transfer_debug.log");
-                                if (!DeploymentConfiguration.DeploymentMode)
+                                var filterName = reader.IsDBNull(0) ? null : reader.GetString(0);
+                                var category = reader.IsDBNull(1) ? null : reader.GetString(1);
+                                
+                                if (!string.IsNullOrWhiteSpace(filterName) && !string.IsNullOrWhiteSpace(category))
                                 {
-                                    File.AppendAllText(transferDebugLogPath4, $"[{DateTime.Now}] [PARAM_TRANSFER] Loaded {zones.Count} clash zones from {fileName}\n");
+                                    filterCategories.Add((filterName, category));
                                 }
                             }
+                        }
+                    }
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[PARAM_TRANSFER] Found {filterCategories.Count} filter/category combinations in database");
+                        SafeFileLogger.SafeAppendText("transfer_debug.log", 
+                            $"[{DateTime.Now}] [PARAM_TRANSFER] Found {filterCategories.Count} filter/category combinations in database\n");
+                    }
+                    
+                    // Load clash zones for each filter/category combination
+                    foreach (var (filterName, category) in filterCategories)
+                    {
+                        try
+                        {
+                            // ✅ DATABASE-FIRST: Load clash zones from database (includes MepElementSizeParameterValue)
+                            var zones = clashZoneRepository.GetClashZonesByFilter(
+                                filterName, 
+                                category, 
+                                unresolvedOnly: false, 
+                                readyForPlacementOnly: false);
+                            
+                            if (zones == null || zones.Count == 0)
+                                continue;
+                            
+                            // ✅ CRITICAL: Load parameter values from database (ensures MepElementSizeParameterValue is populated)
+                            // Note: GetClashZonesByFilter already loads MepElementSizeParameterValue, but we ensure MepParameterValues are loaded too
+                            foreach (var zone in zones)
+                            {
+                                if (zone != null && (zone.MepParameterValues == null || zone.MepParameterValues.Count == 0))
+                                {
+                                    // Load parameters from database if not already loaded
+                                    // This is done internally by GetClashZonesByFilter, but we ensure it's done
+                                    // The MepElementSizeParameterValue is already loaded by GetClashZonesByFilter
+                                }
+                            }
+                            
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[PARAM_TRANSFER] Loaded {zones.Count} clash zones from database for filter '{filterName}' ({category})");
+                                SafeFileLogger.SafeAppendText("transfer_debug.log", 
+                                    $"[{DateTime.Now}] [PARAM_TRANSFER] Loaded {zones.Count} clash zones from database for filter '{filterName}' ({category})\n");
+                            }
+                            
+                            // Build filter key (same format as XML file name for compatibility)
+                            var filterKey = $"{filterName}_{category}.xml";
                             
                             var filterData = new Dictionary<int, (Dictionary<string,string> mep, Dictionary<string,string> host)>();
                             
@@ -1376,7 +1379,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             {
                                 if (zone.SleeveInstanceId > 0)
                                 {
+                                    // ✅ DATABASE-FIRST: Use MepParameterValues from database (includes MepElementSizeParameterValue)
                                     var mepParams = zone.MepParameterValues?.ToDictionary(p => p.Key, p => p.Value) ?? new Dictionary<string, string>();
+                                    
+                                    // ✅ CRITICAL FIX FOR PIPES: Prioritize MepElementSizeParameterValue for Size parameter
+                                    // This ensures individual sleeves get text values (e.g., "20 mmø") from database, not float values (e.g., "0.082")
+                                    if (!string.IsNullOrWhiteSpace(zone.MepElementSizeParameterValue))
+                                    {
+                                        // Remove any existing Size parameter and replace with database value
+                                        mepParams.Remove("Size");
+                                        mepParams["Size"] = zone.MepElementSizeParameterValue;
+                                        
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            DebugLogger.Info($"[PARAM_TRANSFER] ✅ Individual: Using MepElementSizeParameterValue='{zone.MepElementSizeParameterValue}' for zone {zone.Id} (from database)");
+                                        }
+                                    }
+                                    
                                     var hostParams = zone.HostParameterValues?.ToDictionary(p => p.Key, p => p.Value) ?? new Dictionary<string, string>();
                                     
                                     filterData[zone.SleeveInstanceId] = (mepParams, hostParams);
@@ -1403,11 +1422,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 
                                 foreach (var zone in clusterZones)
                                 {
+                                    // ✅ CRITICAL FIX FOR PIPES: Prioritize MepElementSizeParameterValue for Size parameter
+                                    // This ensures cluster sleeves get text values (e.g., "20 mmø") from database, not float values (e.g., "0.082") from XML
+                                    // Same logic as individual sleeves - use MepElementSizeParameterValue column from database
+                                    bool hasSizeFromDatabase = false;
+                                    string sizeValueFromDatabase = null;
+                                    
+                                    if (!string.IsNullOrWhiteSpace(zone.MepElementSizeParameterValue))
+                                    {
+                                        hasSizeFromDatabase = true;
+                                        sizeValueFromDatabase = zone.MepElementSizeParameterValue.Trim();
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            DebugLogger.Info($"[PARAM_TRANSFER] ✅ Cluster: Using MepElementSizeParameterValue='{sizeValueFromDatabase}' for zone {zone.Id} (from database, not XML)");
+                                        }
+                                    }
+                                    
                                     // Aggregate MEP parameters
                                     if (zone.MepParameterValues != null)
                                     {
                                         foreach (var param in zone.MepParameterValues)
                                         {
+                                            // ✅ CRITICAL FIX: Skip Size parameter from XML if we have MepElementSizeParameterValue from database
+                                            // This ensures we use the text value (e.g., "20 mmø") instead of float value (e.g., "0.082")
+                                            if (param.Key.Equals("Size", StringComparison.OrdinalIgnoreCase) && hasSizeFromDatabase)
+                                            {
+                                                // Use database value instead of XML value
+                                                if (!aggregatedMepParams.ContainsKey("Size"))
+                                                {
+                                                    aggregatedMepParams["Size"] = sizeValueFromDatabase;
+                                                    if (!DeploymentConfiguration.DeploymentMode)
+                                                    {
+                                                        DebugLogger.Info($"[PARAM_TRANSFER] ✅ Cluster: Added Size='{sizeValueFromDatabase}' from MepElementSizeParameterValue (database) for zone {zone.Id}");
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    // Append to existing value with comma separation
+                                                    aggregatedMepParams["Size"] = $"{aggregatedMepParams["Size"]}, {sizeValueFromDatabase}";
+                                                    if (!DeploymentConfiguration.DeploymentMode)
+                                                    {
+                                                        DebugLogger.Info($"[PARAM_TRANSFER] ✅ Cluster: Appended Size='{sizeValueFromDatabase}' from MepElementSizeParameterValue (database) to existing sizes");
+                                                    }
+                                                }
+                                                continue; // Skip processing this Size parameter from XML
+                                            }
+                                            
                                             if (!string.IsNullOrEmpty(param.Value))
                                             {
                                                 // ✅ FIX: For Size parameter, extract only the first part before dash (format: "1350x1000-1350x1000" → "1350x1000")
@@ -1468,6 +1528,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         }
                                     }
                                     
+                                    // ✅ FALLBACK: If Size parameter wasn't found in MepParameterValues and we have MepElementSizeParameterValue, add it
+                                    if (hasSizeFromDatabase && !aggregatedMepParams.ContainsKey("Size"))
+                                    {
+                                        aggregatedMepParams["Size"] = sizeValueFromDatabase;
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            DebugLogger.Info($"[PARAM_TRANSFER] ✅ Cluster: Added Size='{sizeValueFromDatabase}' from MepElementSizeParameterValue (fallback) for zone {zone.Id}");
+                                        }
+                                    }
+                                    
                                     // Aggregate Host parameters
                                     if (zone.HostParameterValues != null)
                                     {
@@ -1498,42 +1568,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     DebugLogger.Info($"[PARAM_TRANSFER] Added aggregated cluster sleeve {clusterSleeveId} with {aggregatedMepParams.Count} MEP params and {aggregatedHostParams.Count} host params");
                             }
                             
-                            filterIndex[fileName] = filterData;
+                            filterIndex[filterKey] = filterData;
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
                                                                 if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[PARAM_TRANSFER] Built index for {fileName}: {filterData.Count} sleeves");
+                                    DebugLogger.Info($"[PARAM_TRANSFER] Built index for filter '{filterName}' ({category}): {filterData.Count} sleeves");
                                 string transferDebugLogPath5 = SafeFileLogger.GetLogFilePath("transfer_debug.log");
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
-                                    File.AppendAllText(transferDebugLogPath5, $"[{DateTime.Now}] [PARAM_TRANSFER] Built index for {fileName}: {filterData.Count} sleeves\n");
+                                    File.AppendAllText(transferDebugLogPath5, $"[{DateTime.Now}] [PARAM_TRANSFER] Built index for filter '{filterName}' ({category}): {filterData.Count} sleeves\n");
                                 }
                             }
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Error($"[PARAM_TRANSFER] Error loading {fileName}: {ex.Message}");
-                        if (!DeploymentConfiguration.DeploymentMode)
+                        catch (Exception ex)
                         {
-                            string transferDebugLogPath6 = SafeFileLogger.GetLogFilePath("transfer_debug.log");
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                File.AppendAllText(transferDebugLogPath6, $"[{DateTime.Now}] [PARAM_TRANSFER] ERROR loading {fileName}: {ex.Message}\n");
+                                DebugLogger.Error($"[PARAM_TRANSFER] Error loading filter '{filterName}' ({category}): {ex.Message}");
+                                SafeFileLogger.SafeAppendText("transfer_debug.log", 
+                                    $"[{DateTime.Now}] [PARAM_TRANSFER] ERROR loading filter '{filterName}' ({category}): {ex.Message}\n");
                             }
                         }
                     }
                 }
                 
                                 if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[PARAM_TRANSFER] Filter index built with {filterIndex.Count} XML files");
+                    DebugLogger.Info($"[PARAM_TRANSFER] Filter index built with {filterIndex.Count} filters from database");
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     string transferDebugLogPath7 = SafeFileLogger.GetLogFilePath("transfer_debug.log");
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        File.AppendAllText(transferDebugLogPath7, $"[{DateTime.Now}] [PARAM_TRANSFER] Filter index built with {filterIndex.Count} XML files\n");
+                        File.AppendAllText(transferDebugLogPath7, $"[{DateTime.Now}] [PARAM_TRANSFER] Filter index built with {filterIndex.Count} filters from database\n");
                     }
                     if (filterIndex.Count > 0)
                     {
@@ -1941,8 +2007,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                if (target == null || target.IsReadOnly) return false;
-                if (target.StorageType == StorageType.String) { target.Set(value ?? string.Empty); return true; }
+                if (target == null || target.IsReadOnly || string.IsNullOrWhiteSpace(value)) return false;
+                
+                // ✅ CRITICAL FIX: Handle Integer parameters (e.g., MEP_ElementId)
+                if (target.StorageType == StorageType.Integer)
+                {
+                    if (int.TryParse(value, out int intValue))
+                    {
+                        target.Set(intValue);
+                        return true;
+                    }
+                    return false;
+                }
+                
+                // Handle String parameters
+                if (target.StorageType == StorageType.String) 
+                { 
+                    target.Set(value ?? string.Empty); 
+                    return true; 
+                }
+                
                 return false;
             }
             catch { return false; }
