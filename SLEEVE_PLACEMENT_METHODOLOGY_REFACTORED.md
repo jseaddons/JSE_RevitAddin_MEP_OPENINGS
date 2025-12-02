@@ -1140,64 +1140,216 @@ The clustering system is now organized into 10 distinct service phases, each wit
 
 ## Damper Connector Detection and Sleeve Placement (Critical Logic)
 
-**Connector Detection:**
+**Overview:**
 - Each damper (duct accessory) is analyzed to determine its connector side using world coordinates: `+X`, `-X`, `+Y`, `-Y`, `+Z`, `-Z`.
-- The process is designed to robustly handle damper flipping, rotation, and arbitrary placement in the model, ensuring the connector direction is always mapped correctly to the host wall orientation.
+- The detection process handles damper flipping, rotation, and arbitrary placement in linked files, ensuring the connector direction is always mapped correctly to the host wall orientation.
+- This was developed through extensive debugging of MSFD dampers with connectors on all sides (Left/Right/Top/Bottom) and required multiple iterations to handle the BasisX inward-pointing behavior.
 
-**Step-by-Step Logic:**
-1. **Find Damper Center:**
-   - Use the damper’s insertion point (`FamilyInstance.Location` as `LocationPoint`) or, if unavailable, its transform origin (`FamilyInstance.GetTransform().Origin`).
-   - This is the geometric center of the damper body, excluding connectors, and is critical for correct offset and clearance calculations.
+### Connector Detection (DamperConnectorDetector.cs)
 
-2. **Select the Correct Connector:**
-   - If the damper has multiple connectors, select the one furthest from the damper center, and whose facing direction (BasisX) best aligns with its position vector from the center.
-   - This ensures the main airflow connector is chosen, not accessory connectors.
+**Step 1: Find Damper Center**
+```csharp
+// Get damper center from bounding box (preferred) or transform origin (fallback)
+XYZ damperCenter;
+var bbox = damper.get_BoundingBox(null);
+if (bbox != null)
+{
+    damperCenter = (bbox.Min + bbox.Max) / 2.0;
+}
+else
+{
+    damperCenter = damper.GetTransform().Origin;
+}
+```
+- This is the geometric center of the damper body, EXCLUDING connectors.
+- Critical for correct offset and clearance calculations.
+- Bounding box center is preferred because it represents the damper body more accurately than the transform origin (which can be at the connector).
 
-3. **Get Connector’s Local Direction (BasisX):**
-   - Obtain the connector’s BasisX vector in family space:
-     ```csharp
-     XYZ connectorBasisXLocal = connector.CoordinateSystem.BasisX;
-     ```
-   - BasisX represents the direction the connector is facing in the damper’s local (family) coordinate system.
+**Step 2: Select the Best Connector**
+```csharp
+// Find the MEP connector - prefer the one furthest from center
+Connector best = null;
+double maxDistance = 0;
 
-4. **Transform BasisX to World Coordinates:**
-   - Use the damper’s transform to map the local BasisX to world coordinates:
-     ```csharp
-     Transform damperTransform = damper.GetTransform();
-     XYZ connectorBasisXWorld = damperTransform.OfVector(connectorBasisXLocal);
-     ```
-   - This step is critical: it accounts for any rotation, flipping, or mirroring applied to the damper instance in the project or linked file.
-   - For example, a damper rotated 270° will have its family +X mapped to world -Y.
+foreach (Connector c in cm.Connectors)
+{
+    double distance = c.Origin.DistanceTo(damperCenter);
+    if (distance > maxDistance)
+    {
+        maxDistance = distance;
+        best = c;
+    }
+}
+```
+- If the damper has multiple connectors, select the one furthest from the damper center.
+- This ensures the main airflow connector is chosen, not accessory connectors (e.g., control wiring).
+- Distance-based selection is robust against connector naming inconsistencies across different damper families.
 
-5. **Determine Dominant World Axis:**
-   - Calculate the absolute values of the X, Y, Z components of `connectorBasisXWorld`.
-   - The largest component (above a threshold, e.g., 0.7) determines the world direction:
-     - If Z is dominant: connector is vertical (`+Z` or `-Z`)
-     - If Y is dominant: connector is horizontal (`+Y` or `-Y`)
-     - If X is dominant: connector is horizontal (`+X` or `-X`)
-   - The sign of the component determines positive or negative direction.
-   - This step is what makes the detection robust to flipping and rotation: the transform always maps the connector’s facing direction to the correct world axis.
+**Step 3: Get Connector's BasisX (THE CRITICAL INSIGHT)**
+```csharp
+// ✅ KEY INSIGHT: The connector's BasisX in Revit points INWARD (toward the damper body)
+// NOT outward. We need to NEGATE it to get the side the connector is on.
+// 
+// The connector.CoordinateSystem is already in WORLD coordinates for placed instances.
+// We don't need to transform it - Revit gives us the world-space direction directly.
+// But we DO need to negate it because BasisX points inward, not outward.
 
-6. **Fallback (if ambiguous):**
-   - If no component is dominant (all < 0.7), use the connector’s position vector relative to the damper center to determine the side.
-   - This ensures even non-standard families or ambiguous geometry are handled.
+XYZ connectorBasisX = -best.CoordinateSystem.BasisX; // Already in world coordinates, negated to get outward direction
+```
+- **STRUGGLE #1**: Initially assumed BasisX pointed outward (toward the connected duct). This caused 180° errors.
+- **DISCOVERY**: BasisX points INWARD (into the damper body), representing the direction air flows FROM the connector INTO the damper.
+- **FIX**: Negate BasisX to get the outward direction (the side the connector is on).
+- **STRUGGLE #2**: Initially thought we needed to transform from family to world coordinates using `damperTransform.OfVector()`.
+- **DISCOVERY**: For placed instances, `connector.CoordinateSystem` is ALREADY in world coordinates. Revit handles the transformation automatically.
+- **FIX**: Use `connector.CoordinateSystem.BasisX` directly (after negation), no manual transformation needed.
 
-7. **Map to Host Wall Orientation:**
-   - The detected world direction (`+X`, `-X`, `+Y`, `-Y`, `+Z`, `-Z`) is then mapped to the host wall’s orientation (X-wall or Y-wall) for clearance assignment and sleeve placement.
-   - For example, on an X-wall, world +X is the wall’s horizontal axis; on a Y-wall, world +Y is the wall’s horizontal axis.
-   - This mapping ensures that the connector side is always interpreted correctly relative to the wall, regardless of how the damper is placed or rotated.
+**Step 4: Determine Dominant World Axis**
+```csharp
+// Calculate absolute values
+double absX = Math.Abs(connectorBasisX.X);
+double absY = Math.Abs(connectorBasisX.Y);
+double absZ = Math.Abs(connectorBasisX.Z);
 
-8. **Result and Logging:**
-   - The detected connector direction is stored in the `ClashZone` as `DamperConnectorSide` and used throughout placement and sizing.
-   - Detailed logs are written to `damper_connector_debug.log` showing:
-     - Damper and connector positions
-     - Local and world BasisX vectors
-     - Wall orientation
-     - Final detected direction
-   - This logging is essential for debugging and verifying correct detection, especially in complex or flipped scenarios.
+// Check Z first (vertical)
+if (absZ >= absX && absZ >= absY && absZ > 0.5)
+{
+    detectedDirection = connectorBasisX.Z > 0 ? "+Z" : "-Z";
+}
+// For Y-walls, prioritize position along Y (fallback to BasisX if near zero)
+else if (wallOrientation == "Y")
+{
+    if (Math.Abs(positionVector.Y) >= axisPosThreshold)
+        detectedDirection = positionVector.Y > 0 ? "-Y" : "+Y"; // FLIPPED: connector offset +Y means damper is on -Y side
+    else
+        detectedDirection = connectorBasisX.Y > 0 ? "+Y" : "-Y";
+}
+// For X-walls, prioritize position along X (fallback to BasisX if near zero)
+else if (wallOrientation == "X")
+{
+    if (Math.Abs(positionVector.X) >= axisPosThreshold)
+        detectedDirection = positionVector.X > 0 ? "-X" : "+X"; // FLIPPED: connector offset +X means damper is on -X side
+    else
+        detectedDirection = connectorBasisX.X > 0 ? "+X" : "-X";
+}
+```
+- **STRUGGLE #3**: BasisX alone sometimes gave ambiguous results (e.g., both X and Y components ~0.7 for 45° rotations).
+- **DISCOVERY**: For walls, the connector's position relative to the damper center along the wall width axis is more reliable than BasisX.
+- **FIX**: Prioritize position vector along wall width axis (X for X-walls, Y for Y-walls), fallback to BasisX sign if position is near zero.
+- **CRITICAL**: Position vector is FLIPPED: if connector is at +Y from center, the damper body is on the -Y side (and vice versa).
+- Threshold for "dominant" axis: 0.5 (meaning ≥50% of magnitude in that direction).
+- Threshold for "significant position": 0.02 ft (~6mm) to filter out floating-point noise.
 
-**Why This Works:**
-- Handles damper rotation, flipping, and mirroring in the model.
-- Ensures connector direction is always mapped to the correct world axis and host wall orientation.
-- Provides robust detection for both standard and non-standard damper families.
-- Enables correct clearance assignment and sleeve placement, even for vertical connectors (+Z/-Z) and rotated families.
+**Step 5: Logging for Verification**
+```csharp
+string logMessage = $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] " +
+    $"Damper ID={damper?.Id?.IntegerValue ?? -1}, " +
+    $"Family='{damper?.Symbol?.Family?.Name ?? "Unknown"}', " +
+    $"Type='{damper?.Symbol?.Name ?? "Unknown"}', " +
+    $"FacingFlipped={isFacingFlipped}, HandFlipped={isHandFlipped}, " +
+    $"TotalConnectors={connectorCount}, " +
+    $"DamperCenter=({damperCenter.X:F4}, {damperCenter.Y:F4}, {damperCenter.Z:F4}), " +
+    $"ConnectorOrigin=({connectorOrigin.X:F4}, {connectorOrigin.Y:F4}, {connectorOrigin.Z:F4}), " +
+    $"ConnectorBasisX=({connectorBasisX.X:F4}, {connectorBasisX.Y:F4}, {connectorBasisX.Z:F4}) [WORLD COORDS - connector facing direction], " +
+    $"BasisXAbs: X={absX:F4}, Y={absY:F4}, Z={absZ:F4}, " +
+    $"PositionVector=({positionVector.X:F4}, {positionVector.Y:F4}, {positionVector.Z:F4}), " +
+    $"PosAbs: X={posAbsX:F4}, Y={posAbsY:F4}, Z={posAbsZ:F4}, " +
+    $"WallOrientation='{wallOrientation ?? "null"}', " +
+    $"DetectedDirection='{detectedDirection}'\n";
+
+SafeFileLogger.SafeAppendText("damper_connector_debug.log", logMessage);
+```
+- Comprehensive logging to `damper_connector_debug.log` for debugging and verification.
+- Includes flip state, connector count, positions, BasisX components, position vector, and final detected direction.
+- **CRITICAL for debugging**: Without this logging, it was impossible to diagnose BasisX inward-pointing behavior and position vector flipping.
+
+### Sleeve Sizing and Placement (DamperPlacementStrategy.cs)
+
+**Step 6: Handle Vertical Connectors on Walls (THE Z-SWAP BUG)**
+```csharp
+// ✅ WALL-ONLY FIX: If connector is vertical (+Z/-Z), the damper's family Width/Height are rotated
+// relative to the wall axes. Swap the base damperWidth/damperHeight before adding clearances.
+if (isWallHost && (connectorDir == "+Z" || connectorDir == "-Z"))
+{
+    double originalWidth = damperWidth;
+    double originalHeight = damperHeight;
+    damperWidth = originalHeight;
+    damperHeight = originalWidth;
+    DebugLogger.Info($"[DamperStrategy] WALL Z-CONNECTOR: Swapped base dimensions for vertical connector");
+}
+```
+- **STRUGGLE #4**: For dampers with Top/Bottom (+Z/-Z) connectors on walls, sleeves were incorrectly sized (width and height swapped).
+- **DISCOVERY**: Damper families define "Width" and "Height" in their local coordinate system. When a damper is rotated so its connector points vertically (+Z/-Z), the family's Width/Height no longer align with the wall's horizontal/vertical axes.
+- **FIX**: For vertical connectors on walls ONLY, swap the base damperWidth and damperHeight BEFORE adding clearances.
+- **CRITICAL**: This swap is ONLY for walls. For floors and framing, the swap is NOT needed (and would cause bugs).
+- **WHY**: Walls have a specific horizontal/vertical orientation expectation. Floors/framing do not.
+
+**Step 7: Map Connector Direction to Clearance Sides**
+```csharp
+// ✅ NEW: Map world coordinate directions to clearance sides (wall-aware)
+switch (connectorDir)
+{
+    case "+X":
+        if (isXWall)
+        {
+            right = mepSideClearance; // X-wall: width is along X-axis, so +X = right side
+        }
+        else if (isYWall)
+        {
+            right = mepSideClearance; // Y-wall: +X direction means right side of width
+        }
+        break;
+    
+    case "+Z":
+        top = mepSideClearance; // Vertical: always affects height
+        break;
+    
+    // ... similar for -X, +Y, -Y, -Z
+}
+```
+- World coordinate direction (`+X`, `-X`, etc.) is mapped to clearance sides (left/right/top/bottom).
+- For X/Y directions: mapping depends on wall orientation (which axis is width).
+- For Z direction: always affects height (top/bottom), regardless of wall orientation.
+- MEP side gets `mepSideClearance` (100mm default), other side gets `otherSideClearance` (50mm default).
+
+**Step 8: Calculate Offset for Asymmetric Clearance**
+```csharp
+// ✅ OFFSET ALONG WALL AXIS: Calculate offset to achieve correct clearance distribution
+// Methodology: 
+// 1. Sleeve is sized: Base (500mm) + MEP clearance (100mm) + Other clearance (50mm) = 650mm total
+// 2. When centered on damper: clearance is 75mm on each side
+// 3. To achieve 100mm on connector side and 50mm on other side, move by difference/2
+//    Offset = (mepClearance - otherClearance) / 2 = (100 - 50) / 2 = 25mm toward connector
+// 4. After move: Connector side = 75 + 25 = 100mm ✓, Other side = 75 - 25 = 50mm ✓
+double offsetAmount = (mepSideClearance - otherSideClearance) / 2.0;
+
+switch (connectorDir)
+{
+    case "+X":
+        if (isXWall)
+            offsetVector = new XYZ(offsetAmount, 0, 0); // X-wall: offset in +X direction
+        else if (isYWall)
+            offsetVector = new XYZ(0, offsetAmount, 0); // Y-wall: offset in +Y direction
+        break;
+    
+    case "+Z":
+        offsetVector = new XYZ(0, 0, offsetAmount); // Vertical: offset in +Z direction
+        break;
+    
+    // ... similar for -X, +Y, -Y, -Z
+}
+```
+- **STRUGGLE #5**: Initially tried to offset by full difference (50mm), which moved the sleeve too far.
+- **DISCOVERY**: Sleeve is already sized with total clearance (100 + 50 = 150mm). Centering it gives 75mm on each side.
+- **FIX**: Offset by HALF the difference (25mm) to redistribute clearance from symmetric (75/75) to asymmetric (100/50).
+- **CRITICAL**: Offset direction MUST match connector direction and wall orientation. For example, +X connector on X-wall offsets in +X; +X connector on Y-wall offsets in +Y (because Y-wall width is along Y-axis).
+
+### Why This Works (Summary of Lessons Learned)
+
+1. **BasisX Inward-Pointing**: Revit's connector BasisX points INTO the damper, not out. Must negate to get the side.
+2. **Already World Coordinates**: For placed instances, `connector.CoordinateSystem` is already in world space. No manual transform needed.
+3. **Position Vector Flipped**: Connector at +Y from center means damper is on -Y side (and vice versa).
+4. **Z-Swap for Walls**: Vertical connectors on walls require swapping Width/Height before adding clearances.
+5. **Wall-Aware Mapping**: Offset and clearance mapping must account for wall orientation (X-wall vs Y-wall).
+6. **Half-Difference Offset**: To redistribute symmetric clearance to asymmetric, offset by half the difference, not the full difference.
+
+**Result**: Robust connector detection and sleeve placement for dampers with connectors on any side (Left/Right/Top/Bottom), on any wall orientation (X/Y), with correct clearances and positioning.
