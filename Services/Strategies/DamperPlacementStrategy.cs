@@ -134,18 +134,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
             ClashZone clashZone, 
             OpeningConditions conditions)
         {
+            // CRASH-PROOF: Validate inputs
+            if (clashZone == null)
+            {
+                DebugLogger.Error("[DamperStrategy] ClashZone is null, returning zero offset and dimensions");
+                return (XYZ.Zero, 0, 0);
+            }
+            
+            if (conditions == null || conditions.ClearanceSettings == null)
+            {
+                DebugLogger.Error($"[DamperStrategy] Zone {clashZone.Id}: Conditions or ClearanceSettings is null, returning zero offset and original dimensions");
+                return (XYZ.Zero, clashZone.MepElementWidth, clashZone.MepElementHeight);
+            }
+            
             try
             {
                 double damperWidth = clashZone.MepElementWidth;
                 double damperHeight = clashZone.MepElementHeight;
                 
+                // CRASH-PROOF: Validate dimensions
+                if (double.IsNaN(damperWidth) || double.IsInfinity(damperWidth) || damperWidth < 0)
+                {
+                    DebugLogger.Warning($"[DamperStrategy] Zone {clashZone.Id}: Invalid damperWidth={damperWidth}, using 0");
+                    damperWidth = 0;
+                }
+                if (double.IsNaN(damperHeight) || double.IsInfinity(damperHeight) || damperHeight < 0)
+                {
+                    DebugLogger.Warning($"[DamperStrategy] Zone {clashZone.Id}: Invalid damperHeight={damperHeight}, using 0");
+                    damperHeight = 0;
+                }
+                
                 // ✅ DIRECT LOGGING: Always log what values we're reading from ClashZone
                 DebugLogger.Info($"[DamperStrategy] Zone {clashZone.Id}: Reading MepElementWidth={damperWidth:F6}ft ({damperWidth * 304.8:F1}mm), MepElementHeight={damperHeight:F6}ft ({damperHeight * 304.8:F1}mm)");
                 SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-READ] Zone {clashZone.Id}: MepElementWidth={damperWidth:F6}ft ({damperWidth * 304.8:F1}mm), MepElementHeight={damperHeight:F6}ft ({damperHeight * 304.8:F1}mm)\n");
                 
-                // Get clearance from OpeningConditions (loaded from UI via CONDITIONS XML)
+                // Get clearance from OpeningConditions (loaded from UI via CONDITIONS XML) - CRASH-PROOF: validate clearances
                 double otherClearanceMm = conditions.ClearanceSettings.DuctAccessoryOtherNormal;
                 double mepClearanceMm = conditions.ClearanceSettings.DuctAccessoryMepNormal;
+                
+                // CRASH-PROOF: Validate clearance values
+                if (double.IsNaN(otherClearanceMm) || double.IsInfinity(otherClearanceMm) || otherClearanceMm < 0)
+                {
+                    DebugLogger.Warning($"[DamperStrategy] Zone {clashZone.Id}: Invalid otherClearanceMm={otherClearanceMm}, using 50mm default");
+                    otherClearanceMm = 50.0;
+                }
+                if (double.IsNaN(mepClearanceMm) || double.IsInfinity(mepClearanceMm) || mepClearanceMm < 0)
+                {
+                    DebugLogger.Warning($"[DamperStrategy] Zone {clashZone.Id}: Invalid mepClearanceMm={mepClearanceMm}, using 100mm default");
+                    mepClearanceMm = 100.0;
+                }
                 
                 double otherClearance = UnitUtils.ConvertToInternalUnits(otherClearanceMm, UnitTypeId.Millimeters);
                 double mepClearance = UnitUtils.ConvertToInternalUnits(mepClearanceMm, UnitTypeId.Millimeters);

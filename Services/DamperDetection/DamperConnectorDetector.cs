@@ -83,38 +83,87 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
                 return "+X"; // Default fallback
             }
 
-            // Get damper transform for coordinate conversion
-            Transform damperTransform = damper.GetTransform();
+            // Get damper transform for coordinate conversion (CRASH-PROOF: null safety)
+            Transform damperTransform;
+            try
+            {
+                damperTransform = damper.GetTransform();
+                if (damperTransform == null)
+                {
+                    SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Null transform, returning '+X' (fallback)\n");
+                    return "+X";
+                }
+            }
+            catch (Exception ex)
+            {
+                SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Exception getting transform: {ex.Message}, returning '+X' (fallback)\n");
+                return "+X";
+            }
             
-            // Get bounding box center for reference
+            // Get bounding box center for reference (CRASH-PROOF: try-catch + null safety)
             XYZ damperCenter;
-            var bbox = damper.get_BoundingBox(null);
-            if (bbox != null)
+            try
             {
-                damperCenter = (bbox.Min + bbox.Max) / 2.0;
+                var bbox = damper.get_BoundingBox(null);
+                if (bbox != null && bbox.Min != null && bbox.Max != null)
+                {
+                    damperCenter = (bbox.Min + bbox.Max) / 2.0;
+                }
+                else
+                {
+                    damperCenter = damperTransform.Origin ?? XYZ.Zero;
+                }
             }
-            else
+            catch (Exception ex)
             {
-                damperCenter = damperTransform.Origin;
+                SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Exception getting bounding box: {ex.Message}, using transform origin\n");
+                damperCenter = damperTransform.Origin ?? XYZ.Zero;
             }
             
-            // Get flip state for logging
-            bool isFacingFlipped = damper.FacingFlipped;
-            bool isHandFlipped = damper.HandFlipped;
+            // Get flip state for logging (CRASH-PROOF: try-catch)
+            bool isFacingFlipped = false;
+            bool isHandFlipped = false;
+            try
+            {
+                isFacingFlipped = damper.FacingFlipped;
+                isHandFlipped = damper.HandFlipped;
+            }
+            catch { /* Flip state not critical, continue */ }
             
-            // Find the MEP connector - prefer the one furthest from center
-            int connectorCount = cm.Connectors.Size;
+            // Find the MEP connector - prefer the one furthest from center (CRASH-PROOF: safe iteration)
+            int connectorCount = 0;
             Connector best = null;
             double maxDistance = 0;
             
-            foreach (Connector c in cm.Connectors)
+            try
             {
-                double distance = c.Origin.DistanceTo(damperCenter);
-                if (distance > maxDistance)
+                connectorCount = cm.Connectors?.Size ?? 0;
+                if (cm.Connectors != null)
                 {
-                    maxDistance = distance;
-                    best = c;
+                    foreach (Connector c in cm.Connectors)
+                    {
+                        if (c == null || c.Origin == null) continue; // CRASH-PROOF: skip null connectors
+                        
+                        try
+                        {
+                            double distance = c.Origin.DistanceTo(damperCenter);
+                            if (!double.IsNaN(distance) && !double.IsInfinity(distance) && distance > maxDistance) // CRASH-PROOF: validate numeric
+                            {
+                                maxDistance = distance;
+                                best = c;
+                            }
+                        }
+                        catch { /* Skip invalid connector */ }
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Exception iterating connectors: {ex.Message}\n");
             }
 
             if (best == null)
@@ -125,29 +174,62 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
             }
 
             connector = best;
-            XYZ connectorOrigin = best.Origin;
+            XYZ connectorOrigin;
+            XYZ connectorBasisX;
+            XYZ positionVector;
             
-            // ✅ KEY INSIGHT: The connector's BasisX in Revit points INWARD (toward the damper body)
-            // NOT outward. We need to NEGATE it to get the side the connector is on.
-            // 
-            // The connector.CoordinateSystem is already in WORLD coordinates for placed instances.
-            // We don't need to transform it - Revit gives us the world-space direction directly.
-            // But we DO need to negate it because BasisX points inward, not outward.
+            // CRASH-PROOF: Safe access to connector properties with validation
+            try
+            {
+                connectorOrigin = best.Origin ?? XYZ.Zero;
+                
+                // ✅ KEY INSIGHT: The connector's BasisX in Revit points INWARD (toward the damper body)
+                // NOT outward. We need to NEGATE it to get the side the connector is on.
+                // 
+                // The connector.CoordinateSystem is already in WORLD coordinates for placed instances.
+                // We don't need to transform it - Revit gives us the world-space direction directly.
+                // But we DO need to negate it because BasisX points inward, not outward.
+                
+                var coordSystem = best.CoordinateSystem;
+                if (coordSystem == null || coordSystem.BasisX == null)
+                {
+                    SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Null CoordinateSystem, returning '+X' (fallback)\n");
+                    return "+X";
+                }
+                
+                connectorBasisX = -coordSystem.BasisX; // Already in world coordinates, negated to get outward direction
+                
+                // For comparison/debugging, also get position-based direction
+                positionVector = connectorOrigin - damperCenter;
+            }
+            catch (Exception ex)
+            {
+                SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Exception accessing connector properties: {ex.Message}, returning '+X' (fallback)\n");
+                return "+X";
+            }
             
-            XYZ connectorBasisX = -best.CoordinateSystem.BasisX; // Already in world coordinates, negated to get outward direction
+            // Calculate absolute values (CRASH-PROOF: validate numeric components)
+            double absX = 0, absY = 0, absZ = 0;
+            double posAbsX = 0, posAbsY = 0, posAbsZ = 0;
             
-            // For comparison/debugging, also get position-based direction
-            XYZ positionVector = connectorOrigin - damperCenter;
-            
-            // Calculate absolute values
-            double absX = Math.Abs(connectorBasisX.X);
-            double absY = Math.Abs(connectorBasisX.Y);
-            double absZ = Math.Abs(connectorBasisX.Z);
-            
-            // Position vector absolutes for logging
-            double posAbsX = Math.Abs(positionVector.X);
-            double posAbsY = Math.Abs(positionVector.Y);
-            double posAbsZ = Math.Abs(positionVector.Z);
+            try
+            {
+                absX = double.IsNaN(connectorBasisX.X) ? 0 : Math.Abs(connectorBasisX.X);
+                absY = double.IsNaN(connectorBasisX.Y) ? 0 : Math.Abs(connectorBasisX.Y);
+                absZ = double.IsNaN(connectorBasisX.Z) ? 0 : Math.Abs(connectorBasisX.Z);
+                
+                // Position vector absolutes for logging
+                posAbsX = double.IsNaN(positionVector.X) ? 0 : Math.Abs(positionVector.X);
+                posAbsY = double.IsNaN(positionVector.Y) ? 0 : Math.Abs(positionVector.Y);
+                posAbsZ = double.IsNaN(positionVector.Z) ? 0 : Math.Abs(positionVector.Z);
+            }
+            catch (Exception ex)
+            {
+                SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Exception calculating absolutes: {ex.Message}\n");
+            }
             
             // ✅ DETERMINE DIRECTION: Prefer position along wall width axis; fallback to BasisX
             // For walls, using the connector's offset from damper center along the wall width axis
