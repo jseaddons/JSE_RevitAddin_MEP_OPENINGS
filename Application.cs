@@ -229,6 +229,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS
                 // Load optimization flags from configuration
                 OptimizationFlags.LoadFromConfiguration();
                 
+                // Configure logging: disable verbose logs in deployment or when diagnostics are off
+                OptimizationFlags.DisableVerboseLogging = DeploymentConfiguration.DeploymentMode 
+                    || !OptimizationFlags.UseDiagnosticMode;
+                
                 // Initialize cache invalidation monitor
                 if (OptimizationFlags.UseCacheInvalidation)
                 {

@@ -172,21 +172,45 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // - Only new unresolved zones (within section box) get ReadyForPlacementFlag=1 during refresh
             
             UpdateProgress(10, "Loading XML data...");
-            
+
             // PHASE 2: Load XML once (eliminates 4+ redundant loads)
             using (var xmlOp = context.PerformanceMonitor.TrackOperation("2. XML Loading") as PerformanceMonitor.OperationTracker)
             {
-                var xmlManager = new XmlCacheManager(_document, context.RefreshLogName);
-                context.XmlCache = xmlManager.LoadAll(context.SelectedFilterNames, context.SelectedMepCategories);
-                xmlOp?.SetItemCount(context.XmlCache.FilterXml.Count + context.XmlCache.GlobalXml.Count);
+                if (OptimizationFlags.SkipXmlLoadingDuringRefresh)
+                {
+                    // Database-only mode: bypass XML cache entirely
+                    if (!context.IsDeploymentMode)
+                        DebugLogger.Info("[XML-CACHE] ⚡ OPTIMIZATION: Skipping XML cache loading (database-only mode)");
+                    SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                        $"[{DateTime.Now}] [XML-CACHE] ⚡ OPTIMIZATION: Skipping XML cache loading (database-only mode)\n");
+
+                    // Initialize empty cache (database-only mode)
+                    context.XmlCache = new Services.Refresh.XmlCache();
+                    // FilterXml and GlobalXml are empty dictionaries by default
+                    xmlOp?.SetItemCount(0);
+                }
+                else
+                {
+                    var xmlManager = new XmlCacheManager(_document, context.RefreshLogName);
+                    context.XmlCache = xmlManager.LoadAll(context.SelectedFilterNames, context.SelectedMepCategories);
+                    xmlOp?.SetItemCount(context.XmlCache.FilterXml.Count + context.XmlCache.GlobalXml.Count);
+                }
             }
             
             UpdateProgress(20, "Loading existing clash zones...");
             
-            // PHASE 3: Load existing clash zones from XML cache
+            // PHASE 3: Load existing clash zones (XML cache or DB-only)
             using (var loadOp = context.PerformanceMonitor.TrackOperation("3. Load Existing Zones") as PerformanceMonitor.OperationTracker)
             {
-                context.ExistingClashZones = LoadExistingClashZones(context);
+                if (OptimizationFlags.SkipXmlLoadingDuringRefresh)
+                {
+                    // In database-only mode, rely on SQLite as the primary source
+                    context.ExistingClashZones = LoadExistingClashZonesFromDatabase(context);
+                }
+                else
+                {
+                    context.ExistingClashZones = LoadExistingClashZones(context);
+                }
                 loadOp?.SetItemCount(context.ExistingClashZones?.Count ?? 0);
             }
             
@@ -579,6 +603,79 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             ShowSummary(context);
             
             return Result.Succeeded;
+        }
+
+        /// <summary>
+        /// Database-first loader for existing clash zones when XML loading is skipped.
+        /// Uses R-tree section box filtering if available.
+        /// </summary>
+        private List<ClashZone> LoadExistingClashZonesFromDatabase(RefreshContext context)
+        {
+            var result = new List<ClashZone>();
+            try
+            {
+                using (var dbContext = new Data.SleeveDbContext(_document, msg =>
+                {
+                    if (!context.IsDeploymentMode)
+                        DebugLogger.Info($"[REFRESH-REFACTORED][SQLite] {msg}");
+                    SafeFileLogger.SafeAppendText(context.RefreshLogName, $"[{DateTime.Now}] [SQLite] {msg}\n");
+                }))
+                {
+                    var repo = new Data.Repositories.ClashZoneRepository(dbContext, msg =>
+                    {
+                        if (!context.IsDeploymentMode)
+                            DebugLogger.Info($"[REFRESH-REFACTORED][SQLite] {msg}");
+                        SafeFileLogger.SafeAppendText(context.RefreshLogName, $"[{DateTime.Now}] [SQLite] {msg}\n");
+                    });
+
+                    // If section box is active, use R-tree path to constrain
+                    BoundingBoxXYZ? sectionBox = null;
+                    if (_document.ActiveView is View3D v3 && v3.IsSectionBoxActive)
+                    {
+                        sectionBox = Helpers.SectionBoxHelper.GetSectionBoxBounds(v3);
+                    }
+
+                    var filterName = context.SelectedFilterNames?.FirstOrDefault() ?? "";
+                    foreach (var category in context.SelectedMepCategories ?? new List<string>())
+                    {
+                        // Use public repository method for safety
+                        var zones = repo.GetClashZonesByFilter(filterName, category, unresolvedOnly: false) ?? new List<ClashZone>();
+                        if (sectionBox != null)
+                        {
+                            // If section box is present, filter in-memory by bbox (intersection point inside box)
+                            zones = zones.Where(z => IsZoneWithinSectionBox(z, sectionBox)).ToList();
+                        }
+                        if (zones.Count > 0)
+                            result.AddRange(zones);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[REFRESH-REFACTORED] DB load failed, falling back to empty: {ex.Message}");
+                SafeFileLogger.SafeAppendText(context.RefreshLogName, $"[{DateTime.Now}] [REFRESH-REFACTORED] DB load failed: {ex.Message}\n");
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Lightweight check: treat a zone as within the section box if its intersection point lies inside the box bounds.
+        /// </summary>
+        private static bool IsZoneWithinSectionBox(ClashZone zone, BoundingBoxXYZ sectionBox)
+        {
+            if (zone == null || sectionBox == null)
+                return false;
+
+            // Use intersection point stored on the zone
+            var p = zone.IntersectionPoint;
+            if (p == null)
+                return false;
+
+            var min = sectionBox.Min;
+            var max = sectionBox.Max;
+            return p.X >= min.X && p.X <= max.X
+                && p.Y >= min.Y && p.Y <= max.Y
+                && p.Z >= min.Z && p.Z <= max.Z;
         }
         
         private bool ValidateUISelections(RefreshContext context)
@@ -1226,6 +1323,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         private void FinalCleanup(RefreshContext context)
         {
+            // ✅ PATH 2 OPTIMIZATION: Skip expensive cleanup for fresh mode
+            // Path 2 is a fresh start with no existing sleeves/cache, so cleanup is unnecessary
+            bool isPath2 = context.PathStrategy?.PathName?.Contains("PATH 2") == true;
+            
+            if (isPath2)
+            {
+                if (!context.IsDeploymentMode)
+                    DebugLogger.Info("[REFRESH-REFACTORED] Path 2 (Fresh Mode) - skipping cleanup (no existing state to clean)");
+                return; // Skip all cleanup for fresh mode - saves ~297ms
+            }
+            
             // ✅ GEOMETRY CACHE OPTIMIZATION: Only clear if model changed
             // This prevents unnecessary cache clearing on unchanged models (99.5% speedup)
             if (context.HasModelChanged())
@@ -1242,10 +1350,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DebugLogger.Info("[REFRESH-REFACTORED] Model unchanged - keeping geometry cache");
             }
             
-            // Force GC
-            GC.Collect(2, GCCollectionMode.Forced, true);
-            GC.WaitForPendingFinalizers();
-            GC.Collect(2, GCCollectionMode.Forced, true);
+            // ✅ OPTIMIZATION: Skip forced GC if flag enabled (saves ~289ms)
+            // Modern .NET GC is efficient - forced collection often counterproductive
+            if (!OptimizationFlags.SkipForcedGarbageCollection)
+            {
+                if (!context.IsDeploymentMode)
+                    DebugLogger.Info("[REFRESH-REFACTORED] Running forced GC (SkipForcedGarbageCollection=false)");
+                
+                GC.Collect(2, GCCollectionMode.Forced, true);
+                GC.WaitForPendingFinalizers();
+                GC.Collect(2, GCCollectionMode.Forced, true);
+            }
+            else
+            {
+                if (!context.IsDeploymentMode)
+                    DebugLogger.Info("[REFRESH-REFACTORED] Skipping forced GC - letting CLR manage memory (saves ~289ms)");
+            }
         }
         
         private void ShowSummary(RefreshContext context)

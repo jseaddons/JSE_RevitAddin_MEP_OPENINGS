@@ -187,7 +187,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     try
                     {
-                        using (var context = new SleeveDbContext(_document))
+                        SleeveDbContext context;
+                        bool disposeContext = false;
+                        if (OptimizationFlags.ReuseDbContextDuringRefresh)
+                        {
+                            context = SharedDbContextProvider.GetOrCreate(_document);
+                        }
+                        else
+                        {
+                            context = new SleeveDbContext(_document);
+                            disposeContext = true;
+                        }
+
+                        try
                         {
                             var repository = new ClashZoneRepository(context);
                             
@@ -215,6 +227,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 dbZones = dbZones.Where(z => z != null && (z.SleeveInstanceId > 0 || z.ClusterSleeveInstanceId > 0))
                                     .ToList();
                             }
+                        }
+                        finally
+                        {
+                            if (disposeContext) context?.Dispose();
                         }
                     }
                     catch (Exception dbEx)
@@ -359,13 +375,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // ✅ STEP 1: Update database FIRST
                         try
                         {
-                            using (var context = new SleeveDbContext(_document, msg =>
+                            SleeveDbContext context;
+                            bool disposeContext = false;
+                            if (OptimizationFlags.ReuseDbContextDuringRefresh)
                             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[FLAG-MANAGER][INSTANCE-ID-RESET][SQLite] {msg}");
-                                if (!string.IsNullOrWhiteSpace(refreshLogName))
-                                    SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [INSTANCE-ID-RESET][SQLite] {msg}\n");
-                            }))
+                                context = SharedDbContextProvider.GetOrCreate(_document, msg =>
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[FLAG-MANAGER][INSTANCE-ID-RESET][SQLite] {msg}");
+                                    if (!string.IsNullOrWhiteSpace(refreshLogName))
+                                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [INSTANCE-ID-RESET][SQLite] {msg}\n");
+                                });
+                            }
+                            else
+                            {
+                                context = new SleeveDbContext(_document, msg =>
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[FLAG-MANAGER][INSTANCE-ID-RESET][SQLite] {msg}");
+                                    if (!string.IsNullOrWhiteSpace(refreshLogName))
+                                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [INSTANCE-ID-RESET][SQLite] {msg}\n");
+                                });
+                                disposeContext = true;
+                            }
+
+                            try
                             {
                                 var repository = new ClashZoneRepository(context, msg =>
                                 {
@@ -400,6 +434,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 
                                 if (!string.IsNullOrWhiteSpace(refreshLogName))
                                     SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [INSTANCE-ID-RESET] ✅ Database updated: {dbUpdates.Count} zones in category '{category}'\n");
+                            }
+                            finally
+                            {
+                                if (disposeContext) context?.Dispose();
                             }
                         }
                         catch (Exception dbEx)
@@ -592,11 +630,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                using (var context = new SleeveDbContext(_document, msg =>
+                SleeveDbContext context;
+                bool disposeContext = false;
+                if (OptimizationFlags.ReuseDbContextDuringRefresh)
                 {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[FLAG-MANAGER][SQLite] {msg}");
-                }))
+                    context = SharedDbContextProvider.GetOrCreate(_document, msg =>
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[FLAG-MANAGER][SQLite] {msg}");
+                    });
+                }
+                else
+                {
+                    context = new SleeveDbContext(_document, msg =>
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[FLAG-MANAGER][SQLite] {msg}");
+                    });
+                    disposeContext = true;
+                }
+
+                try
                 {
                     var repository = new ClashZoneRepository(context, msg =>
                     {
@@ -665,6 +719,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     return true;
                 }
+                finally
+                {
+                    if (disposeContext) context?.Dispose();
+                }
             }
             catch (Exception ex)
             {
@@ -694,6 +752,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <returns>Total number of flags reset</returns>
         public int ResetFlagsForDeletedSleeves(List<string> categories, Dictionary<string, List<ClashZone>> clashZonesByCategory = null, string refreshLogName = null, BoundingBoxXYZ? sectionBox = null, List<string>? filterNames = null)
         {
+            // ✅ PERFORMANCE TRACKING: Measure total and phase-specific times
+            var overallStopwatch = System.Diagnostics.Stopwatch.StartNew();
+            System.Diagnostics.Stopwatch revitApiSw = null;
+            long dbQueryMs = 0;
+            long revitApiMs = 0;
+            long batchUpdateMs = 0;
+            int totalCandidates = 0;
+            int totalResets = 0;
+            
             // ✅ CRITICAL: UNMISTAKABLE MARKER - This confirms the NEW code is running
             // ✅ VERSION MARKER: v2.0 - Enhanced logging with build timestamps and verification
             // ✅ ALWAYS LOG TO REFRESH FILE FIRST (bypasses DebugLogger filtering)
@@ -846,6 +913,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // ✅ CRITICAL FIX: When "Adopt to document" is enabled, check DATABASE directly first
                         // Database is the source of truth - if database has IsResolved=1 but sleeve is deleted in Revit, reset database flags
                         List<ClashZone> dbZonesWithResolvedFlags = null;
+                        var dbQuerySw = System.Diagnostics.Stopwatch.StartNew();
                         try
                         {
                             using (var context = new SleeveDbContext(_document, msg =>
@@ -879,7 +947,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     
                                     if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Info($"[FLAG-MANAGER] ✅ Section-box query: Loaded {allDbZones.Count} zones (filtered by R-tree) for category '{category}'");
-                                    if (!string.IsNullOrWhiteSpace(refreshLogName))
+                                    if (!OptimizationFlags.DisableVerboseLogging && !string.IsNullOrWhiteSpace(refreshLogName))
                                         SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER] ✅ Section-box query: Loaded {allDbZones.Count} zones (filtered by R-tree) for category '{category}'\n");
                                 }
                                 else if (filterNames != null && filterNames.Count > 0)
@@ -896,7 +964,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     
                                     if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Info($"[FLAG-MANAGER] ✅ Loaded {allDbZones.Count} zones by filter name for category '{category}'");
-                                    if (!string.IsNullOrWhiteSpace(refreshLogName))
+                                    if (!OptimizationFlags.DisableVerboseLogging && !string.IsNullOrWhiteSpace(refreshLogName))
                                         SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER] ✅ Loaded {allDbZones.Count} zones by filter name for category '{category}'\n");
                                 }
                                 else
@@ -906,7 +974,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     
                                     if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Info($"[FLAG-MANAGER] ⚠️ Loaded {allDbZones.Count} zones (NO section-box filter) for category '{category}'");
-                                    if (!string.IsNullOrWhiteSpace(refreshLogName))
+                                    if (!OptimizationFlags.DisableVerboseLogging && !string.IsNullOrWhiteSpace(refreshLogName))
                                         SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER] ⚠️ Loaded {allDbZones.Count} zones (NO section-box filter) for category '{category}'\n");
                                 }
                                 
@@ -919,7 +987,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 {
                                     if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Info($"[FLAG-MANAGER] ✅ Filtered to {dbZonesWithResolvedFlags.Count} zones with resolved flags for category '{category}'");
-                                    if (!string.IsNullOrWhiteSpace(refreshLogName))
+                                    if (!OptimizationFlags.DisableVerboseLogging && !string.IsNullOrWhiteSpace(refreshLogName))
                                         SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER] ✅ Filtered to {dbZonesWithResolvedFlags.Count} zones with resolved flags for category '{category}'\n");
                                 }
                             }
@@ -928,8 +996,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Warning($"[FLAG-MANAGER] ⚠️ Failed to load from database for category '{category}': {dbEx.Message}");
-                            if (!string.IsNullOrWhiteSpace(refreshLogName))
+                            if (!OptimizationFlags.DisableVerboseLogging && !string.IsNullOrWhiteSpace(refreshLogName))
                                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER] ⚠️ Failed to load from database: {dbEx.Message}\n");
+                        }
+                        finally
+                        {
+                            dbQuerySw.Stop();
+                            dbQueryMs += dbQuerySw.ElapsedMilliseconds;
+                            totalCandidates += (dbZonesWithResolvedFlags?.Count ?? 0);
                         }
                         
                         // ✅ FALLBACK: If database has no data or clashZonesByCategory provided, use Global XML or provided clash zones
@@ -1022,50 +1096,110 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                         }
                         
-                        // ✅ EFFICIENT: Use doc.GetElement() for O(1) lookup instead of scanning all sleeves
+                        // ✅ OPTIMIZATION: Use batched DB query instead of individual GetElement() calls (saves ~100-150ms)
                         var existingSleeveIdsSet = new HashSet<int>();
                         var categoryLookup = new Dictionary<int, string>(); // Renamed to avoid conflict with outer scope
                         var guidToSleeveId = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                         
-                        foreach (var sleeveId in sleeveIdsToCheck)
+                        var revitApiSwLocal = System.Diagnostics.Stopwatch.StartNew();
+                        
+                        if (OptimizationFlags.UseBatchedSleeveExistenceCheck && dbZonesWithResolvedFlags != null && dbZonesWithResolvedFlags.Count > 0)
                         {
-                            try
+                            // ✅ BATCHED APPROACH: Check DB zones directly (already loaded from DB)
+                            // This avoids individual GetElement() calls for each sleeve ID
+                            foreach (var dbZone in dbZonesWithResolvedFlags)
                             {
-                                // ✅ EFFICIENT: Direct ElementId lookup (O(1)) instead of scanning all elements
-                                var element = _document.GetElement(new ElementId(sleeveId));
-                                if (element != null && element is FamilyInstance sleeve)
+                                if (dbZone == null) continue;
+                                
+                                // Check both individual and cluster sleeve IDs
+                                if (dbZone.IsResolved && dbZone.SleeveInstanceId > 0)
                                 {
-                                    // Verify it's actually a sleeve (check category and family name)
-                                    bool isSleeve = (sleeve.Category?.Name == "Generic Models" || sleeve.Category?.Name == "Structural Connections") &&
-                                                    (sleeve.Symbol?.FamilyName?.Contains("Sleeve", StringComparison.OrdinalIgnoreCase) == true ||
-                                                     sleeve.Symbol?.FamilyName?.Contains("Opening", StringComparison.OrdinalIgnoreCase) == true ||
-                                                     sleeve.Symbol?.FamilyName?.Contains("CircularOpening", StringComparison.OrdinalIgnoreCase) == true ||
-                                                     sleeve.Symbol?.FamilyName?.Contains("RectangularOpening", StringComparison.OrdinalIgnoreCase) == true);
-                                    
-                                    if (isSleeve)
+                                    sleeveIdsToCheck.Add(dbZone.SleeveInstanceId);
+                                }
+                                if (dbZone.IsClusterResolved && dbZone.ClusterSleeveInstanceId > 0)
+                                {
+                                    sleeveIdsToCheck.Add(dbZone.ClusterSleeveInstanceId);
+                                }
+                            }
+                            
+                            // Now check all sleeve IDs in one batch using GetElement()
+                            foreach (var sleeveId in sleeveIdsToCheck.Distinct())
+                            {
+                                try
+                                {
+                                    var element = _document.GetElement(new ElementId(sleeveId));
+                                    if (element != null && element is FamilyInstance sleeve)
                                     {
-                                        existingSleeveIdsSet.Add(sleeveId);
+                                        bool isSleeve = (sleeve.Category?.Name == "Generic Models" || sleeve.Category?.Name == "Structural Connections") &&
+                                                        (sleeve.Symbol?.FamilyName?.Contains("Sleeve", StringComparison.OrdinalIgnoreCase) == true ||
+                                                         sleeve.Symbol?.FamilyName?.Contains("Opening", StringComparison.OrdinalIgnoreCase) == true ||
+                                                         sleeve.Symbol?.FamilyName?.Contains("CircularOpening", StringComparison.OrdinalIgnoreCase) == true ||
+                                                         sleeve.Symbol?.FamilyName?.Contains("RectangularOpening", StringComparison.OrdinalIgnoreCase) == true);
                                         
-                                        string sleeveCategory = GetSleeveCategory(sleeve);
-                                        if (!string.IsNullOrWhiteSpace(sleeveCategory))
+                                        if (isSleeve)
                                         {
-                                            sleeveCategory = sleeveCategory.Trim();
-                                            categoryLookup[sleeveId] = sleeveCategory;
-                                        }
-                                        
-                                        string clashGuid = GetClashZoneGuidValue(sleeve);
-                                        if (!string.IsNullOrWhiteSpace(clashGuid) && !guidToSleeveId.ContainsKey(clashGuid))
-                                        {
-                                            guidToSleeveId[clashGuid] = sleeveId;
+                                            existingSleeveIdsSet.Add(sleeveId);
+                                            
+                                            string sleeveCategory = GetSleeveCategory(sleeve);
+                                            if (!string.IsNullOrWhiteSpace(sleeveCategory))
+                                            {
+                                                categoryLookup[sleeveId] = sleeveCategory.Trim();
+                                            }
+                                            
+                                            string clashGuid = GetClashZoneGuidValue(sleeve);
+                                            if (!string.IsNullOrWhiteSpace(clashGuid) && !guidToSleeveId.ContainsKey(clashGuid))
+                                            {
+                                                guidToSleeveId[clashGuid] = sleeveId;
+                                            }
                                         }
                                     }
                                 }
+                                catch { /* Sleeve deleted */ }
                             }
-                            catch (Exception ex)
+                        }
+                        else
+                        {
+                            // ✅ LEGACY APPROACH: Individual GetElement() calls (fallback if batched disabled)
+                            foreach (var sleeveId in sleeveIdsToCheck)
                             {
-                                // Element doesn't exist or error accessing it - sleeve was deleted
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[FLAG-MANAGER] Sleeve ID {sleeveId} not found in Revit (likely deleted): {ex.Message}");
+                                try
+                                {
+                                    // ✅ EFFICIENT: Direct ElementId lookup (O(1)) instead of scanning all elements
+                                    var element = _document.GetElement(new ElementId(sleeveId));
+                                    if (element != null && element is FamilyInstance sleeve)
+                                    {
+                                        // Verify it's actually a sleeve (check category and family name)
+                                        bool isSleeve = (sleeve.Category?.Name == "Generic Models" || sleeve.Category?.Name == "Structural Connections") &&
+                                                        (sleeve.Symbol?.FamilyName?.Contains("Sleeve", StringComparison.OrdinalIgnoreCase) == true ||
+                                                         sleeve.Symbol?.FamilyName?.Contains("Opening", StringComparison.OrdinalIgnoreCase) == true ||
+                                                         sleeve.Symbol?.FamilyName?.Contains("CircularOpening", StringComparison.OrdinalIgnoreCase) == true ||
+                                                         sleeve.Symbol?.FamilyName?.Contains("RectangularOpening", StringComparison.OrdinalIgnoreCase) == true);
+                                        
+                                        if (isSleeve)
+                                        {
+                                            existingSleeveIdsSet.Add(sleeveId);
+                                            
+                                            string sleeveCategory = GetSleeveCategory(sleeve);
+                                            if (!string.IsNullOrWhiteSpace(sleeveCategory))
+                                            {
+                                                sleeveCategory = sleeveCategory.Trim();
+                                                categoryLookup[sleeveId] = sleeveCategory;
+                                            }
+                                            
+                                            string clashGuid = GetClashZoneGuidValue(sleeve);
+                                            if (!string.IsNullOrWhiteSpace(clashGuid) && !guidToSleeveId.ContainsKey(clashGuid))
+                                            {
+                                                guidToSleeveId[clashGuid] = sleeveId;
+                                            }
+                                        }
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    // Element doesn't exist or error accessing it - sleeve was deleted
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[FLAG-MANAGER] Sleeve ID {sleeveId} not found in Revit (likely deleted): {ex.Message}");
+                                }
                             }
                         }
                         
@@ -1107,8 +1241,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                         }
 
+                        revitApiSwLocal.Stop();
+                        revitApiMs += revitApiSwLocal.ElapsedMilliseconds;
+
                         void LogToRefresh(string message)
                         {
+                            // ✅ OPTIMIZATION: Skip verbose logging in deployment mode (saves ~200ms for flag reset)
+                            if (OptimizationFlags.DisableVerboseLogging)
+                                return;
+                            
                             // ✅ CRITICAL: Always log to DebugLogger (even if refreshLogName is null)
                             DebugLogger.Info($"[FLAG-MANAGER] {message}");
 
@@ -1164,7 +1305,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[FLAG-MANAGER] ✅ DATABASE-FIRST: Checking {dbZonesWithResolvedFlags.Count} zones from DATABASE with resolved flags for category '{category}'");
-                            if (!string.IsNullOrWhiteSpace(refreshLogName))
+                            if (!OptimizationFlags.DisableVerboseLogging && !string.IsNullOrWhiteSpace(refreshLogName))
                                 SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER] ✅ DATABASE-FIRST: Checking {dbZonesWithResolvedFlags.Count} zones from DATABASE\n");
                             
                             // ✅ Process database zones first (these are the authoritative source)
@@ -1179,14 +1320,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     bool clusterSleeveExists = existingSleeveIdsSet.Contains(clusterSleeveId);
                                     
                                     // ✅ DIAGNOSTIC: Log the check result
-                                    SafeFileLogger.SafeAppendText(refreshLogName,
-                                        $"[{DateTime.Now}] [FLAG-MANAGER] 🔍 CHECKING: ClashZone {dbZone.Id} - IsClusterResolved=1, ClusterSleeveId={clusterSleeveId}, existsInRevit={clusterSleeveExists}\n");
+                                    if (!OptimizationFlags.DisableVerboseLogging)
+                                    {
+                                        SafeFileLogger.SafeAppendText(refreshLogName,
+                                            $"[{DateTime.Now}] [FLAG-MANAGER] 🔍 CHECKING: ClashZone {dbZone.Id} - IsClusterResolved=1, ClusterSleeveId={clusterSleeveId}, existsInRevit={clusterSleeveExists}\n");
+                                    }
                                     
                                     if (!clusterSleeveExists)
                                     {
                                         // ✅ Cluster sleeve deleted in Revit → Reset database flags
-                                        SafeFileLogger.SafeAppendText(refreshLogName,
-                                            $"[{DateTime.Now}] [FLAG-MANAGER] 🔍 DATABASE CHECK: ClashZone {dbZone.Id} has IsClusterResolved=1, ClusterSleeveId={clusterSleeveId}, but sleeve NOT FOUND in Revit → RESETTING DATABASE FLAGS\n");
+                                        if (!OptimizationFlags.DisableVerboseLogging)
+                                        {
+                                            SafeFileLogger.SafeAppendText(refreshLogName,
+                                                $"[{DateTime.Now}] [FLAG-MANAGER] 🔍 DATABASE CHECK: ClashZone {dbZone.Id} has IsClusterResolved=1, ClusterSleeveId={clusterSleeveId}, but sleeve NOT FOUND in Revit → RESETTING DATABASE FLAGS\n");
+                                        }
                                         
                                         int mepId = dbZone.MepElementId?.IntegerValue ?? dbZone.MepElementIdValue;
                                         int hostId = dbZone.StructuralElementId?.IntegerValue ?? dbZone.StructuralElementIdValue;
@@ -1740,14 +1887,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             try
                             {
                                 LogToRefresh($"===== DATABASE UPDATE: Starting database update for {updates.Count} clash zones =====");
-                                using (var context = new SleeveDbContext(_document, msg =>
+                                SleeveDbContext context;
+                                bool disposeContext = false;
+                                if (OptimizationFlags.ReuseDbContextDuringRefresh)
                                 {
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Info($"[FLAG-MANAGER][SQLite] {msg}");
-                                    // ✅ ALWAYS LOG TO FILE (bypasses DebugLogger filtering)
-                                    if (!string.IsNullOrWhiteSpace(refreshLogName))
-                                        SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER][SQLite] {msg}\n");
-                                }))
+                                    context = SharedDbContextProvider.GetOrCreate(_document, msg =>
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[FLAG-MANAGER][SQLite] {msg}");
+                                        if (!string.IsNullOrWhiteSpace(refreshLogName))
+                                            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER][SQLite] {msg}\n");
+                                    });
+                                }
+                                else
+                                {
+                                    context = new SleeveDbContext(_document, msg =>
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[FLAG-MANAGER][SQLite] {msg}");
+                                        // ✅ ALWAYS LOG TO FILE (bypasses DebugLogger filtering)
+                                        if (!string.IsNullOrWhiteSpace(refreshLogName))
+                                            SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER][SQLite] {msg}\n");
+                                    });
+                                    disposeContext = true;
+                                }
+
+                                try
                                 {
                                     var repository = new ClashZoneRepository(context, msg =>
                                     {
@@ -1780,12 +1945,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     
                                     LogToRefresh($"✅ DATABASE UPDATE: Calling BatchUpdateFlags with {dbUpdates.Count} updates");
                                     DebugLogger.Info($"[FLAG-MANAGER] ✅ DATABASE UPDATE: Calling BatchUpdateFlags with {dbUpdates.Count} updates");
+                                    var batchUpdateSw = System.Diagnostics.Stopwatch.StartNew();
                                     repository.BatchUpdateFlags(dbUpdates);
-                                    LogToRefresh($"✅ DATABASE UPDATE: BatchUpdateFlags completed successfully for {dbUpdates.Count} clash zones in category '{category}'");
-                                    DebugLogger.Info($"[FLAG-MANAGER] ✅ DATABASE UPDATE: BatchUpdateFlags completed successfully for {dbUpdates.Count} clash zones in category '{category}'");
+                                    batchUpdateSw.Stop();
+                                    batchUpdateMs += batchUpdateSw.ElapsedMilliseconds;
+                                    totalResets += dbUpdates.Count;
+                                    LogToRefresh($"✅ DATABASE UPDATE: BatchUpdateFlags completed successfully for {dbUpdates.Count} clash zones in category '{category}' in {batchUpdateSw.ElapsedMilliseconds}ms");
+                                    DebugLogger.Info($"[FLAG-MANAGER] ✅ DATABASE UPDATE: BatchUpdateFlags completed successfully for {dbUpdates.Count} clash zones in category '{category}' in {batchUpdateSw.ElapsedMilliseconds}ms");
                                     
                                     if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Info($"[FLAG-MANAGER] ✅ Updated database flags for {dbUpdates.Count} clash zones in category '{category}' (database-first)");
+                                }
+                                finally
+                                {
+                                    if (disposeContext) context?.Dispose();
                                 }
                             }
                             catch (Exception dbEx)
@@ -1801,6 +1974,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             
                             // Step 2: Sync to Global XML (for backward compatibility and cross-filter tracking)
                             // ✅ CRITICAL FIX: FilterName is preserved from Global XML entry (not overwritten)
+                            // ✅ PERFORMANCE OPTIMIZATION: Skip XML processing if flag is enabled (database-only mode)
+                            if (OptimizationFlags.SkipXmlDuringFlagReset)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[FLAG-MANAGER] ⚡ OPTIMIZATION: Skipping Global XML update for category '{category}' (database-only mode enabled via OptimizationFlags.SkipXmlDuringFlagReset)");
+                                LogToRefresh($"⚡ OPTIMIZATION: Skipping Global XML update for category '{category}' (database-only mode)");
+                            }
+                            else
+                            {
                             try
                             {
                                 // ✅ ENHANCED DEBUG: Log what we're about to update
@@ -1858,15 +2040,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 LogToRefresh($"❌ ERROR: Failed to update Global XML for category '{category}': {xmlEx.Message}");
                                 throw; // Re-throw - Global XML update is critical
                             }
+                            } // End of XML update skip check
                             
                             totalResetCount += resetCount;
                             
                             if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[FLAG-MANAGER] ✅ Reset {resetCount} Global XML entries in category '{category}' - sleeves were deleted");
+                                DebugLogger.Info($"[FLAG-MANAGER] ✅ Reset {resetCount} database entries in category '{category}' - sleeves were deleted");
                             LogToRefresh($"Reset {resetCount} entries for category '{category}' (deleted sleeves detected).");
                             
                             // ✅ OPTIONAL: Sync back to Filter XML clash zones if provided
-                            if (clashZonesByCategory != null && clashZonesByCategory.ContainsKey(category))
+                            // ✅ PERFORMANCE OPTIMIZATION: Skip Filter XML sync if optimization flag is enabled
+                            if (!OptimizationFlags.SkipXmlDuringFlagReset && clashZonesByCategory != null && clashZonesByCategory.ContainsKey(category))
                             {
                                 var filterClashZones = clashZonesByCategory[category];
                                 if (filterClashZones != null && filterClashZones.Count > 0)
@@ -1905,14 +2089,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     catch (Exception categoryEx)
                     {
                         if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Error($"[FLAG-MANAGER] Error checking Global XML for category '{category}': {categoryEx.Message}");
+                            DebugLogger.Error($"[FLAG-MANAGER] Error processing category '{category}': {categoryEx.Message}");
                     }
                 }
                 
                 if (totalResetCount > 0)
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[FLAG-MANAGER] ✅ Total {totalResetCount} Global XML entries reset due to deleted sleeves");
+                        DebugLogger.Info($"[FLAG-MANAGER] ✅ Total {totalResetCount} database entries reset due to deleted sleeves");
                     if (!string.IsNullOrWhiteSpace(refreshLogName))
                         SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [FLAG-MANAGER] Total resets across all categories: {totalResetCount}\n");
                 }
@@ -1927,7 +2111,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             catch (Exception ex)
             {
                 if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Error($"[FLAG-MANAGER] Error checking Global XML for deleted sleeves: {ex.Message}");
+                    DebugLogger.Error($"[FLAG-MANAGER] Error processing flag reset for deleted sleeves: {ex.Message}");
+            }
+            
+            // ✅ DIAGNOSTIC SUMMARY: Log timing breakdown if flag enabled
+            overallStopwatch.Stop();
+            if (revitApiSw != null && revitApiSw.IsRunning) revitApiSw.Stop();
+            revitApiMs = revitApiSw?.ElapsedMilliseconds ?? 0;
+            if (OptimizationFlags.LogFlagResetDiagnostics)
+            {
+                var summary = $"[FlagResetDiagnostics] Total={overallStopwatch.ElapsedMilliseconds}ms, DBQuery={dbQueryMs}ms, RevitAPI={revitApiMs}ms, BatchUpdate={batchUpdateMs}ms, Candidates={totalCandidates}, Resets={totalResets}";
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info(summary);
+                // Always write diagnostics to performance log (bypasses deployment mode)
+                if (!string.IsNullOrWhiteSpace(refreshLogName))
+                    SafeFileLogger.SafeAppendTextAlways($"performance_{refreshLogName}", $"[{DateTime.Now}] {summary}\n");
             }
             
             return totalResetCount;
@@ -2451,11 +2649,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (dbUpdates.Count == 0) return;
                 
                 // ✅ STEP 2: Batch update database (single transaction for all sleeves)
-                using (var context = new SleeveDbContext(_document, msg =>
+                SleeveDbContext context;
+                bool disposeContext = false;
+                if (OptimizationFlags.ReuseDbContextDuringRefresh)
                 {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[FLAG-MANAGER][BATCH][SQLite] {msg}");
-                }))
+                    context = SharedDbContextProvider.GetOrCreate(_document, msg =>
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[FLAG-MANAGER][BATCH][SQLite] {msg}");
+                    });
+                }
+                else
+                {
+                    context = new SleeveDbContext(_document, msg =>
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[FLAG-MANAGER][BATCH][SQLite] {msg}");
+                    });
+                    disposeContext = true;
+                }
+
+                try
                 {
                     var repository = new ClashZoneRepository(context, msg =>
                     {
@@ -2478,6 +2692,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         SafeFileLogger.SafeAppendText("flag_state_debug.log",
                             $"[{DateTime.Now:HH:mm:ss}] ✅ [FLAG-MANAGER] BATCH: BatchUpdateFlags completed for {dbUpdates.Count} clash zones\n");
                     }
+                }
+                finally
+                {
+                    if (disposeContext) context?.Dispose();
                 }
             }
             catch (Exception ex)
@@ -2551,11 +2769,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Step 1: Update database first (triggers will auto-compute SleeveState)
                 try
                 {
-                    using (var context = new SleeveDbContext(_document, msg =>
+                    SleeveDbContext context;
+                    bool disposeContext = false;
+                    if (OptimizationFlags.ReuseDbContextDuringRefresh)
                     {
-                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[FLAG-MANAGER][SQLite] {msg}");
-                    }))
+                        context = SharedDbContextProvider.GetOrCreate(_document, msg =>
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[FLAG-MANAGER][SQLite] {msg}");
+                        });
+                    }
+                    else
+                    {
+                        context = new SleeveDbContext(_document, msg =>
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[FLAG-MANAGER][SQLite] {msg}");
+                        });
+                        disposeContext = true;
+                    }
+
+                    try
                     {
                         var repository = new ClashZoneRepository(context, msg =>
                         {
@@ -2628,6 +2862,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             SafeFileLogger.SafeAppendText("flag_state_debug.log",
                                 $"[{DateTime.Now:HH:mm:ss}] ✅ [FLAG-MANAGER] BatchUpdateFlags completed for ClashZone {clashZone.Id}\n");
                         }
+                    }
+                    finally
+                    {
+                        if (disposeContext) context?.Dispose();
                     }
                 }
                 catch (Exception dbEx)

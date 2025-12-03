@@ -281,7 +281,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 // ✅ PHASE SQLITE-2: XML writes are now optional/backup (only if UseSqliteAsPrimary is false or for compatibility)
-                if (!DeploymentConfiguration.UseSqliteAsPrimary)
+                // ✅ PERFORMANCE OPTIMIZATION: Skip XML writes entirely if optimization flag is enabled (database-only mode)
+                if (OptimizationFlags.SkipXmlDuringSave)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] ⚡ OPTIMIZATION: Skipping all XML writes for category '{category}' (database-only mode enabled via OptimizationFlags.SkipXmlDuringSave)");
+                    SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", 
+                        $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] ⚡ OPTIMIZATION: Skipping all XML writes for category '{category}' (database-only mode)\n");
+                }
+                else if (!DeploymentConfiguration.UseSqliteAsPrimary)
                 {
                     // Legacy mode: XML is primary, write to XML
                     foreach (var comboGroup in combos)
@@ -323,12 +331,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 else
                 {
                     // ✅ PHASE SQLITE-2: SQLite is primary - still update in-memory filter storage and global XML
+                    // ✅ PERFORMANCE NOTE: This block only runs if SkipXmlDuringSave is false
                     foreach (var comboGroup in combos)
                     {
                         var key = comboGroup.Key;
                         var comboClashZones = comboGroup.ToList();
 
                         // Maintain target filter storage so downstream consumers (Place Sleeves, clustering) see the zones
+                        // Note: This is in-memory only and doesn't write to disk
                         if (targetFilter != null)
                         {
                             SaveToFilterXml(comboClashZones, category, baseFilterName, targetFilter, key, stats, allowStructuralUpdates);
@@ -358,11 +368,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         LogRefresh($"[PERSIST-GLOBAL] ⚠️ XML creation disabled - skipping GlobalIndexService.Save() (database only mode)");
                     }
                     
-                    // ✅ DEBUG: Log Global XML save completion
+                    // ✅ DEBUG: Log Global XML save completion (only if XML was actually saved)
+                    if (!DeploymentConfiguration.DisableXmlCreation)
+                    {
                     var unresolvedInGlobal = GlobalIndexService.GetAllEntries(globalIndex)
                         .Count(e => !e.IsResolved && !e.IsClusterResolved);
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] ✅ PHASE 2: Saved Global XML for '{category}' - {unresolvedInGlobal} unresolved entries (total: {GlobalIndexService.GetAllEntries(globalIndex).Count()})");
+                    }
 
                     // Skip Filter XML writes - SQLite is the source of truth for clash zone data
                     if (!DeploymentConfiguration.DeploymentMode)

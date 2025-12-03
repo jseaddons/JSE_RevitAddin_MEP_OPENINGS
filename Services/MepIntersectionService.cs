@@ -340,6 +340,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             int totalTier1NearbyElements = 0;
             int totalTier2PreciseCandidates = 0;
             int totalTier2Rejected = 0;
+            // Geometry timing accumulators (ms)
+            long totalGeometryExtractionMs = 0;
+            long totalSolidEnumerationMs = 0;
+            long totalSolidTransformMs = 0;
+            long totalIntersectionCalcMs = 0;
+            long totalPrecomputeMs = 0;
+            int precomputeElements = 0;
             
             // Lazy debug flag check on first use
             if (!IntersectionDebugEnabled)
@@ -374,7 +381,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 // ✅ MEMORY OPTIMIZATION: Store cache key only, compute solid lazily when needed
-                string cacheKey = $"{structElement.Id.IntegerValue}_{structTransform?.GetHashCode() ?? 0}";
+                string cacheKey = BuildStableCacheKey(structElement, structTransform);
                 if (IntersectionDebugEnabled && structuralData.Count < 50)
                 {
                     double w = structBBox.Max.X - structBBox.Min.X;
@@ -473,6 +480,64 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 spatialBuildStopwatch.Stop();
                 try { SafeFileLogger.SafeAppendText("DIAGNOSTIC_TEST.log", $"[SPATIAL_GRID_INIT] Spatial grid DISABLED (flag is false)"); } catch { }
+            }
+
+            // OPTIONAL PRECOMPUTE: Pre-extract host solids (can improve later lookups when many MEP elements share same hosts)
+            if (OptimizationFlags.PrecomputeHostSolids)
+            {
+                var precomputeSw = System.Diagnostics.Stopwatch.StartNew();
+                foreach (var (element, transform, bbox, cacheKey) in structuralData)
+                {
+                    // Skip if already in multi-solid cache
+                    if (OptimizationFlags.UseMultiSolidCache && TryGetFromMultiSolidCache(cacheKey, out _))
+                    {
+                        continue;
+                    }
+                    if (TryGetFromGeometryCache(cacheKey, out _))
+                    {
+                        continue; // single solid cached already
+                    }
+                    var geomSw = System.Diagnostics.Stopwatch.StartNew();
+                    try
+                    {
+                        var options = Helpers.GeometryOptionsFactory.CreateIntersectionOptions();
+                        var geometry = element.get_Geometry(options);
+                        geomSw.Stop();
+                        totalGeometryExtractionMs += geomSw.ElapsedMilliseconds;
+                        if (geometry == null) continue;
+                        var enumSw = System.Diagnostics.Stopwatch.StartNew();
+                        var solids = GetSolidsFromGeometry(geometry);
+                        enumSw.Stop();
+                        totalSolidEnumerationMs += enumSw.ElapsedMilliseconds;
+                        if (solids != null && solids.Count > 0 && transform != null)
+                        {
+                            var txSw = System.Diagnostics.Stopwatch.StartNew();
+                            var transformed = new List<Solid>();
+                            foreach (var s in solids)
+                            {
+                                if (s != null) transformed.Add(SolidUtils.CreateTransformed(s, transform));
+                            }
+                            solids = transformed;
+                            txSw.Stop();
+                            totalSolidTransformMs += txSw.ElapsedMilliseconds;
+                        }
+                        // Cache first solid for legacy callers + full list for multi-solid use
+                        AddToGeometryCache(cacheKey, solids != null && solids.Count > 0 ? solids[0] : null);
+                        AddToGeometryMultiSolidCache(cacheKey, solids);
+                        precomputeElements++;
+                    }
+                    catch { }
+                    // Memory guard: abort precompute if cache grows too large
+                    var (_, _, cacheMBCurrent) = GetGeometryCacheStats();
+                    if (cacheMBCurrent > 20.0) // threshold MB
+                    {
+                        log?.Invoke($"[PrecomputeHostSolids] Aborting precompute early – cache reached {cacheMBCurrent:F1} MB");
+                        break;
+                    }
+                }
+                precomputeSw.Stop();
+                totalPrecomputeMs = precomputeSw.ElapsedMilliseconds;
+                log?.Invoke($"[PrecomputeHostSolids] Precomputed {precomputeElements} structural geometries in {totalPrecomputeMs}ms");
             }
 
             // ✅ TWO-TIER OPTIMIZATION: Use spatial grid + R-tree if enabled, otherwise use simple nested loop
@@ -779,7 +844,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // cacheKey is already available from foreach loop deconstruction
                     
                     // ✅ PERFORMANCE PROFILING: Track solid extraction time (major bottleneck)
-                    var solidExtractionStopwatch = System.Diagnostics.Stopwatch.StartNew();
+                    var solidExtractionStopwatch = System.Diagnostics.Stopwatch.StartNew(); // includes cache retrieval
                     
                     // ✅ R2024 FIX: Get ALL solids instead of trying to union them (BooleanOperations fails in R2024)
                     // For compound walls, this returns multiple solids (one per layer)
@@ -807,6 +872,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var options = Helpers.GeometryOptionsFactory.CreateIntersectionOptions();
                         var geometry = structElement.get_Geometry(options);
                         geometryExtractionStopwatch.Stop();
+                        totalGeometryExtractionMs += geometryExtractionStopwatch.ElapsedMilliseconds;
                         
                         if (geometry != null)
                         {
@@ -814,6 +880,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var solidExtractionFromGeometryStopwatch = System.Diagnostics.Stopwatch.StartNew();
                             solids = GetSolidsFromGeometry(geometry);
                             solidExtractionFromGeometryStopwatch.Stop();
+                            totalSolidEnumerationMs += solidExtractionFromGeometryStopwatch.ElapsedMilliseconds;
                             
                             // ✅ PERFORMANCE PROFILING: Log slow geometry operations
                             if (OptimizationFlags.UseDiagnosticMode && (geometryExtractionStopwatch.ElapsedMilliseconds > 50 || solidExtractionFromGeometryStopwatch.ElapsedMilliseconds > 50))
@@ -835,6 +902,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 }
                                 solids = transformedSolids;
                                 transformStopwatch.Stop();
+                                totalSolidTransformMs += transformStopwatch.ElapsedMilliseconds;
                                 
                                 if (OptimizationFlags.UseDiagnosticMode && transformStopwatch.ElapsedMilliseconds > 20)
                                 {
@@ -843,12 +911,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                             
                             // Cache the first solid for backwards compatibility with existing cache structure
-                            // TODO: Update cache to store List<Solid> instead of Solid for better R2024 support
                             AddToGeometryCache(cacheKey, solids != null && solids.Count > 0 ? solids[0] : null);
-                            // Populate caches
-                            AddToGeometryCache(cacheKey, solids != null && solids.Count > 0 ? solids[0] : null);
-                            solidExtractionStopwatch.Stop();
                             AddToGeometryMultiSolidCache(cacheKey, solids);
+                            solidExtractionStopwatch.Stop();
                         }
                     }
                     else
@@ -858,6 +923,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // For now, wrap cached single solid in a list
                         // TODO: Update cache structure to store List<Solid>
                         solids = cachedSolid != null ? new List<Solid> { cachedSolid } : new List<Solid>();
+                        solidExtractionStopwatch.Stop();
                     }
                     
                     if (solids == null || solids.Count == 0) continue;
@@ -888,6 +954,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                     }
                     intersectionCalculationStopwatch.Stop();
+                    totalIntersectionCalcMs += intersectionCalculationStopwatch.ElapsedMilliseconds;
                     
                     // ✅ PERFORMANCE PROFILING: Log total intersection calculation time
                     if (OptimizationFlags.UseDiagnosticMode && intersectionCalculationStopwatch.ElapsedMilliseconds > 100)
@@ -1017,7 +1084,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 log($"  - Throughput: {zonesPerSecond:F1} zones/second");
                 log($"========================================\n");
             }
+
+            // Geometry extraction metrics summary (flag controlled)
+            if (OptimizationFlags.LogGeometryExtractionMetrics)
+            {
+                log($"[GeometryMetrics] Extraction={totalGeometryExtractionMs}ms, SolidEnum={totalSolidEnumerationMs}ms, SolidTransform={totalSolidTransformMs}ms, IntersectionCalc={totalIntersectionCalcMs}ms, Precompute={totalPrecomputeMs}ms");
+                var (cacheCount2, cacheMax2, cacheMb2) = GetGeometryCacheStats();
+                log($"[GeometryMetrics] CacheEntries={cacheCount2}/{cacheMax2} (~{cacheMb2:F1}MB) HitRate={(totalCacheHits + totalCacheMisses > 0 ? 100.0 * totalCacheHits / (totalCacheHits + totalCacheMisses) : 0):F1}%" );
+                if (OptimizationFlags.PrecomputeHostSolids)
+                {
+                    log($"[GeometryMetrics] PrecomputedElements={precomputeElements}");
+                }
+            }
             return results;
+        }
+
+        // Stable cache key builder (deterministic) guarded by flag
+        private static string BuildStableCacheKey(Element e, Transform? t)
+        {
+            if (!OptimizationFlags.UseStableGeometryCacheKeys)
+            {
+                return $"{e.Id.IntegerValue}_{t?.GetHashCode() ?? 0}"; // legacy unstable
+            }
+            // Use UniqueId + rounded origin & basis vectors for transform (if any)
+            if (t == null)
+            {
+                return $"{e.UniqueId}_A"; // Active doc
+            }
+            XYZ o = t.Origin;
+            XYZ bx = t.BasisX; XYZ by = t.BasisY; XYZ bz = t.BasisZ;
+            string fmt(XYZ v, int dpPos, int dpDir) => $"{Math.Round(v.X, dpPos)},{Math.Round(v.Y, dpPos)},{Math.Round(v.Z, dpPos)}";
+            // Origin 3dp, basis 2dp
+            return $"{e.UniqueId}_{fmt(o,3,3)}_{Math.Round(bx.X,2)},{Math.Round(bx.Y,2)},{Math.Round(bx.Z,2)}_{Math.Round(by.X,2)},{Math.Round(by.Y,2)},{Math.Round(by.Z,2)}_{Math.Round(bz.X,2)},{Math.Round(bz.Y,2)},{Math.Round(bz.Z,2)}";
         }
 
         // Individual method for backwards compatibility - now delegates to batch processing

@@ -19,6 +19,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         // Value: Dictionary of parameter name → value (double or string)
         private readonly Dictionary<ElementId, Dictionary<string, object>> _deferredParameters;
         private readonly object _lock = new object();
+        
+        // ✅ SAFETY FLAG: Prevents multiple flushes (critical for performance)
+        private bool _hasFlushed = false;
 
         public ParameterBatchingService()
         {
@@ -80,6 +83,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (doc == null)
                 throw new ArgumentNullException(nameof(doc));
 
+            // ✅ SAFETY FLAG: Prevent multiple flushes (critical for performance - only flush once!)
+            lock (_lock)
+            {
+                if (_hasFlushed)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        var stackTrace = new System.Diagnostics.StackTrace(skipFrames: 1, fNeedFileInfo: false);
+                        var caller = stackTrace.GetFrame(0)?.GetMethod()?.Name ?? "Unknown";
+                        DebugLogger.Warning($"[BATCH-PARAMS] ⚠️ SAFETY: FlushDeferredParameters called AGAIN from {caller} - IGNORING (already flushed once). This indicates a bug - parameters should only flush once!");
+                    }
+                    return 0; // ✅ CRITICAL: Exit early to prevent duplicate flushes
+                }
+            }
+
             Dictionary<ElementId, Dictionary<string, object>> parametersToFlush;
             
             lock (_lock)
@@ -91,6 +109,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                 if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info("[BATCH-PARAMS] ⚠️ FlushDeferredParameters called but no parameters deferred");
                     }
+                    _hasFlushed = true; // Mark as flushed even if empty to prevent retries
                     return 0;
                 }
 
@@ -260,6 +279,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             finally
             {
+                // ✅ SAFETY FLAG: Mark as flushed to prevent duplicate flushes (CRITICAL for performance)
+                lock (_lock)
+                {
+                    _hasFlushed = true;
+                }
+                
                 // Clear deferred parameters after flush attempt
                 Clear();
             }
@@ -278,6 +303,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 _deferredParameters.Clear();
+                // ✅ CRITICAL FIX: DO NOT reset _hasFlushed here - it should only be reset at the START of a new placement run
+                // Resetting it here allows multiple flushes during the same placement run, breaking batching optimization
+                // The flag will be reset when a new placement run starts (in UniversalSleevePlacerService.PlaceSleeves)
+            }
+        }
+        
+        /// <summary>
+        /// Reset the flush flag - should only be called at the start of a new placement run
+        /// </summary>
+        public void ResetFlushFlag()
+        {
+            lock (_lock)
+            {
+                _hasFlushed = false;
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info("[BATCH-PARAMS] 🔄 Reset flush flag (new placement run starting)");
             }
         }
     }

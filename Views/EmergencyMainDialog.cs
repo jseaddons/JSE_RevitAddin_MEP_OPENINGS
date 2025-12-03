@@ -3856,7 +3856,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 // Log error but don't crash
                 try
                 {
-                    string logPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_update_error.log";
+                    string logPath = SafeFileLogger.GetLogFilePath("parameter_update_error.log");
                     File.AppendAllText(logPath, $"[{DateTime.Now}] Error updating parameter values for '{selectedParameter}': {ex.Message}\n");
                 }
                 catch { }
@@ -3973,7 +3973,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 // Log error but don't crash - fall back to basic parameters
                 try
                 {
-                    string logPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_extraction_error.log";
+                    string logPath = SafeFileLogger.GetLogFilePath("parameter_extraction_error.log");
                     File.AppendAllText(logPath, $"[{DateTime.Now}] Error getting parameters: {ex.Message}\n");
                 }
                 catch { }
@@ -4039,7 +4039,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 // Log error but don't crash
                 try
                 {
-                    string logPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\category_parameter_error.log";
+                    string logPath = SafeFileLogger.GetLogFilePath("category_parameter_error.log");
                     File.AppendAllText(logPath, $"[{DateTime.Now}] Error getting parameters for categories {string.Join(", ", categoryNames)}: {ex.Message}\n");
                 }
                 catch { }
@@ -4110,7 +4110,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 // Log error but don't crash - fall back to basic values
                 try
                 {
-                    string logPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_values_error.log";
+                    string logPath = SafeFileLogger.GetLogFilePath("parameter_values_error.log");
                     File.AppendAllText(logPath, $"[{DateTime.Now}] Error getting parameter values for '{parameterName}': {ex.Message}\n");
                 }
                 catch { }
@@ -4204,7 +4204,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 // Log error but don't crash
                 try
                 {
-                    string logPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\parameter_refresh_error.log";
+                    string logPath = SafeFileLogger.GetLogFilePath("parameter_refresh_error.log");
                     File.AppendAllText(logPath, $"[{DateTime.Now}] Error refreshing parameters for categories {string.Join(", ", selectedCategories)}: {ex.Message}\n");
                 }
                 catch { }
@@ -6877,7 +6877,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         {
             // IMMEDIATE LOGGING BEFORE ANYTHING ELSE
             System.Diagnostics.Debug.WriteLine($"[ON_REFRESH_CLICK] === REFRESH BUTTON CLICKED AT {DateTime.Now} ===");
-            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] === ON_REFRESH_CLICK STARTED ===\n");
+            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] === ON_REFRESH_CLICK STARTED ===\n");
 
             // ✅ TIMING: Start timing measurement
             var refreshStopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -6888,7 +6888,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 
                 DebugLogger.Info("=== REFRESH BUTTON CLICKED ===");
                 System.Diagnostics.Debug.WriteLine($"[ON_REFRESH_CLICK] === START TIME: {startTime:HH:mm:ss.fff} ===");
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_timing.log", 
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("refresh_timing.log"), 
                     $"[{startTime:HH:mm:ss.fff}] === REFRESH CLICK STARTED ===\n");
 
                 // Use RefreshService instead of inline method
@@ -6913,7 +6913,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         _statusLabel.Text = "Refresh cancelled - No filter selected";
                         _progressBar.Visible = false;
                         _refreshButton.Enabled = true;
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [ON_REFRESH_CLICK] Cancelled - No filter selected\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [ON_REFRESH_CLICK] Cancelled - No filter selected\n");
                         return;
                     }
                     
@@ -6986,7 +6986,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             // User chose not to save - cancel refresh
                             _statusLabel.Text = "Refresh cancelled - Filter not saved";
                             _refreshButton.Enabled = true;
-                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [ON_REFRESH_CLICK] Cancelled - Filter not saved\n");
+                            JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [ON_REFRESH_CLICK] Cancelled - Filter not saved\n");
                             return;
                         }
                     }
@@ -7010,7 +7010,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     
                     DebugLogger.Info($"=== REFRESH COMPLETED in {elapsedSeconds:F2} seconds ({elapsedMs}ms) ===");
                     System.Diagnostics.Debug.WriteLine($"[ON_REFRESH_CLICK] === REFRESH COMPLETED in {elapsedSeconds:F2} seconds === END TIME: {endTime:HH:mm:ss.fff} ===");
-                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_timing.log", 
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("refresh_timing.log"), 
                         $"[{endTime:HH:mm:ss.fff}] === REFRESH COMPLETED ===\n" +
                         $"Duration: {elapsedSeconds:F2} seconds ({elapsedMs}ms)\n" +
                         $"Start: {startTime:HH:mm:ss.fff} → End: {endTime:HH:mm:ss.fff}\n\n");
@@ -7018,11 +7018,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     // ⚠️ CRITICAL FIX: Skip parameter dropdown updates during refresh to prevent sleeve deletion
                     // Parameter dropdowns don't need to be updated during refresh operations
                     System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion");
-                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion\n");
+                    // DISABLED: Excessive logging - JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] SKIPPING parameter dropdown updates during refresh to prevent sleeve deletion\n");
                     
                     // Update parameter dropdowns after successful refresh
                     // System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] About to update parameter dropdowns");
-                    // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] About to update parameter dropdowns\n");
+                    // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] About to update parameter dropdowns\n");
                     
                     // UpdateParameterDropdownsFromMepCategories(document);
 
@@ -7031,10 +7031,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     // PopulateHostParameters();
 
                     // System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] Parameter dropdowns updated successfully");
-                    // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] Parameter dropdowns updated successfully\n");
+                    // JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] Parameter dropdowns updated successfully\n");
                     
                     DebugLogger.Info("[OK_BUTTON_DEBUG] About to check OK button enabling logic");
-                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] About to check OK button enabling logic\n");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [OK_BUTTON_DEBUG] About to check OK button enabling logic\n");
 
                     // Gate: Enable OK only if there are unresolved clash zones after refresh
                     // ✅ PHASE 2: DATABASE-FIRST - Check database for unresolved zones (primary source of truth)
@@ -7042,7 +7042,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     try
                     {
                         DebugLogger.Info("[OK_BUTTON_DEBUG] Checking database for unresolved zones (database-first)");
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Checking database for unresolved zones\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Checking database for unresolved zones\n");
                         
                         int unresolvedCount = 0;
                         bool usedDatabase = false;
@@ -7078,14 +7078,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                                                     if (categoryUnresolved > 0)
                                                     {
                                                         DebugLogger.Info($"[OK_BUTTON_DEBUG] Database '{category}': {categoryUnresolved} unresolved out of {allZones.Count} total zones");
-                                                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Database '{category}': {categoryUnresolved}/{allZones.Count} unresolved\n");
+                                                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Database '{category}': {categoryUnresolved}/{allZones.Count} unresolved\n");
                                                     }
                                                 }
                                             }
                                             catch (Exception dbEx)
                                             {
                                                 DebugLogger.Warning($"[OK_BUTTON_DEBUG] Error checking database for category '{category}': {dbEx.Message}");
-                                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] ERROR checking database for '{category}': {dbEx.Message}\n");
+                                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [OK_BUTTON_DEBUG] ERROR checking database for '{category}': {dbEx.Message}\n");
                                             }
                                         }
                                     }
@@ -7101,7 +7101,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             if (!usedDatabase || unresolvedCount == 0)
                             {
                                 DebugLogger.Info("[OK_BUTTON_DEBUG] Falling back to Global XML (database has no data or no unresolved zones)");
-                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Falling back to Global XML\n");
+                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Falling back to Global XML\n");
                                 
                                 if (selectedMepCategories != null && selectedMepCategories.Count > 0)
                                 {
@@ -7123,7 +7123,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                                                 if (categoryUnresolved > 0)
                                                 {
                                                     DebugLogger.Info($"[OK_BUTTON_DEBUG] Global XML '{category}': {categoryUnresolved} unresolved out of {allEntries.Count} total entries (FALLBACK)");
-                                                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Global XML '{category}': {categoryUnresolved}/{allEntries.Count} unresolved (FALLBACK)\n");
+                                                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Global XML '{category}': {categoryUnresolved}/{allEntries.Count} unresolved (FALLBACK)\n");
                                                 }
                                             }
                                         }
@@ -7138,12 +7138,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         
                         _okButton.Enabled = unresolvedCount > 0;
                         DebugLogger.Info($"[OK_BUTTON_DEBUG] ✅ OK button enabled: {_okButton.Enabled} (unresolved: {unresolvedCount} from {(usedDatabase ? "database" : "Global XML fallback")})");
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] ✅ OK button enabled: {_okButton.Enabled} (unresolved: {unresolvedCount} from {(usedDatabase ? "database" : "Global XML")})\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [OK_BUTTON_DEBUG] ✅ OK button enabled: {_okButton.Enabled} (unresolved: {unresolvedCount} from {(usedDatabase ? "database" : "Global XML")})\n");
                     }
-                    catch (Exception ex) 
-                    { 
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] ❌ ERROR enabling OK button: {ex.Message}\n");
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Stack: {ex.StackTrace}\n");
+                    catch (Exception ex)
+                    {
+                        // DISABLED: Excessive logging - JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [OK_BUTTON_DEBUG] ❌ ERROR enabling OK button: {ex.Message}\n");
+                        // DISABLED: Excessive logging - JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Stack: {ex.StackTrace}\n");
                         _okButton.Enabled = false; 
                     }
                 }
@@ -7155,7 +7155,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 }
 
                 System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] RefreshService.ExecuteRefresh() method completed successfully");
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] RefreshService.ExecuteRefresh() method completed successfully\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] RefreshService.ExecuteRefresh() method completed successfully\n");
                     }
                     catch (Exception ex)
                     {
@@ -7165,8 +7165,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         var elapsedSeconds = elapsedMs / 1000.0;
                         
                         System.Diagnostics.Debug.WriteLine($"[ON_REFRESH_CLICK] ERROR: {ex.Message} (completed in {elapsedSeconds:F2}s)");
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\logger_debug.txt", $"[{DateTime.Now}] ERROR in OnRefreshClick: {ex.Message}\n");
-                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_timing.log", 
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] ERROR in OnRefreshClick: {ex.Message}\n");
+                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("refresh_timing.log"), 
                             $"[{endTime:HH:mm:ss.fff}] === REFRESH FAILED ===\n" +
                             $"Duration: {elapsedSeconds:F2} seconds ({elapsedMs}ms)\n" +
                             $"Error: {ex.Message}\n\n");
@@ -7396,13 +7396,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             try
             {
                 DebugLogger.Info("[PARAMETER_DEBUG] Starting parameter dropdown update using ParameterExtractionService");
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [PARAMETER_DEBUG] Starting parameter dropdown update using ParameterExtractionService\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("refresh_debug.log"), $"[{DateTime.Now}] [PARAMETER_DEBUG] Starting parameter dropdown update using ParameterExtractionService\n");
                 
                 // ⚠️ CRITICAL FIX: Skip parameter extraction during initialization to prevent sleeve deletion
                 if (_isInitializing)
                 {
                     DebugLogger.Info("🔍 SKIPPING UpdateParameterDropdownsFromMepCategories during initialization - using cached parameters");
-                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] 🔍 SKIPPING UpdateParameterDropdownsFromMepCategories during initialization - using cached parameters\n");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("refresh_debug.log"), $"[{DateTime.Now}] 🔍 SKIPPING UpdateParameterDropdownsFromMepCategories during initialization - using cached parameters\n");
                     return;
                 }
                 
@@ -7507,7 +7507,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
                 // Parameter service moved to separate dialog - this functionality is now handled in ParameterServiceDialog
                 DebugLogger.Info($"[PARAMETER_DEBUG] Parameter service moved to separate dialog - no longer updating parameter service dropdowns here");
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] [PARAMETER_DEBUG] Parameter service moved to separate dialog - no longer updating parameter service dropdowns here\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("refresh_debug.log"), $"[{DateTime.Now}] [PARAMETER_DEBUG] Parameter service moved to separate dialog - no longer updating parameter service dropdowns here\n");
 
                 // Store parameters globally for later use
                 _allCollectedParameters["MEP Elements"] = mepParameters.Select(p => new Models.ParameterInfo 

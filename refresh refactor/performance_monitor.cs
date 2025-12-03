@@ -125,9 +125,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 report.AppendLine($"Status: {(meetsTarget ? "✅ MEETS TARGET" : "⚠️ BELOW TARGET")}");
             }
             
-            // Write report
+            // Write report - bypass deployment mode check for performance reports
             string reportPath = SafeFileLogger.GetLogFilePath($"performance_{_logFileName}");
-            SafeFileLogger.SafeAppendText($"performance_{_logFileName}", report.ToString());
+            SafeFileLogger.SafeAppendTextAlways($"performance_{_logFileName}", report.ToString());
             
             if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[PERFORMANCE] Report written to: {reportPath}");

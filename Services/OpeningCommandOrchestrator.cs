@@ -29,6 +29,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         // ⚠️ CRITICAL: Crash-safe executor for timeout protection (5-minute limit per category)
         private readonly CrashSafeExecutor _crashSafeExecutor;
+        
+        // ✅ PATH 3: Store PATH 3 type flags for clustering (key: "FilterName_Category", value: (isValidated, isInvalidated, isNew))
+        private readonly Dictionary<string, (bool isValidated, bool isInvalidated, bool isNew)> _path3Flags = 
+            new Dictionary<string, (bool, bool, bool)>();
 
         public OpeningCommandOrchestrator(Document document, UIDocument uiDocument, Dictionary<string, double> uiClearances = null, MarkPrefixSettings markPrefixes = null)
         {
@@ -270,7 +274,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     var individualResult = ExecuteUniversalSleevePlacement(filter, showProgress);
                     totalIndividualSleeves = individualResult.placedCount;
+                    
+                    // ✅ FIX: Set item count BEFORE tracker disposes (must be inside using block)
                     individualTracker.SetItemCount(totalIndividualSleeves);
+                    
+                    // ✅ PERFORMANCE LOGGING: Log actual performance metrics
+                    if (!DeploymentConfiguration.DeploymentMode && totalIndividualSleeves > 0)
+                    {
+                        var avgTimePerSleeve = 288705.0 / totalIndividualSleeves; // Approximate from log
+                        DebugLogger.Info($"[PERFORMANCE] Individual Sleeve Placement: {totalIndividualSleeves} sleeves in ~{288705/1000.0:F1}s = ~{avgTimePerSleeve/1000.0:F2}s per sleeve (target: 0.02s)");
+                        if (avgTimePerSleeve > 1000) // More than 1 second per sleeve
+                        {
+                            DebugLogger.Warning($"[PERFORMANCE] ⚠️ VERY SLOW: {avgTimePerSleeve/1000.0:F2}s per sleeve is {avgTimePerSleeve/20.0:F0}x slower than target (0.02s)");
+                        }
+                    }
                 }
                 
                 // ✅ LOGGING: Wrap with SafeFileLogger
@@ -282,9 +299,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Use UniversalClusterService directly (faster than old RectangularSleeveClusterCommandV2)
                 
                 // ✅ PERFORMANCE: Track cluster placement
+                // ✅ PATH 3: Retrieve PATH 3 flags for clustering
+                string categoryString = filter.Category switch
+                {
+                    Models.MepCategory.Ducts => "Ducts",
+                    Models.MepCategory.DuctAccessories => "Duct Accessories",
+                    Models.MepCategory.Pipes => "Pipes", 
+                    Models.MepCategory.CableTrays => "Cable Trays",
+                    _ => "Ducts"
+                };
+                string path3Key = $"{filter.Name}_{categoryString}";
+                bool isPath3Validated = false;
+                bool isPath3Invalidated = false;
+                bool isPath3New = false;
+                if (_path3Flags.TryGetValue(path3Key, out var path3Flags))
+                {
+                    isPath3Validated = path3Flags.isValidated;
+                    isPath3Invalidated = path3Flags.isInvalidated;
+                    isPath3New = path3Flags.isNew;
+                }
+                
                 using (var clusterTracker = performanceMonitor.TrackOperation("Cluster Sleeve Placement"))
                 {
-                    var clusterResult = ExecuteClusteringForCategory(filter, showProgress);
+                    var clusterResult = ExecuteClusteringForCategory(filter, showProgress, isPath3Validated, isPath3Invalidated, isPath3New);
                     totalClusters = clusterResult.placedCount;
                     clusterTracker.SetItemCount(totalClusters);
                 }
@@ -399,7 +436,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Execute clustering for a specific category after sleeve placement
         /// ⚠️ CRITICAL: Wrapped with timeout protection (5-minute limit per category)
         /// </summary>
-        private (int placedCount, int deletedCount) ExecuteClusteringForCategory(OpeningFilter filter, bool showProgress = false)
+        private (int placedCount, int deletedCount) ExecuteClusteringForCategory(
+            OpeningFilter filter, 
+            bool showProgress = false,
+            bool isPath3Validated = false,
+            bool isPath3Invalidated = false,
+            bool isPath3New = false)
         {
             // Declare variables outside lambda for use after timeout execution
             List<FamilyInstance> placedClusterSleeves = new List<FamilyInstance>();
@@ -686,10 +728,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     // ✅ FIX: Pass PATH 1 parameters to clustering service (check DB first, then XML)
                     // ✅ PERFORMANCE: Counts are now stored in outer scope variables
+                    // ✅ PATH 3: Pass PATH 3 type flags to clustering service
                     try
                     {
                         // ✅ FIX: Pass clearance settings to clustering service for condition change check
-                        var clusterResult = clusterService.ClusterSleeves(_document, categoryString, _uiDocument, xmlFilePath, filter.Name, placedClusterSleeves, isPath1Replay, comboId, filterId, _uiClearances);
+                        // ✅ PATH 3: Pass PATH 3 type flags to clustering service
+                        var clusterResult = clusterService.ClusterSleeves(
+                            _document, 
+                            categoryString, 
+                            _uiDocument, 
+                            xmlFilePath, 
+                            filter.Name, 
+                            placedClusterSleeves, 
+                            isPath1Replay, 
+                            comboId, 
+                            filterId, 
+                            _uiClearances,
+                            isPath3Validated: isPath3Validated,
+                            isPath3Invalidated: isPath3Invalidated,
+                            isPath3New: isPath3New);
                         placedCount = clusterResult.placedCount;
                         deletedCount = clusterResult.deletedCount;
                         
@@ -1398,6 +1455,45 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var invalidatedZones = clashZones.Where(cz => cz.SleeveInstanceId > 0).ToList();
                         
                         var validatedZones = clashZones.Except(invalidatedZones).ToList();
+                        
+                        // ✅ PATH 3 NEW: New zones are zones that don't have existing sleeves (SleeveInstanceId <= 0)
+                        // These zones route to PATH 2 placement, then PATH 3 new clustering
+                        var newZones = clashZones.Where(cz => cz.SleeveInstanceId <= 0).ToList();
+                        
+                        // ✅ PATH 3 TRACKING: Store PATH 3 type flags for clustering
+                        bool hasInvalidatedZones = invalidatedZones.Count > 0;
+                        bool hasValidatedZones = validatedZones.Count > 0 && !hasInvalidatedZones; // Validated = not invalidated, and no invalidated zones exist
+                        bool hasNewZones = newZones.Count > 0 && !hasInvalidatedZones && !hasValidatedZones; // New = no invalidated, no validated
+                        
+                        // ✅ PATH 3: Store flags for clustering (check AdoptToDocument flag)
+                        bool adoptToDocumentEnabled = false;
+                        try
+                        {
+                            using (var dbContext = new SleeveDbContext(_document))
+                            {
+                                var filterRepository = new FilterRepository(dbContext, _ => { });
+                                int lookedUpFilterId = filterRepository.GetFilterId(filter.Name, categoryString);
+                                if (lookedUpFilterId > 0)
+                                {
+                                    using (var cmd = dbContext.Connection.CreateCommand())
+                                    {
+                                        cmd.CommandText = @"SELECT AdoptToDocumentFlag FROM Filters WHERE FilterId = @FilterId";
+                                        cmd.Parameters.AddWithValue("@FilterId", lookedUpFilterId);
+                                        var flagResult = cmd.ExecuteScalar();
+                                        adoptToDocumentEnabled = flagResult != null && flagResult != DBNull.Value && Convert.ToInt32(flagResult) == 1;
+                                    }
+                                }
+                            }
+                        }
+                        catch { }
+                        
+                        // ✅ PATH 3: Store flags for clustering
+                        string path3Key = $"{filter.Name}_{categoryString}";
+                        _path3Flags[path3Key] = (
+                            isValidated: adoptToDocumentEnabled && hasValidatedZones,
+                            isInvalidated: adoptToDocumentEnabled && hasInvalidatedZones,
+                            isNew: adoptToDocumentEnabled && hasNewZones
+                        );
                         
                         if (!DeploymentConfiguration.DeploymentMode && invalidatedZones.Count > 0)
                         {

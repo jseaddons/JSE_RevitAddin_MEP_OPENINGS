@@ -24,7 +24,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 
         /// <summary>
         /// Write deferred metadata parameters to all placed sleeves in a single batch operation.
-        /// Non-critical parameters: MEP_UniqueId, MEP_Size, System_Abbreviation, MEP_Count, Bottom of Opening, Host Parameters.
+        /// Non-critical parameters: MEP_UniqueId, MEP Size, MEP System Abbreviation, MEP_Count, Bottom of Opening, Host Parameters.
         /// </summary>
         /// <param name="sleeveDataList">List of tuples containing sleeve instance and associated clash zone data</param>
         public void WriteDeferredMetadata(List<(FamilyInstance sleeve, ClashZone clashZone)> sleeveDataList)
@@ -134,11 +134,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 }
                 else failed++;
 
-                // MEP_Size - ✅ CRITICAL FIX: Ensure we set as STRING value (text) for all categories
+                // MEP Size - ✅ CRITICAL FIX: Ensure we set as STRING value (text) for all categories
                 // ✅ SIZE PARAMETER VALUE: Use MepElementSizeParameterValue (raw Size parameter value) instead of MepElementFormattedSize
                 // MepElementSizeParameterValue contains the exact text from the Size parameter (e.g., "20 mmø", "200 mm dia symbol")
                 // Fallback to MepElementFormattedSize if MepElementSizeParameterValue is empty
-                param = sleeve.LookupParameter("MEP_Size");
+                // ✅ FIX: Parameter name is "MEP Size" (with space), not "MEP_Size" (with underscore)
+                param = sleeve.LookupParameter("MEP Size");
                 if (param != null && !param.IsReadOnly)
                 {
                     var sizeValue = !string.IsNullOrWhiteSpace(clashZone.MepElementSizeParameterValue) 
@@ -149,7 +150,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         SafeFileLogger.SafeAppendText("parameter_service_debug.log",
-                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [BatchMetadataWriter] 🔍 Attempting to set MEP_Size on sleeve {sleeve.Id}: StorageType={param.StorageType}, MepElementSizeParameterValue='{clashZone.MepElementSizeParameterValue}', MepElementFormattedSize='{clashZone.MepElementFormattedSize}', sizeValue='{sizeValue}', Category={clashZone.MepElementCategory}\n");
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [BatchMetadataWriter] 🔍 Attempting to set MEP Size on sleeve {sleeve.Id}: StorageType={param.StorageType}, MepElementSizeParameterValue='{clashZone.MepElementSizeParameterValue}', MepElementFormattedSize='{clashZone.MepElementFormattedSize}', sizeValue='{sizeValue}', Category={clashZone.MepElementCategory}\n");
                     }
                     
                     // ✅ FIX: Check StorageType - if it's String, set directly; if Double, we should NOT set it (it's for calculation only)
@@ -166,8 +167,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
                                     SafeFileLogger.SafeAppendText("parameter_service_debug.log",
-                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [BatchMetadataWriter] ✅ SUCCESS: Set MEP_Size = '{sizeValue}' (String) for sleeve {sleeve.Id}\n");
-                                    DebugLogger.Info($"[BatchMetadataWriter] ✅ Set MEP_Size = '{sizeValue}' (String) for sleeve {sleeve.Id}");
+                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [BatchMetadataWriter] ✅ SUCCESS: Set MEP Size = '{sizeValue}' (String) for sleeve {sleeve.Id}\n");
+                                    DebugLogger.Info($"[BatchMetadataWriter] ✅ Set MEP Size = '{sizeValue}' (String) for sleeve {sleeve.Id}");
                                 }
                             }
                             catch (Exception setEx)
@@ -175,8 +176,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
                                     SafeFileLogger.SafeAppendText("parameter_service_debug.log",
-                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [BatchMetadataWriter] ❌ ERROR: Failed to set MEP_Size='{sizeValue}' on sleeve {sleeve.Id}: {setEx.Message}\n");
-                                    DebugLogger.Warning($"[BatchMetadataWriter] Failed to set MEP_Size='{sizeValue}' on sleeve {sleeve.Id}: {setEx.Message}");
+                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [BatchMetadataWriter] ❌ ERROR: Failed to set MEP Size='{sizeValue}' on sleeve {sleeve.Id}: {setEx.Message}\n");
+                                    DebugLogger.Warning($"[BatchMetadataWriter] Failed to set MEP Size='{sizeValue}' on sleeve {sleeve.Id}: {setEx.Message}");
                                 }
                                 failed++;
                             }
@@ -186,21 +187,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
                                 SafeFileLogger.SafeAppendText("parameter_service_debug.log",
-                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [BatchMetadataWriter] ⚠️ WARNING: MEP_Size is empty/null for sleeve {sleeve.Id} (MepElementSizeParameterValue='{clashZone.MepElementSizeParameterValue}', MepElementFormattedSize='{clashZone.MepElementFormattedSize}')\n");
-                                DebugLogger.Warning($"[BatchMetadataWriter] MEP_Size is empty/null for sleeve {sleeve.Id} (MepElementSizeParameterValue='{clashZone.MepElementSizeParameterValue}', MepElementFormattedSize='{clashZone.MepElementFormattedSize}')");
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [BatchMetadataWriter] ⚠️ WARNING: MEP Size is empty/null for sleeve {sleeve.Id} (MepElementSizeParameterValue='{clashZone.MepElementSizeParameterValue}', MepElementFormattedSize='{clashZone.MepElementFormattedSize}')\n");
+                                DebugLogger.Warning($"[BatchMetadataWriter] MEP Size is empty/null for sleeve {sleeve.Id} (MepElementSizeParameterValue='{clashZone.MepElementSizeParameterValue}', MepElementFormattedSize='{clashZone.MepElementFormattedSize}')");
                             }
                             failed++;
                         }
                     }
                     else
                     {
-                        // ⚠️ WARNING: MEP_Size parameter is not a String type - cannot set text value
+                        // ⚠️ WARNING: MEP Size parameter is not a String type - cannot set text value
                         // This should be a String parameter to display formatted sizes like "20 mmø"
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             SafeFileLogger.SafeAppendText("parameter_service_debug.log",
-                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [BatchMetadataWriter] ⚠️ CRITICAL: MEP_Size parameter on sleeve {sleeve.Id} is {param.StorageType} (expected String). Cannot set text value '{sizeValue}'. Parameter should be String type to display formatted sizes.\n");
-                            DebugLogger.Warning($"[BatchMetadataWriter] ⚠️ MEP_Size parameter on sleeve {sleeve.Id} is {param.StorageType} (expected String). Cannot set text value '{sizeValue}'. Parameter should be String type to display formatted sizes.");
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [BatchMetadataWriter] ⚠️ CRITICAL: MEP Size parameter on sleeve {sleeve.Id} is {param.StorageType} (expected String). Cannot set text value '{sizeValue}'. Parameter should be String type to display formatted sizes.\n");
+                            DebugLogger.Warning($"[BatchMetadataWriter] ⚠️ MEP Size parameter on sleeve {sleeve.Id} is {param.StorageType} (expected String). Cannot set text value '{sizeValue}'. Parameter should be String type to display formatted sizes.");
                         }
                         failed++;
                     }
@@ -210,14 +211,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     if (param == null && !DeploymentConfiguration.DeploymentMode)
                     {
                         SafeFileLogger.SafeAppendText("parameter_service_debug.log",
-                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [BatchMetadataWriter] ⚠️ MEP_Size parameter not found on sleeve {sleeve.Id}\n");
-                        DebugLogger.Warning($"[BatchMetadataWriter] MEP_Size parameter not found on sleeve {sleeve.Id}");
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [BatchMetadataWriter] ⚠️ MEP Size parameter not found on sleeve {sleeve.Id}\n");
+                        DebugLogger.Warning($"[BatchMetadataWriter] MEP Size parameter not found on sleeve {sleeve.Id}");
                     }
                     failed++;
                 }
 
-                // System_Abbreviation
-                param = sleeve.LookupParameter("System_Abbreviation");
+                // MEP System Abbreviation - ✅ FIX: Parameter name is "MEP System Abbreviation" (with spaces), not "System_Abbreviation"
+                param = sleeve.LookupParameter("MEP System Abbreviation");
                 if (param != null && !param.IsReadOnly)
                 {
                     param.Set(clashZone.MepElementSystemAbbreviation);

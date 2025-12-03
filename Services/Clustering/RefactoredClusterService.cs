@@ -140,7 +140,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             bool isPath1Replay = false,
             int? comboId = null,
             int? filterId = null,
-            Dictionary<string, double> currentClearanceSettings = null)
+            Dictionary<string, double> currentClearanceSettings = null,
+            bool isPath3Validated = false,
+            bool isPath3Invalidated = false,
+            bool isPath3New = false)
         {
             // ✅ PERFORMANCE MONITORING: Initialize cluster performance monitor
             string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
@@ -197,6 +200,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] Target category: {targetCategory ?? "ALL"}\n");
                 SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] Filter name: {filterName ?? "NONE"}\n");
                 SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] Path 1 Replay: {isPath1Replay}\n");
+                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] PATH 3 Validated: {isPath3Validated}, Invalidated: {isPath3Invalidated}, New: {isPath3New}\n");
                 SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ComboId: {comboId?.ToString() ?? "NONE"}, FilterId: {filterId?.ToString() ?? "NONE"}\n");
                 SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] DeploymentMode: {DeploymentConfiguration.DeploymentMode}\n");
                 SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅ DATABASE-ONLY ARCHITECTURE (No XML)\n");
@@ -215,11 +219,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             {
                 // ✅ STEP 1: Path 1 Replay - Load from database if available
                 // ✅ FIX: Pass currentClearanceSettings to check if conditions changed
-                if (isPath1Replay && comboId.HasValue && filterId.HasValue)
+                // ✅ PATH 3: Skip PATH 1 replay check for PATH 3 types (always recalculate)
+                if (isPath1Replay && !isPath3Validated && !isPath3Invalidated && !isPath3New && comboId.HasValue && filterId.HasValue)
                 {
                     var path1Result = HandlePath1Replay(doc, comboId.Value, filterId.Value, targetCategory, uiDoc, placedClusterSleevesOut, xmlFilePath, currentClearanceSettings);
                     if (path1Result.hasData)
                         return (path1Result.placedCount, path1Result.deletedCount);
+                }
+                
+                // ✅ PATH 3: Log that we're always recalculating for PATH 3 types
+                if (isPath3Validated || isPath3Invalidated || isPath3New)
+                {
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] ✅ PATH 3 CLUSTERING: Always recalculating clusters (ignoring existing cluster data)\n");
+                    if (isPath3Validated)
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}]   → PATH 3 Validated: Nearby changes may affect cluster formation\n");
+                    if (isPath3Invalidated)
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}]   → PATH 3 Invalidated: Geometry changed, must recalculate\n");
+                    if (isPath3New)
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}]   → PATH 3 New: New zones added, must recalculate\n");
                 }
 
                 // ✅ PERFORMANCE: Track clash zone loading

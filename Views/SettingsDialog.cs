@@ -513,12 +513,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     _settings.EnableThreePointValidation = _enableThreePointValidationCheckBox.Checked;
 
                 // Log successful save
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Settings saved successfully\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("refresh_debug.log"), $"[{DateTime.Now}] Settings saved successfully\n");
             }
             catch (Exception ex)
             {
                 // Log the error for debugging
-                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(@"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\refresh_debug.log", $"[{DateTime.Now}] Error in SaveSettings: {ex.Message}\n");
+                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("refresh_debug.log"), $"[{DateTime.Now}] Error in SaveSettings: {ex.Message}\n");
                 throw; // Re-throw to show error dialog
             }
         }

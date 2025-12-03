@@ -173,6 +173,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             _log($"[METHOD3] DEBUG: DetectNewClashZones called with {currentIntersections?.Count ?? 0} intersections");
             
+            // ✅ PERFORMANCE OPTIMIZATION: Streamlined fast-path for validated intersections
+            if (OptimizationFlags.UseStreamlinedClashZoneCreation)
+            {
+                return DetectNewClashZonesStreamlined(currentIntersections, document, clearanceSettings, selectedCategories);
+            }
+            
             // ⚠️ CRITICAL: Check memory/timeout before starting heavy processing
             if (_memoryManager != null)
             {
@@ -1021,6 +1027,76 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 MepIntersectionService.ClearGeometryCache();
             }
             catch { }
+            return newClashZones;
+        }
+
+        /// <summary>
+        /// ✅ PERFORMANCE OPTIMIZED: Streamlined clash zone creation for validated intersections
+        /// Skips redundant validation, penetration checks, and damper detection since intersections 
+        /// from MepIntersectionService are already validated and filtered.
+        /// Expected: 10-20x faster than legacy path (10ms vs 189ms per zone)
+        /// </summary>
+        private List<ClashZone> DetectNewClashZonesStreamlined(
+            List<(Element, Element, BoundingBoxXYZ, XYZ)> currentIntersections,
+            Document document,
+            Dictionary<string, double> clearanceSettings,
+            List<string> selectedCategories)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            _log($"[STREAMLINED] Processing {currentIntersections.Count} validated intersections (fast path enabled)");
+            
+            var newClashZones = new List<ClashZone>();
+            var documentPath = document.PathName;
+            var documentHash = CalculateDocumentHash(document);
+            
+            foreach (var (mepElement, structuralElement, boundingBox, intersectionPoint) in currentIntersections)
+            {
+                // Minimal validation - only check for null and invalid IDs
+                if (mepElement == null || structuralElement == null ||
+                    mepElement.Id.IntegerValue <= 0 || structuralElement.Id.IntegerValue <= 0)
+                {
+                    continue;
+                }
+                
+                // Check if clash zone already exists
+                var existingClashZone = FindExistingClashZone(mepElement.Id, structuralElement.Id, intersectionPoint);
+                
+                if (existingClashZone == null)
+                {
+                    // Create new clash zone using streamlined creation (minimal validation)
+                    try
+                    {
+                        var newClashZone = CreateClashZone(mepElement, structuralElement, intersectionPoint, boundingBox, document, clearanceSettings, null, null);
+                        
+                        if (newClashZone != null)
+                        {
+                            newClashZone.IsCurrentClash = true;
+                            newClashZone.ClearRevitApiObjects();
+                            
+                            newClashZones.Add(newClashZone);
+                            _clashZoneStorage.ClashZones.Add(newClashZone);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _log($"[STREAMLINED] Error creating clash zone: MEP={mepElement.Id}, Structural={structuralElement.Id}, Error={ex.Message}");
+                    }
+                }
+                else if (!existingClashZone.IsResolved)
+                {
+                    // Only update existing clash zone if it's NOT resolved
+                    UpdateExistingClashZone(existingClashZone, mepElement, structuralElement, intersectionPoint, boundingBox, document);
+                }
+            }
+            
+            // Update storage metadata
+            _clashZoneStorage.LastUpdated = DateTime.Now;
+            _clashZoneStorage.DocumentPath = documentPath;
+            _clashZoneStorage.DocumentHash = documentHash;
+            
+            sw.Stop();
+            _log($"[STREAMLINED] Created {newClashZones.Count} clash zones in {sw.ElapsedMilliseconds}ms ({(newClashZones.Count > 0 ? sw.ElapsedMilliseconds / (double)newClashZones.Count : 0):F1}ms per zone)");
+            
             return newClashZones;
         }
         
@@ -2330,6 +2406,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var nomMm = clashZone.MepElementNominalDiameter > 0 ? (clashZone.MepElementNominalDiameter * 304.8) : 0.0;
                 SafeFileLogger.SafeAppendText("Refresh_debug.log",
                     $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ✅ ClashZone CREATED: ZoneId={clashZone.Id}, OuterDiameter={clashZone.MepElementOuterDiameter:F6}ft ({odMm:F1}mm), NominalDiameter={clashZone.MepElementNominalDiameter:F6}ft ({nomMm:F1}mm), SizeParameterValue='{clashZone.MepElementSizeParameterValue ?? "NULL"}', MepElementFormattedSize='{clashZone.MepElementFormattedSize ?? "NULL"}'\n");
+            }
+            
+            // ✅ DIAGNOSTIC: Log MEP element sizes for ALL categories (for debugging sleeve size issues)
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                var widthMm = clashZone.MepElementWidth * 304.8;
+                var heightMm = clashZone.MepElementHeight * 304.8;
+                SafeFileLogger.SafeAppendText("refresh_mep_sizes.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CREATE-CLASH-ZONE] Zone {clashZone.Id}: MEP={mepElement?.Id?.IntegerValue ?? -1}, Category='{mepCategory}', MepElementWidth={clashZone.MepElementWidth:F6}ft ({widthMm:F1}mm), MepElementHeight={clashZone.MepElementHeight:F6}ft ({heightMm:F1}mm), Source='GetMepElementDimensions', finalWidth={finalWidth:F6}ft, finalHeight={finalHeight:F6}ft\n");
             }
             
             // ✅ CRITICAL: Log thickness values to verify they're being retrieved correctly from linked files

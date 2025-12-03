@@ -206,11 +206,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             
             try
             {
-                using (var context = new SleeveDbContext(_document, msg =>
+                SleeveDbContext context;
+                bool disposeContext = false;
+                if (OptimizationFlags.ReuseDbContextDuringRefresh)
                 {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[XML-CACHE][SQLite] {msg}");
-                }))
+                    context = SharedDbContextProvider.GetOrCreate(_document, msg =>
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[XML-CACHE][SQLite] {msg}");
+                    });
+                }
+                else
+                {
+                    context = new SleeveDbContext(_document, msg =>
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[XML-CACHE][SQLite] {msg}");
+                    });
+                    disposeContext = true;
+                }
+
+                try
                 {
                     var repository = new ClashZoneRepository(context, msg =>
                     {
@@ -258,6 +274,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                         }
                     }
                 }
+                finally
+                {
+                    if (disposeContext)
+                        context?.Dispose();
+                }
             }
             catch (Exception ex)
             {
@@ -275,12 +296,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             if (!cache.ProcessedCombos.TryGetValue(category, out var combos))
                 return false;
             
-            var combo = new ProcessedFileCombo 
-            { 
-                LinkedFile = linkedFile, 
-                HostFile = hostFile 
+            var combo = new ProcessedFileCombo
+            {
+                LinkedFile = linkedFile,
+                HostFile = hostFile
             };
-            
+
             return combos.Contains(combo.GetNormalizedKey());
         }
         
@@ -320,7 +341,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             
             try
             {
-                using (var dbContext = new SleeveDbContext(_document))
+                SleeveDbContext dbContext;
+                bool disposeDb = false;
+                if (OptimizationFlags.ReuseDbContextDuringRefresh)
+                {
+                    dbContext = SharedDbContextProvider.GetOrCreate(_document);
+                }
+                else
+                {
+                    dbContext = new SleeveDbContext(_document);
+                    disposeDb = true;
+                }
+
+                try
                 {
                     var filterRepository = new FilterRepository(dbContext, _ => { });
                     
@@ -389,6 +422,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     
                     Log($"[DB-COMBO-CHECK] ✅ All file combos are processed (IsFilterComboNew=0) for all filter+category combinations");
                     return true;
+                }
+                finally
+                {
+                    if (disposeDb)
+                        dbContext?.Dispose();
                 }
             }
             catch (Exception ex)

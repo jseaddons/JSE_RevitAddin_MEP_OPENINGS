@@ -733,6 +733,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Execute each mapping
                 foreach (var mapping in config.Mappings)
                 {
+                    // ✅ FIX: Skip disabled mappings to avoid unnecessary processing
+                    if (!mapping.IsEnabled)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[PARAM_TRANSFER] ⏭️ Skipping disabled mapping: {mapping.SourceParameter} -> {mapping.TargetParameter}");
+                        }
+                        continue;
+                    }
+                    
                                         if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[PARAM_TRANSFER] Processing mapping: {mapping.SourceParameter} -> {mapping.TargetParameter}");
                                         if (!DeploymentConfiguration.DeploymentMode)
@@ -843,35 +853,298 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             HashSet<int> successfullyTransferredSleeveIds = null,
             UIDocument uiDoc = null)
         {
+            // ✅ BUILD STAMP: Log build information and code version (ALWAYS LOG - critical for debugging)
+            var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+            var buildTime = System.IO.File.GetLastWriteTime(assembly.Location);
+            // ✅ CRITICAL: Always log build stamp (even in deployment mode) to verify correct code is running
+            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                $"\n===== PARAMETER TRANSFER SESSION STARTED {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n");
+            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                $"🔨 BUILD TIME: {buildTime:yyyy-MM-dd HH:mm:ss} (DLL: {System.IO.Path.GetFileName(assembly.Location)})\n");
+            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                $"✅ CODE VERSION: Element ID Comparison Fix Applied (v2025-12-03)\n");
+            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                $"📍 EXPECTED CODE PATH: Element validation uses ID comparison (not document reference)\n");
+            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                $"⚙️ DEPLOYMENT MODE: {DeploymentConfiguration.DeploymentMode} (false = full logging, true = minimal logging)\n");
+            
+            // ✅ DIAGNOSTIC: Track which sleeves we've logged snapshot contents for (to avoid duplicate logs)
+            var loggedSnapshotParams = new HashSet<int>();
             var result = new ParameterTransferResult();
             var transferredCount = 0;
             var failedCount = 0;
+            var skippedCount = 0;
             var errors = new List<string>();
+            
+            // ✅ CRITICAL: Log method entry with sleeve count (always log - critical for debugging)
+            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] 📥 METHOD ENTRY: TransferFromElementsWithSnapshot called with {openingIds?.Count ?? 0} sleeves, Mapping: '{mapping?.SourceParameter}' -> '{mapping?.TargetParameter}'\n");
 
+            // ✅ CRITICAL: Validate openingIds before processing
+            if (openingIds == null || openingIds.Count == 0)
+            {
+                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ❌ ERROR: openingIds is NULL or EMPTY - cannot process\n");
+                result.Success = false;
+                result.Message = "No opening IDs provided for parameter transfer.";
+                result.Errors.Add("openingIds is null or empty");
+                return result;
+            }
+            
+            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ Validated: {openingIds.Count} opening IDs provided, proceeding to cache initialization\n");
+            
+            // ✅ OPTIMIZATION 4: Batch Parameter Lookups - Pre-cache elements and parameters
+            Dictionary<int, Element> elementCache = new Dictionary<int, Element>();
+            Dictionary<int, Dictionary<string, Parameter>> parameterCache = new Dictionary<int, Dictionary<string, Parameter>>();
+            
+            // ✅ PROTECTION 15: Parameter cache initialization with validation
+            // ✅ CRITICAL: Validate mapping is not null before cache initialization
+            if (mapping == null)
+            {
+                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ❌ ERROR: mapping is NULL - cannot proceed with parameter transfer\n");
+                result.Success = false;
+                result.Message = "Parameter mapping is null - cannot transfer parameters.";
+                result.Errors.Add("mapping parameter is null");
+                return result;
+            }
+            
+            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ Mapping validated: Source='{mapping.SourceParameter}', Target='{mapping.TargetParameter}', Enabled={mapping.IsEnabled}\n");
+            
+            if (Services.OptimizationFlags.UseBatchParameterLookups)
+            {
+                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] 🔄 Starting batch parameter cache initialization (UseBatchParameterLookups=true)\n");
+                
+                // ✅ CRITICAL: Validate document before caching
+                if (doc == null)
+                {
+                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ Document is null - skipping parameter cache initialization\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Warning("[PARAM_TRANSFER] ⚠️ Document is null - skipping parameter cache initialization");
+                    }
+                }
+                else
+                {
+                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] 🔄 Processing {openingIds.Count} sleeves for parameter cache\n");
+                    
+                    foreach (var openingId in openingIds)
+                    {
+                        try
+                        {
+                            if (openingId == null || openingId.IntegerValue <= 0) continue;
+                            
+                            // ✅ Sleeves are always in the active document (doc), not linked files
+                            var element = doc.GetElement(openingId);
+                            if (element != null && element.IsValidObject && element is FamilyInstance)
+                            {
+                                // ✅ PROTECTION 16: Validate element document matches before caching
+                                if (element.Document != doc)
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        DebugLogger.Warning($"[PARAM_TRANSFER] ⚠️ Element {openingId.IntegerValue} belongs to different document - skipping cache");
+                                    }
+                                    continue;
+                                }
+                                
+                                elementCache[openingId.IntegerValue] = element;
+                                
+                                // Pre-cache the target parameter (sleeves are in active document)
+                                try
+                                {
+                                    var targetParam = element.LookupParameter(mapping.TargetParameter);
+                                    if (targetParam != null && targetParam.Element != null && targetParam.Element.IsValidObject)
+                                    {
+                                        // ✅ PROTECTION 17: Validate parameter element matches before caching
+                                        if (targetParam.Element.Id == element.Id)
+                                        {
+                                            if (!parameterCache.ContainsKey(openingId.IntegerValue))
+                                            {
+                                                parameterCache[openingId.IntegerValue] = new Dictionary<string, Parameter>();
+                                            }
+                                            parameterCache[openingId.IntegerValue][mapping.TargetParameter] = targetParam;
+                                        }
+                                    }
+                                }
+                                catch (Exception paramEx)
+                                {
+                                    // Parameter lookup failed - skip caching for this element
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        DebugLogger.Warning($"[PARAM_TRANSFER] ⚠️ Failed to cache parameter '{mapping.TargetParameter}' for element {openingId.IntegerValue}: {paramEx.Message}");
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            // Element retrieval failed - skip caching for this element
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Warning($"[PARAM_TRANSFER] ⚠️ Failed to cache element {openingId?.IntegerValue ?? -1}: {ex.Message}");
+                            }
+                        }
+                    }
+                }
+                
+                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ Batch parameter cache initialization complete: {elementCache.Count} elements, {parameterCache.Count} parameter sets cached\n");
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[PARAM_TRANSFER] ✅ Pre-cached {elementCache.Count} elements and {parameterCache.Count} parameter sets for batch lookup");
+                }
+            }
+            else
+            {
+                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⏭️ Skipping batch parameter cache (UseBatchParameterLookups=false)\n");
+            }
+
+            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] 🔄 Starting foreach loop to process {openingIds.Count} sleeves (UseBatchParameterLookups={Services.OptimizationFlags.UseBatchParameterLookups})\n");
+            
+            int loopIteration = 0;
             foreach (var openingId in openingIds)
             {
                 try
                 {
+                    loopIteration++;
+                    // ✅ CRITICAL: Log each sleeve being processed
+                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] 🔄 Loop iteration {loopIteration}/{openingIds.Count}: Processing sleeve openingId={openingId?.IntegerValue ?? -1}\n");
+                    
+                    // ✅ CRASH-SAFETY 1: Validate ElementId before retrieval
+                    if (openingId == null || openingId.IntegerValue <= 0)
+                    {
+                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ❌ SKIP: Invalid opening element ID: {openingId?.IntegerValue ?? -1}\n");
+                        failedCount++;
+                        errors.Add($"Invalid opening element ID: {openingId?.IntegerValue ?? -1}");
+                        continue;
+                    }
+
+                    // ✅ PROTECTION 1: Sleeves are always in the active document (doc), not linked files
+                    // ✅ CRITICAL: Validate document is not null before element retrieval
+                    if (doc == null)
+                    {
+                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ❌ SKIP: Document is null for opening element {openingId.IntegerValue}\n");
+                        failedCount++;
+                        errors.Add($"Document is null for opening element {openingId.IntegerValue}.");
+                        continue;
+                    }
+                    
+                    // ✅ CRITICAL: Validate document is not closed
+                    if (doc.IsModifiable == false && doc.IsReadOnly)
+                    {
+                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ❌ SKIP: Document is read-only for opening element {openingId.IntegerValue}\n");
+                        failedCount++;
+                        errors.Add($"Document is read-only or closed for opening element {openingId.IntegerValue}.");
+                        continue;
+                    }
+                    
+                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] 🔍 Retrieving opening element {openingId.IntegerValue} from document...\n");
+                    
                     var opening = doc.GetElement(openingId);
                     if (opening == null)
                     {
+                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ❌ SKIP: Opening element {openingId.IntegerValue} not found in document\n");
                         failedCount++;
                         errors.Add($"Opening element {openingId.IntegerValue} not found.");
                         continue;
                     }
 
+                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ Opening element {openingId.IntegerValue} retrieved: Type={opening.GetType().Name}, IsValid={opening.IsValidObject}\n");
+
+                    // ✅ CRASH-SAFETY 2: Check if element is still valid (not deleted)
+                    if (!opening.IsValidObject)
+                    {
+                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ❌ SKIP: Opening element {openingId.IntegerValue} is no longer valid (deleted)\n");
+                        failedCount++;
+                        errors.Add($"Opening element {openingId.IntegerValue} is no longer valid (may have been deleted).");
+                        continue;
+                    }
+
+                    // ⚠️⚠️⚠️ CRITICAL: DO NOT REINTRODUCE DOCUMENT VALIDATION CHECK ⚠️⚠️⚠️
+                    // 
+                    // REMOVED: Document validation check (opening.Document != doc)
+                    // 
+                    // BUG HISTORY: This check was added as "PROTECTION 2" crash safety but caused a critical bug:
+                    // - Used reference equality (opening.Document != doc) which fails even for the same document
+                    // - Document objects can be different instances even when representing the same document
+                    // - Caused ALL sleeves to be skipped with false "document mismatch" errors
+                    // - Lost 1 day of debugging time (2025-12-03)
+                    //
+                    // WHY IT'S SAFE TO REMOVE:
+                    // - We retrieve element using doc.GetElement(openingId), so it MUST be in doc
+                    // - Element ID validation later (STEP 7) already ensures parameter belongs to correct element
+                    // - The check was redundant and harmful
+                    //
+                    // IF YOU NEED DOCUMENT VALIDATION:
+                    // - Compare by document title: string.Equals(opening.Document?.Title, doc.Title, StringComparison.OrdinalIgnoreCase)
+                    // - But even this is redundant since doc.GetElement() guarantees the element is in doc
+                    // - Consider validating at element retrieval time instead (if doc.GetElement returns null, element doesn't exist)
+
+                    // ✅ CRASH-SAFETY 3: Validate element type before accessing properties
+                    if (!(opening is FamilyInstance))
+                    {
+                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ❌ SKIP: Opening element {openingId.IntegerValue} is not a FamilyInstance (type: {opening.GetType().Name})\n");
+                        failedCount++;
+                        errors.Add($"Opening element {openingId.IntegerValue} is not a FamilyInstance (type: {opening.GetType().Name}).");
+                        continue;
+                    }
+
+                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] 🔍 Reading Sleeve Instance ID and Cluster Instance ID from opening {openingId.IntegerValue}...\n");
+                    
                     var sleeveInstanceId = GetIntegerParameter(opening, "Sleeve Instance ID");
                     var clusterInstanceId = GetIntegerParameter(opening, "Cluster Sleeve Instance ID");
+                    
+                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ Read IDs: SleeveInstanceId={sleeveInstanceId}, ClusterInstanceId={clusterInstanceId}\n");
 
                     // ✅ DIAGNOSTIC: Log matching attempt
                     var transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
                     SafeFileLogger.SafeAppendText("transfer_debug.log",
                         $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] Matching sleeve {openingId.IntegerValue}: SleeveInstanceId={sleeveInstanceId}, ClusterInstanceId={clusterInstanceId}, SnapshotIndex.BySleeve.Count={snapshotIndex.BySleeve.Count}, SnapshotIndex.ByCluster.Count={snapshotIndex.ByCluster.Count}\n");
 
+                    // ✅ PROTECTION 13: Validate snapshot index is not null
+                    if (snapshotIndex == null)
+                    {
+                        failedCount++;
+                        errors.Add($"Snapshot index is null for opening element {openingId.IntegerValue}.");
+                        continue;
+                    }
+                    
                     SleeveSnapshotView snapshot = null;
                     if (clusterInstanceId > 0 && snapshotIndex.TryGetByCluster(clusterInstanceId, out var clusterView))
                     {
-                        snapshot = clusterView;
+                        // ✅ PROTECTION 14: Validate cluster snapshot is not null
+                        if (clusterView == null)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ Cluster snapshot is NULL for ClusterInstanceId={clusterInstanceId}, sleeve {openingId.IntegerValue}\n");
+                            }
+                        }
+                        else
+                        {
+                            snapshot = clusterView;
+                        }
                         SafeFileLogger.SafeAppendText("transfer_debug.log",
                             $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ Matched by ClusterInstanceId={clusterInstanceId}\n");
                     }
@@ -888,29 +1161,787 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var availableSleeveIds = string.Join(", ", snapshotIndex.BySleeve.Keys.Take(10));
                         var availableClusterIds = string.Join(", ", snapshotIndex.ByCluster.Keys.Take(10));
                         SafeFileLogger.SafeAppendText("transfer_debug.log",
-                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ❌ No snapshot found for sleeve {openingId.IntegerValue} (SleeveId={sleeveInstanceId}, ClusterId={clusterInstanceId}). Available SleeveIds: [{availableSleeveIds}], Available ClusterIds: [{availableClusterIds}]\n");
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ❌ SKIP: No snapshot found for sleeve {openingId.IntegerValue} (SleeveId={sleeveInstanceId}, ClusterId={clusterInstanceId}). Available SleeveIds: [{availableSleeveIds}], Available ClusterIds: [{availableClusterIds}]\n");
                         result.Warnings.Add($"No persisted snapshot found for sleeve {openingId.IntegerValue} (SleeveId={sleeveInstanceId}, ClusterId={clusterInstanceId}).");
                         continue;
                     }
 
+                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ Snapshot found for sleeve {openingId.IntegerValue}, proceeding to parameter processing...\n");
+
+                    // ✅ CRASH-SAFETY 4: Validate snapshot structure
+                    if (snapshot == null)
+                    {
+                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ❌ SKIP: Snapshot is null for sleeve {openingId.IntegerValue} (duplicate check)\n");
+                        result.Warnings.Add($"Snapshot is null for sleeve {openingId.IntegerValue}.");
+                        continue;
+                    }
+
+                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] 🔍 Getting source parameters from snapshot (useHost={useHost}) for sleeve {openingId.IntegerValue}...\n");
+                    
                     var sourceParams = useHost ? snapshot.HostParameters : snapshot.MepParameters;
                     if (sourceParams == null || sourceParams.Count == 0)
                     {
+                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ❌ SKIP: No {(useHost ? "host" : "MEP")} parameters captured for sleeve {openingId.IntegerValue} (sourceParams is null or empty)\n");
                         result.Warnings.Add($"No {(useHost ? "host" : "MEP")} parameters captured for sleeve {openingId.IntegerValue}.");
                         continue;
                     }
-
-                    if (!sourceParams.TryGetValue(mapping.SourceParameter, out var sourceValue) || string.IsNullOrWhiteSpace(sourceValue))
+                    
+                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ Source parameters loaded: {sourceParams.Count} {(useHost ? "host" : "MEP")} parameters for sleeve {openingId.IntegerValue}\n");
+                    
+                    // ✅ DIAGNOSTIC: Log all available parameters in snapshot (first time only per sleeve)
+                    if (!DeploymentConfiguration.DeploymentMode && !loggedSnapshotParams.Contains(openingId.IntegerValue))
                     {
-                        result.Warnings.Add($"Parameter '{mapping.SourceParameter}' not found in snapshot for sleeve {openingId.IntegerValue}.");
+                        loggedSnapshotParams.Add(openingId.IntegerValue);
+                        var allParamKeys = string.Join(", ", sourceParams.Keys.OrderBy(k => k));
+                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] 📋 SNAPSHOT CONTENTS for sleeve {openingId.IntegerValue} ({sourceParams.Count} {(useHost ? "host" : "MEP")} params): [{allParamKeys}]\n");
+                    }
+
+                    // ✅ CRASH-SAFETY 5: Validate mapping parameter name
+                    if (string.IsNullOrWhiteSpace(mapping?.SourceParameter))
+                    {
+                        failedCount++;
+                        errors.Add($"Invalid source parameter name for sleeve {openingId.IntegerValue}.");
                         continue;
                     }
 
-                    var targetParam = opening.LookupParameter(mapping.TargetParameter);
-                    if (targetParam == null)
+                    // ✅ CRITICAL FIX: For "MEP Size" parameter, read ONLY from Revit MEP element (not from snapshot)
+                    // This ensures we get the current value from the actual MEP element, not stale database data
+                    // ✅ FIX: Parameter name is "MEP Size" (with space), not "MEP_Size" (with underscore)
+                    // ✅ EXCEPTION: For CLUSTER sleeves, use snapshot (aggregated data) since they don't have a single MEP_ElementId
+                    string sourceValue = null;
+                    bool readFromRevit = false;
+                    bool isClusterSleeve = clusterInstanceId > 0;
+                    
+                    // ✅ DIAGNOSTIC: Log what source parameter we're looking for
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] 🔍 Checking source parameter: '{mapping.SourceParameter}' for sleeve {openingId.IntegerValue} (IsCluster={isClusterSleeve}, ClusterId={clusterInstanceId}, SleeveId={sleeveInstanceId})\n");
+                    }
+                    
+                    if (string.Equals(mapping.SourceParameter, "MEP Size", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(mapping.SourceParameter, "Size", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // ✅ CRITICAL FIX: For CLUSTER sleeves, use snapshot (aggregated data) instead of trying to read from Revit
+                        // Cluster sleeves don't have a single MEP_ElementId - they aggregate multiple MEP elements
+                        if (isClusterSleeve)
+                        {
+                            // For cluster sleeves, use snapshot which contains aggregated MEP Size data
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] 🔍 Source parameter is 'MEP Size' or 'Size' - CLUSTER SLEEVE detected (ClusterId={clusterInstanceId}), using SNAPSHOT (aggregated data) for sleeve {openingId.IntegerValue}\n");
+                            }
+                            
+                            // Try to get from snapshot (which has aggregated data for clusters)
+                            if (sourceParams.TryGetValue("Size", out sourceValue) || sourceParams.TryGetValue("MEP Size", out sourceValue))
+                            {
+                                if (!string.IsNullOrWhiteSpace(sourceValue))
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅✅✅ SUCCESS: Read 'MEP Size'='{sourceValue}' from SNAPSHOT (aggregated) for CLUSTER sleeve {openingId.IntegerValue}\n");
+                                    }
+                                    readFromRevit = false; // Mark as from snapshot, not Revit
+                                }
+                                else
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ 'Size' or 'MEP Size' found in snapshot but is EMPTY for CLUSTER sleeve {openingId.IntegerValue}\n");
+                                    }
+                                    result.Warnings.Add($"'Size' parameter is empty in snapshot for cluster sleeve {openingId.IntegerValue}.");
+                                    continue;
+                                }
+                            }
+                            else
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ 'Size' or 'MEP Size' NOT FOUND in snapshot for CLUSTER sleeve {openingId.IntegerValue}. Available params: {string.Join(", ", sourceParams.Keys.Take(10))}\n");
+                                }
+                                result.Warnings.Add($"'Size' parameter not found in snapshot for cluster sleeve {openingId.IntegerValue}.");
+                                continue;
+                            }
+                        }
+                        else
+                        {
+                            // For INDIVIDUAL sleeves, read from Revit MEP element
+                            // ✅ DIAGNOSTIC: Log that we're attempting to read from Revit
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] 🔍 Source parameter is 'MEP Size' or 'Size' - INDIVIDUAL SLEEVE detected (SleeveId={sleeveInstanceId}), attempting to read from Revit MEP element for sleeve {openingId.IntegerValue}\n");
+                            }
+                            
+                            // Read ONLY from Revit MEP element - no snapshot fallback
+                            try
+                            {
+                                var mepElementIdParam = opening.LookupParameter("MEP_ElementId");
+                                if (mepElementIdParam != null && mepElementIdParam.HasValue)
+                                {
+                                    // ✅ DIAGNOSTIC: Log that MEP_ElementId parameter exists
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ MEP_ElementId parameter found on sleeve {openingId.IntegerValue}\n");
+                                }
+                                
+                                var mepElementId = mepElementIdParam.AsElementId();
+                                if (mepElementId != null && mepElementId != ElementId.InvalidElementId)
+                                {
+                                    // ✅ DIAGNOSTIC: Log MEP element ID
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] 🔍 MEP_ElementId = {mepElementId.IntegerValue} for sleeve {openingId.IntegerValue}, attempting to get MEP element...\n");
+                                    }
+                                    
+                                        // ✅ PROTECTION 7: MEP elements may be in linked documents - use ElementRetrievalService
+                                        var mepElement = Services.ElementRetrievalService.GetElementFromDocumentOrLinked(doc, mepElementId);
+                                        if (mepElement != null && mepElement.IsValidObject)
+                                        {
+                                            // ✅ PROTECTION 8: Validate MEP element is still valid before parameter access
+                                            if (!mepElement.IsValidObject)
+                                            {
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                {
+                                                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ MEP element {mepElementId.IntegerValue} became invalid for sleeve {openingId.IntegerValue}\n");
+                                                }
+                                                result.Warnings.Add($"MEP element {mepElementId.IntegerValue} became invalid for sleeve {openingId.IntegerValue}.");
+                                                continue;
+                                            }
+                                            
+                                            // ✅ DIAGNOSTIC: Log that MEP element was found
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                            {
+                                                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ MEP element {mepElementId.IntegerValue} found and valid, looking for 'Size' parameter...\n");
+                                            }
+                                            
+                                            // ✅ PROTECTION 9: Read "Size" parameter from MEP element with validation
+                                            try
+                                            {
+                                                var sizeParam = mepElement.LookupParameter("Size");
+                                                if (sizeParam != null && sizeParam.HasValue && !sizeParam.IsReadOnly)
+                                                {
+                                                    sourceValue = sizeParam.AsValueString() ?? sizeParam.AsString();
+                                                    if (!string.IsNullOrWhiteSpace(sourceValue))
+                                                    {
+                                                        readFromRevit = true;
+                                                        
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                                        {
+                                                            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅✅✅ SUCCESS: Read 'MEP Size'='{sourceValue}' from Revit MEP element {mepElementId.IntegerValue} for sleeve {openingId.IntegerValue}\n");
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            catch (Exception paramEx)
+                                            {
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                {
+                                                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ Exception reading 'Size' parameter from MEP element {mepElementId.IntegerValue}: {paramEx.Message} for sleeve {openingId.IntegerValue}\n");
+                                                }
+                                                result.Warnings.Add($"Error reading 'Size' parameter from MEP element {mepElementId.IntegerValue}: {paramEx.Message}");
+                                                continue;
+                                            }
+                                            
+                                            if (!readFromRevit)
+                                            {
+                                                // MEP element exists but "Size" parameter is empty
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                {
+                                                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ MEP element {mepElementId.IntegerValue} exists but 'Size' parameter is NULL or EMPTY for sleeve {openingId.IntegerValue}\n");
+                                                }
+                                                result.Warnings.Add($"MEP element {mepElementId.IntegerValue} exists but 'Size' parameter is empty for sleeve {openingId.IntegerValue}.");
+                                                continue;
+                                            }
+                                    }
+                                    else
+                                    {
+                                        // MEP element not found or invalid
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ MEP element {mepElementId.IntegerValue} NOT FOUND or INVALID for sleeve {openingId.IntegerValue}\n");
+                                        }
+                                        result.Warnings.Add($"MEP element {mepElementId.IntegerValue} not found or invalid for sleeve {openingId.IntegerValue}.");
+                                        continue;
+                                    }
+                                }
+                                else
+                                {
+                                    // Invalid MEP_ElementId - try fallback to snapshot
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ MEP_ElementId is NULL or InvalidElementId for sleeve {openingId.IntegerValue}. Attempting fallback to snapshot...\n");
+                                    }
+                                    
+                                    // ✅ FIX: Fallback to snapshot if MEP_ElementId is invalid
+                                    if (sourceParams.TryGetValue("Size", out sourceValue) || sourceParams.TryGetValue("MEP Size", out sourceValue))
+                                    {
+                                        if (!string.IsNullOrWhiteSpace(sourceValue))
+                                        {
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                            {
+                                                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅✅✅ FALLBACK SUCCESS: Read 'MEP Size'='{sourceValue}' from SNAPSHOT (MEP_ElementId was invalid) for sleeve {openingId.IntegerValue}\n");
+                                            }
+                                            readFromRevit = false; // Mark as from snapshot
+                                        }
+                                        else
+                                        {
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                            {
+                                                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ 'Size' or 'MEP Size' found in snapshot but is EMPTY for sleeve {openingId.IntegerValue}\n");
+                                            }
+                                            result.Warnings.Add($"'Size' parameter is empty in snapshot for sleeve {openingId.IntegerValue}, and MEP_ElementId is invalid.");
+                                            continue;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ MEP_ElementId is invalid AND 'Size'/'MEP Size' NOT FOUND in snapshot for sleeve {openingId.IntegerValue}. Available snapshot params: [{string.Join(", ", sourceParams.Keys.Take(10))}]\n");
+                                        }
+                                        result.Warnings.Add($"Invalid MEP_ElementId and 'Size' parameter not found in snapshot for sleeve {openingId.IntegerValue}.");
+                                        continue;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // MEP_ElementId parameter missing - try fallback to snapshot
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ MEP_ElementId parameter is NULL or HAS NO VALUE for sleeve {openingId.IntegerValue}. Attempting fallback to snapshot...\n");
+                                }
+                                
+                                // ✅ FIX: Fallback to snapshot if MEP_ElementId parameter is missing
+                                if (sourceParams.TryGetValue("Size", out sourceValue) || sourceParams.TryGetValue("MEP Size", out sourceValue))
+                                {
+                                    if (!string.IsNullOrWhiteSpace(sourceValue))
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅✅✅ FALLBACK SUCCESS: Read 'MEP Size'='{sourceValue}' from SNAPSHOT (MEP_ElementId was missing) for sleeve {openingId.IntegerValue}\n");
+                                        }
+                                        readFromRevit = false; // Mark as from snapshot
+                                    }
+                                    else
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ 'Size' or 'MEP Size' found in snapshot but is EMPTY for sleeve {openingId.IntegerValue}\n");
+                                        }
+                                        result.Warnings.Add($"'Size' parameter is empty in snapshot for sleeve {openingId.IntegerValue}, and MEP_ElementId is missing.");
+                                        continue;
+                                    }
+                                }
+                                else
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ MEP_ElementId parameter missing AND 'Size'/'MEP Size' NOT FOUND in snapshot for sleeve {openingId.IntegerValue}. Available snapshot params: [{string.Join(", ", sourceParams.Keys.Take(10))}]\n");
+                                    }
+                                    result.Warnings.Add($"MEP_ElementId parameter missing and 'Size' parameter not found in snapshot for sleeve {openingId.IntegerValue}.");
+                                    continue;
+                                }
+                            }
+                        }
+                        catch (Exception revitEx)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ❌❌❌ EXCEPTION reading 'MEP Size' from Revit: {revitEx.GetType().Name}: {revitEx.Message} for sleeve {openingId.IntegerValue}\n");
+                            }
+                            result.Warnings.Add($"Error reading 'MEP Size' from Revit for sleeve {openingId.IntegerValue}: {revitEx.Message}");
+                            continue;
+                        }
+                        } // End of else block for individual sleeves
+                    }
+                    else
+                    {
+                        // ✅ DIAGNOSTIC: Log that we're using snapshot for non-MEP Size parameters
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] 🔍 Source parameter '{mapping.SourceParameter}' is NOT 'MEP Size' - using snapshot for sleeve {openingId.IntegerValue}\n");
+                        }
+                        
+                        // For other parameters, try snapshot first
+                        // ✅ DIAGNOSTIC: Log what we're looking for
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] 🔍 Looking for parameter '{mapping.SourceParameter}' in snapshot for sleeve {openingId.IntegerValue}...\n");
+                        }
+                        
+                        // ✅ FIX: Try exact match first, then try common variations (case-insensitive dictionary handles case)
+                        if (!sourceParams.TryGetValue(mapping.SourceParameter, out sourceValue) || string.IsNullOrWhiteSpace(sourceValue))
+                        {
+                            // Get category to check for Cable Trays specific mapping
+                            string category = GetCategoryFromOpening(opening, snapshot);
+                            
+                            // Build variations list
+                            var variationsList = new List<string>
+                            {
+                                mapping.SourceParameter.Replace(" ", "_"),  // "System Type" -> "System_Type"
+                                mapping.SourceParameter.Replace("_", " "),  // "System_Type" -> "System Type"
+                                "MEP " + mapping.SourceParameter,           // "System Type" -> "MEP System Type"
+                                mapping.SourceParameter.Replace("MEP ", ""), // "MEP System Type" -> "System Type"
+                            };
+                            
+                            // ✅ CRITICAL FIX: For Cable Trays, "Service Type" maps to "System Type"
+                            if (string.Equals(category, "Cable Trays", StringComparison.OrdinalIgnoreCase) &&
+                                string.Equals(mapping.SourceParameter, "System Type", StringComparison.OrdinalIgnoreCase))
+                            {
+                                variationsList.Insert(0, "Service Type"); // Add as first priority variation
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] 🔍 Cable Trays detected - mapping 'System Type' -> 'Service Type' for sleeve {openingId.IntegerValue}\n");
+                                }
+                            }
+                            
+                            string[] variations = variationsList.ToArray();
+                            
+                            bool foundVariation = false;
+                            foreach (var variation in variations)
+                            {
+                                if (sourceParams.TryGetValue(variation, out sourceValue) && !string.IsNullOrWhiteSpace(sourceValue))
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅✅✅ Found parameter '{mapping.SourceParameter}' as variation '{variation}'='{sourceValue}' in snapshot for sleeve {openingId.IntegerValue} (IsCluster={isClusterSleeve})\n");
+                                    }
+                                    foundVariation = true;
+                                    break; // Found it, exit loop
+                                }
+                            }
+                            
+                            if (!foundVariation && !DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ Tried variations for '{mapping.SourceParameter}' but none found: [{string.Join(", ", variations)}] for sleeve {openingId.IntegerValue} (IsCluster={isClusterSleeve})\n");
+                            }
+                        }
+                        else
+                        {
+                            // Exact match found
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ Found exact match '{mapping.SourceParameter}'='{sourceValue}' in snapshot for sleeve {openingId.IntegerValue} (IsCluster={isClusterSleeve})\n");
+                            }
+                        }
+                        
+                        if (string.IsNullOrWhiteSpace(sourceValue))
+                        {
+                            // ✅ FIX: For cluster sleeves, snapshot is the ONLY source - no Revit fallback
+                            if (isClusterSleeve)
+                            {
+                                // Cluster sleeve - snapshot is the only source, no Revit fallback
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    var allAvailableParams = string.Join(", ", sourceParams.Keys.OrderBy(k => k));
+                                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ Parameter '{mapping.SourceParameter}' NOT FOUND in snapshot for CLUSTER sleeve {openingId.IntegerValue} (ClusterId={clusterInstanceId}). Available snapshot params ({sourceParams.Count} total): [{allAvailableParams}]. Tried variations: [{string.Join(", ", new[] { mapping.SourceParameter.Replace(" ", "_"), mapping.SourceParameter.Replace("_", " "), "MEP " + mapping.SourceParameter, mapping.SourceParameter.Replace("MEP ", "") })}]\n");
+                                }
+                                result.Warnings.Add($"Parameter '{mapping.SourceParameter}' not found in snapshot for cluster sleeve {openingId.IntegerValue} (ClusterId={clusterInstanceId}). Available: [{string.Join(", ", sourceParams.Keys.Take(10))}]");
+                                continue;
+                            }
+                            
+                            // ✅ FIX: If not in snapshot, try reading from Revit MEP element (for individual sleeves only)
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                var allAvailableParams = string.Join(", ", sourceParams.Keys.OrderBy(k => k));
+                                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ Parameter '{mapping.SourceParameter}' NOT FOUND in snapshot for individual sleeve {openingId.IntegerValue}. Available snapshot params ({sourceParams.Count} total): [{allAvailableParams}]. Attempting to read from Revit MEP element...\n");
+                            }
+                            
+                            // Try to read from Revit MEP element as fallback
+                            try
+                                {
+                                    var mepElementIdParam = opening.LookupParameter("MEP_ElementId");
+                                    if (mepElementIdParam != null && mepElementIdParam.HasValue)
+                                    {
+                                        var mepElementId = mepElementIdParam.AsElementId();
+                                        if (mepElementId != null && mepElementId != ElementId.InvalidElementId)
+                                        {
+                                            var mepElement = doc.GetElement(mepElementId);
+                                            if (mepElement != null && mepElement.IsValidObject)
+                                            {
+                                                var revitParam = mepElement.LookupParameter(mapping.SourceParameter);
+                                                if (revitParam != null && revitParam.HasValue)
+                                                {
+                                                    sourceValue = revitParam.AsValueString() ?? revitParam.AsString();
+                                                    readFromRevit = true;
+                                                    
+                                                    if (!DeploymentConfiguration.DeploymentMode)
+                                                    {
+                                                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅✅✅ FALLBACK SUCCESS: Read '{mapping.SourceParameter}'='{sourceValue}' from Revit MEP element {mepElementId.IntegerValue} for sleeve {openingId.IntegerValue} (not in snapshot)\n");
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    if (!DeploymentConfiguration.DeploymentMode)
+                                                    {
+                                                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ Parameter '{mapping.SourceParameter}' not found on MEP element {mepElementId.IntegerValue} for sleeve {openingId.IntegerValue}\n");
+                                                    }
+                                                    result.Warnings.Add($"Parameter '{mapping.SourceParameter}' not found in snapshot or on MEP element for sleeve {openingId.IntegerValue}.");
+                                                    continue;
+                                                }
+                                            }
+                                            else
+                                            {
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                {
+                                                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ MEP element {mepElementId.IntegerValue} not found or invalid for sleeve {openingId.IntegerValue}\n");
+                                                }
+                                                result.Warnings.Add($"Parameter '{mapping.SourceParameter}' not found in snapshot, and MEP element {mepElementId.IntegerValue} is invalid for sleeve {openingId.IntegerValue}.");
+                                                continue;
+                                            }
+                                        }
+                                        else
+                                        {
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                            {
+                                                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ MEP_ElementId is NULL or InvalidElementId for sleeve {openingId.IntegerValue}, cannot read '{mapping.SourceParameter}' from Revit\n");
+                                            }
+                                            result.Warnings.Add($"Parameter '{mapping.SourceParameter}' not found in snapshot for sleeve {openingId.IntegerValue}, and MEP_ElementId is invalid.");
+                                            continue;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ Parameter '{mapping.SourceParameter}' NOT FOUND in snapshot for sleeve {openingId.IntegerValue}, and MEP_ElementId parameter is missing. Available snapshot params: [{string.Join(", ", sourceParams.Keys.Take(10))}]\n");
+                                        }
+                                        result.Warnings.Add($"Parameter '{mapping.SourceParameter}' not found in snapshot for sleeve {openingId.IntegerValue}, and MEP_ElementId is missing.");
+                                        continue;
+                                    }
+                                }
+                                catch (Exception revitEx)
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ❌ Error reading '{mapping.SourceParameter}' from Revit MEP element: {revitEx.Message} for sleeve {openingId.IntegerValue}\n");
+                                    }
+                                    result.Warnings.Add($"Parameter '{mapping.SourceParameter}' not found in snapshot, and error reading from Revit: {revitEx.Message} for sleeve {openingId.IntegerValue}.");
+                                    continue;
+                                }
+                        }
+                        else
+                        {
+                            // ✅ DIAGNOSTIC: Log successful snapshot read
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ Read '{mapping.SourceParameter}'='{sourceValue}' from snapshot for sleeve {openingId.IntegerValue}\n");
+                            }
+                        }
+                    }
+
+                    // ✅ DIAGNOSTIC: Verify sourceValue is not empty before proceeding
+                    if (string.IsNullOrWhiteSpace(sourceValue))
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️⚠️⚠️ WARNING: sourceValue is EMPTY after read attempt for '{mapping.SourceParameter}' on sleeve {openingId.IntegerValue} (IsCluster={isClusterSleeve}, ClusterId={clusterInstanceId}, SleeveId={sleeveInstanceId}) - SKIPPING transfer\n");
+                        }
+                        result.Warnings.Add($"Parameter '{mapping.SourceParameter}' value is empty for sleeve {openingId.IntegerValue}.");
+                        continue;
+                    }
+                    
+                    // ✅ DIAGNOSTIC: Log that we have a valid sourceValue and are proceeding
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ sourceValue is VALID: '{mapping.SourceParameter}'='{sourceValue}' for sleeve {openingId.IntegerValue} (IsCluster={isClusterSleeve}) - PROCEEDING to target parameter lookup\n");
+                    }
+
+                    // ✅ CRASH-SAFETY 6: Re-validate element is still valid before parameter access
+                    if (!opening.IsValidObject)
                     {
                         failedCount++;
-                        errors.Add($"Target parameter '{mapping.TargetParameter}' not found on opening {openingId.IntegerValue}.");
+                        errors.Add($"Opening element {openingId.IntegerValue} became invalid during transfer (may have been deleted).");
+                        continue;
+                    }
+
+                    // ✅ DIAGNOSTIC: Log that we're about to look up target parameter
+                    if (!DeploymentConfiguration.DeploymentMode && !string.IsNullOrWhiteSpace(sourceValue))
+                    {
+                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] 🔍 Looking up target parameter '{mapping.TargetParameter}' on sleeve {openingId.IntegerValue} (sourceValue='{sourceValue}')\n");
+                    }
+
+                    // ✅ PROTECTION 3: Use cached parameter if available, with comprehensive validation
+                    Parameter targetParam = null;
+                    if (Services.OptimizationFlags.UseBatchParameterLookups && 
+                        parameterCache.TryGetValue(openingId.IntegerValue, out var paramDict) && 
+                        paramDict.TryGetValue(mapping.TargetParameter, out targetParam))
+                    {
+                        // ✅ CRITICAL VALIDATION: Ensure cached parameter is still valid and belongs to the correct element
+                        bool isValidCache = targetParam != null && 
+                                           targetParam.Element != null && 
+                                           targetParam.Element.IsValidObject && 
+                                           targetParam.Element.Id == opening.Id &&
+                                           targetParam.Element.Id.IntegerValue == openingId.IntegerValue; // Double-check ID match
+                        
+                        // ✅ PROTECTION 4: Verify parameter definition is still valid
+                        if (isValidCache)
+                        {
+                            try
+                            {
+                                var paramDef = targetParam.Definition;
+                                if (paramDef == null || string.IsNullOrEmpty(paramDef.Name))
+                                {
+                                    isValidCache = false;
+                                }
+                                else if (!paramDef.Name.Equals(mapping.TargetParameter, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    isValidCache = false; // Parameter name mismatch
+                                }
+                            }
+                            catch
+                            {
+                                isValidCache = false; // Parameter definition access failed
+                            }
+                        }
+                        
+                        if (isValidCache)
+                        {
+                            // Use cached parameter
+                            if (!DeploymentConfiguration.DeploymentMode && !string.IsNullOrWhiteSpace(sourceValue))
+                            {
+                                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ Found target parameter '{mapping.TargetParameter}' in cache for sleeve {openingId.IntegerValue}\n");
+                            }
+                        }
+                        else
+                        {
+                            // Cached parameter is stale - clear it and lookup fresh
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ Cached parameter '{mapping.TargetParameter}' is stale for sleeve {openingId.IntegerValue} - looking up fresh\n");
+                            }
+                            targetParam = null; // Force fresh lookup
+                        }
+                    }
+                    
+                    // Fallback: Lookup parameter if not cached or cache is stale
+                    if (targetParam == null)
+                    {
+                        targetParam = opening.LookupParameter(mapping.TargetParameter);
+                        if (!DeploymentConfiguration.DeploymentMode && !string.IsNullOrWhiteSpace(sourceValue))
+                        {
+                            if (targetParam != null)
+                            {
+                                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ Found target parameter '{mapping.TargetParameter}' via lookup for sleeve {openingId.IntegerValue}\n");
+                            }
+                            else
+                            {
+                                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ❌ Target parameter '{mapping.TargetParameter}' NOT FOUND on sleeve {openingId.IntegerValue}\n");
+                            }
+                        }
+                    }
+                    
+                    if (targetParam == null)
+                    {
+                        // ✅ FIX: Missing parameters are warnings, not errors (especially for optional metadata like MEP_Size)
+                        // Only count as failure if it's a critical parameter (e.g., MEP_ElementId, MEP System Type)
+                        // ✅ FIX: Parameter names use spaces for "MEP System Type", underscore for "MEP_ElementId"
+                        bool isCritical = mapping.TargetParameter.Equals("MEP_ElementId", StringComparison.OrdinalIgnoreCase) ||
+                                         mapping.TargetParameter.Equals("MEP System Type", StringComparison.OrdinalIgnoreCase) ||
+                                         mapping.TargetParameter.Equals("System Type", StringComparison.OrdinalIgnoreCase);
+                        
+                        if (isCritical)
+                        {
+                            failedCount++;
+                            errors.Add($"Target parameter '{mapping.TargetParameter}' not found on opening {openingId.IntegerValue}.");
+                        }
+                        else
+                        {
+                            // Non-critical parameter missing - just warn, don't fail
+                            result.Warnings.Add($"Target parameter '{mapping.TargetParameter}' not found on opening {openingId.IntegerValue} (skipped).");
+                        }
+                        continue;
+                    }
+
+                    // ✅ PROTECTION 5: Validate parameter belongs to correct element (CRITICAL CHECK)
+                    // ✅ FIX: Compare by element ID only (document reference equality can fail even for same document)
+                    // If parameter's element ID matches opening's ID, they're the same element (and same document)
+                    // ✅ UNIQUE LOG MARKER: This section confirms the fixed code (Element ID comparison) is running
+                    // ✅ CRITICAL: Always log code path verification (even in deployment mode) for debugging
+                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] 🔍 CODE PATH VERIFICATION: Entering Element ID validation for sleeve {openingId.IntegerValue} (Fixed code v2025-12-03)\n");
+                    
+                    if (targetParam.Element == null)
+                    {
+                        failedCount++;
+                        errors.Add($"Parameter '{mapping.TargetParameter}' on opening {openingId.IntegerValue} has null element reference.");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ❌ Parameter element is NULL: '{mapping.TargetParameter}' on sleeve {openingId.IntegerValue} - SKIPPING\n");
+                        }
+                        continue;
+                    }
+                    
+                    if (!targetParam.Element.IsValidObject)
+                    {
+                        failedCount++;
+                        errors.Add($"Parameter '{mapping.TargetParameter}' on opening {openingId.IntegerValue} has invalid element reference.");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ❌ Parameter element is INVALID: '{mapping.TargetParameter}' on sleeve {openingId.IntegerValue} - SKIPPING\n");
+                        }
+                        continue;
+                    }
+                    
+                    // ✅ UNIQUE LOG MARKER: This confirms the fixed code (Element ID comparison) is running
+                    if (targetParam.Element.Id != opening.Id || targetParam.Element.Id.IntegerValue != openingId.IntegerValue)
+                    {
+                        failedCount++;
+                        errors.Add($"Parameter '{mapping.TargetParameter}' on opening {openingId.IntegerValue} belongs to different element.");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ❌ Element mismatch: Parameter '{mapping.TargetParameter}' on sleeve {openingId.IntegerValue} belongs to different element (ParamElementId={targetParam.Element.Id.IntegerValue}, OpeningId={opening.Id.IntegerValue}) - SKIPPING\n");
+                            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ CODE VERIFICATION: Element ID comparison code path is ACTIVE (this is the fixed version)\n");
+                        }
+                        continue;
+                    }
+                    
+                    // ✅ UNIQUE LOG MARKER: Element ID validation passed - confirms fixed code is running
+                    // ✅ CRITICAL: Always log validation success (even in deployment mode) for debugging
+                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ CODE VERIFICATION: Element ID validation PASSED for sleeve {openingId.IntegerValue} (ParamElementId={targetParam.Element.Id.IntegerValue}, OpeningId={opening.Id.IntegerValue}) - Fixed code is running\n");
+                    
+                    // ✅ PROTECTION 6: Verify opening element is still valid before parameter setting
+                    if (!opening.IsValidObject)
+                    {
+                        failedCount++;
+                        errors.Add($"Opening element {openingId.IntegerValue} became invalid before parameter setting.");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ❌ Opening element became INVALID: sleeve {openingId.IntegerValue} - SKIPPING\n");
+                        }
+                        continue;
+                    }
+
+                    // ✅ DIAGNOSTIC: Log before skip check
+                    if (!DeploymentConfiguration.DeploymentMode && !string.IsNullOrWhiteSpace(sourceValue))
+                    {
+                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] 🔍 Checking if should skip '{mapping.TargetParameter}' on sleeve {openingId.IntegerValue} (SkipAlreadyTransferred={Services.OptimizationFlags.SkipAlreadyTransferredParameters})\n");
+                    }
+
+                    // ✅ OPTIMIZATION 2: Skip if parameter already matches snapshot value
+                    if (Services.OptimizationFlags.SkipAlreadyTransferredParameters)
+                    {
+                        if (ShouldSkipParameter(targetParam, sourceValue, openingId.IntegerValue, mapping.TargetParameter))
+                        {
+                            skippedCount++;
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⏭️ Skipping '{mapping.TargetParameter}' on sleeve {openingId.IntegerValue} (already matches value '{sourceValue}')\n");
+                            }
+                            continue;
+                        }
+                        else
+                        {
+                            // ✅ DIAGNOSTIC: Log when NOT skipping
+                            if (!DeploymentConfiguration.DeploymentMode && !string.IsNullOrWhiteSpace(sourceValue))
+                            {
+                                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ NOT skipping '{mapping.TargetParameter}' on sleeve {openingId.IntegerValue} - parameter value differs or is empty\n");
+                            }
+                        }
+                    }
+
+                    // ✅ PROTECTION 10: Final validation before parameter setting
+                    if (targetParam.IsReadOnly)
+                    {
+                        failedCount++;
+                        errors.Add($"Parameter '{mapping.TargetParameter}' on opening {openingId.IntegerValue} is read-only.");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ❌ Parameter '{mapping.TargetParameter}' is READ-ONLY on sleeve {openingId.IntegerValue} - SKIPPING\n");
+                        }
+                        continue;
+                    }
+                    
+                    // ✅ PROTECTION 11: Validate source value is not empty before setting
+                    if (string.IsNullOrWhiteSpace(sourceValue))
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ Source value is EMPTY for '{mapping.TargetParameter}' on sleeve {openingId.IntegerValue} - SKIPPING\n");
+                        }
+                        result.Warnings.Add($"Source value is empty for parameter '{mapping.TargetParameter}' on opening {openingId.IntegerValue}.");
+                        continue;
+                    }
+                    
+                    // ✅ DIAGNOSTIC: Log before setting parameter
+                    if (!DeploymentConfiguration.DeploymentMode && !string.IsNullOrWhiteSpace(sourceValue))
+                    {
+                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] 🔧 Attempting to set '{mapping.TargetParameter}'='{sourceValue}' on sleeve {openingId.IntegerValue}\n");
+                    }
+
+                    // ✅ PROTECTION 12: Final element validation before setting
+                    if (!opening.IsValidObject || !targetParam.Element.IsValidObject)
+                    {
+                        failedCount++;
+                        errors.Add($"Element became invalid before setting parameter '{mapping.TargetParameter}' on opening {openingId.IntegerValue}.");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ❌ Element became INVALID before setting '{mapping.TargetParameter}' on sleeve {openingId.IntegerValue} - SKIPPING\n");
+                        }
                         continue;
                     }
 
@@ -918,24 +1949,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         transferredCount++;
                         successfullyTransferredSleeveIds?.Add(openingId.IntegerValue);
+                        if (!DeploymentConfiguration.DeploymentMode && !string.IsNullOrWhiteSpace(sourceValue))
+                        {
+                            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅✅✅ SUCCESS: Set '{mapping.TargetParameter}'='{sourceValue}' on sleeve {openingId.IntegerValue}\n");
+                        }
                     }
                     else
                     {
                         failedCount++;
                         errors.Add($"Failed to set parameter '{mapping.TargetParameter}' on opening {openingId.IntegerValue}.");
+                        if (!DeploymentConfiguration.DeploymentMode && !string.IsNullOrWhiteSpace(sourceValue))
+                        {
+                            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ❌ FAILED: Could not set '{mapping.TargetParameter}'='{sourceValue}' on sleeve {openingId.IntegerValue}\n");
+                        }
                     }
                 }
                 catch (Exception ex)
                 {
                     failedCount++;
                     errors.Add($"Error transferring parameters to opening {openingId.IntegerValue}: {ex.Message}");
+                    
+                    // ✅ CRITICAL: Log the exception to the debug file
+                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ❌ EXCEPTION processing sleeve {openingId.IntegerValue}: {ex.GetType().Name}: {ex.Message}\n");
+                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] Stack Trace: {ex.StackTrace}\n");
                 }
             }
 
+            // ✅ FIX: Success if no critical errors (warnings for missing optional parameters are OK)
+            // Missing optional parameters (like MEP_Size) are warnings, not errors, so success = true if no errors
             result.Success = errors.Count == 0;
             result.TransferredCount = transferredCount;
             result.FailedCount = failedCount;
             result.Errors = errors;
+            
+            if (!DeploymentConfiguration.DeploymentMode && skippedCount > 0)
+            {
+                DebugLogger.Info($"[PARAM_TRANSFER] ✅ Transfer complete: {transferredCount} transferred, {skippedCount} skipped (already transferred), {failedCount} failed");
+            }
+            
             return result;
         }
 
@@ -945,6 +2000,57 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var s = sourceParameter.Trim();
             if (s.Equals("Size", StringComparison.OrdinalIgnoreCase) || s.Equals("Service Size", StringComparison.OrdinalIgnoreCase))
                 return "MepElementFormattedSize";
+            return string.Empty;
+        }
+        
+        /// <summary>
+        /// Get category from opening/sleeve (from MEP_Category parameter, snapshot, or family name)
+        /// </summary>
+        private string GetCategoryFromOpening(Element opening, SleeveSnapshotView snapshot)
+        {
+            // Priority 1: Try to get from MEP_Category parameter on sleeve
+            try
+            {
+                var categoryParam = opening.LookupParameter("MEP_Category");
+                if (categoryParam != null && categoryParam.HasValue)
+                {
+                    var category = categoryParam.AsString();
+                    if (!string.IsNullOrWhiteSpace(category))
+                        return category;
+                }
+            }
+            catch { }
+            
+            // Priority 2: Try to get from snapshot's MepParameters (if it has Category parameter)
+            try
+            {
+                if (snapshot?.MepParameters != null && snapshot.MepParameters.TryGetValue("Category", out var snapshotCategory))
+                {
+                    if (!string.IsNullOrWhiteSpace(snapshotCategory))
+                        return snapshotCategory;
+                }
+            }
+            catch { }
+            
+            // Priority 3: Try to infer from family name (for cluster sleeves that might not have MEP_Category set)
+            try
+            {
+                if (opening is FamilyInstance fi && fi.Symbol != null && fi.Symbol.Family != null)
+                {
+                    var familyName = fi.Symbol.Family.Name ?? string.Empty;
+                    var upperFamilyName = familyName.ToUpperInvariant();
+                    
+                    if (upperFamilyName.Contains("CABLE") || upperFamilyName.Contains("TRAY"))
+                        return "Cable Trays";
+                    else if (upperFamilyName.Contains("DUCT"))
+                        return "Ducts";
+                    else if (upperFamilyName.Contains("PIPE"))
+                        return "Pipes";
+                }
+            }
+            catch { }
+            
+            // Fallback: Return empty string if not found
             return string.Empty;
         }
         
@@ -2003,17 +3109,83 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return null;
         }
         
+        /// <summary>
+        /// ✅ OPTIMIZATION 2: Check if parameter should be skipped (already matches snapshot value).
+        /// Returns true if current value matches expected snapshot value (already transferred).
+        /// </summary>
+        private bool ShouldSkipParameter(Parameter target, string expectedValue, int sleeveId, string paramName)
+        {
+            try
+            {
+                if (target == null || target.IsReadOnly)
+                    return false; // Process if parameter doesn't exist or is read-only
+                
+                if (string.IsNullOrWhiteSpace(expectedValue))
+                    return false; // Process if snapshot value is empty
+                
+                // Get current value on sleeve
+                string currentValue = null;
+                if (target.StorageType == StorageType.String)
+                {
+                    currentValue = target.AsString();
+                }
+                else if (target.StorageType == StorageType.Integer)
+                {
+                    currentValue = target.AsInteger().ToString(System.Globalization.CultureInfo.InvariantCulture);
+                }
+                else if (target.StorageType == StorageType.Double)
+                {
+                    currentValue = target.AsDouble().ToString(System.Globalization.CultureInfo.InvariantCulture);
+                }
+                else
+                {
+                    return false; // Process if storage type is not supported for comparison
+                }
+                
+                if (string.IsNullOrWhiteSpace(currentValue))
+                    return false; // Process if current value is empty
+                
+                // Compare values (case-insensitive for strings, exact for numbers)
+                bool alreadyTransferred = string.Equals(currentValue.Trim(), expectedValue.Trim(), StringComparison.OrdinalIgnoreCase);
+                
+                if (alreadyTransferred && !DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[PARAM_TRANSFER] ⏭️ Skipping sleeve {sleeveId}: '{paramName}' already matches snapshot value '{currentValue}'");
+                }
+                
+                return alreadyTransferred;
+            }
+            catch
+            {
+                return false; // Process on error (safe default)
+            }
+        }
+
         private bool SetParameterValueSafely(Parameter target, string value)
         {
             try
             {
-                if (target == null || target.IsReadOnly || string.IsNullOrWhiteSpace(value)) return false;
-                
+                // ✅ CRASH-SAFETY 8: Comprehensive null and validation checks
+                if (target == null || target.IsReadOnly || string.IsNullOrWhiteSpace(value)) 
+                    return false;
+
+                // ✅ CRASH-SAFETY 9: Validate element is still valid
+                if (target.Element == null || !target.Element.IsValidObject)
+                    return false;
+
                 // ✅ CRITICAL FIX: Handle Integer parameters (e.g., MEP_ElementId)
                 if (target.StorageType == StorageType.Integer)
                 {
                     if (int.TryParse(value, out int intValue))
                     {
+                        // ✅ CRASH-SAFETY 10: Validate integer bounds (ElementId range: 0 to int.MaxValue, but reasonable bounds for MEP_ElementId)
+                        if (intValue < 0 || intValue > 2147483647) // int.MaxValue, but we'll use a reasonable upper bound
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Warning($"[PARAM_TRANSFER] Integer value {intValue} out of bounds for parameter '{target.Definition?.Name}'");
+                            return false;
+                        }
+                        
                         target.Set(intValue);
                         return true;
                     }
@@ -2023,13 +3195,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Handle String parameters
                 if (target.StorageType == StorageType.String) 
                 { 
-                    target.Set(value ?? string.Empty); 
+                    // ✅ CRASH-SAFETY 11: Validate string length (Revit parameter max length is typically 255 characters)
+                    string safeValue = value ?? string.Empty;
+                    if (safeValue.Length > 255)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[PARAM_TRANSFER] String value exceeds 255 characters for parameter '{target.Definition?.Name}', truncating");
+                        safeValue = safeValue.Substring(0, 255);
+                    }
+                    
+                    target.Set(safeValue); 
                     return true; 
                 }
                 
                 return false;
             }
-            catch { return false; }
+            catch (Exception ex)
+            {
+                // ✅ CRASH-SAFETY 12: Log exception details for debugging
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Warning($"[PARAM_TRANSFER] Exception setting parameter '{target?.Definition?.Name}': {ex.Message}");
+                }
+                return false;
+            }
         }
         
         private bool SetParameterValueSafely(Parameter target, double value)
@@ -2238,4 +3427,5 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
     }
 }
+
 

@@ -104,75 +104,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 WriteDiagnosticLogInternal("INIT", $"Could not use AppData\\Roaming: {ex.Message}", "unknown", false);
             }
 
-            // Priority 2: Try to use project directory (for development only)
-            // Only use this if assembly is actually in the project directory
-            try
-            {
-                string assemblyLocation = Assembly.GetExecutingAssembly().Location;
-                string assemblyDir = Path.GetDirectoryName(assemblyLocation);
-                
-                // Check if assembly is in project directory (development scenario)
-                bool isDevelopmentPath = assemblyLocation.Contains(@"JSE_CSharp_Projects\JSE_MEPOPENING_23") ||
-                                         assemblyLocation.Contains(@"JSE_RevitAddin_MEP_OPENINGS");
-                
-                if (isDevelopmentPath && !string.IsNullOrEmpty(assemblyDir))
-                {
-                    // Navigate up to find project root
-                    string projectRoot = assemblyDir;
-                    for (int i = 0; i < 5 && projectRoot != null; i++)
-                    {
-                        // ✅ VERSION-SEPARATED LOGS: Check for versioned Logs subdirectory
-                        string versionTag = VersionInfo.VersionTag; // "R2023" or "R2024"
-                        string versionedLogsPath = Path.Combine(projectRoot, "Logs", versionTag);
-                        if (Directory.Exists(versionedLogsPath))
-                        {
-                            WriteDiagnosticLogInternal("INIT", $"Using project Logs directory (development): {versionedLogsPath}", versionedLogsPath, true);
-                            return versionedLogsPath;
-                        }
-                        // ✅ FIX: Check for "Logs" (plural) not "Log" (singular) - backward compatibility
-                        if (Directory.Exists(Path.Combine(projectRoot, "Logs")))
-                        {
-                            string logDir = Path.Combine(projectRoot, "Logs", versionTag);
-                            if (TryCreateDirectory(logDir))
-                            {
-                                WriteDiagnosticLogInternal("INIT", $"Using project Logs directory (development): {logDir}", logDir, true);
-                                return logDir;
-                            }
-                        }
-                        // Also check for "Log" (singular) for backward compatibility
-                        if (Directory.Exists(Path.Combine(projectRoot, "Log")))
-                        {
-                            string logDir = Path.Combine(projectRoot, "Log", versionTag);
-                            if (TryCreateDirectory(logDir))
-                            {
-                                WriteDiagnosticLogInternal("INIT", $"Using project Log directory (development - fallback): {logDir}", logDir, true);
-                                return logDir;
-                            }
-                        }
-                        projectRoot = Directory.GetParent(projectRoot)?.FullName;
-                    }
-                    
-                    // If project structure found, create Logs directory with version tag
-                    if (assemblyDir != null)
-                    {
-                        // ✅ VERSION-SEPARATED LOGS: Include version tag in development path too
-                        string versionTag = VersionInfo.VersionTag; // "R2023" or "R2024"
-                        string logDir = Path.Combine(assemblyDir, "..", "..", "..", "Logs", versionTag);
-                        logDir = Path.GetFullPath(logDir); // Resolve .. paths
-                        
-                        if (TryCreateDirectory(logDir))
-                        {
-                            WriteDiagnosticLogInternal("INIT", $"Using project Log directory (development): {logDir}", logDir, true);
-                            return logDir;
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                // Silently continue to fallback options
-                WriteDiagnosticLogInternal("INIT", $"Could not use project directory: {ex.Message}", "unknown", false);
-            }
+            // ✅ DEPLOYMENT FIX: Priority 2 removed - NEVER use hardcoded project paths
+            // All logs now go to AppData (Priority 1) regardless of development vs deployment
+            // This ensures deployed users don't see errors about missing C:\JSE_CSharp_Projects paths
+            // Development team should check AppData\Roaming\JSE_MEP_Openings\Logs\R2023 for logs
 
             // Priority 3: Use Temp directory (last resort - always writable) with version tag
             try
@@ -413,6 +348,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 return; // Skip all file writes in deployment mode
             }
             
+            SafeAppendTextAlways(fileName, message);
+        }
+
+        /// <summary>
+        /// Safely append text to a log file ALWAYS (even in deployment mode). 
+        /// Use for critical logs like performance reports that should never be suppressed.
+        /// </summary>
+        public static void SafeAppendTextAlways(string fileName, string message)
+        {
             // ✅ DIAGNOSTIC: Log every attempt to write (helps debug missing logs)
             string logPathFinal = null;
             bool writeSuccess = false;
@@ -452,17 +396,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 lock (_lock)
                 {
-                                        // ✅ DEPLOYMENT MODE: Skip file writes
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        File.AppendAllText(logPathFinal, logEntry);
-                        writeSuccess = true;
-                        WriteDiagnosticLog(fileName, $"SUCCESS: Written to {logPathFinal}", logPathFinal, true); // Log success
-                    }
-                    else
-                    {
-                        WriteDiagnosticLog(fileName, $"SKIPPED: DeploymentMode=true inside lock", logPathFinal, false); // Log skipped
-                    }
+                    File.AppendAllText(logPathFinal, logEntry);
+                    writeSuccess = true;
+                    WriteDiagnosticLog(fileName, $"SUCCESS: Written to {logPathFinal}", logPathFinal, true); // Log success
                 }
             }
             catch (UnauthorizedAccessException)
@@ -484,13 +420,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // Directory.CreateDirectory creates all parent directories if they don't exist
                         Directory.CreateDirectory(directory);
                         WriteDiagnosticLog(fileName, $"Recreated directory: {directory}", logPathFinal, true);
-                        // ✅ DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            File.AppendAllText(logPathFinal, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}\n");
-                            writeSuccess = true;
-                            WriteDiagnosticLog(fileName, $"SUCCESS after retry: Written to {logPathFinal}", logPathFinal, true); // Log success after retry
-                        }
+                        File.AppendAllText(logPathFinal, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}\n");
+                        writeSuccess = true;
+                        WriteDiagnosticLog(fileName, $"SUCCESS after retry: Written to {logPathFinal}", logPathFinal, true); // Log success after retry
                     }
                 }
                 catch (Exception retryEx)

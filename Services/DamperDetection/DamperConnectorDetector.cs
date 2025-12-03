@@ -14,6 +14,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
     public class DamperConnectorDetector : IDamperConnectorDetector
     {
         /// <summary>
+        /// PERFORMANCE: Enable/disable detailed debug logging (default: false for production)
+        /// Set to true only when debugging connector detection issues
+        /// </summary>
+        public static bool EnableDebugLogging { get; set; } = false;
+        /// <summary>
         /// Checks if a damper has at least one MEP connector.
         /// </summary>
         public bool HasMepConnector(FamilyInstance damper)
@@ -64,22 +69,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
             connector = null;
             
             // Runtime build stamp (assembly file timestamp + version)
-            try
+            if (EnableDebugLogging)
             {
-                var asm = typeof(DamperConnectorDetector).Assembly;
-                string asmLoc = asm.Location;
-                DateTime asmWrite = File.Exists(asmLoc) ? File.GetLastWriteTime(asmLoc) : DateTime.MinValue;
-                string asmVer = asm.GetName().Version?.ToString() ?? "unknown";
-                SafeFileLogger.SafeAppendText("damper_connector_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [BUILD-STAMP] AssemblyLastWrite={asmWrite:yyyy-MM-dd HH:mm:ss}, Version={asmVer}, Assembly={asmLoc}\n");
+                try
+                {
+                    var asm = typeof(DamperConnectorDetector).Assembly;
+                    string asmLoc = asm.Location;
+                    DateTime asmWrite = File.Exists(asmLoc) ? File.GetLastWriteTime(asmLoc) : DateTime.MinValue;
+                    string asmVer = asm.GetName().Version?.ToString() ?? "unknown";
+                    SafeFileLogger.SafeAppendText("damper_connector_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [BUILD-STAMP] AssemblyLastWrite={asmWrite:yyyy-MM-dd HH:mm:ss}, Version={asmVer}, Assembly={asmLoc}\n");
+                }
+                catch { }
             }
-            catch { }
 
             var cm = damper.MEPModel?.ConnectorManager;
             if (cm == null)
             {
-                SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: No ConnectorManager, returning '+X' (fallback)\n");
+                if (EnableDebugLogging)
+                {
+                    SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: No ConnectorManager, returning '+X' (fallback)\n");
+                }
                 return "+X"; // Default fallback
             }
 
@@ -90,15 +101,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
                 damperTransform = damper.GetTransform();
                 if (damperTransform == null)
                 {
-                    SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Null transform, returning '+X' (fallback)\n");
+                    if (EnableDebugLogging)
+                    {
+                        SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Null transform, returning '+X' (fallback)\n");
+                    }
                     return "+X";
                 }
             }
             catch (Exception ex)
             {
-                SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Exception getting transform: {ex.Message}, returning '+X' (fallback)\n");
+                if (EnableDebugLogging)
+                {
+                    SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Exception getting transform: {ex.Message}, returning '+X' (fallback)\n");
+                }
                 return "+X";
             }
             
@@ -118,8 +135,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
             }
             catch (Exception ex)
             {
-                SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Exception getting bounding box: {ex.Message}, using transform origin\n");
+                if (EnableDebugLogging)
+                {
+                    SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Exception getting bounding box: {ex.Message}, using transform origin\n");
+                }
                 damperCenter = damperTransform.Origin ?? XYZ.Zero;
             }
             
@@ -134,6 +154,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
             catch { /* Flip state not critical, continue */ }
             
             // Find the MEP connector - prefer the one furthest from center (CRASH-PROOF: safe iteration)
+            // ✅ PERFORMANCE OPTIMIZATION: Fast-path for single connector (99% of dampers)
             int connectorCount = 0;
             Connector best = null;
             double maxDistance = 0;
@@ -143,33 +164,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
                 connectorCount = cm.Connectors?.Size ?? 0;
                 if (cm.Connectors != null)
                 {
-                    foreach (Connector c in cm.Connectors)
+                    // PERFORMANCE: Single connector fast-path (avoids distance calculation for 99% of cases)
+                    if (connectorCount == 1)
                     {
-                        if (c == null || c.Origin == null) continue; // CRASH-PROOF: skip null connectors
-                        
-                        try
+                        foreach (Connector c in cm.Connectors)
                         {
-                            double distance = c.Origin.DistanceTo(damperCenter);
-                            if (!double.IsNaN(distance) && !double.IsInfinity(distance) && distance > maxDistance) // CRASH-PROOF: validate numeric
-                            {
-                                maxDistance = distance;
-                                best = c;
-                            }
+                            best = c;
+                            break; // Only one connector, take it immediately
                         }
-                        catch { /* Skip invalid connector */ }
+                    }
+                    else
+                    {
+                        // Multi-connector case: use distance-based selection
+                        foreach (Connector c in cm.Connectors)
+                        {
+                            if (c == null || c.Origin == null) continue; // CRASH-PROOF: skip null connectors
+                            
+                            try
+                            {
+                                double distance = c.Origin.DistanceTo(damperCenter);
+                                if (!double.IsNaN(distance) && !double.IsInfinity(distance) && distance > maxDistance) // CRASH-PROOF: validate numeric
+                                {
+                                    maxDistance = distance;
+                                    best = c;
+                                }
+                            }
+                            catch { /* Skip invalid connector */ }
+                        }
                     }
                 }
             }
             catch (Exception ex)
             {
-                SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Exception iterating connectors: {ex.Message}\n");
+                if (EnableDebugLogging)
+                {
+                    SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Exception iterating connectors: {ex.Message}\n");
+                }
             }
 
             if (best == null)
             {
-                SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: No connectors found, returning '+X' (fallback)\n");
+                if (EnableDebugLogging)
+                {
+                    SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: No connectors found, returning '+X' (fallback)\n");
+                }
                 return "+X";
             }
 
@@ -193,8 +233,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
                 var coordSystem = best.CoordinateSystem;
                 if (coordSystem == null || coordSystem.BasisX == null)
                 {
-                    SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Null CoordinateSystem, returning '+X' (fallback)\n");
+                    if (EnableDebugLogging)
+                    {
+                        SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Null CoordinateSystem, returning '+X' (fallback)\n");
+                    }
                     return "+X";
                 }
                 
@@ -205,8 +248,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
             }
             catch (Exception ex)
             {
-                SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Exception accessing connector properties: {ex.Message}, returning '+X' (fallback)\n");
+                if (EnableDebugLogging)
+                {
+                    SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Exception accessing connector properties: {ex.Message}, returning '+X' (fallback)\n");
+                }
                 return "+X";
             }
             
@@ -227,8 +273,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
             }
             catch (Exception ex)
             {
-                SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Exception calculating absolutes: {ex.Message}\n");
+                if (EnableDebugLogging)
+                {
+                    SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Exception calculating absolutes: {ex.Message}\n");
+                }
             }
             
             // ✅ DETERMINE DIRECTION: Prefer position along wall width axis; fallback to BasisX
@@ -276,24 +325,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
                 detectedDirection = "+X";
             }
             
-            // ✅ COMPREHENSIVE LOGGING
-            string logMessage = $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] " +
-                $"Damper ID={damper?.Id?.IntegerValue ?? -1}, " +
-                $"Family='{damper?.Symbol?.Family?.Name ?? "Unknown"}', " +
-                $"Type='{damper?.Symbol?.Name ?? "Unknown"}', " +
-                $"FacingFlipped={isFacingFlipped}, HandFlipped={isHandFlipped}, " +
-                $"TotalConnectors={connectorCount}, " +
-                $"DamperCenter=({damperCenter.X:F4}, {damperCenter.Y:F4}, {damperCenter.Z:F4}), " +
-                $"ConnectorOrigin=({connectorOrigin.X:F4}, {connectorOrigin.Y:F4}, {connectorOrigin.Z:F4}), " +
-                $"ConnectorBasisX=({connectorBasisX.X:F4}, {connectorBasisX.Y:F4}, {connectorBasisX.Z:F4}) [WORLD COORDS - connector facing direction], " +
-                $"BasisXAbs: X={absX:F4}, Y={absY:F4}, Z={absZ:F4}, " +
-                $"PositionVector=({positionVector.X:F4}, {positionVector.Y:F4}, {positionVector.Z:F4}), " +
-                $"PosAbs: X={posAbsX:F4}, Y={posAbsY:F4}, Z={posAbsZ:F4}, " +
-                $"WallOrientation='{wallOrientation ?? "null"}', " +
-                $"DetectedDirection='{detectedDirection}'\n";
-            
-            SafeFileLogger.SafeAppendText("damper_connector_debug.log", logMessage);
-            System.Diagnostics.Debug.WriteLine($"[DamperConnectorDetector] {logMessage.Trim()}");
+            // ✅ PERFORMANCE OPTIMIZATION: Only log when debugging enabled (eliminates 6000+ file I/O operations on large projects)
+            if (EnableDebugLogging)
+            {
+                string logMessage = $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] " +
+                    $"Damper ID={damper?.Id?.IntegerValue ?? -1}, " +
+                    $"Family='{damper?.Symbol?.Family?.Name ?? "Unknown"}', " +
+                    $"Type='{damper?.Symbol?.Name ?? "Unknown"}', " +
+                    $"FacingFlipped={isFacingFlipped}, HandFlipped={isHandFlipped}, " +
+                    $"TotalConnectors={connectorCount}, " +
+                    $"DamperCenter=({damperCenter.X:F4}, {damperCenter.Y:F4}, {damperCenter.Z:F4}), " +
+                    $"ConnectorOrigin=({connectorOrigin.X:F4}, {connectorOrigin.Y:F4}, {connectorOrigin.Z:F4}), " +
+                    $"ConnectorBasisX=({connectorBasisX.X:F4}, {connectorBasisX.Y:F4}, {connectorBasisX.Z:F4}) [WORLD COORDS - connector facing direction], " +
+                    $"BasisXAbs: X={absX:F4}, Y={absY:F4}, Z={absZ:F4}, " +
+                    $"PositionVector=({positionVector.X:F4}, {positionVector.Y:F4}, {positionVector.Z:F4}), " +
+                    $"PosAbs: X={posAbsX:F4}, Y={posAbsY:F4}, Z={posAbsZ:F4}, " +
+                    $"WallOrientation='{wallOrientation ?? "null"}', " +
+                    $"DetectedDirection='{detectedDirection}'\n";
+                
+                SafeFileLogger.SafeAppendText("damper_connector_debug.log", logMessage);
+                System.Diagnostics.Debug.WriteLine($"[DamperConnectorDetector] {logMessage.Trim()}");
+            }
             
             return detectedDirection;
         }

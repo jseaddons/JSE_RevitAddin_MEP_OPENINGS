@@ -20,6 +20,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
         private readonly string _databasePath;
         private readonly Action<string> _logger;
         private bool _disposed;
+        
+        // ⚡ OPTIMIZATION: Session-level guard to skip schema verification after first DB context creation
+        private static bool _schemaVerifiedOnce = false;
 
         /// <summary>
         /// ✅ IST TIMEZONE: Convert UTC to IST (Indian Standard Time = UTC+5:30)
@@ -130,11 +133,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     cmd.ExecuteNonQuery();
                 }
 
-                EnsureSchemaCreated();
-                EnsureSchemaUpgraded();
-                
-                // ✅ R-TREE CHECK: Test if R-tree extension is available
-                CheckRTreeSupport();
+                // ⚡ OPTIMIZATION: Skip schema verification after first context creation in session
+                if (OptimizationFlags.UseOneTimeDbVerificationDuringSession)
+                {
+                    if (!_schemaVerifiedOnce)
+                    {
+                        EnsureSchemaCreated();
+                        EnsureSchemaUpgraded();
+                        CheckRTreeSupport();
+                        _schemaVerifiedOnce = true;
+                    }
+                    else
+                    {
+                        if (!OptimizationFlags.DisableVerboseLogging)
+                            _logger("[SQLite] ⏭️ Skipping schema verification (session-cached)");
+                    }
+                }
+                else
+                {
+                    // Legacy path: always verify schema
+                    EnsureSchemaCreated();
+                    EnsureSchemaUpgraded();
+                    CheckRTreeSupport();
+                }
 
                 if (File.Exists(_databasePath))
                 {
@@ -714,6 +735,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     AddColumnIfMissing("SleeveSnapshots", "CreatedAt", "DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes'))", transaction);
                     AddColumnIfMissing("SleeveSnapshots", "UpdatedAt", "DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes'))", transaction);
                     AddColumnIfMissing("SleeveSnapshots", "ClashZoneGuid", "TEXT", transaction); // ✅ NEW: Add ClashZoneGuid column
+                    
+                    // ✅ CLUSTER GUID: Add deterministic GUID column to ClusterSleeves for proper upserting
+                    if (AddColumnIfMissing("ClusterSleeves", "ClusterGuid", "TEXT", transaction))
+                        _logger("[SQLite] ✅ Added ClusterGuid column to ClusterSleeves (deterministic GUID for upserting)");
 
                     // ✅ DATABASE GUID MANAGEMENT: Create indexes for GUID after column is added
                     // These indexes are created here (not in EnsureSchemaCreated) to ensure ClashZoneGuid column exists first
@@ -727,6 +752,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     if (ColumnExists("SleeveSnapshots", "ClashZoneGuid", transaction))
                     {
                         ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_sleevesnapshots_guid ON SleeveSnapshots(ClashZoneGuid)", transaction);
+                    }
+                    
+                    // ✅ CLUSTER GUID INDEX: Create index for ClusterSleeves GUID
+                    if (ColumnExists("ClusterSleeves", "ClusterGuid", transaction))
+                    {
+                        ExecuteCommand("CREATE UNIQUE INDEX IF NOT EXISTS idx_clustersleeves_guid_unique ON ClusterSleeves(ClusterGuid) WHERE ClusterGuid != '' AND ClusterGuid IS NOT NULL", transaction);
+                        ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_clustersleeves_guid ON ClusterSleeves(ClusterGuid)", transaction);
                     }
 
                     // ✅ OPTION 4 IMPLEMENTATION: Add triggers, constraints, and views for sophisticated flag management

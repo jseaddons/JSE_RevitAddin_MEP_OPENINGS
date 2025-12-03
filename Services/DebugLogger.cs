@@ -16,7 +16,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// Toggle to false if you want to silence logs.
     /// NOTE: DeploymentConfiguration.DeploymentMode automatically disables all logging.
     /// </summary>
-    public static bool IsEnabled =true;
+    public static bool IsEnabled =false;
     
     /// <summary>
     /// Current service name for logging context
@@ -56,6 +56,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// </summary>
     private static bool IsLoggingEnabledForCurrentService()
     {
+        // ⚡ OPTIMIZATION: Disable verbose logging when flag is set (keeps performance logs only)
+        if (OptimizationFlags.DisableVerboseLogging)
+            return false;
+            
         // ✅ DEPLOYMENT MODE: Disable all logging if deployment mode is enabled
         // (DebugLogger doesn't handle memory profiling, so safe to disable completely)
         if (DeploymentConfiguration.DeploymentMode)

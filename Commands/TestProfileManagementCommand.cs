@@ -345,7 +345,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         {
             try
             {
-                string testLogPath = @"C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\Log\static_test.log";
+                string testLogPath = SafeFileLogger.GetLogFilePath("static_test.log");
                 File.AppendAllText(testLogPath, $"[{DateTime.Now}] StaticTest() called from add-in manager\n");
                 File.AppendAllText(testLogPath, $"[{DateTime.Now}] Assembly loaded successfully\n");
             }

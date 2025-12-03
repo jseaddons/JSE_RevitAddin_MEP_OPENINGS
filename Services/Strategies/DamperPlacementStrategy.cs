@@ -14,6 +14,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
     /// </summary>
     public class DamperPlacementStrategy : ISleevePlacementStrategy
     {
+        /// <summary>
+        /// PERFORMANCE: Enable/disable detailed debug logging (default: false for production)
+        /// Set to true only when debugging damper placement issues
+        /// </summary>
+        public static bool EnableDebugLogging { get; set; } = false;
+        
         private readonly Document _doc;
         private readonly IDamperTypeDetector _damperTypeDetector;
         private readonly IInsulationAwareSizingService _sizingService;
@@ -164,9 +170,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                     damperHeight = 0;
                 }
                 
-                // ✅ DIRECT LOGGING: Always log what values we're reading from ClashZone
-                DebugLogger.Info($"[DamperStrategy] Zone {clashZone.Id}: Reading MepElementWidth={damperWidth:F6}ft ({damperWidth * 304.8:F1}mm), MepElementHeight={damperHeight:F6}ft ({damperHeight * 304.8:F1}mm)");
-                SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-READ] Zone {clashZone.Id}: MepElementWidth={damperWidth:F6}ft ({damperWidth * 304.8:F1}mm), MepElementHeight={damperHeight:F6}ft ({damperHeight * 304.8:F1}mm)\n");
+                // ✅ PERFORMANCE OPTIMIZATION: Conditional logging (eliminates 6+ file writes per damper)
+                if (EnableDebugLogging)
+                {
+                    DebugLogger.Info($"[DamperStrategy] Zone {clashZone.Id}: Reading MepElementWidth={damperWidth:F6}ft ({damperWidth * 304.8:F1}mm), MepElementHeight={damperHeight:F6}ft ({damperHeight * 304.8:F1}mm)");
+                    SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-READ] Zone {clashZone.Id}: MepElementWidth={damperWidth:F6}ft ({damperWidth * 304.8:F1}mm), MepElementHeight={damperHeight:F6}ft ({damperHeight * 304.8:F1}mm)\n");
+                }
                 
                 // Get clearance from OpeningConditions (loaded from UI via CONDITIONS XML) - CRASH-PROOF: validate clearances
                 double otherClearanceMm = conditions.ClearanceSettings.DuctAccessoryOtherNormal;
@@ -195,18 +204,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                     DebugLogger.Info($"[DamperStrategy] DAMPER INSULATED: Insulation contribution={RevitUnitConversionService.Instance.FromInternalMillimeters(insulationContribution):F1}mm total (on both sides)");
                 }
                 
-                // ✅ OOP METHOD: Log connector detection results (connector-based logic, not damper type)
-                // ✅ NEW: DamperConnectorSide now returns world coordinate directions: "+X", "-X", "+Y", "-Y", "+Z", "-Z"
-                DebugLogger.Info($"[DamperStrategy] 🔍 CONNECTOR DETECTION: HasMepConnector={clashZone.HasMepConnector}, DamperConnectorSide='{clashZone.DamperConnectorSide}' (World Coordinate Direction)");
-                SafeFileLogger.SafeAppendText("damper_placement_trace.log", 
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-CONNECTOR-DETECTION] Zone {clashZone.Id}: " +
-                    $"HasMepConnector={clashZone.HasMepConnector}, " +
-                    $"DamperConnectorSide='{clashZone.DamperConnectorSide}' (World Coordinate Direction), " +
-                    $"HostOrientation='{clashZone.HostOrientation ?? "Unknown"}', " +
-                    $"StructuralElementType='{clashZone.StructuralElementType ?? "Unknown"}'\n");
-                
-                DebugLogger.Info($"[DamperStrategy] Clearances from conditions: MEP={mepClearanceMm}mm, Other={otherClearanceMm}mm");
-                SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-CLEARANCE] Zone {clashZone.Id}: MEP={mepClearanceMm}mm, Other={otherClearanceMm}mm\n");
+                // ✅ PERFORMANCE OPTIMIZATION: Conditional logging
+                if (EnableDebugLogging)
+                {
+                    // ✅ OOP METHOD: Log connector detection results (connector-based logic, not damper type)
+                    // ✅ NEW: DamperConnectorSide now returns world coordinate directions: "+X", "-X", "+Y", "-Y", "+Z", "-Z"
+                    DebugLogger.Info($"[DamperStrategy] 🔍 CONNECTOR DETECTION: HasMepConnector={clashZone.HasMepConnector}, DamperConnectorSide='{clashZone.DamperConnectorSide}' (World Coordinate Direction)");
+                    SafeFileLogger.SafeAppendText("damper_placement_trace.log", 
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-CONNECTOR-DETECTION] Zone {clashZone.Id}: " +
+                        $"HasMepConnector={clashZone.HasMepConnector}, " +
+                        $"DamperConnectorSide='{clashZone.DamperConnectorSide}' (World Coordinate Direction), " +
+                        $"HostOrientation='{clashZone.HostOrientation ?? "Unknown"}', " +
+                        $"StructuralElementType='{clashZone.StructuralElementType ?? "Unknown"}'\n");
+                    
+                    DebugLogger.Info($"[DamperStrategy] Clearances from conditions: MEP={mepClearanceMm}mm, Other={otherClearanceMm}mm");
+                    SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-CLEARANCE] Zone {clashZone.Id}: MEP={mepClearanceMm}mm, Other={otherClearanceMm}mm\n");
+                }
                 
                 // ✅ OOP METHOD: Check if connector was detected (regardless of damper type)
                 // If connector exists, use MEP+Other on width (MEP side 100mm + Other side 50mm = 150mm total)
@@ -251,8 +264,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                         double originalHeight = damperHeight;
                         damperWidth = originalHeight;
                         damperHeight = originalWidth;
-                        DebugLogger.Info($"[DamperStrategy] WALL Z-CONNECTOR: Swapped base dimensions for vertical connector: Width {originalWidth:F6}ft→{damperWidth:F6}ft, Height {originalHeight:F6}ft→{damperHeight:F6}ft");
-                        SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-Z-SWAP] Zone {clashZone.Id}: WALL host, vertical connector ({connectorDir}) → swapped base dims W {originalWidth*304.8:F1}mm→{damperWidth*304.8:F1}mm, H {originalHeight*304.8:F1}mm→{damperHeight*304.8:F1}mm\n");
+                        if (EnableDebugLogging)
+                        {
+                            DebugLogger.Info($"[DamperStrategy] WALL Z-CONNECTOR: Swapped base dimensions for vertical connector: Width {originalWidth:F6}ft→{damperWidth:F6}ft, Height {originalHeight:F6}ft→{damperHeight:F6}ft");
+                            SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-Z-SWAP] Zone {clashZone.Id}: WALL host, vertical connector ({connectorDir}) → swapped base dims W {originalWidth*304.8:F1}mm→{damperWidth*304.8:F1}mm, H {originalHeight*304.8:F1}mm→{damperHeight*304.8:F1}mm\n");
+                        }
                     }
 
                     if (isWallHost && offsetAmount > 0.0001) // Only if there's a significant offset
@@ -353,13 +369,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                                 break;
                         }
                         
-                        DebugLogger.Info($"[DamperStrategy] MSFD - Offset calculation: ConnectorDirection='{connectorDir}', HostOrientation='{hostOrientation}', IsXWall={isXWall}, IsYWall={isYWall}, IsWallHost={isWallHost}, OffsetVector=({offsetVector.X*304.8:F1}, {offsetVector.Y*304.8:F1}, {offsetVector.Z*304.8:F1})mm");
-                        SafeFileLogger.SafeAppendText("damper_placement_trace.log", 
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-OFFSET-CALC] Zone {clashZone.Id}: " +
-                            $"ConnectorDirection='{connectorDir}', " +
-                            $"HostOrientation='{hostOrientation}', " +
-                            $"OffsetAmount={offsetAmount*304.8:F1}mm, " +
-                            $"OffsetVector=({offsetVector.X*304.8:F1}, {offsetVector.Y*304.8:F1}, {offsetVector.Z*304.8:F1})mm\n");
+                        if (EnableDebugLogging)
+                        {
+                            DebugLogger.Info($"[DamperStrategy] MSFD - Offset calculation: ConnectorDirection='{connectorDir}', HostOrientation='{hostOrientation}', IsXWall={isXWall}, IsYWall={isYWall}, IsWallHost={isWallHost}, OffsetVector=({offsetVector.X*304.8:F1}, {offsetVector.Y*304.8:F1}, {offsetVector.Z*304.8:F1})mm");
+                            SafeFileLogger.SafeAppendText("damper_placement_trace.log", 
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-OFFSET-CALC] Zone {clashZone.Id}: " +
+                                $"ConnectorDirection='{connectorDir}', " +
+                                $"HostOrientation='{hostOrientation}', " +
+                                $"OffsetAmount={offsetAmount*304.8:F1}mm, " +
+                                $"OffsetVector=({offsetVector.X*304.8:F1}, {offsetVector.Y*304.8:F1}, {offsetVector.Z*304.8:F1})mm\n");
+                        }
                     }
                     
                     // ✅ NEW: Map world coordinate directions to clearance sides (wall-aware)
@@ -483,37 +502,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                     double finalWidth = damperWidth + insulationContribution + left + right;
                     double finalHeight = damperHeight + insulationContribution + top + bottom;
                     
-                    // ✅ DETAILED LOGGING: Log clearance assignment and offset calculation details
-                    string clearanceSide = "Unknown";
-                    if (left == mepSideClearance) clearanceSide = "Left";
-                    else if (right == mepSideClearance) clearanceSide = "Right";
-                    else if (top == mepSideClearance) clearanceSide = "Top";
-                    else if (bottom == mepSideClearance) clearanceSide = "Bottom";
-                    
-                    string offsetInfo = offsetVector.GetLength() > 0.0001 
-                        ? $"Offset={offsetAmount*304.8:F1}mm toward {connectorDir} direction" 
-                        : "NO OFFSET";
-                    
-                    DebugLogger.Info($"[DamperStrategy] MSFD - ConnectorDirection='{connectorDir}' (WCS), HostOrientation='{hostOrientation}', MEPClearanceSide='{clearanceSide}'");
-                    DebugLogger.Info($"[DamperStrategy] MSFD - Clearance: MEP={mepSideClearance:F4}ft ({mepSideClearance*304.8:F1}mm) on {clearanceSide}, Other={otherSideClearance:F4}ft ({otherSideClearance*304.8:F1}mm) on opposite side");
-                    DebugLogger.Info($"[DamperStrategy] MSFD - Offset Calculation: (MEP={mepSideClearance*304.8:F1}mm - Other={otherSideClearance*304.8:F1}mm) / 2 = {offsetAmount*304.8:F1}mm toward {connectorDir} direction");
-                    DebugLogger.Info($"[DamperStrategy] MSFD - Wall Info: HostOrientation='{hostOrientation}', IsXWall={isXWall}, IsYWall={isYWall}, IsWallHost={isWallHost}");
-                    DebugLogger.Info($"[DamperStrategy] MSFD - Offset Vector: {offsetVector} (Length={offsetVector.GetLength()*304.8:F1}mm)");
-                    DebugLogger.Info($"[DamperStrategy] MSFD - Calculation: Base({damperWidth:F6}ft={damperWidth*304.8:F1}mm) + Clearance({(left+right):F6}ft={(left+right)*304.8:F1}mm width, {(top+bottom):F6}ft={(top+bottom)*304.8:F1}mm height) = Final({finalWidth:F6}ft={finalWidth*304.8:F1}mm x {finalHeight*304.8:F1}mm)");
-                    SafeFileLogger.SafeAppendText("damper_placement_trace.log", 
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-MSFD-FINAL] Zone {clashZone.Id}: " +
-                        $"ConnectorDirection='{connectorDir}' (WCS), HostOrientation='{hostOrientation}', MEPClearanceSide='{clearanceSide}', " +
-                        $"Base({damperWidth*304.8:F1}mm) + Clearance({(left+right)*304.8:F1}mm width, {(top+bottom)*304.8:F1}mm height) = " +
-                        $"Final({finalWidth*304.8:F1}mm x {finalHeight*304.8:F1}mm), {offsetInfo}\n");
-                    SafeFileLogger.SafeAppendText("damper_placement_trace.log", 
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-CLEARANCE-ASSIGNMENT] Zone {clashZone.Id}: " +
-                        $"ConnectorDirection='{connectorDir}', HostOrientation='{hostOrientation}', " +
-                        $"MEPClearance={mepSideClearance*304.8:F1}mm on {clearanceSide}, " +
-                        $"OtherClearance={otherSideClearance*304.8:F1}mm on opposite side\n");
-                    SafeFileLogger.SafeAppendText("damper_placement_trace.log", 
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-OFFSET-DETAIL] Zone {clashZone.Id}: " +
-                        $"OffsetAmount={offsetAmount*304.8:F1}mm, ConnectorDirection='{connectorDir}', " +
-                        $"OffsetVector=({offsetVector.X*304.8:F1}, {offsetVector.Y*304.8:F1}, {offsetVector.Z*304.8:F1})mm\n");
+                    // ✅ PERFORMANCE OPTIMIZATION: Conditional detailed logging
+                    if (EnableDebugLogging)
+                    {
+                        // ✅ DETAILED LOGGING: Log clearance assignment and offset calculation details
+                        string clearanceSide = "Unknown";
+                        if (left == mepSideClearance) clearanceSide = "Left";
+                        else if (right == mepSideClearance) clearanceSide = "Right";
+                        else if (top == mepSideClearance) clearanceSide = "Top";
+                        else if (bottom == mepSideClearance) clearanceSide = "Bottom";
+                        
+                        string offsetInfo = offsetVector.GetLength() > 0.0001 
+                            ? $"Offset={offsetAmount*304.8:F1}mm toward {connectorDir} direction" 
+                            : "NO OFFSET";
+                        
+                        DebugLogger.Info($"[DamperStrategy] MSFD - ConnectorDirection='{connectorDir}' (WCS), HostOrientation='{hostOrientation}', MEPClearanceSide='{clearanceSide}'");
+                        DebugLogger.Info($"[DamperStrategy] MSFD - Clearance: MEP={mepSideClearance:F4}ft ({mepSideClearance*304.8:F1}mm) on {clearanceSide}, Other={otherSideClearance:F4}ft ({otherSideClearance*304.8:F1}mm) on opposite side");
+                        DebugLogger.Info($"[DamperStrategy] MSFD - Offset Calculation: (MEP={mepSideClearance*304.8:F1}mm - Other={otherSideClearance*304.8:F1}mm) / 2 = {offsetAmount*304.8:F1}mm toward {connectorDir} direction");
+                        DebugLogger.Info($"[DamperStrategy] MSFD - Wall Info: HostOrientation='{hostOrientation}', IsXWall={isXWall}, IsYWall={isYWall}, IsWallHost={isWallHost}");
+                        DebugLogger.Info($"[DamperStrategy] MSFD - Offset Vector: {offsetVector} (Length={offsetVector.GetLength()*304.8:F1}mm)");
+                        DebugLogger.Info($"[DamperStrategy] MSFD - Calculation: Base({damperWidth:F6}ft={damperWidth*304.8:F1}mm) + Clearance({(left+right):F6}ft={(left+right)*304.8:F1}mm width, {(top+bottom):F6}ft={(top+bottom)*304.8:F1}mm height) = Final({finalWidth:F6}ft={finalWidth*304.8:F1}mm x {finalHeight*304.8:F1}mm)");
+                        SafeFileLogger.SafeAppendText("damper_placement_trace.log", 
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-MSFD-FINAL] Zone {clashZone.Id}: " +
+                            $"ConnectorDirection='{connectorDir}' (WCS), HostOrientation='{hostOrientation}', MEPClearanceSide='{clearanceSide}', " +
+                            $"Base({damperWidth*304.8:F1}mm) + Clearance({(left+right)*304.8:F1}mm width, {(top+bottom)*304.8:F1}mm height) = " +
+                            $"Final({finalWidth*304.8:F1}mm x {finalHeight*304.8:F1}mm), {offsetInfo}\n");
+                        SafeFileLogger.SafeAppendText("damper_placement_trace.log", 
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-CLEARANCE-ASSIGNMENT] Zone {clashZone.Id}: " +
+                            $"ConnectorDirection='{connectorDir}', HostOrientation='{hostOrientation}', " +
+                            $"MEPClearance={mepSideClearance*304.8:F1}mm on {clearanceSide}, " +
+                            $"OtherClearance={otherSideClearance*304.8:F1}mm on opposite side\n");
+                        SafeFileLogger.SafeAppendText("damper_placement_trace.log", 
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-OFFSET-DETAIL] Zone {clashZone.Id}: " +
+                            $"OffsetAmount={offsetAmount*304.8:F1}mm, ConnectorDirection='{connectorDir}', " +
+                            $"OffsetVector=({offsetVector.X*304.8:F1}, {offsetVector.Y*304.8:F1}, {offsetVector.Z*304.8:F1})mm\n");
+                    }
                     
                     return (offsetVector, finalWidth, finalHeight);
                 }
@@ -534,20 +557,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                     double finalHeight = finalH;
                     
                     // ✅ OOP METHOD: Show actual calculation from sizing service (includes insulation if present)
-                    double insulationThicknessMm = clashZone.IsInsulated && clashZone.InsulationThickness > 0 
-                        ? RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.InsulationThickness) 
-                        : 0.0;
-                    double clearanceMm = RevitUnitConversionService.Instance.FromInternalMillimeters(otherClearance);
-                    
-                    if (clashZone.IsInsulated && insulationThicknessMm > 0)
+                    if (EnableDebugLogging)
                     {
-                        DebugLogger.Info($"[DamperStrategy] Standard (OOP): Base({damperWidth*304.8:F1}mm) + Insulation({insulationThicknessMm*2:F1}mm) + Clearance({clearanceMm*2:F1}mm) = Final({finalWidth*304.8:F1}mm)");
-                        SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-STANDARD-FINAL] Zone {clashZone.Id}: Base({damperWidth*304.8:F1}mm) + Insulation({insulationThicknessMm*2:F1}mm) + Clearance({clearanceMm*2:F1}mm) = Final({finalWidth*304.8:F1}mm x {finalHeight*304.8:F1}mm)\n");
-                }
-                else
-                {
-                        DebugLogger.Info($"[DamperStrategy] Standard (OOP): Base({damperWidth*304.8:F1}mm) + Clearance({clearanceMm*2:F1}mm) = Final({finalWidth*304.8:F1}mm)");
-                        SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-STANDARD-FINAL] Zone {clashZone.Id}: Base({damperWidth*304.8:F1}mm) + Clearance({clearanceMm*2:F1}mm) = Final({finalWidth*304.8:F1}mm x {finalHeight*304.8:F1}mm)\n");
+                        double insulationThicknessMm = clashZone.IsInsulated && clashZone.InsulationThickness > 0 
+                            ? RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.InsulationThickness) 
+                            : 0.0;
+                        double clearanceMm = RevitUnitConversionService.Instance.FromInternalMillimeters(otherClearance);
+                        
+                        if (clashZone.IsInsulated && insulationThicknessMm > 0)
+                        {
+                            DebugLogger.Info($"[DamperStrategy] Standard (OOP): Base({damperWidth*304.8:F1}mm) + Insulation({insulationThicknessMm*2:F1}mm) + Clearance({clearanceMm*2:F1}mm) = Final({finalWidth*304.8:F1}mm)");
+                            SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-STANDARD-FINAL] Zone {clashZone.Id}: Base({damperWidth*304.8:F1}mm) + Insulation({insulationThicknessMm*2:F1}mm) + Clearance({clearanceMm*2:F1}mm) = Final({finalWidth*304.8:F1}mm x {finalHeight*304.8:F1}mm)\n");
+                        }
+                        else
+                        {
+                            DebugLogger.Info($"[DamperStrategy] Standard (OOP): Base({damperWidth*304.8:F1}mm) + Clearance({clearanceMm*2:F1}mm) = Final({finalWidth*304.8:F1}mm)");
+                            SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-STANDARD-FINAL] Zone {clashZone.Id}: Base({damperWidth*304.8:F1}mm) + Clearance({clearanceMm*2:F1}mm) = Final({finalWidth*304.8:F1}mm x {finalHeight*304.8:F1}mm)\n");
+                        }
                     }
                     
                     return (XYZ.Zero, finalWidth, finalHeight);

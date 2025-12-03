@@ -69,6 +69,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         // Key: ElementId of sleeve instance
         // Value: Dictionary of parameter name → value (double or string)
         private Dictionary<ElementId, Dictionary<string, object>> _deferredParameters = new Dictionary<ElementId, Dictionary<string, object>>();
+        
+        // ✅ SAFETY FLAG: Prevents multiple flushes (critical for performance)
+        private bool _hasFlushedParameters = false;
 
         public int PlacedCount { get; private set; }
         public int SkippedCount { get; private set; }
@@ -342,10 +345,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ CRITICAL: Force DeploymentMode OFF for diagnostic logging
             DeploymentConfiguration.DeploymentMode = false;
             
+            // ✅ SAFETY FLAG: Reset flush flag at start of each placement run
+            _hasFlushedParameters = false;
+            _deferredParameters?.Clear(); // Clear any leftover parameters from previous run
+            
             // ✅ DIAGNOSTIC: Log batching flag status at placement start
             if (!DeploymentConfiguration.DeploymentMode)
             {
-                DebugLogger.Info($"[BATCH-PARAMS] ═══ PLACEMENT START ═══ UseBatchedParameterWrites={OptimizationFlags.UseBatchedParameterWrites}, _deferredParameters initialized={_deferredParameters != null}");
+                DebugLogger.Info($"[BATCH-PARAMS] ═══ PLACEMENT START ═══ UseBatchedParameterWrites={OptimizationFlags.UseBatchedParameterWrites}, _deferredParameters initialized={_deferredParameters != null}, FlushFlag reset");
             }
             
             // ✅ PERFORMANCE MONITORING: Initialize placement performance monitor
@@ -617,6 +624,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 .ToList();
                             
                             planningLogs.AppendLine($"[PLANNING] Processing order: {planningOrderedZones.Count} zones (low-risk → high-risk)");
+                            
+                            // ✅ PERFORMANCE: Early exit if no eligible zones after planning
+                            if (planningOrderedZones.Count == 0)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Warning($"[PLANNING] ⚠️ No eligible zones after planning phase! All {planningResult.TotalCount} zones were skipped. Returning early to save time.");
+                                }
+                                planningTracker.SetItemCount(planningResult.TotalCount);
+                                return (0, planningResult.SkippedCount, 0); // Early return - no zones to place
+                            }
                             
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
@@ -1460,7 +1478,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 if (familySymbol == null)
                                 {
                                     if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Error($"[UniversalSleevePlacer] Family '{familyName}' not found");
+                                        DebugLogger.Error($"[UniversalSleevePlacer] Family '{familyName}' not found for ClashZone {clashZone.Id} (Category: {clashZone.MepElementCategory})");
                                     try
                                     {                             // ✅ DEPLOYMENT MODE: Skip file writes
                                         /* EXCESSIVE LOGGING COMMENTED OUT FOR PERFORMANCE
@@ -1471,6 +1489,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         */
                                     }
                                     catch { }
+                                    ErrorCount++;
+                                    continue;
+                                }
+                                
+                                // ✅ SAFETY: Validate symbol is still valid after loading (prevents stale cache issues)
+                                if (!familySymbol.IsValidObject)
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Error($"[UniversalSleevePlacer] FamilySymbol '{familyName}' is invalid (possibly deleted) for ClashZone {clashZone.Id} (Category: {clashZone.MepElementCategory})");
                                     ErrorCount++;
                                     continue;
                                 }
@@ -1486,7 +1513,56 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 catch { }
 
                                 // ✅ SIMPLIFIED: Activate symbol if needed - don't care about type name, just activate any type
-                                if (!familySymbol.IsActive)
+                                // ✅ CRITICAL SAFETY: Validate symbol before accessing IsActive (prevents "referenced object is not valid" errors)
+                                // Must check IsValidObject AND test IsActive access in try-catch because cached symbols can become stale
+                                bool shouldActivate = false;
+                                try
+                                {
+                                    if (familySymbol != null && familySymbol.IsValidObject)
+                                    {
+                                        // Test if we can access IsActive (will throw if symbol is stale)
+                                        shouldActivate = !familySymbol.IsActive;
+                                    }
+                                }
+                                catch (Exception symbolEx)
+                                {
+                                    // Symbol is stale - reload it
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Warning($"[UniversalSleevePlacer] FamilySymbol '{familyName}' is stale (error: {symbolEx.Message}) - reloading...");
+                                    
+                                    // Clear cache and reload
+                                    if (_familySymbolCache.ContainsKey(familyName))
+                                        _familySymbolCache.Remove(familyName);
+                                    
+                                    familySymbol = LoadFamilySymbol(familyName);
+                                    
+                                    // Retry activation check with fresh symbol
+                                    if (familySymbol != null && familySymbol.IsValidObject)
+                                    {
+                                        try
+                                        {
+                                            shouldActivate = !familySymbol.IsActive;
+                                        }
+                                        catch
+                                        {
+                                            // Still invalid - skip this sleeve
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                DebugLogger.Error($"[UniversalSleevePlacer] FamilySymbol '{familyName}' is still invalid after reload for ClashZone {clashZone.Id}");
+                                            ErrorCount++;
+                                            continue;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // Reload failed - skip this sleeve
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Error($"[UniversalSleevePlacer] Failed to reload FamilySymbol '{familyName}' for ClashZone {clashZone.Id}");
+                                        ErrorCount++;
+                                        continue;
+                                    }
+                                }
+                                
+                                if (shouldActivate)
                                 {
                                     try
                                     {
@@ -1497,13 +1573,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         if (!DeploymentConfiguration.DeploymentMode)
                                             DebugLogger.Warning($"[UniversalSleevePlacer] Failed to activate family '{familyName}': {activationEx.Message}");
 
+                                        // ✅ SAFETY: Validate familySymbol before accessing Family property
+                                        if (familySymbol == null || !familySymbol.IsValidObject)
+                                        {
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                DebugLogger.Error($"[UniversalSleevePlacer] FamilySymbol for '{familyName}' is invalid - cannot activate");
+                                            ErrorCount++;
+                                            shouldSkipSleeve = true;
+                                            continue;
+                                        }
+                                        
                                         var family = familySymbol.Family;
+                                        if (family == null || !family.IsValidObject)
+                                        {
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                                DebugLogger.Error($"[UniversalSleevePlacer] Family for '{familyName}' is invalid - cannot get symbols");
+                                            ErrorCount++;
+                                            shouldSkipSleeve = true;
+                                            continue;
+                                        }
+                                        
                                         var allSymbols = family.GetFamilySymbolIds()
                                             .Select(id => _doc.GetElement(id) as FamilySymbol)
-                                            .Where(s => s != null)
+                                            .Where(s => s != null && s.IsValidObject)
                                             .ToList();
 
-                                        var activeSymbol = allSymbols.FirstOrDefault(s => s.IsActive);
+                                        // ✅ SAFETY: Validate symbol before accessing IsActive
+                                        var activeSymbol = allSymbols.FirstOrDefault(s => 
+                                        {
+                                            try
+                                            {
+                                                return s != null && s.IsValidObject && s.IsActive;
+                                            }
+                                            catch
+                                            {
+                                                return false; // Skip invalid symbols
+                                            }
+                                        });
                                         if (activeSymbol != null)
                                         {
                                             familySymbol = activeSymbol;
@@ -2210,6 +2316,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 DebugLogger.Info($"[BATCH-REGEN] Regenerating document for {placedSleeveIds.Count} sleeves...");
                             }
                             _doc.Regenerate(); // ✅ Single regeneration for all sleeves
+                            
+                            // ✅ CRITICAL FIX: Clear family symbol cache after regeneration
+                            // Regeneration invalidates ALL element references, including cached FamilySymbol objects
+                            // This prevents "The referenced object is not valid" errors
+                            if (OptimizationFlags.UseFamilySymbolCache)
+                            {
+                                _familySymbolCache.Clear();
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info("[FAMILY-CACHE] Cleared cache after document regeneration (all symbols invalidated)");
+                            }
                             regenTimer.Stop();
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
@@ -3554,18 +3670,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 int cachedCount = 0;
                 foreach (var familyName in familyNames)
                 {
-                    // Check if already cached
+                    // ✅ SAFETY: Validate cached symbol before reusing (remove if stale)
                     if (_familySymbolCache.ContainsKey(familyName))
                     {
-                        continue; // Already cached
+                        var existing = _familySymbolCache[familyName];
+                        try
+                        {
+                            if (existing != null && existing.IsValidObject)
+                            {
+                                // Test if symbol is accessible
+                                var _ = existing.IsActive;
+                                continue; // Symbol is valid - skip reloading
+                            }
+                            else
+                            {
+                                // Remove invalid cached symbol
+                                _familySymbolCache.Remove(familyName);
+                            }
+                        }
+                        catch
+                        {
+                            // Symbol is stale - remove from cache
+                            _familySymbolCache.Remove(familyName);
+                        }
                     }
                     
-                    // Load and cache
+                    // Load and cache (only if valid)
                     var symbol = LoadFamilySymbolInternal(familyName);
-                    if (symbol != null)
+                    if (symbol != null && symbol.IsValidObject)
                     {
-                        _familySymbolCache[familyName] = symbol;
-                        cachedCount++;
+                        try
+                        {
+                            // Validate symbol is accessible before caching
+                            var _ = symbol.IsActive; // Test access
+                            _familySymbolCache[familyName] = symbol;
+                            cachedCount++;
+                        }
+                        catch
+                        {
+                            // Symbol is invalid - don't cache it
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Warning($"[FAMILY-CACHE] Cannot cache symbol for '{familyName}' - symbol is invalid");
+                        }
                     }
                 }
                 
@@ -3605,22 +3751,58 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         /// <summary>
         /// Get cached family symbol or load if not cached
+        /// ✅ SAFETY: Validates cached symbols before returning (prevents stale reference errors)
         /// </summary>
         private FamilySymbol LoadFamilySymbol(string familyName)
         {
             // Check cache first (QUICK WIN)
             if (OptimizationFlags.UseFamilySymbolCache && _familySymbolCache.TryGetValue(familyName, out var cached))
             {
-                return cached; // Return cached symbol instantly
+                // ✅ CRITICAL FIX: Validate cached symbol is still valid before returning
+                // Stale references cause "The referenced object is not valid" errors
+                try
+                {
+                    if (cached != null && cached.IsValidObject)
+                    {
+                        // Test if we can access IsActive property (quick validation)
+                        var _ = cached.IsActive; // This will throw if symbol is invalid
+                        return cached; // Symbol is valid - return it
+                    }
+                    else
+                    {
+                        // Cached symbol is invalid - remove from cache and reload
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[FAMILY-CACHE] Cached symbol for '{familyName}' is invalid - removing from cache and reloading");
+                        _familySymbolCache.Remove(familyName);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Symbol is stale/invalid - remove from cache and reload
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[FAMILY-CACHE] Cached symbol for '{familyName}' is stale (error: {ex.Message}) - removing from cache and reloading");
+                    _familySymbolCache.Remove(familyName);
+                }
             }
             
-            // Not in cache - load it
+            // Not in cache or cache entry was invalid - load it
             var symbol = LoadFamilySymbolInternal(familyName);
             
-            // Cache it for next time
-            if (symbol != null && OptimizationFlags.UseFamilySymbolCache)
+            // Cache it for next time (only if valid)
+            if (symbol != null && symbol.IsValidObject && OptimizationFlags.UseFamilySymbolCache)
             {
-                _familySymbolCache[familyName] = symbol;
+                try
+                {
+                    // Validate symbol is accessible before caching
+                    var _ = symbol.IsActive; // Test access
+                    _familySymbolCache[familyName] = symbol;
+                }
+                catch (Exception ex)
+                {
+                    // Symbol is invalid - don't cache it
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[FAMILY-CACHE] Cannot cache symbol for '{familyName}' - symbol is invalid: {ex.Message}");
+                }
             }
             
             return symbol;
@@ -4237,6 +4419,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         private void FlushDeferredParameters()
         {
+            // ✅ SAFETY FLAG: Prevent multiple flushes (critical for performance - only flush once!)
+            if (_hasFlushedParameters)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    var stackTrace = new System.Diagnostics.StackTrace(skipFrames: 1, fNeedFileInfo: false);
+                    var caller = stackTrace.GetFrame(0)?.GetMethod()?.Name ?? "Unknown";
+                    DebugLogger.Warning($"[BATCH-PARAMS] ⚠️ SAFETY: FlushDeferredParameters called AGAIN from {caller} - IGNORING (already flushed once). This indicates a bug - parameters should only flush once at the end!");
+                }
+                return; // ✅ CRITICAL: Exit early to prevent duplicate flushes
+            }
+            
             // ✅ CRITICAL DIAGNOSTIC: Log call stack to identify where this is being called from
             if (!DeploymentConfiguration.DeploymentMode)
             {
@@ -4252,6 +4446,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     DebugLogger.Info($"[BATCH-PARAMS] ⚠️ FlushDeferredParameters called but _deferredParameters is empty (batching enabled but no parameters deferred)");
                 }
+                _hasFlushedParameters = true; // Mark as flushed even if empty to prevent retries
                 return;
             }
             
@@ -4290,6 +4485,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             var paramName = paramKvp.Key;
                             var paramValue = paramKvp.Value;
+                            
+                            // ✅ CRITICAL DIAGNOSTIC: Log what values are being flushed for cable trays
+                            if (paramName == "Width" || paramName == "Height" || paramName == "Depth" || paramName == "Wall Width")
+                            {
+                                var sleeveCategory = sleeveInstance.Category?.Name ?? "Unknown";
+                                if (sleeveCategory.Contains("Opening") || sleeveCategory.Contains("Sleeve"))
+                                {
+                                    double valueInFeet = 0.0;
+                                    if (paramValue is double d)
+                                        valueInFeet = d;
+                                    else if (paramValue is int i)
+                                        valueInFeet = i;
+                                    
+                                    SafeFileLogger.SafeAppendText("cabletray_dimension_trace.log",
+                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [FLUSH] Sleeve {sleeveId.IntegerValue}: " +
+                                        $"Flushing {paramName}={valueInFeet:F6}ft ({valueInFeet * 304.8:F1}mm)\n");
+                                }
+                            }
                             
                             try
                             {
@@ -4356,6 +4569,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             finally
             {
+                // ✅ SAFETY FLAG: Mark as flushed to prevent duplicate flushes (CRITICAL for performance)
+                _hasFlushedParameters = true;
+                
                 // ✅ CRITICAL DIAGNOSTIC: Log before clearing to track when/why it's cleared
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
@@ -4404,6 +4620,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     catch { }
                 }
 
+                // ✅ CRITICAL FIX: Capture sleeveInstance.Id at method entry to prevent closure issues
+                // This ensures we always use the correct sleeve ID even if sleeveInstance is modified
+                var currentSleeveId = sleeveInstance.Id;
+                
                 void TimedSetDouble(Parameter p, double value, string logicalName)
                 {
                     if (p == null || p.IsReadOnly) return;
@@ -4411,15 +4631,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // ✅ STEP 5 OPTIMIZATION: Defer parameter writes if batching enabled
                     if (OptimizationFlags.UseBatchedParameterWrites)
                     {
+                        // ✅ CRITICAL FIX: Use captured currentSleeveId instead of sleeveInstance.Id to prevent closure issues
                         // Accumulate parameter value for later batch write
-                        if (!_deferredParameters.ContainsKey(sleeveInstance.Id))
-                            _deferredParameters[sleeveInstance.Id] = new Dictionary<string, object>();
-                        _deferredParameters[sleeveInstance.Id][logicalName] = value;
+                        if (!_deferredParameters.ContainsKey(currentSleeveId))
+                            _deferredParameters[currentSleeveId] = new Dictionary<string, object>();
+                        
+                        // ✅ CRITICAL DIAGNOSTIC: Log if parameter is being overwritten (for cable trays)
+                        bool isOverwrite = _deferredParameters[currentSleeveId].ContainsKey(logicalName);
+                        if (isOverwrite && (logicalName == "Width" || logicalName == "Height" || logicalName == "Depth" || logicalName == "Wall Width"))
+                        {
+                            var oldValue = _deferredParameters[currentSleeveId][logicalName];
+                            double oldValueDouble = 0.0;
+                            if (oldValue is double d) oldValueDouble = d;
+                            else if (oldValue is int i) oldValueDouble = i;
+                            
+                            SafeFileLogger.SafeAppendText("cabletray_dimension_trace.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [OVERWRITE-WARNING] Sleeve {currentSleeveId.IntegerValue}: " +
+                                $"Parameter '{logicalName}' OVERWRITTEN! Old={oldValueDouble:F6}ft ({oldValueDouble * 304.8:F1}mm), " +
+                                $"New={value:F6}ft ({value * 304.8:F1}mm)\n");
+                        }
+                        
+                        _deferredParameters[currentSleeveId][logicalName] = value;
                         
                         // ✅ DIAGNOSTIC: Log when parameters are deferred (first 5 sleeves only to avoid spam)
                         if (!DeploymentConfiguration.DeploymentMode && _deferredParameters.Count <= 5)
                         {
-                            DebugLogger.Info($"[BATCH-PARAMS] ⚡ DEFERRED: Sleeve={sleeveInstance.Id.IntegerValue}, Param={logicalName}, TotalDeferred={_deferredParameters.Count} sleeves, ParamsForThisSleeve={_deferredParameters[sleeveInstance.Id].Count}");
+                            DebugLogger.Info($"[BATCH-PARAMS] ⚡ DEFERRED: Sleeve={currentSleeveId.IntegerValue}, Param={logicalName}, TotalDeferred={_deferredParameters.Count} sleeves, ParamsForThisSleeve={_deferredParameters[currentSleeveId].Count}");
                         }
                         
                         // Still log timing if instrumentation enabled (measures overhead of accumulation)
@@ -4452,17 +4689,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     if (p == null || p.IsReadOnly) return;
                     
-                    // ✅ CRITICAL FIX FOR MEP_Size: Check StorageType before setting
+                    // ✅ CRITICAL FIX FOR MEP Size: Check StorageType before setting
                     // If parameter is Double type, we cannot set string value - log warning
-                    if (logicalName == "MEP_Size")
+                    // ✅ FIX: Parameter name is "MEP Size" (with space), not "MEP_Size" (with underscore)
+                    if (logicalName == "MEP Size")
                     {
                         if (p.StorageType != StorageType.String)
                         {
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
                                 SafeFileLogger.SafeAppendText("parameter_service_debug.log",
-                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] ⚠️ CRITICAL: MEP_Size parameter is {p.StorageType} (expected String). Cannot set text value '{value}'. Parameter should be String type.\n");
-                                DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ MEP_Size parameter is {p.StorageType} (expected String). Cannot set text value '{value}'.");
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] ⚠️ CRITICAL: MEP Size parameter is {p.StorageType} (expected String). Cannot set text value '{value}'. Parameter should be String type.\n");
+                                DebugLogger.Warning($"[UniversalSleevePlacer] ⚠️ MEP Size parameter is {p.StorageType} (expected String). Cannot set text value '{value}'.");
                             }
                             return; // Don't try to set if it's not a String parameter
                         }
@@ -4476,8 +4714,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         return;
                     }
                     
-                    // ✅ CRITICAL FIX: Only set if parameter is String type (for MEP_Size)
-                    if (logicalName == "MEP_Size" && p.StorageType != StorageType.String)
+                    // ✅ CRITICAL FIX: Only set if parameter is String type (for MEP Size)
+                    // ✅ FIX: Parameter name is "MEP Size" (with space), not "MEP_Size" (with underscore)
+                    if (logicalName == "MEP Size" && p.StorageType != StorageType.String)
                     {
                         return; // Already logged above
                     }
@@ -4486,18 +4725,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         p.Set(value);
                         
-                        if (!DeploymentConfiguration.DeploymentMode && logicalName == "MEP_Size")
+                        if (!DeploymentConfiguration.DeploymentMode && logicalName == "MEP Size")
                         {
                             SafeFileLogger.SafeAppendText("parameter_service_debug.log",
-                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] ✅ Set MEP_Size = '{value}' (String) for sleeve {sleeveInstance.Id.IntegerValue}\n");
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] ✅ Set MEP Size = '{value}' (String) for sleeve {sleeveInstance.Id.IntegerValue}\n");
                         }
                     }
                     catch (Exception ex)
                     {
-                        if (!DeploymentConfiguration.DeploymentMode && logicalName == "MEP_Size")
+                        if (!DeploymentConfiguration.DeploymentMode && logicalName == "MEP Size")
                         {
                             SafeFileLogger.SafeAppendText("parameter_service_debug.log",
-                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] ❌ ERROR: Failed to set MEP_Size='{value}' on sleeve {sleeveInstance.Id.IntegerValue}: {ex.Message}\n");
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [UniversalSleevePlacer] ❌ ERROR: Failed to set MEP Size='{value}' on sleeve {sleeveInstance.Id.IntegerValue}: {ex.Message}\n");
                         }
                     }
                 }
@@ -4530,8 +4769,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 CacheParam("MEP_ElementId");
                 CacheParam("MEP_Category");
                 CacheParam("MEP_UniqueId");
-                CacheParam("MEP_Size");
-                CacheParam("System_Abbreviation");
+                CacheParam("MEP Size");  // ✅ FIX: Parameter name is "MEP Size" (with space), not "MEP_Size"
+                CacheParam("MEP System Abbreviation");  // ✅ FIX: Parameter name is "MEP System Abbreviation" (with spaces), not "System_Abbreviation"
                 CacheParam("MEP_Count");
                 CacheParam("HostOrientation");
                 CacheParam("Bottom of Opening");
@@ -4704,6 +4943,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         var _w = GetParam("Width");
                         var _h = GetParam("Height");
+                        
+                        // ✅ CRITICAL DIAGNOSTIC: Log values being set for cable trays (to debug "haywire" dimensions)
+                        if (string.Equals(clashZone.MepElementCategory, "Cable Trays", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(clashZone.MepElementCategory, "Cable Tray Fittings", StringComparison.OrdinalIgnoreCase))
+                        {
+                            SafeFileLogger.SafeAppendText("cabletray_dimension_trace.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SET-PARAMS] Zone {clashZone.Id}: " +
+                                $"Setting Width={roundedWidth:F6}ft ({roundedWidth * 304.8:F1}mm), Height={roundedHeight:F6}ft ({roundedHeight * 304.8:F1}mm) " +
+                                $"(BEFORE rounding: finalWidth={finalWidth:F6}ft, finalHeight={finalHeight:F6}ft)\n");
+                        }
+                        
                         TimedSetDouble(_w, roundedWidth, "Width");
                         TimedSetDouble(_h, roundedHeight, "Height");
                     }
@@ -4753,6 +5003,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 var _w = GetParam("Width");
                 var _h = GetParam("Height");
+                
+                // ✅ CRITICAL DIAGNOSTIC: Log if Width/Height are being set AGAIN (for floor ducts - should NOT affect cable trays)
+                if (!DeploymentConfiguration.DeploymentMode && isFloorHost && isDuct)
+                {
+                    SafeFileLogger.SafeAppendText("cabletray_dimension_trace.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [FLOOR-DUCT-SWAP] Zone {clashZone.Id}: " +
+                        $"Setting Width/Height AGAIN after swap - Width={roundedWidth:F6}ft ({roundedWidth * 304.8:F1}mm), Height={roundedHeight:F6}ft ({roundedHeight * 304.8:F1}mm)\n");
+                }
+                
                 TimedSetDouble(_w, roundedWidth, "Width");
                 TimedSetDouble(_h, roundedHeight, "Height");
             }
@@ -4878,6 +5137,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         bool depthSetSuccess = false;
         
+        // ✅ CRITICAL DIAGNOSTIC: Log depth calculation for cable trays (to debug "only 1 correct" issue)
+        if (string.Equals(clashZone.MepElementCategory, "Cable Trays", StringComparison.OrdinalIgnoreCase))
+        {
+            SafeFileLogger.SafeAppendText("cabletray_dimension_trace.log",
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [DEPTH-CALC] Zone {clashZone.Id}: " +
+                $"HostType={clashZone.StructuralElementType}, " +
+                $"WallThickness={clashZone.WallThickness:F6}ft ({clashZone.WallThickness * 304.8:F1}mm), " +
+                $"StructuralThickness={clashZone.StructuralElementThickness:F6}ft ({clashZone.StructuralElementThickness * 304.8:F1}mm), " +
+                $"CalculatedThickness={thickness:F6}ft ({thickness * 304.8:F1}mm), " +
+                $"SleeveId={sleeveInstance.Id.IntegerValue}, " +
+                $"isWallHost={isWallHost}\n");
+        }
+        
         if (isWallHost && wallWidthParam != null && !wallWidthParam.IsReadOnly)
         {
             // Wall host: use Wall Width parameter
@@ -4887,6 +5159,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 DebugLogger.Info($"[DEPTH-SET] Zone={clashZone.Id}, Sleeve={sleeveInstance.Id}: Set Wall Width={RevitUnitConversionService.Instance.FromInternalMillimeters(thickness):F1}mm (from DB: Structural={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.StructuralElementThickness):F1}mm, Wall={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.WallThickness):F1}mm)");
             }
+            
+            // ✅ CRITICAL DIAGNOSTIC: Log when Wall Width is set for cable trays
+            if (string.Equals(clashZone.MepElementCategory, "Cable Trays", StringComparison.OrdinalIgnoreCase))
+            {
+                SafeFileLogger.SafeAppendText("cabletray_dimension_trace.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [DEPTH-SET] Zone {clashZone.Id}: " +
+                    $"Setting Wall Width={thickness:F6}ft ({thickness * 304.8:F1}mm) for Sleeve {sleeveInstance.Id.IntegerValue}, " +
+                    $"Batching={OptimizationFlags.UseBatchedParameterWrites}\n");
+            }
         }
         else if (depthParam != null && !depthParam.IsReadOnly)
         {
@@ -4895,6 +5176,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (!DeploymentConfiguration.DeploymentMode)
             {
                 DebugLogger.Info($"[DEPTH-SET] Zone={clashZone.Id}, Sleeve={sleeveInstance.Id}: Set Depth={RevitUnitConversionService.Instance.FromInternalMillimeters(thickness):F1}mm (from DB: Structural={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.StructuralElementThickness):F1}mm, Framing={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.FramingThickness):F1}mm)");
+            }
+            
+            // ✅ CRITICAL DIAGNOSTIC: Log when Depth is set for cable trays
+            if (string.Equals(clashZone.MepElementCategory, "Cable Trays", StringComparison.OrdinalIgnoreCase))
+            {
+                SafeFileLogger.SafeAppendText("cabletray_dimension_trace.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [DEPTH-SET] Zone {clashZone.Id}: " +
+                    $"Setting Depth={thickness:F6}ft ({thickness * 304.8:F1}mm) for Sleeve {sleeveInstance.Id.IntegerValue}, " +
+                    $"Batching={OptimizationFlags.UseBatchedParameterWrites}\n");
             }
         }
         else
@@ -4968,7 +5258,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         // ⚡ PERFORMANCE OPTIMIZATION: Split metadata into critical (immediate) and non-critical (deferred)
         // Critical parameters required for flag reset during refresh: MEP_Category, MEP_ElementId, ClashZone_GUID, Sleeve Instance ID, Filter Name
-        // Non-critical parameters deferred to batch write: MEP_UniqueId, MEP_Size, System_Abbreviation, MEP_Count, Bottom of Opening, Host Parameters
+        // Non-critical parameters deferred to batch write: MEP_UniqueId, MEP Size, MEP System Abbreviation, MEP_Count, Bottom of Opening, Host Parameters
         
         if (OptimizationFlags.DeferNonCriticalMetadata)
         {
@@ -5011,7 +5301,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             
             // ⚡ NON-CRITICAL PARAMETERS DEFERRED - Will be written in batch after all sleeves placed
-            // Deferred: MEP_UniqueId, MEP_Size, System_Abbreviation, MEP_Count, Bottom of Opening, Host Parameters
+            // Deferred: MEP_UniqueId, MEP Size, MEP System Abbreviation, MEP_Count, Bottom of Opening, Host Parameters
             // Expected gain: ~150-180ms per sleeve
         }
         else
@@ -5031,7 +5321,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         TimedSetString(mepUniqueIdParam, clashZone.MepElementUniqueId, "MEP_UniqueId");
                     }
                     
-                    var mepSizeParam = GetParam("MEP_Size");
+                    var mepSizeParam = GetParam("MEP Size");  // ✅ FIX: Parameter name is "MEP Size" (with space), not "MEP_Size"
                     if (mepSizeParam != null)
                     {
                         // ✅ SIZE PARAMETER VALUE: Use MepElementSizeParameterValue (raw Size parameter value) instead of MepElementFormattedSize
@@ -5040,13 +5330,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var sizeValue = !string.IsNullOrWhiteSpace(clashZone.MepElementSizeParameterValue) 
                             ? clashZone.MepElementSizeParameterValue 
                             : clashZone.MepElementFormattedSize;
-                        TimedSetString(mepSizeParam, sizeValue, "MEP_Size");
+                        TimedSetString(mepSizeParam, sizeValue, "MEP Size");
                     }
                     
-                    var systemAbbrParam = GetParam("System_Abbreviation");
+                    var systemAbbrParam = GetParam("MEP System Abbreviation");  // ✅ FIX: Parameter name is "MEP System Abbreviation" (with spaces), not "System_Abbreviation"
                     if (systemAbbrParam != null)
                     {
-                        TimedSetString(systemAbbrParam, clashZone.MepElementSystemAbbreviation, "System_Abbreviation");
+                        TimedSetString(systemAbbrParam, clashZone.MepElementSystemAbbreviation, "MEP System Abbreviation");
                     }
                     
                     var mepCountParam = GetParam("MEP_Count");
@@ -5170,17 +5460,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     if (p == null || p.IsReadOnly) return;
                     
-                    // ✅ CRITICAL FIX FOR MEP_Size: Check StorageType before setting
+                    // ✅ CRITICAL FIX FOR MEP Size: Check StorageType before setting
                     // If parameter is Double type, we cannot set string value - log warning
-                    if (logicalName == "MEP_Size")
+                    // ✅ FIX: Parameter name is "MEP Size" (with space), not "MEP_Size" (with underscore)
+                    if (logicalName == "MEP Size")
                     {
                         if (p.StorageType != StorageType.String)
                         {
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
                                 SafeFileLogger.SafeAppendText("parameter_service_debug.log",
-                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SetSleeveMetadata] ⚠️ CRITICAL: MEP_Size parameter is {p.StorageType} (expected String). Cannot set text value '{value}'. Parameter should be String type.\n");
-                                DebugLogger.Warning($"[SetSleeveMetadata] ⚠️ MEP_Size parameter is {p.StorageType} (expected String). Cannot set text value '{value}'.");
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SetSleeveMetadata] ⚠️ CRITICAL: MEP Size parameter is {p.StorageType} (expected String). Cannot set text value '{value}'. Parameter should be String type.\n");
+                                DebugLogger.Warning($"[SetSleeveMetadata] ⚠️ MEP Size parameter is {p.StorageType} (expected String). Cannot set text value '{value}'.");
                             }
                             return; // Don't try to set if it's not a String parameter
                         }
@@ -5194,8 +5485,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         return;
                     }
                     
-                    // ✅ CRITICAL FIX: Only set if parameter is String type (for MEP_Size)
-                    if (logicalName == "MEP_Size" && p.StorageType != StorageType.String)
+                    // ✅ CRITICAL FIX: Only set if parameter is String type (for MEP Size)
+                    // ✅ FIX: Parameter name is "MEP Size" (with space), not "MEP_Size" (with underscore)
+                    if (logicalName == "MEP Size" && p.StorageType != StorageType.String)
                     {
                         return; // Already logged above
                     }
@@ -5204,18 +5496,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         p.Set(value);
                         
-                        if (!DeploymentConfiguration.DeploymentMode && logicalName == "MEP_Size")
+                        if (!DeploymentConfiguration.DeploymentMode && logicalName == "MEP Size")
                         {
                             SafeFileLogger.SafeAppendText("parameter_service_debug.log",
-                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SetSleeveMetadata] ✅ Set MEP_Size = '{value}' (String) for sleeve {sleeveInstance.Id.IntegerValue}\n");
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SetSleeveMetadata] ✅ Set MEP Size = '{value}' (String) for sleeve {sleeveInstance.Id.IntegerValue}\n");
                         }
                     }
                     catch (Exception ex)
                     {
-                        if (!DeploymentConfiguration.DeploymentMode && logicalName == "MEP_Size")
+                        if (!DeploymentConfiguration.DeploymentMode && logicalName == "MEP Size")
                         {
                             SafeFileLogger.SafeAppendText("parameter_service_debug.log",
-                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SetSleeveMetadata] ❌ ERROR: Failed to set MEP_Size='{value}' on sleeve {sleeveInstance.Id.IntegerValue}: {ex.Message}\n");
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SetSleeveMetadata] ❌ ERROR: Failed to set MEP Size='{value}' on sleeve {sleeveInstance.Id.IntegerValue}: {ex.Message}\n");
                         }
                     }
                 }

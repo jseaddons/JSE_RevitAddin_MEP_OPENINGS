@@ -222,17 +222,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                 // ⚠️ DIAGNOSTIC: Log cable tray dimensions from ClashZone
                 double trayWidthMm = UnitUtils.ConvertFromInternalUnits(trayWidth, UnitTypeId.Millimeters);
                 double trayHeightMm = UnitUtils.ConvertFromInternalUnits(trayHeight, UnitTypeId.Millimeters);
-                DebugLogger.Info($"[CableTrayStrategy] CZ={clashZone.Id}: Read from XML: Width={trayWidthMm:F1}mm ({trayWidth:F6}ft), Height={trayHeightMm:F1}mm ({trayHeight:F6}ft)");
+                DebugLogger.Info($"[CableTrayStrategy] CZ={clashZone.Id}: Read from ClashZone: Width={trayWidthMm:F1}mm ({trayWidth:F6}ft), Height={trayHeightMm:F1}mm ({trayHeight:F6}ft)");
                 
-                // ✅ PRIORITY SYSTEM: UI Settings > XML Conditions > Default
+                // ✅ CRITICAL DIAGNOSTIC: Log to file for comparison with Refresh_debug.log
+                SafeFileLogger.SafeAppendText("cabletray_dimension_trace.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CABLE-TRAY-STRATEGY] Zone {clashZone.Id}: MEP={clashZone.MepElementIdValue}, " +
+                    $"MepElementWidth={trayWidth:F6}ft ({trayWidthMm:F1}mm), MepElementHeight={trayHeight:F6}ft ({trayHeightMm:F1}mm)\n");
+                
+                // ✅ PRIORITY SYSTEM: Database (conditions) > UI Settings > Default
                 double topClearanceMm = 100.0; // Default fallback
                 double otherClearanceMm = 50.0; // Default fallback
                 
-                // 1. Try UI clearance settings first (highest priority)
-                if (uiClearanceSettings != null && uiClearanceSettings.Count > 0)
+                // 1. ✅ PRIMARY: Read from database (conditions object loaded from SQLite)
+                if (conditions?.ClearanceSettings != null)
+                {
+                    topClearanceMm = conditions.ClearanceSettings.CableTrayTop;
+                    otherClearanceMm = conditions.ClearanceSettings.CableTrayOther;
+                    DebugLogger.Info($"[CableTrayStrategy] ✅ Using DATABASE clearances: Top={topClearanceMm}mm, Other={otherClearanceMm}mm");
+                    
+                    // ✅ CRITICAL DIAGNOSTIC: Log database values to file
+                    SafeFileLogger.SafeAppendText("cabletray_dimension_trace.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CABLE-TRAY-CLEARANCE-DB] Zone {clashZone.Id}: " +
+                        $"Database Clearances: Top={topClearanceMm:F1}mm, Other={otherClearanceMm:F1}mm\n");
+                }
+                // 2. Fallback to UI clearance settings (if database not available)
+                else if (uiClearanceSettings != null && uiClearanceSettings.Count > 0)
                 {
                     // 🔥 DEBUG: Log all UI clearance settings to see what keys are available
-                    DebugLogger.Info($"[CableTrayStrategy] 🔥 UI Clearance Settings ({uiClearanceSettings.Count} items):");
+                    DebugLogger.Info($"[CableTrayStrategy] ⚠️ Database not available, using UI Clearance Settings ({uiClearanceSettings.Count} items):");
                     foreach (var kvp in uiClearanceSettings)
                     {
                         DebugLogger.Info($"[CableTrayStrategy] 🔥 Key: '{kvp.Key}' = {kvp.Value}mm");
@@ -274,13 +291,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                         otherClearanceMm = uiClearanceSettings[otherNormalKey];
                         DebugLogger.Info($"[CableTrayStrategy] ⚠️ Insulated key '{otherInsulatedKey}' not found, using normal key: {otherClearanceMm}mm");
                     }
-                }
-                // 2. Fallback to XML conditions (second priority)
-                else if (conditions?.ClearanceSettings != null)
-                {
-                    topClearanceMm = conditions.ClearanceSettings.CableTrayTop;
-                    otherClearanceMm = conditions.ClearanceSettings.CableTrayOther;
-                    DebugLogger.Info($"[CableTrayStrategy] Using XML clearances: Top={topClearanceMm}mm, Other={otherClearanceMm}mm");
                 }
                 
                 DebugLogger.Info($"[CableTrayStrategy] FINAL clearances: Top={topClearanceMm}mm, Other={otherClearanceMm}mm");
@@ -365,6 +375,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                 double offsetAmount = offsetVector.GetLength();
                 DebugLogger.Info($"[CableTrayStrategy] Top={topClearance:F4}ft, Other={otherClearance:F4}ft, Offset={offsetAmount:F4}ft in direction {offsetVector}");
                 DebugLogger.Info($"[CableTrayStrategy] FINAL SIZE: Width={finalWidthMm:F1}mm ({finalWidth:F6}ft) x Height={finalHeightMm:F1}mm ({finalHeight:F6}ft), Offset: {offsetVector}");
+                
+                // ✅ CRITICAL DIAGNOSTIC: Log calculation breakdown for debugging "haywire" dimensions
+                SafeFileLogger.SafeAppendText("cabletray_dimension_trace.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CABLE-TRAY-CALC] Zone {clashZone.Id}: " +
+                    $"Raw: W={trayWidthMm:F1}mm, H={trayHeightMm:F1}mm | " +
+                    $"Insulation: {UnitUtils.ConvertFromInternalUnits(insulationContribution, UnitTypeId.Millimeters):F1}mm | " +
+                    $"Clearances: Top={topClearanceMm:F1}mm, Other={otherClearanceMm:F1}mm | " +
+                    $"FINAL: W={finalWidthMm:F1}mm ({finalWidth:F6}ft), H={finalHeightMm:F1}mm ({finalHeight:F6}ft)\n");
                 
                 return (offsetVector, finalWidth, finalHeight);
             }
