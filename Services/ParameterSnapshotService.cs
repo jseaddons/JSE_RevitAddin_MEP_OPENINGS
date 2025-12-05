@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.IO;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.DB.Electrical;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 
 using JSE_RevitAddin_MEP_OPENINGS.Services;
@@ -126,6 +127,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
 
+            // ✅ CRITICAL: Check if element is a Cable Tray (needed for parameter mapping)
+            bool isCableTray = element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_CableTray ||
+                              element.Category?.Name?.Contains("Cable Tray", StringComparison.OrdinalIgnoreCase) == true ||
+                              element is CableTray;
+            
             foreach (var key in whitelist)
             {
                 // ✅ FIX 6: Emergency brake - stop if limit reached
@@ -136,12 +142,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     break;
                 }
 
+                // ✅ CRITICAL: For Cable Trays, map "System Type" to "Service Type" in the whitelist
+                // This ensures we capture "Service Type" even if whitelist only has "System Type"
+                string actualKey = key;
+                if (isCableTray && key.Equals("System Type", StringComparison.OrdinalIgnoreCase))
+                {
+                    actualKey = "Service Type"; // Use "Service Type" for Cable Trays
+                }
+
                 // ✅ FIX 1: Only capture ESSENTIAL parameters OR user-defined/learned parameters from whitelist
                 // User-defined params (from ParameterKeyWhitelist/LearnedParameterKeys) should always be captured
                 // Essential params are always captured
                 // Common system params (from _commonMepKeys/_commonHostKeys) are only captured if they're in ESSENTIAL_PARAMETERS
-                bool isEssential = ESSENTIAL_PARAMETERS.Contains(key);
-                bool isCommonKey = _commonMepKeys.Contains(key) || _commonHostKeys.Contains(key);
+                bool isEssential = ESSENTIAL_PARAMETERS.Contains(actualKey) || 
+                                   (isCableTray && actualKey.Equals("Service Type", StringComparison.OrdinalIgnoreCase) && ESSENTIAL_PARAMETERS.Contains("Service Type"));
+                bool isCommonKey = _commonMepKeys.Contains(actualKey) || _commonHostKeys.Contains(actualKey);
                 
                 // Only capture if:
                 // 1. It's an essential parameter, OR
@@ -151,17 +166,56 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     continue; // Skip common system params that aren't essential
                 }
 
-                var p = LookupParam(element, key);
+                // ✅ CRITICAL: Use actualKey (mapped for Cable Trays) instead of original key
+                var p = LookupParam(element, actualKey);
                 
-                // Special fallback for System Type when not found by name
-                if (p == null && key.Equals("System Type", StringComparison.OrdinalIgnoreCase))
+                // ✅ CRITICAL: Special fallback for System Type/Service Type when not found by name
+                // NOTE: For Cable Trays, use "Service Type" instead of "System Type"
+                if (p == null && (key.Equals("System Type", StringComparison.OrdinalIgnoreCase) || 
+                                  actualKey.Equals("Service Type", StringComparison.OrdinalIgnoreCase)))
                 {
-                    // Try built-in parameters for ducts/pipes
-                    p = element.get_Parameter(BuiltInParameter.RBS_DUCT_SYSTEM_TYPE_PARAM) ??
-                        element.get_Parameter(BuiltInParameter.RBS_PIPING_SYSTEM_TYPE_PARAM) ??
-                        element.get_Parameter(BuiltInParameter.RBS_SYSTEM_CLASSIFICATION_PARAM);
+                    // ✅ CABLE TRAY: Use isCableTray already declared above - use "Service Type" instead
+                    if (isCableTray)
+                    {
+                        // For Cable Trays, look for "Service Type" parameter
+                        p = element.LookupParameter("Service Type") ??
+                            element.LookupParameter("MEP Service Type");
+                    }
+                    else
+                    {
+                        // For Mechanical/Plumbing (Ducts/Pipes), use "System Type"
+                        // Try built-in parameters for ducts/pipes
+                        p = element.get_Parameter(BuiltInParameter.RBS_DUCT_SYSTEM_TYPE_PARAM) ??
+                            element.get_Parameter(BuiltInParameter.RBS_PIPING_SYSTEM_TYPE_PARAM) ??
+                            element.get_Parameter(BuiltInParameter.RBS_SYSTEM_CLASSIFICATION_PARAM);
+                        
+                        // Try common parameter name variations
+                        if (p == null)
+                        {
+                            p = element.LookupParameter("MEP System Type") ??
+                                element.LookupParameter("System Classification") ??
+                                element.LookupParameter("MEP System Classification");
+                        }
+                    }
                 }
-                // Special fallback for System Abbreviation when not found by name
+                
+                // ✅ CRITICAL: Special fallback for Service Type (Cable Trays)
+                if (p == null && key.Equals("Service Type", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Try common parameter name variations for Service Type
+                    p = element.LookupParameter("Service Type") ??
+                        element.LookupParameter("MEP Service Type");
+                }
+                
+                // ✅ CRITICAL: Special fallback for System Name when not found by name
+                if (p == null && key.Equals("System Name", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Try common parameter name variations
+                    p = element.LookupParameter("MEP System Name") ??
+                        element.LookupParameter("System Name");
+                }
+                
+                // ✅ CRITICAL: Special fallback for System Abbreviation when not found by name
                 if (p == null && key.Equals("System Abbreviation", StringComparison.OrdinalIgnoreCase))
                 {
                     // Try built-in parameters for system abbreviation
@@ -248,24 +302,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (p == null) 
                 {
-                    // ✅ CRITICAL: Log missing essential parameters (especially System Type, System Name, System Abbreviation)
+                    // ✅ CRITICAL: Log missing essential parameters (especially System Type, Service Type, System Name, System Abbreviation)
                     // These are critical for parameter transfer and remarking
-                    if (isEssential && (key.Equals("System Type", StringComparison.OrdinalIgnoreCase) ||
-                                       key.Equals("System Name", StringComparison.OrdinalIgnoreCase) ||
-                                       key.Equals("System Abbreviation", StringComparison.OrdinalIgnoreCase) ||
-                                       key.Equals("Schedule of Level", StringComparison.OrdinalIgnoreCase) ||
-                                       key.Equals("Schedule Level", StringComparison.OrdinalIgnoreCase)))
+                    if (isEssential && (actualKey.Equals("System Type", StringComparison.OrdinalIgnoreCase) ||
+                                       actualKey.Equals("Service Type", StringComparison.OrdinalIgnoreCase) ||
+                                       actualKey.Equals("System Name", StringComparison.OrdinalIgnoreCase) ||
+                                       actualKey.Equals("System Abbreviation", StringComparison.OrdinalIgnoreCase) ||
+                                       actualKey.Equals("Schedule of Level", StringComparison.OrdinalIgnoreCase) ||
+                                       actualKey.Equals("Schedule Level", StringComparison.OrdinalIgnoreCase)))
                     {
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Warning($"[{DateTime.Now}] [PARAM_CAPTURE] ⚠️⚠️⚠️ CRITICAL: Essential parameter '{key}' not found on element {element.Id} ({element.Category?.Name}) - this will prevent parameter transfer!\n");
+                            DebugLogger.Warning($"[{DateTime.Now}] [PARAM_CAPTURE] ⚠️⚠️⚠️ CRITICAL: Essential parameter '{actualKey}' (mapped from '{key}') not found on element {element.Id} ({element.Category?.Name}) - this will prevent parameter transfer!\n");
                         }
                     }
                     else
                     {
                         // DEBUG: Log missing non-essential parameters
                         if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Parameter '{key}' not found\n");
+                            DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Parameter '{actualKey}' (mapped from '{key}') not found\n");
                     }
                     continue;
                 }
@@ -301,22 +356,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 
                 // ✅ FIX 1: Intern strings to share memory across clash zones
+                // ✅ CRITICAL: Store actualKey (for Cable Trays, this is "Service Type" instead of "System Type")
+                // This ensures the snapshot has the correct parameter name for parameter transfer
                 result.Add(new SerializableKeyValue 
                 { 
-                    Key = string.Intern(key), 
+                    Key = string.Intern(actualKey), // Use actualKey (mapped for Cable Trays)
                     Value = string.Intern(value)
                 });
                 
                 // ✅ CRITICAL DIAGNOSTIC: Log captured essential parameters (especially for circular elements)
-                if (isEssential && (key.Equals("System Type", StringComparison.OrdinalIgnoreCase) ||
-                                   key.Equals("System Name", StringComparison.OrdinalIgnoreCase) ||
-                                   key.Equals("System Abbreviation", StringComparison.OrdinalIgnoreCase) ||
-                                   key.Equals("Schedule of Level", StringComparison.OrdinalIgnoreCase) ||
-                                   key.Equals("Schedule Level", StringComparison.OrdinalIgnoreCase)))
+                if (isEssential && (actualKey.Equals("System Type", StringComparison.OrdinalIgnoreCase) ||
+                                   actualKey.Equals("Service Type", StringComparison.OrdinalIgnoreCase) ||
+                                   actualKey.Equals("System Name", StringComparison.OrdinalIgnoreCase) ||
+                                   actualKey.Equals("System Abbreviation", StringComparison.OrdinalIgnoreCase) ||
+                                   actualKey.Equals("Schedule of Level", StringComparison.OrdinalIgnoreCase) ||
+                                   actualKey.Equals("Schedule Level", StringComparison.OrdinalIgnoreCase)))
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] ✅ CAPTURED: Element {element.Id} ({element.Category?.Name}): '{key}' = '{value}'\n");
+                        string logKey = key.Equals(actualKey) ? actualKey : $"{actualKey} (from '{key}')";
+                        DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] ✅ CAPTURED: Element {element.Id} ({element.Category?.Name}): '{logKey}' = '{value}'\n");
                     }
                 }
                 

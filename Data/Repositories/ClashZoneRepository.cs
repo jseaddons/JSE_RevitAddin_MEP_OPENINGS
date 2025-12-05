@@ -1530,15 +1530,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                     transaction.Commit();
                     
-                    if (!DeploymentConfiguration.DeploymentMode)
+                    // ✅ CRITICAL SAFETY: Verify snapshots were saved correctly
+                    var verificationResult = VerifySnapshotCompleteness(placedZones, transaction);
+                    if (!verificationResult.Success)
                     {
-                        _logger($"[SQLite] ✅ Saved sleeve snapshots for {placedZones.Count} placed zones");
+                        _logger($"[SQLite] ⚠️⚠️⚠️ SNAPSHOT VERIFICATION FAILED: {verificationResult.Message}");
+                        _logger($"[SQLite] Missing snapshots for sleeves: {string.Join(", ", verificationResult.MissingSleeveIds)}");
+                        
+                        // Don't throw - log warning but allow operation to continue
+                        // Retry mechanism will handle missing snapshots on next refresh
+                    }
+                    else if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        _logger($"[SQLite] ✅ Saved and VERIFIED sleeve snapshots for {placedZones.Count} placed zones");
                     }
                 }
                 catch (Exception ex)
                 {
                     transaction.Rollback();
-                    _logger($"[SQLite] ❌ Error saving sleeve snapshots: {ex.Message}");
+                    _logger($"[SQLite] ❌ Error saving sleeve snapshots: {ex.Message}\nStackTrace: {ex.StackTrace}");
                     throw;
                 }
             }
@@ -1730,6 +1740,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 
                 var mepParams = AggregateParameterValues(zones, useHost: false);
                 var hostParams = AggregateParameterValues(zones, useHost: true);
+                
+                // ✅ CRITICAL SAFETY: Validate critical parameters are present
+                var criticalParamValidation = ValidateCriticalParameters(mepParams, hostParams, zones, isCluster, groupId);
+                if (!criticalParamValidation.IsValid)
+                {
+                    _logger($"[SQLite] ⚠️⚠️⚠️ CRITICAL PARAMETER MISSING for groupId={groupId}: {criticalParamValidation.Message}");
+                    // Continue anyway - parameter transfer will attempt fallback to Revit
+                }
                 
                 // ✅ DEBUG: Log aggregated parameter counts and check if Size is present
                 if (!DeploymentConfiguration.DeploymentMode)
@@ -5114,6 +5132,103 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
             return result;
         }
+
+        /// <summary>
+        /// ✅ CRITICAL SAFETY: Verify that all placed sleeves have snapshots saved in database
+        /// </summary>
+        private (bool Success, string Message, List<int> MissingSleeveIds) VerifySnapshotCompleteness(
+            List<ClashZone> placedZones, 
+            SQLiteTransaction transaction)
+        {
+            var missingSleeveIds = new List<int>();
+            var sleeveIds = placedZones
+                .Where(z => z.SleeveInstanceId > 0)
+                .Select(z => z.SleeveInstanceId)
+                .Distinct()
+                .ToList();
+
+            if (sleeveIds.Count == 0)
+                return (true, "No individual sleeves to verify", missingSleeveIds);
+
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.Transaction = transaction;
+                    var placeholders = string.Join(",", sleeveIds.Select((_, i) => $"@Id{i}"));
+                    cmd.CommandText = $"SELECT SleeveInstanceId FROM SleeveSnapshots WHERE SleeveInstanceId IN ({placeholders})";
+                    
+                    for (int i = 0; i < sleeveIds.Count; i++)
+                    {
+                        cmd.Parameters.AddWithValue($"@Id{i}", sleeveIds[i]);
+                    }
+
+                    var savedIds = new HashSet<int>();
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            savedIds.Add(GetInt(reader, "SleeveInstanceId", -1));
+                        }
+                    }
+
+                    missingSleeveIds = sleeveIds.Where(id => !savedIds.Contains(id)).ToList();
+                    
+                    if (missingSleeveIds.Count > 0)
+                    {
+                        return (false, $"{missingSleeveIds.Count}/{sleeveIds.Count} sleeves missing snapshots", missingSleeveIds);
+                    }
+
+                    return (true, $"All {sleeveIds.Count} sleeves have snapshots", missingSleeveIds);
+                }
+            }
+            catch (Exception ex)
+            {
+                return (false, $"Verification failed: {ex.Message}", missingSleeveIds);
+            }
+        }
+
+        /// <summary>
+        /// ✅ CRITICAL SAFETY: Validate that critical parameters are present in aggregated data
+        /// </summary>
+        private (bool IsValid, string Message) ValidateCriticalParameters(
+            Dictionary<string, string> mepParams,
+            Dictionary<string, string> hostParams,
+            List<ClashZone> zones,
+            bool isCluster,
+            int groupId)
+        {
+            var missingCritical = new List<string>();
+
+            // Critical MEP parameters that MUST be present
+            var criticalMepParams = new[] { "Size", "System Type", "System Name" };
+            foreach (var paramName in criticalMepParams)
+            {
+                var hasParam = mepParams.Any(kvp => 
+                    string.Equals(kvp.Key, paramName, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(kvp.Key, "MEP " + paramName, StringComparison.OrdinalIgnoreCase));
+                
+                if (!hasParam)
+                {
+                    missingCritical.Add(paramName);
+                }
+            }
+
+            if (missingCritical.Count > 0)
+            {
+                var category = zones.FirstOrDefault()?.MepElementCategory ?? "Unknown";
+                return (false, $"Missing critical MEP parameters for {category}: {string.Join(", ", missingCritical)}");
+            }
+
+            // Verify at least some parameters exist
+            if (mepParams.Count == 0)
+            {
+                return (false, "No MEP parameters captured - snapshot may be empty");
+            }
+
+            return (true, $"All critical parameters present ({mepParams.Count} MEP, {hostParams.Count} Host)");
+        }
     }
 }
+
 
