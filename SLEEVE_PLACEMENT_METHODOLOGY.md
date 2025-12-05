@@ -941,13 +941,31 @@ During clustering (`ClusterRotationService.CalculateRotatedBoundingBox`), the al
    - ✅ **Critical:** Corners were batch saved after regeneration - NO recalculation needed during clustering
    - ⚠️ **Fallback:** Only recalculates if pre-calculated data is missing (should never happen in normal operation)
 
-3. **Transforms All Corners to Cluster's Rotated Coordinate System**
+3. **Special Case: Mixed X/Y Orientations for Floor Clusters**
+   - ✅ **CRITICAL:** Before corner-based calculation, checks if cluster has MEP elements with **different orientations** (X and Y)
+   - **Detection:** Collects `MepElementOrientationDirection` from all sleeves in cluster
+     - If both "X" and "Y" orientations are found → **Mixed orientations detected**
+     - Falls back to inferring orientation from `MepElementRotationAngle` if `MepElementOrientationDirection` is missing
+   - **Why This Matters:** Corner-based calculation doesn't work correctly when orientations differ because:
+     - X-oriented sleeves: Width is along X-axis, Height is along Y-axis
+     - Y-oriented sleeves: Width is along Y-axis, Height is along X-axis (rotated 90°)
+     - Corners are in different coordinate systems, so direct corner aggregation is incorrect
+   - **Solution for Mixed Orientations:**
+     - Builds **envelope from calculated world bounding boxes** instead of using corners
+     - For each sleeve: Calculates world bounding box from `PlacementPoint + Dimensions` (accounting for orientation)
+     - For Y-oriented sleeves: Swaps width/height (Width→Y-dimension, Height→X-dimension)
+     - For X-oriented sleeves: Uses width/height as-is (Width→X-dimension, Height→Y-dimension)
+     - Takes union of all world bounding boxes to get cluster envelope
+     - Calculates cluster center as midpoint of union envelope
+   - **Result:** Accurate cluster sizing and placement for mixed-orientation floor clusters
+
+4. **Transforms All Corners to Cluster's Rotated Coordinate System** (if not mixed orientations)
    - For each sleeve, uses pre-calculated world-space corners (or recalculates if missing)
    - Transforms each corner into the cluster's intended rotated axis coordinate system
    - This aligns all corners to a common rotated frame for min/max calculation
 
-4. **Finds Min/Max Extents**
-   - Finds `minX`, `maxX`, `minY`, `maxY` across all transformed corners
+5. **Finds Min/Max Extents**
+   - Finds `minX`, `maxX`, `minY`, `maxY` across all transformed corners (or union envelope for mixed orientations)
    - Calculates cluster width = `maxX - minX`
    - Calculates cluster height = `maxY - minY`
 
@@ -1061,6 +1079,17 @@ XYZ clusterCenter = new XYZ(centerX_world, centerY_world, origin.Z);
 **1. Cluster Rotation Angle Determination**
 
 The cluster's intended rotated axis is determined by:
+
+**✅ CRITICAL: Circular Elements (Pipes and Round Ducts)**
+- **Always return 0.0° (straight axis)** - MEP orientation is meaningless for circular elements
+- Circular elements have the same dimensions in all directions, so rotation doesn't affect their bounding box
+- This applies to **BOTH floors and walls** - circular elements don't need rotation for alignment
+- **Detection:**
+  - **Pipes:** All pipes are considered circular (category contains "Pipe")
+  - **Round Ducts:** Detected by `DuctShape = "Round"` or `"Circular"`, or `MepElementSizeData.Shape = "Round"/"Circular"`
+- **Implementation:** `ClusterRotationService.DetermineRotationAngle()` checks for circular elements first and immediately returns 0.0° if detected
+
+**For Non-Circular Elements:**
 1. **First Priority:** First sleeve's actual Revit `LocationPoint.Rotation` (if available)
 2. **Second Priority:** `ClashZone.MepElementRotationAngle` from database
 3. **Third Priority:** `DetermineDominantRotationAngle()` (only if angle is still 0 or unavailable)

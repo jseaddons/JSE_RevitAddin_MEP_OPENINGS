@@ -57,7 +57,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         /// Returns 0 for straight axis-aligned clusters (aligned to WCS: 0°, 90°, 180°, 270°)
         /// Returns rotation angle for rotated axis-aligned clusters (non-straight: 45°, 225°, etc.)
         /// 
-        /// ✅ CRITICAL: Pipes (circular elements) always return 0.0 - no rotation needed, place straight to WCS
+        /// ✅ CRITICAL: Circular elements (Pipes and Round Ducts) always return 0.0° - no rotation needed
+        ///    MEP orientation is meaningless for circular elements, so always use straight axis (0°)
+        ///    This applies to both floors and walls - circular elements don't need rotation alignment
         /// </summary>
         public double DetermineRotationAngle(List<dynamic> cluster, string? xmlFilePath = null)
         {
@@ -66,12 +68,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 if (cluster == null || cluster.Count == 0)
                     return 0.0;
 
-                // ✅ CRITICAL: Check if cluster contains round ducts (circular elements)
-                // Round ducts should always be placed straight to WCS (axis-aligned), no rotation needed
-                // ⚠️ PIPES ARE NOT INCLUDED: Pipes are circular but still need wall rotation for alignment
-                //    - X-wall pipes: Need 90° rotation to align with wall
-                //    - Y-wall pipes: Need 0° rotation to align with wall
-                //    - The rotation is for WALL ALIGNMENT, not for the pipe itself
+                // ✅ CRITICAL: Check if cluster contains circular elements (Pipes and Round Ducts)
+                // Circular elements should always be placed straight to WCS (axis-aligned), no rotation needed
+                // MEP orientation is meaningless for circular elements - they have the same dimensions in all directions
+                // This applies to BOTH floors and walls - circular elements don't need rotation for alignment
                 bool isCircularElementCluster = false;
                 string circularElementType = "";
                 foreach (var sleeveData in cluster)
@@ -90,8 +90,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             $"[{DateTime.Now:HH:mm:ss.fff}] [PIPE-CATEGORY-DEBUG] Sleeve {sleeveData.SleeveInstanceId}: MepElementCategory='{clashZone.MepElementCategory}'\n");
                     }
 
-                    // ⚠️ PIPES REMOVED FROM THIS CHECK - Pipes need wall rotation even though they're circular
-                    // Check if this is a round duct (circular element)
+                    // ✅ Check if this is a pipe (all pipes are circular)
+                    bool isPipe = string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase) ||
+                                  string.Equals(clashZone.MepElementCategory, "Pipe Accessories", StringComparison.OrdinalIgnoreCase) ||
+                                  (clashZone.MepElementCategory != null && clashZone.MepElementCategory.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0);
+                    
+                    if (isPipe)
+                    {
+                        isCircularElementCluster = true;
+                        circularElementType = "PIPE";
+                        break;
+                    }
+
+                    // ✅ Check if this is a round duct (circular element)
                     bool isDuct = string.Equals(clashZone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase) ||
                                   string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase);
                     if (isDuct)
@@ -112,52 +123,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     }
                 }
 
-                // ✅ CIRCULAR ELEMENT FIX:
-                // For FLOORS: Pipes/Round Ducts should be 0.0° (align to global grid)
-                // For WALLS: They MUST follow wall rotation (0° or 90°) to align the cluster box with the wall
+                // ✅ CIRCULAR ELEMENT FIX: Always return 0.0° for circular elements (Pipes and Round Ducts)
+                // MEP orientation is meaningless for circular elements - they have the same dimensions in all directions
+                // This applies to BOTH floors and walls - no rotation needed regardless of host type
                 if (isCircularElementCluster)
                 {
-                    // Check if we are on a wall or framing (need to calculate these flags early)
-                    bool isWallOrFraming = false;
-                    foreach (var sleeve in cluster)
+                    if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        var cz = sleeve.ClashZone as ClashZone;
-                        if (cz != null)
-                        {
-                            // Check StructuralElementType ("Wall", "Structural Framing")
-                            // OR WallDirectionType ("X-WALL", "Y-WALL", "FRAMING")
-                            if (cz.StructuralElementType == "Wall" || 
-                                cz.StructuralElementType == "Structural Framing" || 
-                                cz.WallDirectionType == "X-WALL" || 
-                                cz.WallDirectionType == "Y-WALL" || 
-                                cz.WallDirectionType == "FRAMING")
-                            {
-                                isWallOrFraming = true;
-                                break;
-                            }
-                        }
+                        DebugLogger.Info($"[CLUSTER-ANGLE] {circularElementType} cluster detected: Returning 0.0° (straight axis-aligned to WCS, MEP orientation meaningless for circular elements)");
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [CIRCULAR-RETURN] ✅ {circularElementType} cluster → Returning 0.0° (straight axis, MEP orientation meaningless)\n");
                     }
-
-                    // Only return 0.0 early if we are NOT on a wall/framing
-                    // If we ARE on a wall, we must fall through to the wall rotation logic below
-                    if (!isWallOrFraming)
-                    {
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            DebugLogger.Info($"[CLUSTER-ANGLE] {circularElementType} cluster on FLOOR detected: Returning 0.0° (straight axis-aligned to WCS)");
-                            SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [CIRCULAR-RETURN] ✅ {circularElementType} cluster on FLOOR → Returning 0.0°\n");
-                        }
-                        return 0.0;
-                    }
-                    else
-                    {
-                         if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [CIRCULAR-WALL-LOGIC] ⚠️ {circularElementType} cluster on WALL/FRAMING → Falling through to Wall Rotation Logic (needs alignment)\n");
-                        }
-                    }
+                    return 0.0;
                 }
 
                 // ✅ WALL/STRUCTURAL FRAMING: Rotation based on X-wall vs Y-wall (same as individual sleeves)
@@ -720,7 +697,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             SafeFileLogger.SafeAppendText("cluster_sizing.log",
                                 $"[{DateTime.Now:HH:mm:ss}] 🔧 Starting corner-based calculation with {allCorners.Count} corners, rotation={rotationAngle * 180 / Math.PI:F1}°, isWallOrFraming={isWallOrFraming}\n");
                             
-                            double cornerWidth = 0, cornerHeight = 0; // Initialize to avoid unassigned variable error
+                            double cornerWidth = 0, cornerHeight = 0, cornerDepth = 0; // Initialize to avoid unassigned variable error
                             double rotatedMinX = 0, rotatedMinY = 0, rotatedMaxX = 0, rotatedMaxY = 0;
                             double originX = 0, originY = 0;
                             
@@ -809,7 +786,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                     double minRotY = transformedCorners.Min(c => c.Y);
                                     double maxRotY = transformedCorners.Max(c => c.Y);
                                     
-                                    cornerWidth = maxRotX - minRotX;
+                                    // ✅ CRITICAL FIX: For rotated axis walls, determine X-wall vs Y-wall to calculate width correctly
+                                    // X-wall with 90° rotation: X-axis in world space → Y-axis in rotated space, so width = Y range
+                                    // Y-wall with rotation (rare): Y-axis in world space → X-axis in rotated space, so width = X range
+                                    bool isYWall = Math.Abs(wallDirection.Y) > Math.Abs(wallDirection.X);
+                                    
+                                    if (isYWall)
+                                    {
+                                        // ✅ Y-WALL WITH ROTATION (rare case): Y-axis in world space → X-axis in rotated space after rotation
+                                        // Width (along wall) = X range in rotated space
+                                        cornerWidth = maxRotX - minRotX;
+                                    }
+                                    else
+                                    {
+                                        // ✅ X-WALL WITH 90° ROTATION: X-axis in world space → Y-axis in rotated space after 90° rotation
+                                        // Width (along wall) = Y range in rotated space, NOT X range
+                                        cornerWidth = maxRotY - minRotY;
+                                    }
+                                    
                                     rotatedMinX = minRotX;
                                     rotatedMaxX = maxRotX;
                                     rotatedMinY = minRotY;
@@ -817,9 +811,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                     
                                     SafeFileLogger.SafeAppendText("cluster_sizing.log",
                                         $"[{DateTime.Now:HH:mm:ss}]   ✅ ROTATED AXIS WALL: Transformed {transformedCorners.Count} corners to cluster's rotated coordinate system. " +
-                                        $"Rotation={rotationAngle * 180 / Math.PI:F1}°, " +
+                                        $"Rotation={rotationAngle * 180 / Math.PI:F1}°, WallType={(isYWall ? "Y-wall" : "X-wall")}, " +
                                         $"minRotX={minRotX:F6}, maxRotX={maxRotX:F6}, minRotY={minRotY:F6}, maxRotY={maxRotY:F6}, " +
-                                        $"Width={cornerWidth:F6}\n");
+                                        $"Width={cornerWidth:F6} (from {(isYWall ? "X" : "Y")} range in rotated space)\n");
                                 }
                             }
                             
@@ -827,49 +821,249 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             {
                                 // ✅ FLOOR/OTHER: Calculate in WCS with rotation if needed
                                 // Calculate cluster bounding box by rotating corners back to aligned axis
-                                double cosA = Math.Cos(-rotationAngle); // Negative for inverse rotation
-                                double sinA = Math.Sin(-rotationAngle);
                                 
-                                // ✅ Use corner centroid as rotation origin for accurate geometric center
-                                // Corner centroid works correctly when MEP elements have different orientations
-                                originX = allCorners.Average(c => c.X);
-                                originY = allCorners.Average(c => c.Y);
+                                // ✅ CRITICAL: Check for mixed X/Y orientations BEFORE rotation transformation
+                                // When MEP elements have different orientations (X and Y), corner-based calculation may not work correctly
+                                // because corners are in different coordinate systems. Use envelope method instead.
+                                bool hasMixedOrientations = false;
+                                var orientations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                                 
-                                SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                    $"[{DateTime.Now:HH:mm:ss}]   Origin (corner centroid): ({originX:F6}, {originY:F6}), PlacementPoint=({placementPoint.X:F6}, {placementPoint.Y:F6}), cosA={cosA:F6}, sinA={sinA:F6}\n");
-                                
-                                // Rotate each corner and find min/max in rotated space
-                                double minRotX = double.MaxValue, maxRotX = double.MinValue;
-                                double minRotY = double.MaxValue, maxRotY = double.MinValue;
-                                
-                                foreach (var corner in allCorners)
+                                foreach (int sleeveId in sleeveIdsInCluster)
                                 {
-                                    // Translate to origin
-                                    double relX = corner.X - originX;
-                                    double relY = corner.Y - originY;
-                                    
-                                    // Rotate
-                                    double rotX = relX * cosA - relY * sinA;
-                                    double rotY = relX * sinA + relY * cosA;
-                                    
-                                    // Update bounds
-                                    minRotX = Math.Min(minRotX, rotX);
-                                    maxRotX = Math.Max(maxRotX, rotX);
-                                    minRotY = Math.Min(minRotY, rotY);
-                                    maxRotY = Math.Max(maxRotY, rotY);
+                                    var cz = GetCachedClashZone(sleeveId, xmlFilePath);
+                                    if (cz != null)
+                                    {
+                                        string orientation = cz.MepElementOrientationDirection;
+                                        
+                                        // ✅ Fallback: Infer orientation from rotation angle if missing
+                                        if (string.IsNullOrEmpty(orientation))
+                                        {
+                                            double angle = Math.Abs(cz.MepElementRotationAngle); // Radians
+                                            // Normalize to 0-PI
+                                            while (angle > Math.PI) angle -= Math.PI;
+                                            
+                                            if (angle > Math.PI / 4.0 && angle < 3.0 * Math.PI / 4.0)
+                                            {
+                                                orientation = "Y"; // ~90 degrees
+                                            }
+                                            else
+                                            {
+                                                orientation = "X"; // ~0 or ~180 degrees
+                                            }
+                                        }
+                                        
+                                        if (!string.IsNullOrEmpty(orientation))
+                                        {
+                                            orientations.Add(orientation);
+                                        }
+                                    }
                                 }
                                 
-                                cornerWidth = maxRotX - minRotX;
-                                cornerHeight = maxRotY - minRotY;
+                                hasMixedOrientations = orientations.Contains("X") && orientations.Contains("Y");
                                 
-                                // Store rotated bounds for extents
-                                rotatedMinX = minRotX;
-                                rotatedMaxX = maxRotX;
-                                rotatedMinY = minRotY;
-                                rotatedMaxY = maxRotY;
+                                if (hasMixedOrientations)
+                                {
+                                    // ✅ MIXED X/Y ORIENTATIONS: Build envelope from calculated world bounding boxes
+                                    // Corner-based calculation doesn't work correctly when orientations differ
+                                    // because corners are in different coordinate systems (X-oriented vs Y-oriented)
+                                    var floorBboxes = new List<(XYZ min, XYZ max)>();
+                                    
+                                    foreach (int sleeveId in sleeveIdsInCluster)
+                                    {
+                                        var cz = GetCachedClashZone(sleeveId, xmlFilePath);
+                                        if (cz != null)
+                                        {
+                                            // ✅ Calculate World Bounding Box from Placement Point + Dimensions
+                                            double placementX = cz.SleevePlacementPointActiveDocumentX;
+                                            double placementY = cz.SleevePlacementPointActiveDocumentY;
+                                            double placementZ = cz.SleevePlacementPointActiveDocumentZ;
+                                            
+                                            // ✅ CRITICAL: Get dimensions in feet (stored in feet, no conversion needed)
+                                            double sleeveWidth = cz.SleeveWidth;
+                                            double sleeveHeight = cz.SleeveHeight;
+                                            double sleeveDepth = cz.StructuralElementThickness > 0 ? cz.StructuralElementThickness : 1.0;
+                                            
+                                            double halfWidth, halfHeight;
+                                            
+                                            // Determine orientation (use explicit or inferred)
+                                            bool isY = string.Equals(cz.MepElementOrientationDirection, "Y", StringComparison.OrdinalIgnoreCase);
+                                            if (!isY && string.IsNullOrEmpty(cz.MepElementOrientationDirection))
+                                            {
+                                                // Fallback inference
+                                                double angle = Math.Abs(cz.MepElementRotationAngle);
+                                                while (angle > Math.PI) angle -= Math.PI;
+                                                if (angle > Math.PI / 4.0 && angle < 3.0 * Math.PI / 4.0)
+                                                {
+                                                    isY = true;
+                                                }
+                                            }
+                                            
+                                            // Apply rotation based on orientation
+                                            if (isY)
+                                            {
+                                                // Rotated 90 degrees: Width is along Y, Height is along X
+                                                halfWidth = sleeveHeight / 2.0;  // X-dimension
+                                                halfHeight = sleeveWidth / 2.0;  // Y-dimension
+                                            }
+                                            else
+                                            {
+                                                // Default X orientation: Width is along X, Height is along Y
+                                                halfWidth = sleeveWidth / 2.0;   // X-dimension
+                                                halfHeight = sleeveHeight / 2.0; // Y-dimension
+                                            }
+                                            double halfDepth = sleeveDepth / 2.0;
+                                            
+                                            floorBboxes.Add((
+                                                new XYZ(placementX - halfWidth, placementY - halfHeight, placementZ - halfDepth),
+                                                new XYZ(placementX + halfWidth, placementY + halfHeight, placementZ + halfDepth)
+                                            ));
+                                        }
+                                    }
+                                    
+                                    if (floorBboxes.Count > 0)
+                                    {
+                                        // Union of calculated world sleeve bounding boxes
+                                        double floorMinX = floorBboxes.Min(b => b.min.X);
+                                        double floorMinY = floorBboxes.Min(b => b.min.Y);
+                                        double floorMinZ = floorBboxes.Min(b => b.min.Z);
+                                        double floorMaxX = floorBboxes.Max(b => b.max.X);
+                                        double floorMaxY = floorBboxes.Max(b => b.max.Y);
+                                        double floorMaxZ = floorBboxes.Max(b => b.max.Z);
+                                        
+                                        cornerWidth = floorMaxX - floorMinX;
+                                        cornerHeight = floorMaxY - floorMinY;
+                                        cornerDepth = floorMaxZ - floorMinZ;
+                                        
+                                        // ✅ Calculate new center point from the union envelope
+                                        placementPoint = new XYZ(
+                                            (floorMinX + floorMaxX) / 2.0,
+                                            (floorMinY + floorMaxY) / 2.0,
+                                            (floorMinZ + floorMaxZ) / 2.0
+                                        );
+                                        
+                                        // Store bounds for extents
+                                        rotatedMinX = floorMinX;
+                                        rotatedMaxX = floorMaxX;
+                                        rotatedMinY = floorMinY;
+                                        rotatedMaxY = floorMaxY;
+                                        
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            double wMm = RevitUnitConversionService.Instance.FromInternalMillimeters(cornerWidth);
+                                            double hMm = RevitUnitConversionService.Instance.FromInternalMillimeters(cornerHeight);
+                                            double dMm = RevitUnitConversionService.Instance.FromInternalMillimeters(cornerDepth);
+                                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                                $"[{DateTime.Now:HH:mm:ss}] ✅ FLOOR MIXED X/Y ORIENTATIONS: Building envelope from CALCULATED WORLD bboxes: " +
+                                                $"W={wMm:F1}mm, H={hMm:F1}mm, D={dMm:F1}mm, " +
+                                                $"Orientations=[{string.Join(", ", orientations)}], Sleeves={floorBboxes.Count}, " +
+                                                $"PlacementPoint=({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6})\n");
+                                        }
+                                        
+                                        // ✅ Skip rotation transformation for mixed orientations (already have world-space bounds)
+                                        // Set depth from StructuralElementThickness if not already set
+                                        if (cornerDepth <= 0)
+                                        {
+                                            var firstCzForDepth = GetCachedClashZone(sleeveIdsInCluster[0], xmlFilePath);
+                                            if (firstCzForDepth != null && firstCzForDepth.StructuralElementThickness > 0)
+                                            {
+                                                cornerDepth = firstCzForDepth.StructuralElementThickness;
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // ✅ FALLBACK: If mixed orientations detected but bbox calculation failed, continue with corner-based
+                                        hasMixedOrientations = false;
+                                    }
+                                }
                                 
-                                SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                    $"[{DateTime.Now:HH:mm:ss}]   Rotated bounds: minX={minRotX:F6}, maxX={maxRotX:F6}, minY={minRotY:F6}, maxY={maxRotY:F6}\n");
+                                // ✅ Only do corner-based calculation if NOT mixed orientations
+                                if (!hasMixedOrientations)
+                                {
+                                    // ✅ CRITICAL FIX: For straight axis (0°), use corner centroid directly as placement point
+                                    // For rotated axis, use intersection point centroid (rotation transformation accounts for difference)
+                                    bool isStraightAxis = Math.Abs(rotationAngle) < 1e-6;
+                                    
+                                    if (isStraightAxis)
+                                    {
+                                        // ✅ STRAIGHT AXIS FLOOR: Use corner centroid directly (no rotation needed)
+                                        // Corners are already in world space, so centroid is the correct placement point
+                                        originX = allCorners.Average(c => c.X);
+                                        originY = allCorners.Average(c => c.Y);
+                                        
+                                        // ✅ CRITICAL: Override placement point with corner centroid for straight axis
+                                        placementPoint = new XYZ(originX, originY, allCorners.Average(c => c.Z));
+                                        
+                                        // Calculate width/height directly from corner extents (no rotation)
+                                        double wcsMinX = allCorners.Min(c => c.X);
+                                        double wcsMaxX = allCorners.Max(c => c.X);
+                                        double wcsMinY = allCorners.Min(c => c.Y);
+                                        double wcsMaxY = allCorners.Max(c => c.Y);
+                                        
+                                        cornerWidth = wcsMaxX - wcsMinX;
+                                        cornerHeight = wcsMaxY - wcsMinY;
+                                        
+                                        // Store bounds for extents
+                                        rotatedMinX = wcsMinX;
+                                        rotatedMaxX = wcsMaxX;
+                                        rotatedMinY = wcsMinY;
+                                        rotatedMaxY = wcsMaxY;
+                                        
+                                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                            $"[{DateTime.Now:HH:mm:ss}]   ✅ STRAIGHT AXIS FLOOR: Using corner centroid directly (no rotation). " +
+                                            $"Origin (corner centroid): ({originX:F6}, {originY:F6}), " +
+                                            $"PlacementPoint=({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6}), " +
+                                            $"minX={wcsMinX:F6}, maxX={wcsMaxX:F6}, minY={wcsMinY:F6}, maxY={wcsMaxY:F6}, " +
+                                            $"Width={cornerWidth:F6}, Height={cornerHeight:F6}\n");
+                                    }
+                                    else
+                                    {
+                                        // ✅ ROTATED AXIS FLOOR: Use rotation transformation
+                                        double cosA = Math.Cos(-rotationAngle); // Negative for inverse rotation
+                                        double sinA = Math.Sin(-rotationAngle);
+                                        
+                                        // ✅ Use corner centroid as rotation origin for accurate geometric center
+                                        // Corner centroid works correctly when MEP elements have different orientations
+                                        originX = allCorners.Average(c => c.X);
+                                        originY = allCorners.Average(c => c.Y);
+                                        
+                                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                            $"[{DateTime.Now:HH:mm:ss}]   Origin (corner centroid): ({originX:F6}, {originY:F6}), PlacementPoint=({placementPoint.X:F6}, {placementPoint.Y:F6}), cosA={cosA:F6}, sinA={sinA:F6}\n");
+                                        
+                                        // Rotate each corner and find min/max in rotated space
+                                        double minRotX = double.MaxValue, maxRotX = double.MinValue;
+                                        double minRotY = double.MaxValue, maxRotY = double.MinValue;
+                                        
+                                        foreach (var corner in allCorners)
+                                        {
+                                            // Translate to origin
+                                            double relX = corner.X - originX;
+                                            double relY = corner.Y - originY;
+                                            
+                                            // Rotate
+                                            double rotX = relX * cosA - relY * sinA;
+                                            double rotY = relX * sinA + relY * cosA;
+                                            
+                                            // Update bounds
+                                            minRotX = Math.Min(minRotX, rotX);
+                                            maxRotX = Math.Max(maxRotX, rotX);
+                                            minRotY = Math.Min(minRotY, rotY);
+                                            maxRotY = Math.Max(maxRotY, rotY);
+                                        }
+                                        
+                                        cornerWidth = maxRotX - minRotX;
+                                        cornerHeight = maxRotY - minRotY;
+                                        
+                                        // Store rotated bounds for extents
+                                        rotatedMinX = minRotX;
+                                        rotatedMaxX = maxRotX;
+                                        rotatedMinY = minRotY;
+                                        rotatedMaxY = maxRotY;
+                                        
+                                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                            $"[{DateTime.Now:HH:mm:ss}]   Rotated bounds: minX={minRotX:F6}, maxX={maxRotX:F6}, minY={minRotY:F6}, maxY={maxRotY:F6}\n");
+                                    }
+                                }
                             }
                             
                             // ✅ HEIGHT: Calculate from Z range of bounding boxes (vertical dimension)
@@ -901,9 +1095,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                 }
                             }
                             
-                            // ✅ DEPTH: For walls/framing, depth = wall thickness (overridden later), not from Z range
-                            // The Z range is used for height, not depth
-                            double cornerDepth = 0.0; // Will be set from wall thickness later for walls/framing
+                            // ✅ DEPTH: Calculate based on host type (only if not already set for mixed orientations)
+                            // For walls/framing: depth = wall/framing thickness (overridden later in SetSizeParameters)
+                            // For floors/other: depth = StructuralElementThickness (same as individual sleeves)
+                            if (cornerDepth <= 0)
+                            {
+                                if (isWallOrFraming)
+                                {
+                                    // ✅ WALL/FRAMING: Depth will be set from wall thickness later in SetSizeParameters
+                                    // Keep as 0.0 for now - will be overridden
+                                    cornerDepth = 0.0;
+                                }
+                                else
+                                {
+                                    // ✅ FLOOR/OTHER: Get depth from StructuralElementThickness (same as individual sleeves)
+                                    // Use the first clash zone's StructuralElementThickness (all sleeves in cluster should have same host)
+                                    var firstClashZoneForDepth = clashZonesForHeight.FirstOrDefault();
+                                    if (firstClashZoneForDepth != null && firstClashZoneForDepth.StructuralElementThickness > 0)
+                                    {
+                                        cornerDepth = firstClashZoneForDepth.StructuralElementThickness;
+                                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                            $"[{DateTime.Now:HH:mm:ss}]   ✅ FLOOR DEPTH: Using StructuralElementThickness={cornerDepth * 304.8:F1}mm from first sleeve\n");
+                                    }
+                                    else
+                                    {
+                                        // ⚠️ FALLBACK: If StructuralElementThickness is missing, log warning
+                                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                            $"[{DateTime.Now:HH:mm:ss}]   ⚠️ FLOOR DEPTH: StructuralElementThickness not found or zero, depth will be 0.0mm\n");
+                                    }
+                                }
+                            }
                             
                             double widthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(cornerWidth);
                             double heightMm = RevitUnitConversionService.Instance.FromInternalMillimeters(cornerHeight);
@@ -913,14 +1134,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                 $"[{DateTime.Now:HH:mm:ss}] ✅ CORNER-BASED SUCCESS: W={widthMm:F1}mm, H={heightMm:F1}mm, D={depthMm:F1}mm (from {allCorners.Count} corners)\n");
                             
                             // ✅ Calculate rotated bounding box extents in world coordinates
-                            // For WCS calculation, transform back to world coordinates
-                            // For RCS calculation, these are already in RCS coordinates
+                            // For straight axis floors: bounds are already in world space (no need to add origin)
+                            // For rotated axis floors: bounds are relative to origin, need to add origin back
+                            // For walls/framing: bounds are already in RCS coordinates (no need to add origin)
                             if (!isWallOrFraming)
                             {
-                                rotatedMinX = rotatedMinX + originX;
-                                rotatedMinY = rotatedMinY + originY;
-                                rotatedMaxX = rotatedMaxX + originX;
-                                rotatedMaxY = rotatedMaxY + originY;
+                                bool isStraightAxis = Math.Abs(rotationAngle) < 1e-6;
+                                if (!isStraightAxis)
+                                {
+                                    // ✅ ROTATED AXIS FLOOR: Add origin back to rotated bounds (they're relative to origin)
+                                    rotatedMinX = rotatedMinX + originX;
+                                    rotatedMinY = rotatedMinY + originY;
+                                    rotatedMaxX = rotatedMaxX + originX;
+                                    rotatedMaxY = rotatedMaxY + originY;
+                                }
+                                // ✅ STRAIGHT AXIS FLOOR: Bounds are already in world space (no transformation needed)
                             }
                             
                             (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ) cornerResult = 

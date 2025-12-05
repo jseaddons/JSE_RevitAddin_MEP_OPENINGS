@@ -754,16 +754,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                             if (!deferredParameters.ContainsKey(clusterSleeve.Id))
                                 deferredParameters[clusterSleeve.Id] = new Dictionary<string, object>();
                             deferredParameters[clusterSleeve.Id]["Width"] = openingWidth;
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                double wMm = RevitUnitConversionService.Instance.FromInternalMillimeters(openingWidth);
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SetSizeParameters] ✅ DEFERRED: Added Width={wMm:F1}mm to deferredParameters for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
+                            }
                         }
                         else
                         {
                             widthParam.Set(openingWidth);
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                double wMm = RevitUnitConversionService.Instance.FromInternalMillimeters(openingWidth);
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SetSizeParameters] ✅ IMMEDIATE: Set Width={wMm:F1}mm for cluster sleeve {clusterSleeve.Id.IntegerValue} (deferredParams={(deferredParameters != null ? "NOT NULL" : "NULL")}, UseBatched={OptimizationFlags.UseBatchedParameterWrites})\n");
+                            }
                         }
                     }
                     catch (Exception ex)
                     {
                         SafeFileLogger.SafeAppendText("placement_errors.log",
                             $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ❌ Error setting Width parameter: {ex.Message}\n");
+                    }
+                }
+                else
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetSizeParameters] ⚠️ Width parameter is NULL or READONLY for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
                     }
                 }
 
@@ -776,16 +796,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                             if (!deferredParameters.ContainsKey(clusterSleeve.Id))
                                 deferredParameters[clusterSleeve.Id] = new Dictionary<string, object>();
                             deferredParameters[clusterSleeve.Id]["Height"] = openingHeight;
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                double hMm = RevitUnitConversionService.Instance.FromInternalMillimeters(openingHeight);
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SetSizeParameters] ✅ DEFERRED: Added Height={hMm:F1}mm to deferredParameters for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
+                            }
                         }
                         else
                         {
                             heightParam.Set(openingHeight);
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                double hMm = RevitUnitConversionService.Instance.FromInternalMillimeters(openingHeight);
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SetSizeParameters] ✅ IMMEDIATE: Set Height={hMm:F1}mm for cluster sleeve {clusterSleeve.Id.IntegerValue} (deferredParams={(deferredParameters != null ? "NOT NULL" : "NULL")}, UseBatched={OptimizationFlags.UseBatchedParameterWrites})\n");
+                            }
                         }
                     }
                     catch (Exception ex)
                     {
                         SafeFileLogger.SafeAppendText("placement_errors.log",
                             $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ❌ Error setting Height parameter: {ex.Message}\n");
+                    }
+                }
+                else
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetSizeParameters] ⚠️ Height parameter is NULL or READONLY for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
                     }
                 }
 
@@ -798,16 +838,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                             if (!deferredParameters.ContainsKey(clusterSleeve.Id))
                                 deferredParameters[clusterSleeve.Id] = new Dictionary<string, object>();
                             deferredParameters[clusterSleeve.Id]["Depth"] = openingDepth;
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                double dMm = RevitUnitConversionService.Instance.FromInternalMillimeters(openingDepth);
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SetSizeParameters] ✅ DEFERRED: Added Depth={dMm:F1}mm to deferredParameters for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
+                            }
                         }
                         else
                         {
                             depthParam.Set(openingDepth);
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                double dMm = RevitUnitConversionService.Instance.FromInternalMillimeters(openingDepth);
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SetSizeParameters] ✅ IMMEDIATE: Set Depth={dMm:F1}mm for cluster sleeve {clusterSleeve.Id.IntegerValue} (deferredParams={(deferredParameters != null ? "NOT NULL" : "NULL")}, UseBatched={OptimizationFlags.UseBatchedParameterWrites})\n");
+                            }
                         }
                     }
                     catch (Exception ex)
                     {
                         SafeFileLogger.SafeAppendText("placement_errors.log",
                             $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ❌ Error setting Depth parameter: {ex.Message}\n");
+                    }
+                }
+                else
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetSizeParameters] ⚠️ Depth parameter is NULL or READONLY for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
                     }
                 }
             }

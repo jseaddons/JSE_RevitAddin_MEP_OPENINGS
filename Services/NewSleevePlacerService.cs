@@ -17,6 +17,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Geometry;
 using JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Persistence;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Configuration;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -917,10 +918,120 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 (double finalWidth, double finalHeight, double finalDiameter) = _sizingService.CalculateFinalDimensionsFromClashZone(
                     rawWidth, rawHeight, rawDiameter, zone, clearance);
             
-                bool isCircular = rawDiameter > 0;
+                // ✅ GLOBAL SETTINGS: Determine opening type (circular vs rectangular) using global configuration rules
+                // This matches the legacy UniversalSleevePlacerService.SelectUniversalFamily() logic
+                bool isCircular = DetermineOpeningType(zone, rawDiameter, finalDiameter);
 
                 tracker?.SetItemCount(1);
                 return (finalWidth, finalHeight, finalDiameter, isCircular);
+            }
+        }
+
+        /// <summary>
+        /// ✅ GLOBAL SETTINGS: Determine opening type (circular vs rectangular) based on global configuration rules
+        /// Matches legacy UniversalSleevePlacerService.SelectUniversalFamily() logic
+        /// </summary>
+        private bool DetermineOpeningType(ClashZone zone, double rawDiameter, double finalDiameter)
+        {
+            try
+            {
+                // ✅ Pipes: Use ConfigurationResolutionService to check global rules
+                // Rules checked:
+                // 1. RoundOpeningsBecomeRectangularIfDiameterGreaterThan (default 200mm) - if diameter > threshold, make rectangular
+                // 2. Structural framing rule - pipes on structural framing are always circular
+                if (string.Equals(zone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Create MepElementSize from ClashZone for configuration resolution
+                    var mepSize = new MepElementSize
+                    {
+                        Width = zone.MepElementWidth,
+                        Height = zone.MepElementHeight,
+                        Diameter = rawDiameter > 0 ? rawDiameter : zone.MepElementOuterDiameter,
+                        Shape = rawDiameter > 0 ? "Round" : "Rectangular",
+                        IsInsulated = zone.MepElementSizeData?.IsInsulated ?? false,
+                        InsulationThickness = zone.MepElementSizeData?.InsulationThickness ?? 0.0
+                    };
+                    
+                    // Get UI preference from CONDITIONS XML (default to Circular)
+                    var pipeType = _conditions?.OpeningTypePreferences?.Pipes ?? "Circular";
+                    var hostType = zone.StructuralElementType ?? "Unknown";
+                    
+                    // Use PipePlacementStrategy to resolve opening type with global rules
+                    if (_strategy is PipePlacementStrategy pipeStrategy)
+                    {
+                        var resolvedType = pipeStrategy.GetResolvedOpeningType(mepSize, pipeType, hostType);
+                        bool isCircularResult = string.Equals(resolvedType, "Circular", StringComparison.OrdinalIgnoreCase);
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[NewSleevePlacer] PIPE opening type resolved: Host={hostType}, UI='{pipeType}' → Global Rule='{resolvedType}' → isCircular={isCircularResult}");
+                        }
+                        
+                        return isCircularResult;
+                    }
+                    else
+                    {
+                        // Fallback: Use raw diameter check if strategy not available
+                        bool isCircularResult = rawDiameter > 0;
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[NewSleevePlacer] PIPE opening type (fallback): rawDiameter={rawDiameter:F6}ft → isCircular={isCircularResult}");
+                        }
+                        return isCircularResult;
+                    }
+                }
+                // ✅ Round Ducts: Check user preference from CONDITIONS XML
+                else if (string.Equals(zone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase) ||
+                         string.Equals(zone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Check if this is a round duct
+                    bool isRoundDuct = string.Equals(zone.DuctShape, "Round", StringComparison.OrdinalIgnoreCase) ||
+                                      string.Equals(zone.DuctShape, "Circular", StringComparison.OrdinalIgnoreCase) ||
+                                      (zone.MepElementSizeData != null && 
+                                       (string.Equals(zone.MepElementSizeData.Shape, "Round", StringComparison.OrdinalIgnoreCase) ||
+                                        string.Equals(zone.MepElementSizeData.Shape, "Circular", StringComparison.OrdinalIgnoreCase)));
+                    
+                    if (isRoundDuct)
+                    {
+                        // Round ducts: use user preference from CONDITIONS XML
+                        var roundDuctType = _conditions?.OpeningTypePreferences?.RoundDucts ?? "Circular";
+                        bool isCircularResult = string.Equals(roundDuctType, "Circular", StringComparison.OrdinalIgnoreCase);
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[NewSleevePlacer] ROUND DUCT opening type from CONDITIONS XML: '{roundDuctType}' → isCircular={isCircularResult}");
+                        }
+                        
+                        return isCircularResult;
+                    }
+                    else
+                    {
+                        // Rectangular ducts: always rectangular opening
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[NewSleevePlacer] RECTANGULAR DUCT → isCircular=false");
+                        }
+                        return false;
+                    }
+                }
+                else
+                {
+                    // Other categories (cable trays, accessories): always rectangular
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[NewSleevePlacer] OTHER CATEGORY ({zone.MepElementCategory}) → isCircular=false");
+                    }
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Error($"[NewSleevePlacer] Error determining opening type for zone {zone?.Id}: {ex.Message}");
+                }
+                // Fallback: Use raw diameter check
+                return rawDiameter > 0;
             }
         }
 
@@ -1173,12 +1284,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 var currentSleeveId = instance.Id;
 
+                // ✅ GLOBAL SETTINGS: Apply rounding based on global configuration (RoundingValue and RoundAlwaysUp)
+                // This matches the legacy UniversalSleevePlacerService behavior
+                // Dampers are excluded from rounding (preserve exact calculated dimensions)
+                bool isDamper = zone?.MepElementCategory != null && 
+                               (zone.MepElementCategory.IndexOf("Damper", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                zone.MepElementCategory.IndexOf("Duct Accessories", StringComparison.OrdinalIgnoreCase) >= 0);
+                
+                double roundedWidth = width;
+                double roundedHeight = height;
+                double roundedDiameter = diameter;
+                
+                if (!isDamper)
+                {
+                    // ✅ Apply rounding for non-damper elements using global settings
+                    // OpeningSettingsHelper reads RoundingValue and RoundAlwaysUp from ApplicationProfileService
+                    (roundedWidth, roundedHeight) = OpeningSettingsHelper.RoundDimensionsToNearest5mm(width, height);
+                    roundedDiameter = OpeningSettingsHelper.RoundDiameterToNearest5mm(diameter);
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        // Log rounding if values changed
+                        if (Math.Abs(width - roundedWidth) > 1e-6 || Math.Abs(height - roundedHeight) > 1e-6 || Math.Abs(diameter - roundedDiameter) > 1e-6)
+                        {
+                            DebugLogger.Info($"[NewSleevePlacer] [ROUNDING] Zone {zone?.Id}: " +
+                                $"Width {RevitUnitConversionService.Instance.FromInternalMillimeters(width):F1}mm → {RevitUnitConversionService.Instance.FromInternalMillimeters(roundedWidth):F1}mm, " +
+                                $"Height {RevitUnitConversionService.Instance.FromInternalMillimeters(height):F1}mm → {RevitUnitConversionService.Instance.FromInternalMillimeters(roundedHeight):F1}mm, " +
+                                $"Diameter {RevitUnitConversionService.Instance.FromInternalMillimeters(diameter):F1}mm → {RevitUnitConversionService.Instance.FromInternalMillimeters(roundedDiameter):F1}mm");
+                        }
+                    }
+                }
+                else
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[NewSleevePlacer] [ROUNDING] Zone {zone?.Id}: DAMPER - No rounding applied, using exact calculated dimensions");
+                    }
+                }
+
                 if (isCircular)
                 {
                     var param = instance.LookupParameter("Diameter") ?? instance.LookupParameter("Sleeve Diameter");
                     if (param != null && !param.IsReadOnly)
                     {
-                        TimedSetDouble(param, diameter, "Diameter", currentSleeveId);
+                        TimedSetDouble(param, roundedDiameter, "Diameter", currentSleeveId);
                     }
                 }
                 else
@@ -1187,11 +1336,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var hParam = instance.LookupParameter("Height") ?? instance.LookupParameter("Sleeve Height");
                     if (wParam != null && !wParam.IsReadOnly)
                     {
-                        TimedSetDouble(wParam, width, "Width", currentSleeveId);
+                        TimedSetDouble(wParam, roundedWidth, "Width", currentSleeveId);
                     }
                     if (hParam != null && !hParam.IsReadOnly)
                     {
-                        TimedSetDouble(hParam, height, "Height", currentSleeveId);
+                        TimedSetDouble(hParam, roundedHeight, "Height", currentSleeveId);
                     }
 
                     tracker?.SetItemCount(1);

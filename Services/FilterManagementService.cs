@@ -243,10 +243,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 newFilter.Name,
                                 categoryDisplay,
                                 newFilter.SelectedHostCategories ?? new List<string>(),
-                                newFilter.OpeningSettings
+                                newFilter.OpeningSettings,
+                                newFilter.SelectedMepCategoryNames,    // ✅ FIXED: Pass MEP category names
+                                newFilter.SelectedReferenceFiles,      // ✅ FIXED: Pass reference files
+                                newFilter.SelectedHostFiles            // ✅ FIXED: Pass host files
                             );
                         });
-                        _log($"[FILTER_MGMT] ✅ Saved UI state for new filter '{filterName}' to database");
+                        _log($"[FILTER_MGMT] ✅ Saved UI state for new filter '{filterName}' to database (MepCategories: {newFilter.SelectedMepCategoryNames?.Count ?? 0}, RefFiles: {newFilter.SelectedReferenceFiles?.Count ?? 0}, HostFiles: {newFilter.SelectedHostFiles?.Count ?? 0})");
                     }
                     catch (Exception uiStateEx)
                     {
@@ -392,10 +395,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 copiedFilter.Name,
                                 categoryDisplay,
                                 copiedFilter.SelectedHostCategories ?? new List<string>(),
-                                copiedFilter.OpeningSettings
+                                copiedFilter.OpeningSettings,
+                                copiedFilter.SelectedMepCategoryNames,    // ✅ FIXED: Pass MEP category names
+                                copiedFilter.SelectedReferenceFiles,      // ✅ FIXED: Pass reference files
+                                copiedFilter.SelectedHostFiles            // ✅ FIXED: Pass host files
                             );
                         });
-                        _log($"[FILTER_MGMT] ✅ Saved UI state for copied filter '{newName}' to database");
+                        _log($"[FILTER_MGMT] ✅ Saved UI state for copied filter '{newName}' to database (MepCategories: {copiedFilter.SelectedMepCategoryNames?.Count ?? 0}, RefFiles: {copiedFilter.SelectedReferenceFiles?.Count ?? 0}, HostFiles: {copiedFilter.SelectedHostFiles?.Count ?? 0})");
                     }
                     catch (Exception uiStateEx)
                     {
@@ -657,6 +663,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ⚠️ CRITICAL: Collect CURRENT UI state, not stale filter data
                 // This ensures the latest UI selections are persisted to the database
                 var currentHostCategories = FilterUiStateProvider.GetSelectedHostCategories?.Invoke() ?? selectedFilter.SelectedHostCategories ?? new List<string>();
+                var currentMepCategoryNames = FilterUiStateProvider.GetSelectedMepCategoryNames?.Invoke() ?? new List<string>();
+                var currentReferenceFiles = FilterUiStateProvider.GetSelectedReferenceFiles?.Invoke() ?? new List<string>();
+                var currentHostFiles = FilterUiStateProvider.GetSelectedHostFiles?.Invoke() ?? new List<string>();
                 
                 // ✅ CRITICAL FIX: Get category from UI state (currently selected MEP category), not from filter object
                 // The filter object may have stale/wrong category (e.g., "Ducts" when user selected "Cable Trays")
@@ -757,10 +766,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 selectedFilter.Name,
                                 categoryDisplay,
                                 currentHostCategories ?? new List<string>(), // Maps to SelectedHostCategories in DB
-                                currentOpeningSettings
+                                currentOpeningSettings,
+                                currentMepCategoryNames,    // ✅ FIXED: Pass MEP category names
+                                currentReferenceFiles,      // ✅ FIXED: Pass reference files
+                                currentHostFiles            // ✅ FIXED: Pass host files
                             );
                         });
-                        _log($"[FILTER_MGMT] ✅ Saved UI state for filter '{selectedFilter.Name}' to database (HostCategories: {currentHostCategories?.Count ?? 0})");
+                        _log($"[FILTER_MGMT] ✅ Saved UI state for filter '{selectedFilter.Name}' to database (HostCategories: {currentHostCategories?.Count ?? 0}, MepCategories: {currentMepCategoryNames?.Count ?? 0}, RefFiles: {currentReferenceFiles?.Count ?? 0}, HostFiles: {currentHostFiles?.Count ?? 0})");
                     }
                     catch (Exception uiStateEx)
                     {
@@ -1785,7 +1797,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             filter?.Name ?? string.Empty,
                             categoryDisplay ?? string.Empty,
                             filter?.SelectedHostCategories ?? new List<string>(),
-                            filter?.OpeningSettings
+                            filter?.OpeningSettings,
+                            filter?.SelectedMepCategoryNames,    // ✅ FIXED: Pass MEP category names
+                            filter?.SelectedReferenceFiles,      // ✅ FIXED: Pass reference files
+                            filter?.SelectedHostFiles            // ✅ FIXED: Pass host files
                         );
                     });
 
