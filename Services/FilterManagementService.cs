@@ -238,6 +238,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         UseFilterRepository(repo =>
                         {
+                            // 🔍 DEBUG: Log what's being saved for new filter
+                            _log($"[FILTER_MGMT] 🔍 CreateNewFilter about to call SaveFilterUIState with:");
+                            _log($"[FILTER_MGMT]   Filter Name: '{newFilter.Name}'");
+                            _log($"[FILTER_MGMT]   Category Display: '{categoryDisplay}'");
+                            _log($"[FILTER_MGMT]   Host Categories ({newFilter.SelectedHostCategories?.Count ?? 0}): {string.Join(", ", newFilter.SelectedHostCategories ?? new List<string>())}");
+                            _log($"[FILTER_MGMT]   MEP Categories ({newFilter.SelectedMepCategoryNames?.Count ?? 0}): {string.Join(", ", newFilter.SelectedMepCategoryNames ?? new List<string>())}");
+                            _log($"[FILTER_MGMT]   Reference Files ({newFilter.SelectedReferenceFiles?.Count ?? 0}): {string.Join(", ", newFilter.SelectedReferenceFiles ?? new List<string>())}");
+                            _log($"[FILTER_MGMT]   Host Files ({newFilter.SelectedHostFiles?.Count ?? 0}): {string.Join(", ", newFilter.SelectedHostFiles ?? new List<string>())}");
+                            
                             // ✅ STANDARDIZED: Use SelectedHostCategories
                             repo.SaveFilterUIState(
                                 newFilter.Name,
@@ -256,6 +265,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // ⚠️ CRITICAL: Log error but don't fail filter creation - UI state save is important but non-blocking
                         _log($"[FILTER_MGMT] ⚠️ Warning: Could not save UI state to database (non-critical): {uiStateEx.Message}");
                     }
+                    
+                    // ✅ CRITICAL FIX: Update filter object fields with current UI state
+                    newFilter.SelectedMepCategoryName = categoryDisplay;  // ✅ CRITICAL: Update singular field for GetDisplayCategory
+                    newFilter.SelectedMepCategoryNames = FilterUiStateProvider.GetSelectedMepCategoryNames?.Invoke() ?? new List<string>();
+                    newFilter.SelectedReferenceFiles = FilterUiStateProvider.GetSelectedReferenceFiles?.Invoke() ?? new List<string>();
+                    newFilter.SelectedHostFiles = FilterUiStateProvider.GetSelectedHostFiles?.Invoke() ?? new List<string>();
+                    _log($"[FILTER_MGMT] ✅ Updated filter object with UI state: Category='{categoryDisplay}', MepCats={newFilter.SelectedMepCategoryNames.Count}, RefFiles={newFilter.SelectedReferenceFiles.Count}, HostFiles={newFilter.SelectedHostFiles.Count}");
                     
                     // ✅ STEP 3: Only add to UI AFTER successful DB creation
                 AddFilterToList(filterListBox, newFilter);
@@ -667,6 +683,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var currentReferenceFiles = FilterUiStateProvider.GetSelectedReferenceFiles?.Invoke() ?? new List<string>();
                 var currentHostFiles = FilterUiStateProvider.GetSelectedHostFiles?.Invoke() ?? new List<string>();
                 
+                // 🔍 DEBUG: Log what was collected from delegates
+                _log($"[FILTER_MGMT] 🔍 SaveFilter collecting UI state:");
+                _log($"[FILTER_MGMT]   Host Categories ({currentHostCategories?.Count ?? 0}): {string.Join(", ", currentHostCategories ?? new List<string>())}");
+                _log($"[FILTER_MGMT]   MEP Categories ({currentMepCategoryNames?.Count ?? 0}): {string.Join(", ", currentMepCategoryNames ?? new List<string>())}");
+                _log($"[FILTER_MGMT]   Reference Files ({currentReferenceFiles?.Count ?? 0}): {string.Join(", ", currentReferenceFiles ?? new List<string>())}");
+                _log($"[FILTER_MGMT]   Host Files ({currentHostFiles?.Count ?? 0}): {string.Join(", ", currentHostFiles ?? new List<string>())}");
+                
                 // ✅ CRITICAL FIX: Get category from UI state (currently selected MEP category), not from filter object
                 // The filter object may have stale/wrong category (e.g., "Ducts" when user selected "Cable Trays")
                 string categoryDisplay = null;
@@ -762,6 +785,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         UseFilterRepository(repo =>
                         {
+                            // 🔍 DEBUG: Log the parameters being passed
+                            _log($"[FILTER_MGMT] 🔍 About to call SaveFilterUIState with:");
+                            _log($"[FILTER_MGMT]   Filter Name: '{selectedFilter.Name}'");
+                            _log($"[FILTER_MGMT]   Category Display: '{categoryDisplay}'");
+                            _log($"[FILTER_MGMT]   Current Host Categories ({currentHostCategories?.Count ?? 0}): {string.Join(", ", currentHostCategories ?? new List<string>())}");
+                            _log($"[FILTER_MGMT]   Current MEP Category Names ({currentMepCategoryNames?.Count ?? 0}): {string.Join(", ", currentMepCategoryNames ?? new List<string>())}");
+                            _log($"[FILTER_MGMT]   Current Reference Files ({currentReferenceFiles?.Count ?? 0}): {string.Join(", ", currentReferenceFiles ?? new List<string>())}");
+                            _log($"[FILTER_MGMT]   Current Host Files ({currentHostFiles?.Count ?? 0}): {string.Join(", ", currentHostFiles ?? new List<string>())}");
+                            
                             repo.SaveFilterUIState(
                                 selectedFilter.Name,
                                 categoryDisplay,
@@ -784,8 +816,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // This ensures the filter object has the latest data when selected again
                     selectedFilter.OpeningSettings = currentOpeningSettings;
                     selectedFilter.SelectedHostCategories = currentHostCategories;
+                    selectedFilter.SelectedMepCategoryName = categoryDisplay;  // ✅ CRITICAL: Update singular field for GetDisplayCategory
+                    selectedFilter.SelectedMepCategoryNames = currentMepCategoryNames ?? new List<string>();  // ✅ CRITICAL: Update plural field
+                    selectedFilter.SelectedReferenceFiles = currentReferenceFiles ?? new List<string>();  // ✅ CRITICAL: Update reference files
+                    selectedFilter.SelectedHostFiles = currentHostFiles ?? new List<string>();  // ✅ CRITICAL: Update host files
                     UpdateFilterInMemory(selectedFilter.Name, selectedFilter);
-                    _log($"[FILTER_MGMT] ✅ Updated in-memory filter '{selectedFilter.Name}' with current UI state");
+                    _log($"[FILTER_MGMT] ✅ Updated in-memory filter '{selectedFilter.Name}' with current UI state (Category: '{categoryDisplay}', MepCats: {currentMepCategoryNames?.Count ?? 0}, RefFiles: {currentReferenceFiles?.Count ?? 0}, HostFiles: {currentHostFiles?.Count ?? 0})");
                     
                 _updateStatus($"Saved filter: {selectedFilter.Name}");
 

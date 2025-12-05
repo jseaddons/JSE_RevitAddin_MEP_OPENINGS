@@ -1842,6 +1842,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Update Instance ID
                     repository.UpdateSleeveInstanceId(zone.Id, sleeve.Id.IntegerValue);
                     
+                    // ✅ CRITICAL FIX: Get actual placement point from sleeve instance
+                    // Don't rely on zone.SleevePlacementPointX/Y/Z which might be (0,0,0)
+                    XYZ actualPlacementPoint = null;
+                    if (sleeve.Location is LocationPoint locationPoint)
+                    {
+                        actualPlacementPoint = locationPoint.Point;
+                    }
+                    else if (sleeve.Location is LocationCurve locationCurve)
+                    {
+                        var curve = locationCurve.Curve;
+                        if (curve != null)
+                        {
+                            actualPlacementPoint = curve.GetEndPoint(0);
+                        }
+                    }
+                    
+                    // Fallback to zone placement point if we can't get it from instance
+                    if (actualPlacementPoint == null)
+                    {
+                        actualPlacementPoint = zone.SleevePlacementPoint ?? new XYZ(
+                            zone.SleevePlacementPointX,
+                            zone.SleevePlacementPointY,
+                            zone.SleevePlacementPointZ);
+                    }
+                    
                     // Update Placement Data
                     repository.UpdateSleevePlacement(
                         zone.Id,
@@ -1849,12 +1874,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         zone.SleeveWidth,
                         zone.SleeveHeight,
                         zone.SleeveDiameter,
-                        zone.SleevePlacementPointX,
-                        zone.SleevePlacementPointY,
-                        zone.SleevePlacementPointZ,
-                        zone.SleevePlacementPointX, // Active doc coords (same for now)
-                        zone.SleevePlacementPointY,
-                        zone.SleevePlacementPointZ,
+                        actualPlacementPoint.X, // Use actual placement point from instance
+                        actualPlacementPoint.Y,
+                        actualPlacementPoint.Z,
+                        actualPlacementPoint.X, // Active doc coords (same as placement point)
+                        actualPlacementPoint.Y,
+                        actualPlacementPoint.Z,
                         zone.MepElementRotationAngle
                     );
                 }

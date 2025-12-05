@@ -388,10 +388,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 if (firstCz != null)
                 {
                     placementPoint = new XYZ(firstCz.IntersectionPointX, firstCz.IntersectionPointY, firstCz.IntersectionPointZ);
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                            $"[{DateTime.Now:HH:mm:ss}]   ✅ FALLBACK: Using first sleeve intersection point: ({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6})\n");
+                    }
                 }
                 else
                 {
                     placementPoint = XYZ.Zero;
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                            $"[{DateTime.Now:HH:mm:ss}]   ❌ CRITICAL: First sleeve ClashZone is NULL, placementPoint set to XYZ.Zero!\n");
+                    }
+                }
+            }
+            else
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                        $"[{DateTime.Now:HH:mm:ss}]   ✅ Initial placement point from intersections: ({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6})\n");
                 }
             }
 
@@ -863,83 +881,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                 
                                 if (hasMixedOrientations)
                                 {
-                                    // ✅ MIXED X/Y ORIENTATIONS: Build envelope from calculated world bounding boxes
-                                    // Corner-based calculation doesn't work correctly when orientations differ
-                                    // because corners are in different coordinate systems (X-oriented vs Y-oriented)
-                                    var floorBboxes = new List<(XYZ min, XYZ max)>();
+                                    // ✅ MIXED X/Y ORIENTATIONS: Build envelope directly from stored corners
+                                    // Corners are already collected in allCorners - use them directly!
+                                    // This is the most accurate method since corners are the actual sleeve positions
                                     
-                                    foreach (int sleeveId in sleeveIdsInCluster)
+                                    if (allCorners.Count >= 4)
                                     {
-                                        var cz = GetCachedClashZone(sleeveId, xmlFilePath);
-                                        if (cz != null)
-                                        {
-                                            // ✅ Calculate World Bounding Box from Placement Point + Dimensions
-                                            double placementX = cz.SleevePlacementPointActiveDocumentX;
-                                            double placementY = cz.SleevePlacementPointActiveDocumentY;
-                                            double placementZ = cz.SleevePlacementPointActiveDocumentZ;
-                                            
-                                            // ✅ CRITICAL: Get dimensions in feet (stored in feet, no conversion needed)
-                                            double sleeveWidth = cz.SleeveWidth;
-                                            double sleeveHeight = cz.SleeveHeight;
-                                            double sleeveDepth = cz.StructuralElementThickness > 0 ? cz.StructuralElementThickness : 1.0;
-                                            
-                                            double halfWidth, halfHeight;
-                                            
-                                            // Determine orientation (use explicit or inferred)
-                                            bool isY = string.Equals(cz.MepElementOrientationDirection, "Y", StringComparison.OrdinalIgnoreCase);
-                                            if (!isY && string.IsNullOrEmpty(cz.MepElementOrientationDirection))
-                                            {
-                                                // Fallback inference
-                                                double angle = Math.Abs(cz.MepElementRotationAngle);
-                                                while (angle > Math.PI) angle -= Math.PI;
-                                                if (angle > Math.PI / 4.0 && angle < 3.0 * Math.PI / 4.0)
-                                                {
-                                                    isY = true;
-                                                }
-                                            }
-                                            
-                                            // Apply rotation based on orientation
-                                            if (isY)
-                                            {
-                                                // Rotated 90 degrees: Width is along Y, Height is along X
-                                                halfWidth = sleeveHeight / 2.0;  // X-dimension
-                                                halfHeight = sleeveWidth / 2.0;  // Y-dimension
-                                            }
-                                            else
-                                            {
-                                                // Default X orientation: Width is along X, Height is along Y
-                                                halfWidth = sleeveWidth / 2.0;   // X-dimension
-                                                halfHeight = sleeveHeight / 2.0; // Y-dimension
-                                            }
-                                            double halfDepth = sleeveDepth / 2.0;
-                                            
-                                            floorBboxes.Add((
-                                                new XYZ(placementX - halfWidth, placementY - halfHeight, placementZ - halfDepth),
-                                                new XYZ(placementX + halfWidth, placementY + halfHeight, placementZ + halfDepth)
-                                            ));
-                                        }
-                                    }
-                                    
-                                    if (floorBboxes.Count > 0)
-                                    {
-                                        // Union of calculated world sleeve bounding boxes
-                                        double floorMinX = floorBboxes.Min(b => b.min.X);
-                                        double floorMinY = floorBboxes.Min(b => b.min.Y);
-                                        double floorMinZ = floorBboxes.Min(b => b.min.Z);
-                                        double floorMaxX = floorBboxes.Max(b => b.max.X);
-                                        double floorMaxY = floorBboxes.Max(b => b.max.Y);
-                                        double floorMaxZ = floorBboxes.Max(b => b.max.Z);
+                                        // ✅ Use corners directly - they're already in world space and accurate
+                                        double floorMinX = allCorners.Min(c => c.X);
+                                        double floorMinY = allCorners.Min(c => c.Y);
+                                        double floorMinZ = allCorners.Min(c => c.Z);
+                                        double floorMaxX = allCorners.Max(c => c.X);
+                                        double floorMaxY = allCorners.Max(c => c.Y);
+                                        double floorMaxZ = allCorners.Max(c => c.Z);
                                         
                                         cornerWidth = floorMaxX - floorMinX;
                                         cornerHeight = floorMaxY - floorMinY;
                                         cornerDepth = floorMaxZ - floorMinZ;
                                         
-                                        // ✅ Calculate new center point from the union envelope
-                                        placementPoint = new XYZ(
-                                            (floorMinX + floorMaxX) / 2.0,
-                                            (floorMinY + floorMaxY) / 2.0,
-                                            (floorMinZ + floorMaxZ) / 2.0
-                                        );
+                                        // ✅ Calculate new center point from corner extents
+                                        // X and Y: Midpoint of corner extents
+                                        // Z: Get from first sleeve (not from corner extents)
+                                        double midX = (floorMinX + floorMaxX) / 2.0;
+                                        double midY = (floorMinY + floorMaxY) / 2.0;
+                                        double placementZ = 0.0;
+                                        
+                                        // Z from first sleeve in cluster
+                                        if (sleeveIdsInCluster.Count > 0)
+                                        {
+                                            var firstCz = GetCachedClashZone(sleeveIdsInCluster[0], xmlFilePath);
+                                            if (firstCz != null)
+                                            {
+                                                placementZ = firstCz.SleevePlacementPointActiveDocumentZ;
+                                                if (placementZ == 0.0)
+                                                    placementZ = firstCz.IntersectionPointZ;
+                                                if (placementZ == 0.0 && firstCz.SleeveCorner1Z.HasValue)
+                                                    placementZ = firstCz.SleeveCorner1Z.Value;
+                                            }
+                                        }
+                                        
+                                        placementPoint = new XYZ(midX, midY, placementZ);
                                         
                                         // Store bounds for extents
                                         rotatedMinX = floorMinX;
@@ -953,9 +934,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                             double hMm = RevitUnitConversionService.Instance.FromInternalMillimeters(cornerHeight);
                                             double dMm = RevitUnitConversionService.Instance.FromInternalMillimeters(cornerDepth);
                                             SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                                $"[{DateTime.Now:HH:mm:ss}] ✅ FLOOR MIXED X/Y ORIENTATIONS: Building envelope from CALCULATED WORLD bboxes: " +
+                                                $"[{DateTime.Now:HH:mm:ss}] ✅ FLOOR MIXED X/Y ORIENTATIONS: Building envelope from STORED CORNERS: " +
                                                 $"W={wMm:F1}mm, H={hMm:F1}mm, D={dMm:F1}mm, " +
-                                                $"Orientations=[{string.Join(", ", orientations)}], Sleeves={floorBboxes.Count}, " +
+                                                $"Orientations=[{string.Join(", ", orientations)}], Sleeves={sleeveIdsInCluster.Count}, " +
+                                                $"Corners={allCorners.Count}, " +
+                                                $"Min=({floorMinX:F6}, {floorMinY:F6}, {floorMinZ:F6}), " +
+                                                $"Max=({floorMaxX:F6}, {floorMaxY:F6}, {floorMaxZ:F6}), " +
                                                 $"PlacementPoint=({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6})\n");
                                         }
                                         
@@ -972,7 +956,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                     }
                                     else
                                     {
-                                        // ✅ FALLBACK: If mixed orientations detected but bbox calculation failed, continue with corner-based
+                                        // ✅ FALLBACK: If not enough corners, continue with corner-based calculation
                                         hasMixedOrientations = false;
                                     }
                                 }
@@ -986,19 +970,56 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                     
                                     if (isStraightAxis)
                                     {
-                                        // ✅ STRAIGHT AXIS FLOOR: Use corner centroid directly (no rotation needed)
-                                        // Corners are already in world space, so centroid is the correct placement point
-                                        originX = allCorners.Average(c => c.X);
-                                        originY = allCorners.Average(c => c.Y);
-                                        
-                                        // ✅ CRITICAL: Override placement point with corner centroid for straight axis
-                                        placementPoint = new XYZ(originX, originY, allCorners.Average(c => c.Z));
+                                        // ✅ STRAIGHT AXIS FLOOR: 
+                                        // - Z coordinate: Get from first sleeve in cluster
+                                        // - X coordinate: Midpoint of X extents from corners
+                                        // - Y coordinate: Midpoint of Y extents from corners
                                         
                                         // Calculate width/height directly from corner extents (no rotation)
                                         double wcsMinX = allCorners.Min(c => c.X);
                                         double wcsMaxX = allCorners.Max(c => c.X);
                                         double wcsMinY = allCorners.Min(c => c.Y);
                                         double wcsMaxY = allCorners.Max(c => c.Y);
+                                        
+                                        // X and Y midpoints from corner extents
+                                        double midX = (wcsMinX + wcsMaxX) / 2.0;
+                                        double midY = (wcsMinY + wcsMaxY) / 2.0;
+                                        
+                                        // Z from first sleeve in cluster
+                                        double placementZ = 0.0;
+                                        if (sleeveIdsInCluster.Count > 0)
+                                        {
+                                            int firstSleeveId = sleeveIdsInCluster[0];
+                                            var firstCz = GetCachedClashZone(firstSleeveId, xmlFilePath);
+                                            if (firstCz != null)
+                                            {
+                                                placementZ = firstCz.SleevePlacementPointActiveDocumentZ;
+                                                if (placementZ == 0.0)
+                                                    placementZ = firstCz.IntersectionPointZ;
+                                                
+                                                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                                    $"[{DateTime.Now:HH:mm:ss}]   ✅ STRAIGHT AXIS FLOOR: Got Z from first sleeve {firstSleeveId}: " +
+                                                    $"SleevePlacementPointZ={firstCz.SleevePlacementPointActiveDocumentZ:F6}, " +
+                                                    $"IntersectionPointZ={firstCz.IntersectionPointZ:F6}, " +
+                                                    $"Final placementZ={placementZ:F6}\n");
+                                            }
+                                            else
+                                            {
+                                                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                                    $"[{DateTime.Now:HH:mm:ss}]   ⚠️ STRAIGHT AXIS FLOOR: First sleeve {firstSleeveId} ClashZone is NULL!\n");
+                                            }
+                                        }
+                                        else
+                                        {
+                                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                                $"[{DateTime.Now:HH:mm:ss}]   ⚠️ STRAIGHT AXIS FLOOR: sleeveIdsInCluster is EMPTY! Count={sleeveIdsInCluster.Count}\n");
+                                        }
+                                        
+                                        // ✅ CRITICAL: Override placement point with X/Y midpoints and Z from first sleeve
+                                        placementPoint = new XYZ(midX, midY, placementZ);
+                                        
+                                        originX = midX;
+                                        originY = midY;
                                         
                                         cornerWidth = wcsMaxX - wcsMinX;
                                         cornerHeight = wcsMaxY - wcsMinY;
@@ -1010,11 +1031,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                         rotatedMaxY = wcsMaxY;
                                         
                                         SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                            $"[{DateTime.Now:HH:mm:ss}]   ✅ STRAIGHT AXIS FLOOR: Using corner centroid directly (no rotation). " +
-                                            $"Origin (corner centroid): ({originX:F6}, {originY:F6}), " +
+                                            $"[{DateTime.Now:HH:mm:ss}]   ✅ STRAIGHT AXIS FLOOR: X/Y from corner extents midpoints, Z from first sleeve. " +
                                             $"PlacementPoint=({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6}), " +
-                                            $"minX={wcsMinX:F6}, maxX={wcsMaxX:F6}, minY={wcsMinY:F6}, maxY={wcsMaxY:F6}, " +
-                                            $"Width={cornerWidth:F6}, Height={cornerHeight:F6}\n");
+                                            $"X: mid={midX:F6} (min={wcsMinX:F6}, max={wcsMaxX:F6}), " +
+                                            $"Y: mid={midY:F6} (min={wcsMinY:F6}, max={wcsMaxY:F6}), " +
+                                            $"Z: from first sleeve={placementZ:F6}, " +
+                                            $"Width={cornerWidth:F6}, Height={cornerHeight:F6}, allCorners.Count={allCorners.Count}\n");
                                     }
                                     else
                                     {
@@ -1168,6 +1190,45 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                 $"  Sleeve IDs in cluster: {string.Join(", ", sleeveIdsInCluster)}\n" +
                                 $"  Check if MEP_ElementId is set on individual sleeves and if corners are saved to database.\n" +
                                 $"  Check if SleevePersistenceService.PersistSleeveData was called after placement.\n");
+                            
+                            // ✅ FALLBACK FOR STRAIGHT-AXIS FLOOR CLUSTERS: Use individual sleeve placement points if corners are missing
+                            // This ensures cluster sleeves are still placed correctly even if corner saving failed
+                            bool isStraightAxis = Math.Abs(rotationAngle) < 1e-6;
+                            bool isFloorHost = !isWallOrFraming;
+                            
+                            if (isStraightAxis && isFloorHost && placementPoint.IsZeroLength())
+                            {
+                                // ✅ FALLBACK: Calculate placement point from individual sleeve placement points
+                                var placementPoints = new List<XYZ>();
+                                foreach (int sleeveId in sleeveIdsInCluster)
+                                {
+                                    var cz = GetCachedClashZone(sleeveId, xmlFilePath);
+                                    if (cz != null)
+                                    {
+                                        double px = cz.SleevePlacementPointActiveDocumentX;
+                                        double py = cz.SleevePlacementPointActiveDocumentY;
+                                        double pz = cz.SleevePlacementPointActiveDocumentZ;
+                                        
+                                        if (px != 0.0 || py != 0.0 || pz != 0.0)
+                                        {
+                                            placementPoints.Add(new XYZ(px, py, pz));
+                                        }
+                                    }
+                                }
+                                
+                                if (placementPoints.Count > 0)
+                                {
+                                    placementPoint = new XYZ(
+                                        placementPoints.Average(p => p.X),
+                                        placementPoints.Average(p => p.Y),
+                                        placementPoints.Average(p => p.Z)
+                                    );
+                                    
+                                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                        $"[{DateTime.Now:HH:mm:ss}]   ✅ FALLBACK: Calculated placement point from {placementPoints.Count} individual sleeve placement points: " +
+                                        $"({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6})\n");
+                                }
+                            }
                             
                             // ❌ NO FALLBACK: Throw exception to force investigation - corners MUST be available
                             throw new InvalidOperationException(
