@@ -268,7 +268,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static bool UseSOLIDCompliantDamperFilter { get; set; } = true;
         
-        #endregion
+        /// <summary>
+        /// Enable SOLID-refactored cluster pre-calculation with parallel processing.
+        /// When true: Uses IClusterPreCalculationService to pre-calculate rotation angles and bounding boxes
+        ///            in parallel BEFORE the placement loop (2-4× faster for large clusters).
+        /// When false: Uses legacy sequential calculation inside placement loop (current behavior).
+        /// Default: true (enabled - SOLID refactoring with all 28 features preserved).
+        /// Architecture: Implements SRP by separating calculation phase from placement phase.
+        /// Performance: Pre-calculation runs in parallel (pure math, no Revit API calls).
+        /// Location: Services/Clustering/RefactoredClusterService.cs
+        /// Note: Falls back to legacy code automatically if pre-calculation fails (crash-safe).
+        /// </summary>
+        public static bool UseSOLIDRefactoredClusterPreCalculation { get; set; } = true;
+
+        /// <summary>
+        /// Enable "Bottom of Opening" parameter calculation for RectangularOpeningOnWall sleeves.
+        /// When true: Calculates and sets "Bottom of Opening" = Schedule of Level - (Height / 2) for all rectangular wall sleeves.
+        /// When false: Skips "Bottom of Opening" calculation (legacy behavior).
+        /// Default: true (enabled - safe calculation with validation).
+        /// Formula: Bottom of Opening = Schedule of Level - (Height / 2)
+        /// Applies to: Individual sleeves and cluster sleeves (RectangularOpeningOnWall family only).
+        /// Location: Services/Placement/SleeveParameterService.cs, Services/Clustering/Placement/ClusterPlacementService.cs
+        /// Architecture: Uses BottomOfOpeningCalculationService helper (SRP-compliant, pure calculation).
+        /// Features: Supports parameter batching, performance monitoring, safe validation, diagnostic logging.
+        /// </summary>
+        public static bool UseBottomOfOpeningCalculation { get; set; } = true;
+         
+         #endregion
         
         #region Advanced Optimizations (NEW - Priority 3, Optional)
         

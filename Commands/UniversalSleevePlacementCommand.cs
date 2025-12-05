@@ -32,7 +32,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         private readonly string _logPrefix;
         private OpeningConditions _conditions;
         private readonly Dictionary<string, double> _clearanceSettings;
-        private UniversalSleevePlacerService? _service; // Not readonly - set during Execute
         
         // ✅ SOLID REFACTORED: Injected services (optional - created if null when flag is enabled)
         private readonly IConditionsLoader? _conditionsLoader;
@@ -47,9 +46,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         public int PlacedCount { get; private set; }
         public int SkippedCount { get; private set; }
         public int ErrorCount { get; private set; }
-        
-        // ✅ BATCHING: Expose service so orchestrator can flush deferred parameters
-        public UniversalSleevePlacerService? Service => _service;
 
         public UniversalSleevePlacementCommand(
             Document doc, 
@@ -319,123 +315,70 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         
                         int placed = 0, skipped = 0, errors = 0;
 
-                        // ✅ TESTING MODE: Use NewSleevePlacerService (SRP-compliant refactored service)
-                        // ✅ ENABLED: UseNewSleevePlacerService flag is set to true in OptimizationFlags.cs
-                        // ✅ DIAGNOSTIC: Always log which service is being used (even in deployment mode)
+                        // ✅ REFACTORED: Always use NewSleevePlacerService (SOLID-compliant refactored service)
+                        // ✅ LEGACY REMOVED: UniversalSleevePlacerService dependency has been removed
+                        // ✅ DIAGNOSTIC: Log that we're using the NEW service (always log)
                         SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [COMMAND] 🔍 UseNewSleevePlacerService flag = {OptimizationFlags.UseNewSleevePlacerService}\n");
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [COMMAND] ✅ USING NEW SERVICE: NewSleevePlacerService (SRP-compliant)\n");
                         
-                        if (OptimizationFlags.UseNewSleevePlacerService)
+                        // ✅ NEW: Use refactored NewSleevePlacerService (SOLID principles)
+                        // ✅ WIRED: Use refactored command services when flag enabled
+                        var sleeveRepository = new Services.Repositories.SleeveRepository();
+                        var zoneFilterService = new ZoneFilterService();
+                        var flagManager = new FlagManager(_doc);
+                        
+                        // ✅ SOLID REFACTORED: Inject refactored services if flag enabled
+                        IConditionsLoader? conditionsLoader = null;
+                        IFileNameNormalizer? fileNameNormalizer = null;
+                        ISectionBoxChecker? sectionBoxChecker = null;
+                        
+                        if (OptimizationFlags.UseRefactoredCommandServices)
                         {
-                            // ✅ NEW: Use refactored NewSleevePlacerService (SOLID principles)
-                            // ✅ WIRED: Use refactored command services when flag enabled
-                            var sleeveRepository = new Services.Repositories.SleeveRepository();
-                            var zoneFilterService = new ZoneFilterService();
-                            var flagManager = new FlagManager(_doc);
+                            conditionsLoader = new Services.Refactored.ConditionsLoaderService(_doc);
+                            // Reload conditions using refactored service
+                            _conditions = conditionsLoader.LoadConditions(_filterName, _category);
                             
-                            // ✅ SOLID REFACTORED: Inject refactored services if flag enabled
-                            IConditionsLoader? conditionsLoader = null;
-                            IFileNameNormalizer? fileNameNormalizer = null;
-                            ISectionBoxChecker? sectionBoxChecker = null;
-                            
-                            if (OptimizationFlags.UseRefactoredCommandServices)
-                            {
-                                conditionsLoader = new Services.Refactored.ConditionsLoaderService(_doc);
-                                // Reload conditions using refactored service
-                                _conditions = conditionsLoader.LoadConditions(_filterName, _category);
-                                
-                                // ✅ WIRED: Create refactored services for NewSleevePlacerService
-                                fileNameNormalizer = new Services.Refactored.FileNameNormalizerService();
-                                sectionBoxChecker = new Services.Refactored.SectionBoxCheckerService();
-                            }
-                            
-                            // ✅ CRASH-SAFE: Create crash-safe executor if enabled
-                            CrashSafeExecutor? crashSafeExecutor = null;
-                            if (OptimizationFlags.UseCrashSafeExecution)
-                            {
-                                crashSafeExecutor = new CrashSafeExecutor();
-                            }
-                            
-                            // ✅ DIAGNOSTIC: Log that we're using the NEW service (always log)
-                            SafeFileLogger.SafeAppendText("placement_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [COMMAND] ✅ USING NEW SERVICE: NewSleevePlacerService (SRP-compliant)\n");
-                            
-                            var newPlacerService = new JSE_RevitAddin_MEP_OPENINGS.Services.NewSleevePlacerService(
-                                _doc,
-                                _conditions,
-                                _strategy,
-                                _clearanceSettings,
-                                sleeveRepository,
-                                zoneFilterService,
-                                null, // familyManager (not yet implemented)
-                                null, // flagManager - refactored IFlagManager not yet ready (legacy FlagManager cannot be used here)
-                                isReplayPath,
-                                _filterName,
-                                null, // sizingService (will use default)
-                                fileNameNormalizer,  // ✅ WIRED: Pass refactored services
-                                sectionBoxChecker,   // ✅ WIRED: Pass refactored services
-                                crashSafeExecutor);  // ✅ CRASH-SAFE: Pass crash-safe executor
-                            
-                            (placed, skipped, errors) = newPlacerService.PlaceAllSleevesInTransaction(filteredClashZones);
-                            
-                            // ✅ DIAGNOSTIC: Log results from new service
-                            SafeFileLogger.SafeAppendText("placement_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [COMMAND] ✅ NEW SERVICE RESULT: Placed={placed}, Skipped={skipped}, Errors={errors}\n");
-                            
-                            // ✅ CRITICAL: Set properties so orchestrator can access counts
-                            PlacedCount = placed;
-                            SkippedCount = skipped;
-                            ErrorCount = errors;
+                            // ✅ WIRED: Create refactored services for NewSleevePlacerService
+                            fileNameNormalizer = new Services.Refactored.FileNameNormalizerService();
+                            sectionBoxChecker = new Services.Refactored.SectionBoxCheckerService();
                         }
-                        else
+                        
+                        // ✅ CRASH-SAFE: Create crash-safe executor if enabled
+                        CrashSafeExecutor? crashSafeExecutor = null;
+                        if (OptimizationFlags.UseCrashSafeExecution)
                         {
-                            // ✅ DIAGNOSTIC: Log that we're using the LEGACY service (always log)
-                            SafeFileLogger.SafeAppendText("placement_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [COMMAND] ⚠️ USING LEGACY SERVICE: UniversalSleevePlacerService\n");
-                            
-                            // ✅ LEGACY: Use existing UniversalSleevePlacerService (proven working implementation)
-                            // ✅ FIX: Pass isReplayPath parameter so PATH 1 uses saved sizes without calculations
-                            var placerService = new UniversalSleevePlacerService(
-                                _doc, 
-                                _conditions, 
-                                _strategy, 
-                                _clearanceSettings, 
-                                _filterName,
-                                null, // flagManager (will be created internally)
-                                isReplayPath); // ✅ CRITICAL: Pass placement path flag
-                            
-                            // ✅ BATCHING: Store service reference so orchestrator can flush deferred parameters
-                            _service = placerService;
-                            
-                            (placed, skipped, errors) = placerService.PlaceAllSleevesInTransaction(filteredClashZones);
-                            
-                            // ✅ CRITICAL: Set properties so orchestrator can access counts
-                            PlacedCount = placed;
-                            SkippedCount = skipped;
-                            ErrorCount = errors;
-                            
-                            // ✅ DIAGNOSTIC: Log BEFORE flush check (unconditional - always runs)
-                            System.IO.File.AppendAllText(@"C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Logs\R2023\placement_debug.log", 
-                                $"[{DateTime.Now:HH:mm:ss}] FLUSH-CHECK: placed={placed}, UseBatching={OptimizationFlags.UseBatchedParameterWrites}, DeployMode={DeploymentConfiguration.DeploymentMode}\n");
-                            
-                            // ✅ CRITICAL BATCHING FIX: Flush deferred parameters BEFORE transaction commit
-                            // Parameters were deferred during placement, must flush before Revit commits the transaction
-                            if (OptimizationFlags.UseBatchedParameterWrites && placed > 0)
-                            {
-                                System.IO.File.AppendAllText(@"C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Logs\R2023\placement_debug.log", 
-                                    $"[{DateTime.Now:HH:mm:ss}] [COMMAND-FLUSH] 🔄 Flushing {placed} sleeve parameters before transaction commit...\n");
-                                
-                                placerService.FlushDeferredParameters();
-                                
-                                System.IO.File.AppendAllText(@"C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Logs\R2023\placement_debug.log", 
-                                    $"[{DateTime.Now:HH:mm:ss}] [COMMAND-FLUSH] ✅ Parameters flushed successfully\n");
-                            }
-                            else
-                            {
-                                System.IO.File.AppendAllText(@"C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Logs\R2023\placement_debug.log", 
-                                    $"[{DateTime.Now:HH:mm:ss}] FLUSH-SKIPPED: UseBatching={OptimizationFlags.UseBatchedParameterWrites}, placed={placed}\n");
-                            }
+                            crashSafeExecutor = new CrashSafeExecutor();
                         }
+                        
+                        var newPlacerService = new JSE_RevitAddin_MEP_OPENINGS.Services.NewSleevePlacerService(
+                            _doc,
+                            _conditions,
+                            _strategy,
+                            _clearanceSettings,
+                            sleeveRepository,
+                            zoneFilterService,
+                            null, // familyManager (not yet implemented)
+                            null, // flagManager - refactored IFlagManager not yet ready (legacy FlagManager cannot be used here)
+                            isReplayPath,
+                            _filterName,
+                            null, // sizingService (will use default)
+                            fileNameNormalizer,  // ✅ WIRED: Pass refactored services
+                            sectionBoxChecker,   // ✅ WIRED: Pass refactored services
+                            crashSafeExecutor);  // ✅ CRASH-SAFE: Pass crash-safe executor
+                        
+                        (placed, skipped, errors) = newPlacerService.PlaceAllSleevesInTransaction(filteredClashZones);
+                        
+                        // ✅ DIAGNOSTIC: Log results from new service
+                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [COMMAND] ✅ NEW SERVICE RESULT: Placed={placed}, Skipped={skipped}, Errors={errors}\n");
+                        
+                        // ✅ CRITICAL: Set properties so orchestrator can access counts
+                        PlacedCount = placed;
+                        SkippedCount = skipped;
+                        ErrorCount = errors;
+                        
+                        // ✅ NOTE: Parameter flushing is handled internally by NewSleevePlacerService
+                        // No external flush needed - SleeveParameterService.FlushDeferredParameters() is called automatically
                         // Commit and check status
                         var status = t.Commit();
                         if (status == TransactionStatus.Committed)

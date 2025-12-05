@@ -6,6 +6,7 @@ using Autodesk.Revit.DB.Structure;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Utils;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 {
@@ -114,6 +115,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 {
                     SetMepMetadata(instance, zone, currentSleeveId);
                     SetDamperClearances(instance, zone, currentSleeveId);
+                }
+
+                // ✅ BOTTOM OF OPENING: Calculate and set "Bottom of Opening" for RectangularOpeningOnWall sleeves
+                if (OptimizationFlags.UseBottomOfOpeningCalculation && !isCircular)
+                {
+                    SetBottomOfOpeningParameter(instance, roundedHeight, currentSleeveId, zone);
                 }
             }
         }
@@ -669,6 +676,289 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             }
             
             return currentThickness;
+        }
+
+        /// <summary>
+        /// ✅ SRP COMPLIANCE: Dedicated method for setting "Bottom of Opening" parameter.
+        /// Single Responsibility: Calculate and set Bottom of Opening parameter only.
+        /// 
+        /// Formula: Bottom of Opening = Schedule of Level - (Height / 2)
+        /// Where Schedule of Level is the height from level elevation to placement point (center of opening).
+        /// 
+        /// Applies to: RectangularOpeningOnWall family only.
+        /// Preserves all optimization features: batching, performance monitoring, safe validation, diagnostic logging.
+        /// </summary>
+        private void SetBottomOfOpeningParameter(FamilyInstance instance, double height, ElementId currentSleeveId, ClashZone zone = null)
+        {
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                SafeFileLogger.SafeAppendText("placement_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] 🔍 ENTRY: Zone={zone?.Id}, Sleeve={instance?.Id}, Height={height * 304.8:F1}mm\n");
+            }
+            
+            if (instance == null)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("placement_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Instance is NULL - skipping\n");
+                }
+                return;
+            }
+
+            // ✅ FAMILY CHECK: Only apply to RectangularOpeningOnWall family
+            string familyName = instance.Symbol?.FamilyName ?? "";
+            if (!familyName.Equals("RectangularOpeningOnWall", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("placement_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone={zone?.Id}, Sleeve={instance.Id}: " +
+                        $"Skipping - family is '{familyName}' (expected 'RectangularOpeningOnWall')\n");
+                }
+                return; // Not the correct family - skip silently
+            }
+
+            // ✅ SAFE ELEMENT VALIDATION: Validate instance is still valid
+            if (OptimizationFlags.UseSafeElementValidation)
+            {
+                if (!ValidateElement(instance))
+                    return;
+            }
+
+            try
+            {
+                // ✅ PARAMETER READING: Read "Schedule of Level" from MEP element (not sleeve)
+                // Schedule of Level = MEP element placement point Z - Reference Level elevation
+                double? scheduleOfLevel = null;
+                
+                if (zone != null)
+                {
+                    // ✅ PRIORITY 1: Read "Schedule of Level" from MEP parameter snapshot (database)
+                    // This works even if MEP element is in linked file or has been deleted
+                    if (zone.MepParameterValues != null && zone.MepParameterValues.Count > 0)
+                    {
+                        var scheduleParam = zone.MepParameterValues.FirstOrDefault(p => 
+                            p.Key.Equals("Schedule of Level", StringComparison.OrdinalIgnoreCase) ||
+                            p.Key.Equals("Schedule Level", StringComparison.OrdinalIgnoreCase) ||
+                            p.Key.Equals("Elevation from Level", StringComparison.OrdinalIgnoreCase));
+                        
+                        if (scheduleParam != null && !string.IsNullOrEmpty(scheduleParam.Value))
+                        {
+                            if (double.TryParse(scheduleParam.Value, out double scheduleValue))
+                            {
+                                scheduleOfLevel = scheduleValue;
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    SafeFileLogger.SafeAppendText("placement_debug.log",
+                                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] Zone={zone?.Id}, Sleeve={instance.Id}: " +
+                                        $"Read Schedule of Level={scheduleOfLevel.Value * 304.8:F1}mm from MEP parameter snapshot\n");
+                                }
+                            }
+                        }
+                    }
+                    
+                    // ✅ PRIORITY 2: Calculate from stored intersection point and level elevation
+                    // This works even if MEP element is in linked file
+                    if (!scheduleOfLevel.HasValue && zone.IntersectionPointZ != 0.0 && zone.MepElementLevelElevation != 0.0)
+                    {
+                        scheduleOfLevel = zone.IntersectionPointZ - zone.MepElementLevelElevation;
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("placement_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] Zone={zone?.Id}, Sleeve={instance.Id}: " +
+                                $"Calculated Schedule of Level={scheduleOfLevel.Value * 304.8:F1}mm from stored values " +
+                                $"(Intersection Z={zone.IntersectionPointZ * 304.8:F1}mm, Level Elev={zone.MepElementLevelElevation * 304.8:F1}mm)\n");
+                        }
+                    }
+                    
+                    // ✅ PRIORITY 3: Try to get MEP element from document (for active document elements only)
+                    if (!scheduleOfLevel.HasValue && zone.MepElementId != null && zone.MepElementId != ElementId.InvalidElementId)
+                    {
+                        try
+                        {
+                            // Try to get MEP element from the document
+                            var mepElement = _doc.GetElement(zone.MepElementId);
+                            if (mepElement != null && mepElement.IsValidObject)
+                            {
+                                // ✅ FIRST: Try to read "Schedule of Level" parameter directly from MEP element
+                                Parameter mepScheduleParam = mepElement.LookupParameter("Schedule of Level") 
+                                                           ?? mepElement.LookupParameter("Schedule Level")
+                                                           ?? mepElement.LookupParameter("Elevation from Level");
+                                
+                                if (mepScheduleParam != null && mepScheduleParam.StorageType == StorageType.Double)
+                                {
+                                    scheduleOfLevel = mepScheduleParam.AsDouble();
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] Zone={zone?.Id}, Sleeve={instance.Id}: " +
+                                            $"Read Schedule of Level={scheduleOfLevel.Value * 304.8:F1}mm from MEP element parameter\n");
+                                    }
+                                }
+                                else
+                                {
+                                    // ✅ FALLBACK: Calculate Schedule of Level from MEP element placement point and level elevation
+                                    // Get MEP element's placement point Z
+                                    double mepPlacementZ = 0.0;
+                                    if (mepElement.Location is LocationPoint locPoint)
+                                    {
+                                        mepPlacementZ = locPoint.Point.Z;
+                                    }
+                                    else if (mepElement.Location is LocationCurve locCurve)
+                                    {
+                                        var curve = locCurve.Curve;
+                                        if (curve != null)
+                                        {
+                                            mepPlacementZ = (curve.GetEndPoint(0).Z + curve.GetEndPoint(1).Z) / 2.0;
+                                        }
+                                    }
+                                    
+                                    // Get MEP element's reference level elevation
+                                    double levelElevation = 0.0;
+                                    var refLevel = Helpers.HostLevelHelper.GetHostReferenceLevel(_doc, mepElement);
+                                    if (refLevel != null)
+                                    {
+                                        levelElevation = refLevel.Elevation;
+                                    }
+                                    else if (mepElement.LevelId != ElementId.InvalidElementId)
+                                    {
+                                        var level = _doc.GetElement(mepElement.LevelId) as Level;
+                                        if (level != null)
+                                        {
+                                            levelElevation = level.Elevation;
+                                        }
+                                    }
+                                    
+                                    // Calculate Schedule of Level = placement point Z - level elevation
+                                    if (mepPlacementZ != 0.0 && levelElevation != 0.0)
+                                    {
+                                        scheduleOfLevel = mepPlacementZ - levelElevation;
+                                        
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            SafeFileLogger.SafeAppendText("placement_debug.log",
+                                                $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] Zone={zone?.Id}, Sleeve={instance.Id}: " +
+                                                $"Calculated Schedule of Level={scheduleOfLevel.Value * 304.8:F1}mm from MEP element (MEP Z={mepPlacementZ * 304.8:F1}mm, Level Elev={levelElevation * 304.8:F1}mm)\n");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("placement_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone={zone?.Id}, Sleeve={instance.Id}: " +
+                                    $"Error reading MEP element for Schedule of Level: {ex.Message}\n");
+                            }
+                        }
+                    }
+                }
+                
+                // ✅ PRIORITY 4: If all MEP element reads failed, try reading from sleeve parameter
+                if (!scheduleOfLevel.HasValue)
+                {
+                    Parameter scheduleParam = instance.LookupParameter("Schedule of Level") 
+                                           ?? instance.LookupParameter("Schedule Level")
+                                           ?? instance.LookupParameter("Elevation from Level");
+
+                    if (scheduleParam != null && scheduleParam.StorageType == StorageType.Double)
+                    {
+                        scheduleOfLevel = scheduleParam.AsDouble();
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("placement_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] Zone={zone?.Id}, Sleeve={instance.Id}: " +
+                                $"Read Schedule of Level={scheduleOfLevel.Value * 304.8:F1}mm from sleeve parameter (fallback)\n");
+                        }
+                    }
+                }
+
+                // ✅ VALIDATION: Check if Schedule of Level is valid
+                if (!scheduleOfLevel.HasValue || 
+                    !BottomOfOpeningCalculationService.IsValidScheduleOfLevel(scheduleOfLevel.Value))
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone={zone?.Id}, Sleeve={instance.Id}: " +
+                            $"Schedule of Level parameter not found or invalid (value={scheduleOfLevel?.ToString() ?? "null"}) - skipping\n");
+                    }
+                    return; // Graceful degradation - skip if Schedule of Level is missing or invalid
+                }
+
+                // ✅ VALIDATION: Check if Height is valid
+                if (!BottomOfOpeningCalculationService.IsValidHeight(height))
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone={zone?.Id}, Sleeve={instance.Id}: " +
+                            $"Height is invalid (value={height * 304.8:F1}mm) - skipping\n");
+                    }
+                    return; // Graceful degradation - skip if Height is invalid
+                }
+
+                // ✅ CALCULATION: Calculate Bottom of Opening using helper service
+                double? bottomOfOpening = BottomOfOpeningCalculationService.CalculateBottomOfOpening(
+                    scheduleOfLevel.Value, height);
+
+                if (!bottomOfOpening.HasValue)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone={zone?.Id}, Sleeve={instance.Id}: " +
+                            $"Calculation returned null (Schedule={scheduleOfLevel.Value * 304.8:F1}mm, Height={height * 304.8:F1}mm) - skipping\n");
+                    }
+                    return; // Graceful degradation - skip if calculation fails
+                }
+
+                // ✅ PARAMETER SETTING: Set "Bottom of Opening" parameter with batching support
+                var bottomParam = instance.LookupParameter("Bottom of Opening");
+                if (bottomParam != null && !bottomParam.IsReadOnly)
+                {
+                    if (OptimizationFlags.UseBatchedParameterWrites)
+                    {
+                        if (!_deferredParameters.ContainsKey(currentSleeveId))
+                            _deferredParameters[currentSleeveId] = new Dictionary<string, object>();
+                        _deferredParameters[currentSleeveId]["Bottom of Opening"] = bottomOfOpening.Value;
+                    }
+                    else
+                    {
+                        bottomParam.Set(bottomOfOpening.Value);
+                    }
+
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ✅ Zone={zone?.Id}, Sleeve={instance.Id}: " +
+                            $"Set Bottom of Opening={bottomOfOpening.Value * 304.8:F1}mm " +
+                            $"(Schedule={scheduleOfLevel.Value * 304.8:F1}mm, Height={height * 304.8:F1}mm)\n");
+                    }
+                }
+                else
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone={zone?.Id}, Sleeve={instance.Id}: " +
+                            $"'Bottom of Opening' parameter not found or read-only\n");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // ✅ CRASH-SAFE: Graceful error handling
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("placement_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ❌ Zone={zone?.Id}, Sleeve={instance.Id}: " +
+                        $"Error setting Bottom of Opening: {ex.Message}\n");
+                }
+            }
         }
     }
 }

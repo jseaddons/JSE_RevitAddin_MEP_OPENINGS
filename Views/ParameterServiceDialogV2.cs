@@ -1288,28 +1288,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     // Create parameter transfer service
                     var transferService = new ParameterTransferService();
                     
-                    // Get all openings (individual + cluster) in the document
-                    // Only match the 4 specific opening families: RectangularOpeningOnWall, RectangularOpeningOnSlab, CircularOpeningOnWall, CircularOpeningOnSlab
-                    var allOpeningInstances = new FilteredElementCollector(_document)
-                        .OfClass(typeof(FamilyInstance))
-                        .Cast<FamilyInstance>()
-                        .Where(fi => {
-                            var famName = fi.Symbol?.Family?.Name ?? string.Empty;
-                            // Match only the 4 specific opening families
-                            return famName.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0
-                                || famName.IndexOf("OpeningOnSlab", StringComparison.OrdinalIgnoreCase) >= 0;
-                        })
-                        .ToList();
+                    // ✅ OPTIMIZATION 1: Section Box Filtering DURING COLLECTION (not after)
+                    // Filter sleeves at collection time if section box is active, NOT after loading all elements
+                    ElementFilter sectionBoxFilter = null;
+                    int totalSleeveCountBeforeFilter = 0;
                     
-                    // Log family names for debugging
-                    var familyNames = allOpeningInstances
-                        .Select(fi => fi.Symbol?.Family?.Name ?? "Unknown")
-                        .Distinct()
-                        .ToList();
-                    DebugLogger.Info($"[ParameterServiceDialogV2] Found opening families: {string.Join(", ", familyNames)}");
-                    
-                    // ✅ OPTIMIZATION 1: Section Box Filtering for sleeves (80-95% reduction in processing time)
-                    List<FamilyInstance> sleevesToProcess = allOpeningInstances;
                     if (Services.OptimizationFlags.UseSectionBoxFilterForParameterTransfer && _uiDocument != null)
                     {
                         try
@@ -1320,43 +1303,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                                 if (sectionBoxBounds != null)
                                 {
                                     var sectionBoxOutline = new Outline(sectionBoxBounds.Min, sectionBoxBounds.Max);
-                                    var sectionBoxFilter = new BoundingBoxIntersectsFilter(sectionBoxOutline);
-                                    
-                                    var sleeveIds = allOpeningInstances.Select(fi => fi.Id).ToList();
-                                    var filteredIds = new FilteredElementCollector(_document, sleeveIds)
-                                        .WherePasses(sectionBoxFilter)
-                                        .ToElementIds();
-                                    
-                                    sleevesToProcess = allOpeningInstances
-                                        .Where(fi => filteredIds.Contains(fi.Id))
-                                        .ToList();
-                                    
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        DebugLogger.Info($"[ParameterServiceDialogV2] ✅ Section box filtering: {allOpeningInstances.Count} total sleeves → {sleevesToProcess.Count} in section box ({100.0 * sleevesToProcess.Count / Math.Max(1, allOpeningInstances.Count):F1}%)");
-                                    }
+                                    sectionBoxFilter = new BoundingBoxIntersectsFilter(sectionBoxOutline);
                                 }
                             }
                         }
                         catch (Exception sectionBoxEx)
                         {
-                            // Safe fallback: Use all sleeves if section box filtering fails
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                DebugLogger.Warning($"[ParameterServiceDialogV2] ⚠️ Section box filtering failed, using all sleeves: {sectionBoxEx.Message}");
+                                DebugLogger.Warning($"[ParameterServiceDialogV2] ⚠️ Section box filter setup failed: {sectionBoxEx.Message}");
                             }
-                            sleevesToProcess = allOpeningInstances;
                         }
                     }
                     
-                    // Fallback: If section box filter returns 0 but we have sleeves, use all sleeves
-                    if (sleevesToProcess.Count == 0 && allOpeningInstances.Count > 0)
+                    // Build collector with section box filter applied DURING collection if available
+                    var collector = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance));
+                    
+                    if (sectionBoxFilter != null)
                     {
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            DebugLogger.Info($"[ParameterServiceDialogV2] ⚠️ Section box filter returned 0 sleeves, falling back to all {allOpeningInstances.Count} sleeves");
-                        }
-                        sleevesToProcess = allOpeningInstances;
+                        collector = (FilteredElementCollector)collector.WherePasses(sectionBoxFilter);
+                    }
+                    
+                    // Now get all openings (individual + cluster) in the document, pre-filtered by section box if active
+                    // Only match the 4 specific opening families: RectangularOpeningOnWall, RectangularOpeningOnSlab, CircularOpeningOnWall, CircularOpeningOnSlab
+                    var sleevesToProcess = collector
+                        .Cast<FamilyInstance>()
+                        .Where(fi => {
+                            var famName = fi.Symbol?.Family?.Name ?? string.Empty;
+                            // Match only the 4 specific opening families
+                            return famName.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0
+                                || famName.IndexOf("OpeningOnSlab", StringComparison.OrdinalIgnoreCase) >= 0;
+                        })
+                        .ToList();
+                    
+                    // Log family names for debugging
+                    var familyNames = sleevesToProcess
+                        .Select(fi => fi.Symbol?.Family?.Name ?? "Unknown")
+                        .Distinct()
+                        .ToList();
+                    DebugLogger.Info($"[ParameterServiceDialogV2] Found opening families: {string.Join(", ", familyNames)}");
+                    
+                    if (sectionBoxFilter != null && !DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[ParameterServiceDialogV2] ✅ Section box filtering applied during collection: {sleevesToProcess.Count} sleeves within section box");
                     }
                     
                     var openings = sleevesToProcess.Select(fi => fi.Id).ToList();

@@ -393,6 +393,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                         )", transaction);
 
                     EnsureSleeveSnapshotTable(transaction);
+                    EnsureParameterTransferFlagsTable(transaction);
+                    EnsureCategoryProcessingMarkersTable(transaction);
                     EnsureClusterSleevesTable(transaction);
                     
                     // ✅ R-TREE: Create R-tree virtual table for spatial indexing (if enabled)
@@ -535,6 +537,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                 using (var transaction = _connection.BeginTransaction())
                 {
                     EnsureSleeveSnapshotTable(transaction);
+                    EnsureParameterTransferFlagsTable(transaction);
+                    EnsureCategoryProcessingMarkersTable(transaction);
                     EnsureClusterSleevesTable(transaction);
                     
                     // ✅ R-TREE: Create R-tree table for existing databases (if enabled)
@@ -857,6 +861,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
             ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_sleevesnapshots_sleeve ON SleeveSnapshots(SleeveInstanceId)", transaction);
             ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_sleevesnapshots_cluster ON SleeveSnapshots(ClusterInstanceId)", transaction);
             ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_sleevesnapshots_guid ON SleeveSnapshots(ClashZoneGuid)", transaction);
+        }
+
+        /// <summary>
+        /// ✅ PARAMETER TRANSFER OPTIMIZATION: Create ParameterTransferFlags table
+        /// Stores flags for which parameters have been transferred to which sleeves
+        /// Enables ultra-fast skip lookup (just check if record exists) instead of comparing values
+        /// </summary>
+        private void EnsureParameterTransferFlagsTable(SQLiteTransaction transaction)
+        {
+            // ✅ FIX: Remove FK to ClashZones to avoid mismatch errors on existing DBs
+            // We only need a fast lookup table; integrity is enforced at application level.
+            ExecuteCommand("DROP TABLE IF EXISTS ParameterTransferFlags", transaction);
+
+            ExecuteCommand(@"CREATE TABLE IF NOT EXISTS ParameterTransferFlags (
+                    FlagId              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    SleeveInstanceId    INTEGER NOT NULL,
+                    ParameterName       TEXT NOT NULL,
+                    TransferredAt       DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
+                    UNIQUE(SleeveInstanceId, ParameterName)
+                )", transaction);
+
+            ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_transfer_flags_sleeve ON ParameterTransferFlags(SleeveInstanceId)", transaction);
+            ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_transfer_flags_param ON ParameterTransferFlags(ParameterName)", transaction);
+        }
+
+        /// <summary>
+        /// ✅ CATEGORY PROCESSING METADATA: Create ProcessingMarkers table
+        /// Tracks the last processed sleeve count per category to enable incremental processing
+        /// Instead of recounting from 1, we only append new sleeves since last mark
+        /// </summary>
+        private void EnsureCategoryProcessingMarkersTable(SQLiteTransaction transaction)
+        {
+            ExecuteCommand(@"CREATE TABLE IF NOT EXISTS CategoryProcessingMarkers (
+                    MarkerId            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Category            TEXT NOT NULL UNIQUE,
+                    LastProcessedCount  INTEGER NOT NULL DEFAULT 0,
+                    LastProcessedSleeveIds TEXT,
+                    MarkedAt            DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
+                    UpdatedAt           DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes'))
+                )", transaction);
+
+            ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_markers_category ON CategoryProcessingMarkers(Category)", transaction);
         }
 
         /// <summary>

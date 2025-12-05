@@ -24,6 +24,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         // ✅ OPTIMIZATION: Cache max mark numbers per category+prefix combination to avoid repeated database queries
         private Dictionary<string, int>? _maxMarkNumberCache;
         private Document? _maxMarkCacheDocument = null;
+
+        // ✅ OPTIMIZATION: Cache resolved prefixes by category + system/service type (avoid repeated lookups)
+        private readonly Dictionary<string, string> _prefixResolutionCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        // ✅ OPTIMIZATION: Cache existing mark numbers per category/prefix set to avoid repeated DB scans
+        private Dictionary<string, HashSet<int>>? _existingMarkNumbersCache;
+        private Document? _existingMarkNumbersCacheDocument;
         
         /// <summary>
         /// Apply MEPMARK to cluster sleeves for a specific category
@@ -105,6 +112,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             int processedCount = 0;
             int errorCount = 0;
+            int maxNumberUsed = 0; // Track highest number assigned this run
+            int markerLastCount = 0; // Track marker-based last count
+
+            // ✅ MARKER REPO: Track last processed mark number per category (CategoryProcessingMarkers table)
+            using var markerContext = new SleeveDbContext(doc);
+            var markerRepository = new CategoryProcessingMarkerRepository(markerContext, msg =>
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info(msg);
+            });
 
             try
             {
@@ -188,7 +205,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 // ✅ FIX: Get max number per category (consider all active prefixes for this category)
                 var candidatePrefixes = GetCandidateDisciplinePrefixes(category, disciplinePrefix, markPrefixes);
+
+                // ✅ MARKER: Load last processed count (acts as last mark number) and combine with DB max
+                var markerInfo = markerRepository.GetMarker(category);
+                markerLastCount = markerInfo.lastCount;
+
                 int categoryMaxNumber = GetMaxExistingMarkNumberForCategory(doc, category, candidatePrefixes);
+                categoryMaxNumber = Math.Max(categoryMaxNumber, markerLastCount);
                 int startIndex = categoryMaxNumber + 1;
                 
                                 if (!DeploymentConfiguration.DeploymentMode)
@@ -199,15 +222,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     File.AppendAllText(mepmarkLogPath, $"Category '{category}': Max existing number = {categoryMaxNumber}, Starting at: {startIndex}\n");
                 }
                 
-                // ✅ TRACK: Keep track of used numbers when remark=true (to avoid duplicates)
-                var usedNumbers = new HashSet<int>();
-                if (remarkAll && categoryMaxNumber > 0)
+                // ✅ TRACK: Preload existing numbers when remarking to avoid O(n) range fill
+                HashSet<int> usedNumbers;
+                if (remarkAll)
                 {
-                    // Pre-populate with existing numbers
-                    for (int n = 1; n <= categoryMaxNumber; n++)
+                    usedNumbers = GetExistingMarkNumbers(doc, category, candidatePrefixes);
+
+                    // Fallback: maintain previous behavior if DB scan returns nothing
+                    if (usedNumbers.Count == 0 && categoryMaxNumber > 0)
                     {
-                        usedNumbers.Add(n);
+                        usedNumbers = new HashSet<int>(Enumerable.Range(1, categoryMaxNumber));
                     }
+                }
+                else
+                {
+                    usedNumbers = new HashSet<int>();
                 }
                 
                 // Apply MEPMARK to each sleeve (both cluster and individual)
@@ -236,11 +265,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                         
                         // ✅ ENHANCED: Resolve element-specific prefix (e.g., System Type override)
+                        // ✅ CRITICAL: This applies to ALL families (RectangularOpeningOnWall, CircularOpeningOnWall, etc.)
+                        // System Type override takes precedence over discipline prefix for all families
                         var elementPrefix = ResolveDisciplinePrefixForElement(category, disciplinePrefix, markPrefixes, clashZone);
                         if (!string.IsNullOrWhiteSpace(elementPrefix))
                         {
                             candidatePrefixes.Add(elementPrefix);
                         }
+                        
+                        // ✅ DIAGNOSTIC: Log family name and resolved prefix to verify System Type override is working
+                        // Note: famName and mepmarkLogPath are declared later in the loop, so we'll log there
 
                         var existingMark = sleeve.LookupParameter("MEP Mark")?.AsString() ?? 
                                           sleeve.LookupParameter("Mark")?.AsString();
@@ -256,6 +290,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             {
                                 numberToUse = extractedNumber.Value;
                                 usedNumbers.Add(numberToUse); // Track this number as used
+                                maxNumberUsed = Math.Max(maxNumberUsed, numberToUse);
                                                                 // ✅ DEPLOYMENT MODE: Skip file writes
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
@@ -274,6 +309,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 numberToUse = actualIndex;
                                 usedNumbers.Add(numberToUse);
                                 actualIndex++; // Increment for next sleeve
+                                maxNumberUsed = Math.Max(maxNumberUsed, numberToUse);
                                                                 // ✅ DEPLOYMENT MODE: Skip file writes
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
@@ -306,23 +342,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 numberToUse = actualIndex;
                             }
                             actualIndex++; // Increment for next sleeve
+                            maxNumberUsed = Math.Max(maxNumberUsed, numberToUse);
                         }
                         
                         // ✅ ENHANCED: Log detailed info about sleeve before marking
                         
                         // ✅ DEBUG: Log sleeve host type
-                        var famName = sleeve.Symbol?.Family?.Name ?? "";
-                        var hostType = famName.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0 ? "Wall" :
-                                      famName.IndexOf("OpeningOnSlab", StringComparison.OrdinalIgnoreCase) >= 0 ? "Floor" : "Unknown";
+                        var famNameResolved = sleeve.Symbol?.Family?.Name ?? "";
+                        var hostType = famNameResolved.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0 ? "Wall" :
+                                      famNameResolved.IndexOf("OpeningOnSlab", StringComparison.OrdinalIgnoreCase) >= 0 ? "Floor" : "Unknown";
                         
                         // ✅ ENHANCED LOGGING: Log ALL sleeves (not just first 10) to diagnose floor sleeve issue
                         // Note: mepElementIdParam and mepElementId are already declared above
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
+                            // ✅ DIAGNOSTIC: Also log System Type override resolution for this sleeve
+                            string systemType = clashZone != null ? GetClashParameterValue(clashZone, "System Type", "MEP System Type", "System Classification") : null;
                             File.AppendAllText(mepmarkLogPath, 
-                                $"[MARK-PROCESS] Sleeve {sleeve.Id}: HostType={hostType}, Family={famName}, MEP_ID={mepElementId}, " +
+                            $"[MARK-PROCESS] Sleeve {sleeve.Id}: HostType={hostType}, Family={famNameResolved}, MEP_ID={mepElementId}, " +
                                 $"Category={clashZone?.MepElementCategory ?? "null"}, RequestedCategory={category}, " +
                                 $"CategoryMatch={clashZone?.MepElementCategory == category}, RemarkAll={remarkAll}, ExistingMark='{existingMark ?? "null"}'\n");
+                            File.AppendAllText(mepmarkLogPath,
+                            $"[PREFIX-RESOLVE] Family={famNameResolved}, Category={category}, SystemType='{systemType ?? "null"}', " +
+                                $"DisciplinePrefix='{disciplinePrefix}', ResolvedPrefix='{elementPrefix}', " +
+                                $"IsOverride={(elementPrefix != disciplinePrefix ? "YES" : "NO")}\n");
                         }
                         
                         // ✅ CRITICAL FIX: Check if clash zone category matches requested category
@@ -460,6 +503,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             finally
             {
+                // ✅ MARKER: Persist highest mark number used for this category (incremental processing)
+                if (maxNumberUsed > 0)
+                {
+                    // If nothing new was assigned, keep previous marker count
+                    int newMarkerCount = Math.Max(maxNumberUsed, markerLastCount);
+                    markerRepository.UpdateMarker(category, newMarkerCount);
+                }
+
                 string mepmarkLogPathFinal = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
@@ -1167,6 +1218,139 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
+        /// Load all existing mark numbers for a category from the database (fallback: Revit scan) and cache them.
+        /// Helps remark runs skip numbers without filling large sequential ranges.
+        /// </summary>
+        private HashSet<int> GetExistingMarkNumbers(Document doc, string category, IEnumerable<string> disciplinePrefixes)
+        {
+            var prefixSet = new HashSet<string>((disciplinePrefixes ?? Enumerable.Empty<string>()), StringComparer.OrdinalIgnoreCase);
+            prefixSet.RemoveWhere(string.IsNullOrWhiteSpace);
+
+            if (prefixSet.Count == 0)
+                return new HashSet<int>();
+
+            string cacheKey = $"{category}_{string.Join("_", prefixSet.OrderBy(p => p))}";
+
+            if (_existingMarkNumbersCache != null && _existingMarkNumbersCacheDocument == doc &&
+                _existingMarkNumbersCache.TryGetValue(cacheKey, out var cached))
+            {
+                return new HashSet<int>(cached);
+            }
+
+            if (_existingMarkNumbersCache == null || _existingMarkNumbersCacheDocument != doc)
+            {
+                _existingMarkNumbersCache = new Dictionary<string, HashSet<int>>(StringComparer.OrdinalIgnoreCase);
+                _existingMarkNumbersCacheDocument = doc;
+            }
+
+            var numbers = new HashSet<int>();
+
+            // Try fast path: database snapshot values
+            try
+            {
+                using (var dbContext = new SleeveDbContext(doc))
+                using (var cmd = dbContext.Connection.CreateCommand())
+                {
+                    cmd.CommandText = @"
+                        SELECT ss.MepParametersJson
+                        FROM SleeveSnapshots ss
+                        INNER JOIN ClashZones cz ON (
+                            (ss.SleeveInstanceId IS NOT NULL AND ss.SleeveInstanceId = cz.SleeveInstanceId) OR
+                            (ss.ClusterInstanceId IS NOT NULL AND ss.ClusterInstanceId = cz.ClusterInstanceId)
+                        )
+                        WHERE cz.MepElementCategory = @Category
+                          AND ss.MepParametersJson IS NOT NULL
+                          AND ss.MepParametersJson != '{}' AND ss.MepParametersJson != ''";
+
+                    cmd.Parameters.AddWithValue("@Category", category);
+
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            var mepParamsJson = reader.IsDBNull(0) ? null : reader.GetString(0);
+                            if (string.IsNullOrWhiteSpace(mepParamsJson))
+                                continue;
+
+                            try
+                            {
+                                var mepParams = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(mepParamsJson);
+                                if (mepParams != null && mepParams.TryGetValue("MEP Mark", out var markValue) && !string.IsNullOrWhiteSpace(markValue))
+                                {
+                                    int? extracted = ExtractNumberFromMark(markValue, prefixSet);
+                                    if (extracted.HasValue)
+                                    {
+                                        numbers.Add(extracted.Value);
+                                    }
+                                }
+                                else if (mepParams != null && mepParams.TryGetValue("Mark", out var altMark) && !string.IsNullOrWhiteSpace(altMark))
+                                {
+                                    int? extracted = ExtractNumberFromMark(altMark, prefixSet);
+                                    if (extracted.HasValue)
+                                    {
+                                        numbers.Add(extracted.Value);
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                                // Ignore malformed JSON rows
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Warning($"[MarkParameterService] Marker preload DB query failed for category '{category}': {ex.Message}");
+                }
+            }
+
+            // Fallback: scan Revit elements if DB had no data
+            if (numbers.Count == 0)
+            {
+                var sleeveElements = new FilteredElementCollector(doc)
+                    .OfClass(typeof(FamilyInstance))
+                    .Cast<FamilyInstance>()
+                    .Where(fi =>
+                    {
+                        var famName = fi.Symbol?.Family?.Name ?? string.Empty;
+                        return famName.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                               famName.IndexOf("OpeningOnSlab", StringComparison.OrdinalIgnoreCase) >= 0;
+                    })
+                    .ToList();
+
+                foreach (var element in sleeveElements)
+                {
+                    var mepElementIdParam = element.LookupParameter("MEP_ElementId");
+                    if (mepElementIdParam != null)
+                    {
+                        long mepElementId = mepElementIdParam.AsInteger();
+                        var clashZone = GetClashZoneByMepElementId(mepElementId, doc);
+                        if (clashZone?.MepElementCategory != null && !clashZone.MepElementCategory.Equals(category, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                    }
+
+                    var markParam = ResolveMarkParameter(element);
+                    string markValue = markParam?.AsString() ?? string.Empty;
+                    if (!string.IsNullOrWhiteSpace(markValue))
+                    {
+                        int? extracted = ExtractNumberFromMark(markValue, prefixSet);
+                        if (extracted.HasValue)
+                        {
+                            numbers.Add(extracted.Value);
+                        }
+                    }
+                }
+            }
+
+            _existingMarkNumbersCache[cacheKey] = new HashSet<int>(numbers);
+            return numbers;
+        }
+
+        /// <summary>
         /// ✅ NEW: Get maximum existing mark number per category (any prefix)
         /// Finds max number for sleeves in this category regardless of prefix
         /// </summary>
@@ -1218,6 +1402,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             string systemType = GetClashParameterValue(clashZone, "System Type", "MEP System Type", "System Classification");
             string serviceType = GetClashParameterValue(clashZone, "Service Type", "System Abbreviation", "MEP System Type");
 
+            // ✅ CACHE: Reuse resolved prefix for identical category/system/service combos
+            string cacheKey = $"{category}|{systemType ?? string.Empty}|{serviceType ?? string.Empty}";
+            if (_prefixResolutionCache.TryGetValue(cacheKey, out var cachedPrefix))
+            {
+                return cachedPrefix;
+            }
+
             // ✅ DEBUG: Log extracted system/service types and available overrides
             if (!DeploymentConfiguration.DeploymentMode)
             {
@@ -1241,21 +1432,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             // ✅ CRITICAL: Get prefix using two-tier resolution (System Type override takes precedence)
+            // ✅ CRITICAL: This applies to ALL sleeve families (RectangularOpeningOnWall, CircularOpeningOnWall, etc.)
+            // No family-specific filtering - System Type override works for all families
             var resolved = markPrefixes.GetPrefixForElement(category, systemType, serviceType);
             
-            // ✅ DEBUG: Log the resolved prefix
+            // ✅ DEBUG: Log the resolved prefix with System Type context
             if (!DeploymentConfiguration.DeploymentMode)
             {
                 string mepmarkLogPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
                 string disciplinePrefix = markPrefixes.GetDisciplinePrefix(category);
                 bool isOverride = resolved != disciplinePrefix;
                 File.AppendAllText(mepmarkLogPath, 
-                    $"[PREFIX-RESOLVE] ✅ Resolved prefix='{resolved}', Discipline prefix='{disciplinePrefix}', IsOverride={isOverride}\n");
+                    $"[PREFIX-RESOLVE] ✅ Resolved prefix='{resolved}', Discipline prefix='{disciplinePrefix}', IsOverride={isOverride}, " +
+                    $"SystemType='{systemType ?? "null"}', ServiceType='{serviceType ?? "null"}'\n");
             }
             
             if (!string.IsNullOrWhiteSpace(resolved))
-                return resolved.Trim();
+            {
+                resolved = resolved.Trim();
+                _prefixResolutionCache[cacheKey] = resolved;
+                return resolved;
+            }
 
+            _prefixResolutionCache[cacheKey] = fallbackPrefix;
             return fallbackPrefix;
         }
 

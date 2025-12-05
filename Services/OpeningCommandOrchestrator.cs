@@ -1625,32 +1625,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     universalCommand.Execute(_uiDocument.Application);
                     
-                    // ✅ CRITICAL FIX: Flush deferred parameters from UniversalCommand BEFORE orchestrator regeneration
-                    // The command defers parameters but doesn't flush before returning, orchestrator must flush them
-                    if (universalCommand?.Service != null && OptimizationFlags.UseBatchedParameterWrites)
-                    {
-                        try
-                        {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                DebugLogger.Info($"[ORCHESTRATOR-FLUSH] 🔄 Flushing deferred parameters from UniversalCommand...");
-                            }
-                            
-                            universalCommand.Service.FlushDeferredParameters();
-                            
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                DebugLogger.Info($"[ORCHESTRATOR-FLUSH] ✅ Deferred parameters flushed successfully");
-                            }
-                        }
-                        catch (Exception flushEx)
-                        {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                DebugLogger.Error($"[ORCHESTRATOR-FLUSH] ⚠️ Failed to flush deferred parameters: {flushEx.Message}");
-                            }
-                        }
-                    }
+                    // ✅ REFACTORED: Parameter flushing is now handled internally by NewSleevePlacerService
+                    // NewSleevePlacerService uses SleeveParameterService which flushes parameters automatically
+                    // No external flush needed - legacy UniversalSleevePlacerService dependency has been removed
+                    // ✅ LEGACY REMOVED: universalCommand.Service property no longer exists
                     
                     // ✅ PERFORMANCE: Get counts from command properties
                     placedCount = universalCommand.PlacedCount;

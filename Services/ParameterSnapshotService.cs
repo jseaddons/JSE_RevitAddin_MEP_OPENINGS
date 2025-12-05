@@ -39,7 +39,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             // Legacy compatibility (from _commonMepKeys and _commonHostKeys)
             "Nominal Diameter", "Outside Diameter",
-            "Reference Level", "Schedule Level", "Reference Level Elevation",
+            "Reference Level", "Schedule Level", "Schedule of Level", "Reference Level Elevation",
             "System Classification", "Service Type",
             "Fire Rating"
         };
@@ -47,8 +47,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly ISet<string> _commonMepKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "Size","Diameter","Nominal Diameter","Outside Diameter","Width","Height",
-            "Reference Level","Level","Schedule Level","Reference Level Elevation",
-            "System Type","System Classification","Service Type","System Abbreviation",
+            "Reference Level","Level","Schedule Level","Schedule of Level","Reference Level Elevation",
+            "System Type","System Name","System Classification","Service Type","System Abbreviation",
             "MEP System Type","MEP System Name","MEP System Abbreviation","MEP Size"
         };
 
@@ -187,20 +187,108 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
                 
+                // ✅ CRITICAL FIX: Special fallback for "Schedule of Level" parameter
+                // Schedule of Level is critical for "Bottom of Opening" calculation
+                if (p == null && (key.Equals("Schedule of Level", StringComparison.OrdinalIgnoreCase) ||
+                                  key.Equals("Schedule Level", StringComparison.OrdinalIgnoreCase)))
+                {
+                    // Try common parameter name variations
+                    p = element.LookupParameter("Schedule of Level") ??
+                        element.LookupParameter("Schedule Level") ??
+                        element.LookupParameter("Elevation from Level");
+                    
+                    if (!DeploymentConfiguration.DeploymentMode && p != null)
+                    {
+                        var testValue = ConvertParameterToString(element, p);
+                        DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Schedule of Level fallback found, value = '{testValue}'\n");
+                    }
+                }
+                
+                // ✅ CRITICAL FIX: Special fallback for "Reference Level" parameter
+                // Reference Level is a critical parameter for MEP elements and may be stored as a built-in parameter
+                // or may have different names in different MEP categories
+                if (p == null && (key.Equals("Reference Level", StringComparison.OrdinalIgnoreCase) || 
+                                  key.Equals("Level", StringComparison.OrdinalIgnoreCase)))
+                {
+                    // Try built-in parameters for level
+                    p = element.get_Parameter(BuiltInParameter.FAMILY_LEVEL_PARAM) ??
+                        element.get_Parameter(BuiltInParameter.INSTANCE_REFERENCE_LEVEL_PARAM) ??
+                        element.get_Parameter(BuiltInParameter.RBS_START_LEVEL_PARAM);
+                    
+                    // Try common parameter name variations
+                    if (p == null)
+                    {
+                        p = element.LookupParameter("Reference Level") ??
+                            element.LookupParameter("Level") ??
+                            element.LookupParameter("Schedule Level") ??
+                            element.LookupParameter("Schedule of Level");
+                    }
+                    
+                    // For linked files, try to get from the element's document
+                    if (p == null && element.Document.IsLinked)
+                    {
+                        try
+                        {
+                            var linkDoc = element.Document;
+                            if (linkDoc != null)
+                            {
+                                p = element.LookupParameter("Reference Level") ??
+                                    element.LookupParameter("Level");
+                            }
+                        }
+                        catch { /* Ignore errors when accessing linked document */ }
+                    }
+                    
+                    if (!DeploymentConfiguration.DeploymentMode && p != null)
+                    {
+                        var testValue = ConvertParameterToString(element, p);
+                        DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Reference Level fallback found, value = '{testValue}'\n");
+                    }
+                }
+                
                 if (p == null) 
                 {
-                    // DEBUG: Log missing parameters
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Parameter '{key}' not found\n");
+                    // ✅ CRITICAL: Log missing essential parameters (especially System Type, System Name, System Abbreviation)
+                    // These are critical for parameter transfer and remarking
+                    if (isEssential && (key.Equals("System Type", StringComparison.OrdinalIgnoreCase) ||
+                                       key.Equals("System Name", StringComparison.OrdinalIgnoreCase) ||
+                                       key.Equals("System Abbreviation", StringComparison.OrdinalIgnoreCase) ||
+                                       key.Equals("Schedule of Level", StringComparison.OrdinalIgnoreCase) ||
+                                       key.Equals("Schedule Level", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Warning($"[{DateTime.Now}] [PARAM_CAPTURE] ⚠️⚠️⚠️ CRITICAL: Essential parameter '{key}' not found on element {element.Id} ({element.Category?.Name}) - this will prevent parameter transfer!\n");
+                        }
+                    }
+                    else
+                    {
+                        // DEBUG: Log missing non-essential parameters
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Parameter '{key}' not found\n");
+                    }
                     continue;
                 }
 
                 var value = ConvertParameterToString(element, p);
                 if (string.IsNullOrWhiteSpace(value)) 
                 {
-                    // DEBUG: Log empty parameter values
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Parameter '{key}' found but value is empty\n");
+                    // ✅ CRITICAL: Log empty essential parameters
+                    if (isEssential && (key.Equals("System Type", StringComparison.OrdinalIgnoreCase) ||
+                                       key.Equals("System Name", StringComparison.OrdinalIgnoreCase) ||
+                                       key.Equals("System Abbreviation", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Warning($"[{DateTime.Now}] [PARAM_CAPTURE] ⚠️⚠️⚠️ CRITICAL: Essential parameter '{key}' found but value is empty on element {element.Id} ({element.Category?.Name}) - this will prevent parameter transfer!\n");
+                        }
+                    }
+                    else
+                    {
+                        // DEBUG: Log empty non-essential parameter values
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Parameter '{key}' found but value is empty\n");
+                    }
                     continue;
                 }
 
@@ -216,8 +304,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 result.Add(new SerializableKeyValue 
                 { 
                     Key = string.Intern(key), 
-                    Value = string.Intern(value) 
+                    Value = string.Intern(value)
                 });
+                
+                // ✅ CRITICAL DIAGNOSTIC: Log captured essential parameters (especially for circular elements)
+                if (isEssential && (key.Equals("System Type", StringComparison.OrdinalIgnoreCase) ||
+                                   key.Equals("System Name", StringComparison.OrdinalIgnoreCase) ||
+                                   key.Equals("System Abbreviation", StringComparison.OrdinalIgnoreCase) ||
+                                   key.Equals("Schedule of Level", StringComparison.OrdinalIgnoreCase) ||
+                                   key.Equals("Schedule Level", StringComparison.OrdinalIgnoreCase)))
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] ✅ CAPTURED: Element {element.Id} ({element.Category?.Name}): '{key}' = '{value}'\n");
+                    }
+                }
                 
                 // DEBUG: Log successful parameter capture (only in non-deployment mode)
                 if (!DeploymentConfiguration.DeploymentMode)

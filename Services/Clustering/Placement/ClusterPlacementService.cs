@@ -856,6 +856,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                     }
                 }
 
+                // ✅ BOTTOM OF OPENING: Calculate and set "Bottom of Opening" for RectangularOpeningOnWall cluster sleeves
+                if (OptimizationFlags.UseBottomOfOpeningCalculation)
+                {
+                    SetBottomOfOpeningForCluster(clusterSleeve, openingHeight, deferredParameters);
+                }
+
                 if (depthParam != null && !depthParam.IsReadOnly)
                 {
                     try
@@ -902,6 +908,157 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
             {
                 SafeFileLogger.SafeAppendText("placement_errors.log",
                     $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ❌ Error in SetSizeParameters: {ex.Message}\n");
+            }
+        }
+
+        /// <summary>
+        /// ✅ SRP COMPLIANCE: Dedicated method for setting "Bottom of Opening" parameter on cluster sleeves.
+        /// Single Responsibility: Calculate and set Bottom of Opening parameter only.
+        /// 
+        /// Formula: Bottom of Opening = Schedule of Level - (Cluster Height / 2)
+        /// Where Schedule of Level is the height from level elevation to cluster placement point (center of opening).
+        /// 
+        /// Applies to: RectangularOpeningOnWall family only.
+        /// Preserves all optimization features: batching, performance monitoring, safe validation, diagnostic logging.
+        /// </summary>
+        private void SetBottomOfOpeningForCluster(
+            FamilyInstance clusterSleeve,
+            double clusterHeight,
+            Dictionary<ElementId, Dictionary<string, object>>? deferredParameters)
+        {
+            if (clusterSleeve == null) return;
+
+            // ✅ FAMILY CHECK: Only apply to RectangularOpeningOnWall family
+            string familyName = clusterSleeve.Symbol?.FamilyName ?? "";
+            if (!familyName.Equals("RectangularOpeningOnWall", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] Zone=Cluster, Sleeve={clusterSleeve.Id}: " +
+                        $"Skipping - family is '{familyName}' (expected 'RectangularOpeningOnWall')\n");
+                }
+                return; // Not the correct family - skip silently
+            }
+
+            // ✅ SAFE ELEMENT VALIDATION: Validate instance is still valid
+            if (OptimizationFlags.UseSafeElementValidation)
+            {
+                if (!clusterSleeve.IsValidObject)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ⚠️ Cluster sleeve {clusterSleeve.Id.IntegerValue} is invalid - skipping\n");
+                    }
+                    return;
+                }
+            }
+
+            try
+            {
+                // ✅ PARAMETER READING: Read "Schedule of Level" parameter with fallback names
+                double? scheduleOfLevel = null;
+                Parameter scheduleParam = clusterSleeve.LookupParameter("Schedule of Level")
+                                       ?? clusterSleeve.LookupParameter("Schedule Level")
+                                       ?? clusterSleeve.LookupParameter("Elevation from Level");
+
+                if (scheduleParam != null && scheduleParam.StorageType == StorageType.Double)
+                {
+                    scheduleOfLevel = scheduleParam.AsDouble();
+                }
+
+                // ✅ VALIDATION: Check if Schedule of Level is valid
+                if (!scheduleOfLevel.HasValue ||
+                    !BottomOfOpeningCalculationService.IsValidScheduleOfLevel(scheduleOfLevel.Value))
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ⚠️ Cluster sleeve {clusterSleeve.Id.IntegerValue}: " +
+                            $"Schedule of Level parameter not found or invalid (value={scheduleOfLevel?.ToString() ?? "null"}) - skipping\n");
+                    }
+                    return; // Graceful degradation - skip if Schedule of Level is missing or invalid
+                }
+
+                // ✅ VALIDATION: Check if Cluster Height is valid
+                if (!BottomOfOpeningCalculationService.IsValidHeight(clusterHeight))
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ⚠️ Cluster sleeve {clusterSleeve.Id.IntegerValue}: " +
+                            $"Cluster Height is invalid (value={clusterHeight * 304.8:F1}mm) - skipping\n");
+                    }
+                    return; // Graceful degradation - skip if Cluster Height is invalid
+                }
+
+                // ✅ CALCULATION: Calculate Bottom of Opening using helper service
+                double? bottomOfOpening = BottomOfOpeningCalculationService.CalculateBottomOfOpening(
+                    scheduleOfLevel.Value, clusterHeight);
+
+                if (!bottomOfOpening.HasValue)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ⚠️ Cluster sleeve {clusterSleeve.Id.IntegerValue}: " +
+                            $"Calculation returned null (Schedule={scheduleOfLevel.Value * 304.8:F1}mm, Height={clusterHeight * 304.8:F1}mm) - skipping\n");
+                    }
+                    return; // Graceful degradation - skip if calculation fails
+                }
+
+                // ✅ PARAMETER SETTING: Set "Bottom of Opening" parameter with batching support
+                var bottomParam = clusterSleeve.LookupParameter("Bottom of Opening");
+                if (bottomParam != null && !bottomParam.IsReadOnly)
+                {
+                    if (deferredParameters != null && OptimizationFlags.UseBatchedParameterWrites)
+                    {
+                        if (!deferredParameters.ContainsKey(clusterSleeve.Id))
+                            deferredParameters[clusterSleeve.Id] = new Dictionary<string, object>();
+                        deferredParameters[clusterSleeve.Id]["Bottom of Opening"] = bottomOfOpening.Value;
+
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            double bottomMm = RevitUnitConversionService.Instance.FromInternalMillimeters(bottomOfOpening.Value);
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ✅ DEFERRED: Added Bottom of Opening={bottomMm:F1}mm " +
+                                $"(Schedule={scheduleOfLevel.Value * 304.8:F1}mm, Height={clusterHeight * 304.8:F1}mm) " +
+                                $"to deferredParameters for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
+                        }
+                    }
+                    else
+                    {
+                        bottomParam.Set(bottomOfOpening.Value);
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            double bottomMm = RevitUnitConversionService.Instance.FromInternalMillimeters(bottomOfOpening.Value);
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ✅ IMMEDIATE: Set Bottom of Opening={bottomMm:F1}mm " +
+                                $"(Schedule={scheduleOfLevel.Value * 304.8:F1}mm, Height={clusterHeight * 304.8:F1}mm) " +
+                                $"for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
+                        }
+                    }
+                }
+                else
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ⚠️ Cluster sleeve {clusterSleeve.Id.IntegerValue}: " +
+                            $"'Bottom of Opening' parameter not found or read-only\n");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // ✅ CRASH-SAFE: Graceful error handling
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("placement_errors.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] [SetBottomOfOpeningForCluster] ❌ Error setting Bottom of Opening " +
+                        $"for cluster sleeve {clusterSleeve.Id.IntegerValue}: {ex.Message}\n");
+                }
             }
         }
 
