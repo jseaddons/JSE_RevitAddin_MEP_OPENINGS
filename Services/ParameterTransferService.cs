@@ -1297,6 +1297,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 }
                                 
                                 var mepElementId = mepElementIdParam.AsElementId();
+                                
+                                // ✅ CRITICAL FIX: Fallback to snapshot if MEP_ElementId is missing on sleeve
+                                if (mepElementId == null || mepElementId == ElementId.InvalidElementId)
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ MEP_ElementId missing on sleeve {openingId.IntegerValue}, checking snapshot...\n");
+                                    }
+                                    
+                                    if (snapshot != null && snapshot.MepParameters != null && 
+                                        snapshot.MepParameters.TryGetValue("MEP_ElementId", out var snapshotMepIdStr) && 
+                                        int.TryParse(snapshotMepIdStr, out int snapshotMepIdInt))
+                                    {
+                                        mepElementId = new ElementId(snapshotMepIdInt);
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ Found MEP_ElementId={snapshotMepIdInt} in snapshot for sleeve {openingId.IntegerValue}\n");
+                                        }
+                                    }
+                                }
+                                
                                 if (mepElementId != null && mepElementId != ElementId.InvalidElementId)
                                 {
                                     // ✅ DIAGNOSTIC: Log MEP element ID

@@ -854,9 +854,16 @@ This section documents the methodology for clustering sleeves that are rotated a
 
 #### Algorithm Steps
 
-**Phase 1: Individual Sleeve Placement (Pre-calculation)**
+**Phase 1: Individual Sleeve Placement (Pre-calculation and Batch Save)**
 
-During individual sleeve placement (`UniversalSleevePlacerService`), the following data is calculated and stored in the database:
+During individual sleeve placement (`NewSleevePlacerService`), the following workflow occurs:
+
+1. **Batch Placement:** All sleeves are placed in a single transaction
+2. **Batch Regeneration:** Document is regenerated once for all sleeves (`_doc.Regenerate()`)
+3. **Batch Corner Calculation:** After regeneration, corners are pre-calculated in parallel for all sleeves
+4. **Batch Database Save:** All corners are saved to database in batch via `SleevePersistenceService.PersistSleeveData()`
+
+**Data Calculated and Stored in Database:**
 
 1. **Sleeve Center (Active Document Coordinates)**
    - Uses `SleevePlacementPointActiveDocumentX/Y/Z` (where sleeve is actually placed)
@@ -867,10 +874,13 @@ During individual sleeve placement (`UniversalSleevePlacerService`), the followi
    - Stored in database columns: `MepRotationCos` and `MepRotationSin`
    - Avoids redundant trigonometric calculations during clustering
 
-3. **Four Corner Coordinates (World Space)**
+3. **Four Corner Coordinates (World Space) - BATCH SAVED**
+   - ✅ **Batch Calculation:** All corners are calculated in parallel for all sleeves (multi-threaded)
+   - ✅ **Batch Save:** After regeneration, all corners are saved to database in a single batch operation
    - Calculates all 4 corners of each sleeve in world coordinates
    - Corner order: 1=Bottom-left, 2=Bottom-right, 3=Top-left, 4=Top-right
    - Stored in database columns: `SleeveCorner1X/Y/Z` through `SleeveCorner4X/Y/Z`
+   - ✅ **Critical:** Cluster calculation reads these saved corners directly - NO recalculation needed
 
 **Corner Calculation Process:**
 ```csharp
@@ -915,20 +925,21 @@ repository.UpdateSleeveCorners(
 );
 ```
 
-**Phase 2: Cluster Bounding Box Calculation**
+**Phase 2: Cluster Bounding Box Calculation (Uses Pre-Saved Corners)**
 
-During clustering (`UniversalClusterService.GetClusterBoundingBoxWithRotatedCoordinates`), the algorithm:
+During clustering (`ClusterRotationService.CalculateRotatedBoundingBox`), the algorithm:
 
 1. **Determines Cluster's Intended Rotated Axis**
    - Uses the **first sleeve's actual rotation angle** (from Revit `LocationPoint.Rotation`)
    - Falls back to `ClashZone.MepElementRotationAngle` if `LocationPoint` is unavailable
    - ⚠️ **Critical:** This is NOT an average of sleeve angles - it's the intended axis direction for the cluster
 
-2. **Loads Pre-calculated Data**
-   - Retrieves sleeve centers from `SleevePlacementPointActiveDocumentX/Y/Z`
-   - Retrieves pre-calculated corners from `SleeveCorner1X/Y/Z` through `SleeveCorner4X/Y/Z`
-   - Retrieves rotation matrix components from `MepRotationCos` and `MepRotationSin`
-   - Falls back to recalculation if pre-calculated data is missing
+2. **Loads Pre-calculated Data from Database (NO Recalculation)**
+   - ✅ **Reads from Database:** Retrieves sleeve centers from `SleevePlacementPointActiveDocumentX/Y/Z`
+   - ✅ **Reads from Database:** Retrieves pre-calculated corners from `SleeveCorner1X/Y/Z` through `SleeveCorner4X/Y/Z`
+   - ✅ **Reads from Database:** Retrieves rotation matrix components from `MepRotationCos` and `MepRotationSin`
+   - ✅ **Critical:** Corners were batch saved after regeneration - NO recalculation needed during clustering
+   - ⚠️ **Fallback:** Only recalculates if pre-calculated data is missing (should never happen in normal operation)
 
 3. **Transforms All Corners to Cluster's Rotated Coordinate System**
    - For each sleeve, uses pre-calculated world-space corners (or recalculates if missing)
@@ -940,9 +951,10 @@ During clustering (`UniversalClusterService.GetClusterBoundingBoxWithRotatedCoor
    - Calculates cluster width = `maxX - minX`
    - Calculates cluster height = `maxY - minY`
 
-5. **Calculates Cluster Center**
-   - Cluster center in rotated coordinate system: `((minX + maxX) / 2, (minY + maxY) / 2)`
-   - Transforms center back to world coordinates using inverse rotation matrix (transpose)
+5. **Calculates Cluster Placement Point**
+   - For **Walls and Structural Framing**, uses special coordinate mapping based on wall axis orientation
+   - For **Floors and other hosts**, uses standard centroid calculation
+   - See [Cluster Placement Point Calculation for Walls/Framing](#cluster-placement-point-calculation-for-wallsframing) below for details
 
 **Transformation Process:**
 ```csharp
@@ -1019,6 +1031,31 @@ XYZ clusterCenter = new XYZ(centerX_world, centerY_world, origin.Z);
 | `MepRotationCos` | REAL | Pre-calculated cos(rotationAngle) |
 | `MepRotationSin` | REAL | Pre-calculated sin(rotationAngle) |
 
+#### Batch Corner Save Process (After Regeneration)
+
+**Workflow:**
+1. **Batch Placement:** All sleeves are placed in a single transaction
+2. **Batch Regeneration:** `_doc.Regenerate()` is called once for all sleeves
+3. **Batch Corner Calculation:** `SleevePersistenceService.PersistSleeveData()` pre-calculates all corners in parallel (multi-threaded)
+4. **Batch Database Save:** All corners are saved to database in a single batch operation via `repository.UpdateSleeveCorners()`
+
+**Benefits:**
+- ✅ **Performance:** Parallel corner calculation for all sleeves (non-Revit operations)
+- ✅ **Accuracy:** Corners calculated after regeneration (accurate placement coordinates)
+- ✅ **Efficiency:** Cluster calculation reads saved corners directly - NO recalculation needed
+- ✅ **Consistency:** All sleeves have corners saved in the same batch operation
+
+**Database Columns Used:**
+- `SleeveCorner1X`, `SleeveCorner1Y`, `SleeveCorner1Z` (Bottom-left)
+- `SleeveCorner2X`, `SleeveCorner2Y`, `SleeveCorner2Z` (Bottom-right)
+- `SleeveCorner3X`, `SleeveCorner3Y`, `SleeveCorner3Z` (Top-left)
+- `SleeveCorner4X`, `SleeveCorner4Y`, `SleeveCorner4Z` (Top-right)
+
+**Cluster Calculation:**
+- Cluster calculation reads corners directly from database (via `GetCachedClashZone()`)
+- No recalculation needed - corners are already saved and accurate
+- If corners are missing, cluster calculation will fail (forces investigation instead of silent fallback)
+
 #### Key Implementation Details
 
 **1. Cluster Rotation Angle Determination**
@@ -1030,7 +1067,49 @@ The cluster's intended rotated axis is determined by:
 
 ⚠️ **Important:** The cluster rotation angle is NOT an average of sleeve angles. It represents the intended axis direction for the cluster coordinate system.
 
-**2. Cluster Sleeve Placement**
+**2. Cluster Sleeve Placement Point Calculation for Walls/Framing**
+
+### 10.4.1 Cluster Placement Point Calculation for Walls/Framing
+
+For cluster sleeves on **Walls** and **Structural Framing**, the placement point uses a special coordinate mapping that ensures proper alignment with individual sleeves. This logic applies to both X-wall/Y-wall and X-framing/Y-framing orientations.
+
+**Key Principle:**
+> Only calculate midpoints for coordinates that have **extremities** (min/max spread). If all sleeves have the same value for a coordinate (no spread), use the individual sleeve placement point instead.
+
+**Y-Wall/Framing Placement Point Logic:**
+- **X coordinate (through wall)**: Always use individual sleeve placement point X
+  - Rationale: All sleeves are at the same wall centerline depth, so no extremities expected
+- **Y coordinate (along wall)**: Use cluster width midpoint IF extremities exist, else use individual sleeve placement point Y
+  - Extremities check: If `(maxY - minY) > 1mm`, calculate midpoint as `(minY + maxY) / 2`
+  - If no extremities (all sleeves have same Y), use individual sleeve placement point Y
+- **Z coordinate (vertical)**: Use cluster height midpoint IF extremities exist, else use individual sleeve placement point Z
+  - Extremities check: If `(maxZ - minZ) > 1mm`, calculate midpoint as `(minZ + maxZ) / 2`
+  - If no extremities (all sleeves have same Z), use individual sleeve placement point Z
+
+**X-Wall/Framing Placement Point Logic:**
+- **X coordinate (through wall)**: Use cluster midpoint IF extremities exist, else use individual sleeve placement point X
+  - Extremities check: If `(maxX - minX) > 1mm`, calculate midpoint as `(minX + maxX) / 2`
+  - If no extremities (all sleeves have same X), use individual sleeve placement point X
+- **Y coordinate (along wall)**: Always use individual sleeve placement point Y
+  - Rationale: All sleeves are at the same wall centerline position along the wall, so no extremities expected
+- **Z coordinate (vertical)**: Use cluster height midpoint IF extremities exist, else use individual sleeve placement point Z
+  - Extremities check: If `(maxZ - minZ) > 1mm`, calculate midpoint as `(minZ + maxZ) / 2`
+  - If no extremities (all sleeves have same Z), use individual sleeve placement point Z
+
+**Implementation Details:**
+1. Collect all corner coordinates from individual sleeves (saved during individual placement)
+2. Calculate extremities: `minX`, `maxX`, `minY`, `maxY`, `minZ`, `maxZ` from all corners
+3. Check for extremities using 1mm threshold (0.00328084 feet)
+4. Apply coordinate mapping based on wall orientation (X-wall or Y-wall)
+5. Use individual sleeve placement point as fallback when no extremities exist
+
+**Why This Works:**
+- Individual sleeves are placed at wall centerline, so corners are already at correct depth
+- Cluster placement point should align with individual sleeves along the wall axis
+- Only coordinates with actual spread (extremities) need midpoint calculation
+- Coordinates without spread use individual sleeve placement point to maintain alignment
+
+**3. Cluster Sleeve Placement**
 
 - Cluster sleeve is placed **axis-aligned** (0° rotation in Revit)
 - Cluster dimensions already account for rotation (calculated in rotated coordinate system)

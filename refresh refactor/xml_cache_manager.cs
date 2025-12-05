@@ -46,7 +46,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         }
     }
     
-    public class XmlCacheManager
+    /// <summary>
+    /// Caches all clash zone data in memory for a refresh operation.
+    /// Database-first architecture - loads from SQLite, caches in memory.
+    /// Eliminates redundant database queries (was 4+ loads, now 1 load per filter).
+    /// ✅ SOLID: Implements IRefreshDataCacheManager for dependency injection support.
+    /// </summary>
+    public class XmlCacheManager : IRefreshDataCacheManager
     {
         private readonly Document _document;
         private readonly string _refreshLogName;
@@ -78,7 +84,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             
             if (validFilterNames.Count > 0)
             {
-                Parallel.ForEach(validFilterNames, filterName =>
+                System.Threading.Tasks.Parallel.ForEach(validFilterNames, filterName =>
                 {
                     var storage = LoadFilterXml(filterName, categories);
                     if (storage != null)

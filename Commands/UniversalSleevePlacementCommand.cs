@@ -10,6 +10,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces;
 using System.IO;
 using System;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Refactored;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 {
@@ -31,13 +32,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         private readonly string _logPrefix;
         private OpeningConditions _conditions;
         private readonly Dictionary<string, double> _clearanceSettings;
+        private UniversalSleevePlacerService? _service; // Not readonly - set during Execute
+        
+        // ✅ SOLID REFACTORED: Injected services (optional - created if null when flag is enabled)
+        private readonly IConditionsLoader? _conditionsLoader;
+        private readonly IPathDeterminer? _pathDeterminer;
+        private readonly IStrategyFactory? _strategyFactory;
+        private readonly IDocumentValidator? _documentValidator;
+        private readonly IUiStateProvider? _uiStateProvider;
+        private readonly IFileNameNormalizer? _fileNameNormalizer;
+        private readonly ISectionBoxChecker? _sectionBoxChecker;
         
         // ✅ PERFORMANCE: Properties to expose placement counts
         public int PlacedCount { get; private set; }
         public int SkippedCount { get; private set; }
         public int ErrorCount { get; private set; }
+        
+        // ✅ BATCHING: Expose service so orchestrator can flush deferred parameters
+        public UniversalSleevePlacerService? Service => _service;
 
-        public UniversalSleevePlacementCommand(Document doc, List<ClashZone> clashZones, string category, string filterName, Dictionary<string, double>? clearanceSettings = null)
+        public UniversalSleevePlacementCommand(
+            Document doc, 
+            List<ClashZone> clashZones, 
+            string category, 
+            string filterName, 
+            Dictionary<string, double>? clearanceSettings = null,
+            // ✅ SOLID REFACTORED: Optional injected services (created automatically if null when flag enabled)
+            IConditionsLoader? conditionsLoader = null,
+            IPathDeterminer? pathDeterminer = null,
+            IStrategyFactory? strategyFactory = null,
+            IDocumentValidator? documentValidator = null,
+            IUiStateProvider? uiStateProvider = null,
+            IFileNameNormalizer? fileNameNormalizer = null,
+            ISectionBoxChecker? sectionBoxChecker = null)
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _clashZones = clashZones ?? throw new ArgumentNullException(nameof(clashZones));
@@ -45,11 +72,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             _filterName = filterName ?? "Unknown";
             _logPrefix = $"[UniversalSleeveCommand-{category}]";
             
-            // Select strategy based on category
-            _strategy = CreateStrategy(category);
-            
-            // Load conditions from XML
-            LoadConditionsFromXml();
+            // ✅ SOLID REFACTORED: Initialize services based on flag
+            if (OptimizationFlags.UseRefactoredCommandServices)
+            {
+                _conditionsLoader = conditionsLoader ?? new ConditionsLoaderService(doc);
+                _pathDeterminer = pathDeterminer ?? new PathDeterminerService();
+                _strategyFactory = strategyFactory ?? new StrategyFactoryService();
+                _documentValidator = documentValidator ?? new DocumentValidatorService();
+                _uiStateProvider = uiStateProvider ?? new UiStateProviderService();
+                _fileNameNormalizer = fileNameNormalizer ?? new FileNameNormalizerService();
+                _sectionBoxChecker = sectionBoxChecker ?? new SectionBoxCheckerService();
+                
+                // Use refactored services
+                _strategy = _strategyFactory.CreateStrategy(category, doc);
+                _conditions = _conditionsLoader.LoadConditions(_filterName, _category);
+            }
+            else
+            {
+                // Legacy inline implementations
+                _strategy = CreateStrategy(category);
+                LoadConditionsFromXml();
+            }
             
             // ✅ NEW: Store clearance settings for direct UI access
             _clearanceSettings = clearanceSettings ?? new Dictionary<string, double>();
@@ -90,6 +133,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         _clashZones.Clear();
                         _clashZones.AddRange(loadedZones);
                         DebugLogger.Info($"{_logPrefix} Loaded {_clashZones.Count} clash zones via ClashZoneDataService (SQLite primary, XML fallback).");
+                        
+                        // ✅ CRITICAL FIX: Sync flags from database after loading zones
+                        // Zones loaded from DB should have correct flags, but ensure they're synced
+                        try
+                        {
+                            var flagManager = new Services.FlagManager(_doc);
+                            flagManager.SyncFlagsFromGlobal(_clashZones, normalizedCategory);
+                            
+                            // ✅ DIAGNOSTIC: Log flag status after sync
+                            int resolvedCount = _clashZones.Count(z => z.IsResolved);
+                            int clusterResolvedCount = _clashZones.Count(z => z.IsClusterResolved);
+                            int eligibleCount = _clashZones.Count(z => !z.IsResolved && !z.IsClusterResolved);
+                            DebugLogger.Info($"{_logPrefix} ✅ Flags synced from database: Total={_clashZones.Count}, IsResolved={resolvedCount}, IsClusterResolved={clusterResolvedCount}, Eligible={eligibleCount}");
+                            
+                            // ✅ DIAGNOSTIC: Log sample zone flags for debugging
+                            if (!DeploymentConfiguration.DeploymentMode && _clashZones.Count > 0)
+                            {
+                                var sampleZones = _clashZones.Take(5).ToList();
+                                foreach (var zone in sampleZones)
+                                {
+                                    DebugLogger.Info($"{_logPrefix} Sample Zone {zone.Id}: IsResolved={zone.IsResolved}, IsClusterResolved={zone.IsClusterResolved}, SleeveId={zone.SleeveInstanceId}, ClusterId={zone.ClusterSleeveInstanceId}");
+                                }
+                            }
+                        }
+                        catch (Exception flagEx)
+                        {
+                            DebugLogger.Warning($"{_logPrefix} ⚠️ Failed to sync flags from database: {flagEx.Message}");
+                        }
                     }
                 }
 
@@ -102,7 +173,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 }
                 
                 // ---- 1. VALIDATION: Check document state (NO transaction) ----
-                if (!ValidateDocument())
+                bool isValid = OptimizationFlags.UseRefactoredCommandServices && _documentValidator != null
+                    ? _documentValidator.ValidateDocument(_doc, _logPrefix)
+                    : ValidateDocument();
+                
+                if (!isValid)
                 {
                     DebugLogger.Error($"{_logPrefix} Document validation failed - cannot place sleeves");
                     return;
@@ -154,6 +229,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         // 3. Selected reference linked files
                         // 4. Selected host linked files
                         // 5. Within active 3D section box
+                    // ✅ SOLID REFACTORING: FilterClashZonesByAllCriteria is still inline (200+ lines)
+                    // TODO: Extract to IClashZoneFilterService when UseRefactoredCommandServices is enabled
+                    // For now, using inline method for backward compatibility
                     var filteredClashZones = FilterClashZonesByAllCriteria(_clashZones);
 
                     // ✅ CRITICAL FIX: Check if there are any eligible (unresolved) clash zones BEFORE starting transaction
@@ -208,7 +286,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         catch { }
 
                         // ✅ PATH DETERMINATION: Determine placement path (PATH 1 vs PATH 2/3)
-                        var placementPath = DeterminePlacementPath();
+                        SleevePlacementPath placementPath;
+                        if (OptimizationFlags.UseRefactoredCommandServices && _pathDeterminer != null)
+                        {
+                            // Convert clearance settings for path determiner
+                            Dictionary<string, double>? clearanceDict = null;
+                            if (_conditions?.ClearanceSettings != null)
+                            {
+                                clearanceDict = new Dictionary<string, double>();
+                                var cs = _conditions.ClearanceSettings;
+                                if (cs.RectangularNormal > 0) clearanceDict["RectangularNormal"] = cs.RectangularNormal;
+                                if (cs.RectangularInsulated > 0) clearanceDict["RectangularInsulated"] = cs.RectangularInsulated;
+                                if (cs.RoundNormal > 0) clearanceDict["RoundNormal"] = cs.RoundNormal;
+                                if (cs.RoundInsulated > 0) clearanceDict["RoundInsulated"] = cs.RoundInsulated;
+                                if (cs.PipesNormal > 0) clearanceDict["PipesNormal"] = cs.PipesNormal;
+                                if (cs.PipesInsulated > 0) clearanceDict["PipesInsulated"] = cs.PipesInsulated;
+                                if (cs.CableTrayTop > 0) clearanceDict["CableTrayTop"] = cs.CableTrayTop;
+                                if (cs.CableTrayOther > 0) clearanceDict["CableTrayOther"] = cs.CableTrayOther;
+                            }
+                            placementPath = _pathDeterminer.DeterminePath(_doc, _filterName, _category, _logPrefix, clearanceDict);
+                        }
+                        else
+                        {
+                            placementPath = DeterminePlacementPath();
+                        }
                         bool isReplayPath = placementPath == Services.SleevePlacementPath.Replay;
                         
                         if (!DeploymentConfiguration.DeploymentMode)
@@ -218,33 +319,80 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         
                         int placed = 0, skipped = 0, errors = 0;
 
-                        // ✅ REFACTORED: Use NewSleevePlacerService when flag is enabled
-                        // ⚠️ TEMPORARILY DISABLED: NewSleevePlacerService excluded from build due to incompatibilities
-                        /*
+                        // ✅ TESTING MODE: Use NewSleevePlacerService (SRP-compliant refactored service)
+                        // ✅ ENABLED: UseNewSleevePlacerService flag is set to true in OptimizationFlags.cs
+                        // ✅ DIAGNOSTIC: Always log which service is being used (even in deployment mode)
+                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [COMMAND] 🔍 UseNewSleevePlacerService flag = {OptimizationFlags.UseNewSleevePlacerService}\n");
+                        
                         if (OptimizationFlags.UseNewSleevePlacerService)
                         {
                             // ✅ NEW: Use refactored NewSleevePlacerService (SOLID principles)
-                            var sleeveRepository = new SleeveRepository();
+                            // ✅ WIRED: Use refactored command services when flag enabled
+                            var sleeveRepository = new Services.Repositories.SleeveRepository();
                             var zoneFilterService = new ZoneFilterService();
                             var flagManager = new FlagManager(_doc);
                             
-                            var newPlacerService = new NewSleevePlacerService(
+                            // ✅ SOLID REFACTORED: Inject refactored services if flag enabled
+                            IConditionsLoader? conditionsLoader = null;
+                            IFileNameNormalizer? fileNameNormalizer = null;
+                            ISectionBoxChecker? sectionBoxChecker = null;
+                            
+                            if (OptimizationFlags.UseRefactoredCommandServices)
+                            {
+                                conditionsLoader = new Services.Refactored.ConditionsLoaderService(_doc);
+                                // Reload conditions using refactored service
+                                _conditions = conditionsLoader.LoadConditions(_filterName, _category);
+                                
+                                // ✅ WIRED: Create refactored services for NewSleevePlacerService
+                                fileNameNormalizer = new Services.Refactored.FileNameNormalizerService();
+                                sectionBoxChecker = new Services.Refactored.SectionBoxCheckerService();
+                            }
+                            
+                            // ✅ CRASH-SAFE: Create crash-safe executor if enabled
+                            CrashSafeExecutor? crashSafeExecutor = null;
+                            if (OptimizationFlags.UseCrashSafeExecution)
+                            {
+                                crashSafeExecutor = new CrashSafeExecutor();
+                            }
+                            
+                            // ✅ DIAGNOSTIC: Log that we're using the NEW service (always log)
+                            SafeFileLogger.SafeAppendText("placement_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [COMMAND] ✅ USING NEW SERVICE: NewSleevePlacerService (SRP-compliant)\n");
+                            
+                            var newPlacerService = new JSE_RevitAddin_MEP_OPENINGS.Services.NewSleevePlacerService(
                                 _doc,
                                 _conditions,
                                 _strategy,
                                 _clearanceSettings,
                                 sleeveRepository,
-                                zoneFilterService, // ✅ Now injecting ZoneFilterService
+                                zoneFilterService,
                                 null, // familyManager (not yet implemented)
-                                flagManager,
+                                null, // flagManager - refactored IFlagManager not yet ready (legacy FlagManager cannot be used here)
                                 isReplayPath,
-                                _filterName);
+                                _filterName,
+                                null, // sizingService (will use default)
+                                fileNameNormalizer,  // ✅ WIRED: Pass refactored services
+                                sectionBoxChecker,   // ✅ WIRED: Pass refactored services
+                                crashSafeExecutor);  // ✅ CRASH-SAFE: Pass crash-safe executor
                             
                             (placed, skipped, errors) = newPlacerService.PlaceAllSleevesInTransaction(filteredClashZones);
+                            
+                            // ✅ DIAGNOSTIC: Log results from new service
+                            SafeFileLogger.SafeAppendText("placement_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [COMMAND] ✅ NEW SERVICE RESULT: Placed={placed}, Skipped={skipped}, Errors={errors}\n");
+                            
+                            // ✅ CRITICAL: Set properties so orchestrator can access counts
+                            PlacedCount = placed;
+                            SkippedCount = skipped;
+                            ErrorCount = errors;
                         }
                         else
-                        */
                         {
+                            // ✅ DIAGNOSTIC: Log that we're using the LEGACY service (always log)
+                            SafeFileLogger.SafeAppendText("placement_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [COMMAND] ⚠️ USING LEGACY SERVICE: UniversalSleevePlacerService\n");
+                            
                             // ✅ LEGACY: Use existing UniversalSleevePlacerService (proven working implementation)
                             // ✅ FIX: Pass isReplayPath parameter so PATH 1 uses saved sizes without calculations
                             var placerService = new UniversalSleevePlacerService(
@@ -255,7 +403,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                                 _filterName,
                                 null, // flagManager (will be created internally)
                                 isReplayPath); // ✅ CRITICAL: Pass placement path flag
+                            
+                            // ✅ BATCHING: Store service reference so orchestrator can flush deferred parameters
+                            _service = placerService;
+                            
                             (placed, skipped, errors) = placerService.PlaceAllSleevesInTransaction(filteredClashZones);
+                            
+                            // ✅ CRITICAL: Set properties so orchestrator can access counts
+                            PlacedCount = placed;
+                            SkippedCount = skipped;
+                            ErrorCount = errors;
+                            
+                            // ✅ DIAGNOSTIC: Log BEFORE flush check (unconditional - always runs)
+                            System.IO.File.AppendAllText(@"C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Logs\R2023\placement_debug.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] FLUSH-CHECK: placed={placed}, UseBatching={OptimizationFlags.UseBatchedParameterWrites}, DeployMode={DeploymentConfiguration.DeploymentMode}\n");
+                            
+                            // ✅ CRITICAL BATCHING FIX: Flush deferred parameters BEFORE transaction commit
+                            // Parameters were deferred during placement, must flush before Revit commits the transaction
+                            if (OptimizationFlags.UseBatchedParameterWrites && placed > 0)
+                            {
+                                System.IO.File.AppendAllText(@"C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Logs\R2023\placement_debug.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] [COMMAND-FLUSH] 🔄 Flushing {placed} sleeve parameters before transaction commit...\n");
+                                
+                                placerService.FlushDeferredParameters();
+                                
+                                System.IO.File.AppendAllText(@"C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Logs\R2023\placement_debug.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] [COMMAND-FLUSH] ✅ Parameters flushed successfully\n");
+                            }
+                            else
+                            {
+                                System.IO.File.AppendAllText(@"C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Logs\R2023\placement_debug.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] FLUSH-SKIPPED: UseBatching={OptimizationFlags.UseBatchedParameterWrites}, placed={placed}\n");
+                            }
                         }
                         // Commit and check status
                         var status = t.Commit();
@@ -437,7 +616,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 string expectedFileName = $"{combinedKey}_CONDITIONS.xml";
                 DebugLogger.Info($"{_logPrefix} Expected CONDITIONS file: '{expectedFileName}'");
                 
+                // 🔥 UNCONDITIONAL: Log before loading conditions
+                SafeFileLogger.SafeAppendText("cabletray_dimension_trace.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [LOAD-CONDITIONS] Filter={filterName}, Category={_category}, CombinedKey={combinedKey}\n");
+                
                 _conditions = conditionsService.LoadConditions(combinedKey);
+                
+                // 🔥 UNCONDITIONAL: Log after loading conditions
+                SafeFileLogger.SafeAppendText("cabletray_dimension_trace.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [LOADED-CONDITIONS] Loaded={_conditions != null}, " +
+                    $"ClearanceSettings={_conditions?.ClearanceSettings != null}\n");
+                if (_conditions?.ClearanceSettings != null)
+                {
+                    SafeFileLogger.SafeAppendText("cabletray_dimension_trace.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [LOADED-CLEARANCES] CableTrayTop={_conditions.ClearanceSettings.CableTrayTop}, " +
+                        $"CableTrayOther={_conditions.ClearanceSettings.CableTrayOther}\n");
+                }
                 
                 // Ensure CONDITIONS.xml exists in the project Filters directory; create if missing
                 try
@@ -540,8 +734,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 DebugLogger.Info($"{_logPrefix} UI selected host types: [{string.Join(", ", selectedHostCategories)}]");
                 
                 // Get selected reference files and host files from UI
-                var selectedReferenceFiles = FilterUiStateProvider.GetSelectedReferenceFiles?.Invoke() ?? new List<string>();
-                var selectedHostFiles = FilterUiStateProvider.GetSelectedHostFiles?.Invoke() ?? new List<string>();
+                List<string> selectedReferenceFiles;
+                List<string> selectedHostFiles;
+                if (OptimizationFlags.UseRefactoredCommandServices && _uiStateProvider != null)
+                {
+                    selectedReferenceFiles = _uiStateProvider.GetSelectedReferenceFiles();
+                    selectedHostFiles = _uiStateProvider.GetSelectedHostFiles();
+                }
+                else
+                {
+                    selectedReferenceFiles = FilterUiStateProvider.GetSelectedReferenceFiles?.Invoke() ?? new List<string>();
+                    selectedHostFiles = FilterUiStateProvider.GetSelectedHostFiles?.Invoke() ?? new List<string>();
+                }
                 
                 // 🚨 DEBUG: Direct file logging to bypass DebugLogger issues
                 if (!DeploymentConfiguration.DeploymentMode)
@@ -670,7 +874,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     
                     // 🚨 TEMPORARY: Only apply 3D section box filter (most likely to be correct)
                     // Section box filtering DISABLED for placement: we already have precise clash zones
-                    bool sectionBoxMatch = true; // IsClashZoneVisibleInCurrentSectionBox(cz);
+                    bool sectionBoxMatch = true; // Default to true (section box filtering disabled)
+                    if (OptimizationFlags.UseRefactoredCommandServices && _sectionBoxChecker != null)
+                    {
+                        // Use refactored service if flag enabled (but still default to true for now)
+                        // sectionBoxMatch = _sectionBoxChecker.IsClashZoneVisibleInCurrentSectionBox(_doc, cz, _logPrefix);
+                    }
+                    else
+                    {
+                        // Legacy: sectionBoxMatch = IsClashZoneVisibleInCurrentSectionBox(cz);
+                    }
                     if (!sectionBoxMatch)
                     {
                         DebugLogger.Info($"{_logPrefix} Filtered out ClashZone {cz.Id}: Not visible in current 3D section box");

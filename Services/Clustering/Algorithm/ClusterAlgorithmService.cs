@@ -54,7 +54,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
                 if (enableParallel)
                 {
                     var sw = System.Diagnostics.Stopwatch.StartNew();
-                    Parallel.ForEach(groupsList, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, processGroup);
+                    System.Threading.Tasks.Parallel.ForEach(groupsList, new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, processGroup);
                     sw.Stop();
                     multiThreadedTime = sw.ElapsedMilliseconds;
                     

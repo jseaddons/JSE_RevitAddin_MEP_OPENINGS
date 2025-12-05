@@ -256,6 +256,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Location: FlagManager_Legacy.cs ProcessFlagResetForDeletedSleeves()
         /// </summary>
         public static bool UseBatchedSleeveExistenceCheck { get; set; } = true;
+
+        /// <summary>
+        /// Enable SOLID-compliant damper filter during refresh clash zone detection.
+        /// When true: Uses ZoneFilterService to skip ducts with dampers nearby (two-tier flag-based caching).
+        /// When false: Skips damper check entirely (legacy behavior, no filtering).
+        /// Default: true (enables priority filtering for damper sleeves).
+        /// Architecture: Implements OCP by delegating filtering to ZoneFilterService interface.
+        /// Location: ClashZoneService_Legacy.cs (lines 520-580)
+        /// Note: Uses cached HasDamperNearby flag + proximity check fallback.
+        /// </summary>
+        public static bool UseSOLIDCompliantDamperFilter { get; set; } = true;
         
         #endregion
         
@@ -301,7 +312,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Enable diagnostic mode for performance monitoring
         /// Default: false (disabled for deployment)
         /// </summary>
-        public static bool UseDiagnosticMode { get; set; } = true; // ✅ DEBUG: Diagnostic mode ON - detailed performance logging enabled
+        public static bool UseDiagnosticMode { get; set; } = false; // ✅ DEPLOYMENT: Diagnostic mode OFF - minimal logging for production distribution
         
         #endregion
         
@@ -376,9 +387,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Expected gain: 4-6× faster individual placement (143-203ms → <30ms per sleeve).
         /// Location: Services/UniversalSleevePlacerService.cs, Services/OpeningCommandOrchestrator.cs
         /// ✅ VERIFIED: Set to true (2025-11-24) - Individual sleeve parameter batching enabled
-        /// ⚠️ TEMPORARILY DISABLED: Batching broke Depth/Wall Width setting logic - restore working code first
+        /// ✅ BUG FIXED (2025-01-XX): Added GetParameterValueWithBatchingSupport() to read from deferred cache
+        ///    before flushing, preventing stale reads of Width/Height/Depth during corner placement calculations.
         /// </summary>
-        public static bool UseBatchedParameterWrites { get; set; } = false;
+        public static bool UseBatchedParameterWrites { get; set; } = true;
 
         /// <summary>
         /// Enable snapshot parameter transfer from SQLite SleeveSnapshots into placed sleeve instances after pipeline placement.
@@ -419,9 +431,81 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Enable new NewSleevePlacerService as the main entry point
         /// When true: Uses NewSleevePlacerService
         /// When false: Uses legacy UniversalSleevePlacerService
-        /// Default: false (disabled initially)
+        /// Default: true (✅ ENABLED FOR TESTING - SRP-compliant refactored service)
         /// </summary>
-        public static bool UseNewSleevePlacerService { get; set; } = false;
+        public static bool UseNewSleevePlacerService { get; set; } = true;
+
+        /// <summary>
+        /// Enable SOLID-refactored command and orchestrator services
+        /// When true: Uses extracted services (IConditionsLoader, IPathDeterminer, IStrategyFactory, etc.)
+        /// When false: Uses legacy inline implementations
+        /// Default: true (✅ ENABLED FOR TESTING - SOLID-compliant refactored services)
+        /// Location: Commands/UniversalSleevePlacementCommand.cs, Services/OpeningCommandOrchestrator.cs
+        /// </summary>
+        public static bool UseRefactoredCommandServices { get; set; } = true;
+
+        #endregion
+
+        #region Crash-Safe Features (NewSleevePlacerService)
+
+        /// <summary>
+        /// Enable crash-safe execution with timeout protection for NewSleevePlacerService
+        /// When true: Uses CrashSafeExecutor to prevent infinite hangs and ensure graceful failures
+        /// When false: Uses normal execution (faster but less safe)
+        /// Default: true (enabled for safety)
+        /// Location: Services/NewSleevePlacerService.cs
+        /// </summary>
+        public static bool UseCrashSafeExecution { get; set; } = true;
+
+        /// <summary>
+        /// Enable safe element validation (avoids document mismatch bugs)
+        /// When true: Validates elements by ElementId instead of Document reference (prevents false positives)
+        /// When false: Uses direct element access (faster but less safe)
+        /// Default: true (enabled - critical to avoid parameter transfer bug)
+        /// Location: Services/NewSleevePlacerService.cs
+        /// ⚠️ CRITICAL: This flag prevents the document mismatch bug we experienced in parameter transfer
+        /// </summary>
+        public static bool UseSafeElementValidation { get; set; } = true;
+
+        /// <summary>
+        /// Enable safe transaction management (checks IsModifiable, handles rollback properly)
+        /// When true: Validates document state before transactions, handles rollback safely
+        /// When false: Assumes document is always modifiable (faster but less safe)
+        /// Default: true (enabled for safety)
+        /// Location: Services/NewSleevePlacerService.cs
+        /// </summary>
+        public static bool UseSafeTransactionManagement { get; set; } = true;
+
+        /// <summary>
+        /// Enable performance monitoring for NewSleevePlacerService
+        /// When true: Tracks timing, memory, and item counts for all operations
+        /// When false: No performance tracking (faster but no metrics)
+        /// Default: true (enabled for diagnostics)
+        /// Location: Services/NewSleevePlacerService.cs
+        /// </summary>
+        public static bool UsePerformanceMonitoring { get; set; } = true;
+
+        /// <summary>
+        /// Enable timeout protection for long-running operations
+        /// When true: Operations timeout after 5 minutes to prevent infinite hangs
+        /// When false: Operations run indefinitely (faster but can hang)
+        /// Default: true (enabled for safety)
+        /// Location: Services/NewSleevePlacerService.cs
+        /// </summary>
+        public static bool UseTimeoutProtection { get; set; } = true;
+        
+        #region Flag Management Refactoring
+        
+        /// <summary>
+        /// Enable refactored SOLID-compliant flag management services
+        /// When true: Uses FlagManagerService (bug-free, SOLID-compliant)
+        /// When false: Uses legacy FlagManager (has bugs, but stable)
+        /// Default: true (✅ ENABLED FOR TESTING - SOLID refactored services)
+        /// Expected: Fixes sleeve duplication bugs, maintains all optimizations
+        /// </summary>
+        public static bool UseRefactoredClashZoneFlagServices { get; set; } = true;
+        
+        #endregion
 
         #endregion
 
@@ -468,6 +552,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static bool UseBatchParameterLookups { get; set; } = true; // ✅ ENABLED: Batch parameter lookup optimization (re-enabled after fixing document validation bug)
 
+        #endregion
+        
+        #region SOLID Refactoring Flags (NEW - Safe Rollback Strategy)
+        
+        /// <summary>
+        /// Enable interface-based architecture for refresh services.
+        /// When true: Uses IRefreshDataCacheManager, IRefreshPathDeterminer, IClashZoneRepository interfaces
+        /// When false: Uses concrete classes directly (legacy behavior)
+        /// Default: false (disabled - enable after Phase 1 testing)
+        /// Location: refresh refactor/refresh_service_refactored.cs
+        /// Expected benefit: Better testability, extensibility, SOLID compliance
+        /// </summary>
+        public static bool UseRefreshServiceInterfaces { get; set; } = true;
+        
+        /// <summary>
+        /// Enable dependency injection for refresh services.
+        /// When true: Supports constructor injection of refresh service dependencies
+        /// When false: Uses direct instantiation (legacy behavior)
+        /// Default: false (disabled - enable after Phase 2 testing)
+        /// Location: refresh refactor/refresh_service_refactored.cs
+        /// Expected benefit: Better testability, loose coupling, easier mocking
+        /// </summary>
+        public static bool UseRefreshDependencyInjection { get; set; } = true;
+        
+        /// <summary>
+        /// Enable split context interfaces for refresh operations.
+        /// When true: Uses focused interfaces (IRefreshDocumentContext, IRefreshCacheContext, etc.)
+        /// When false: Uses monolithic RefreshContext class (legacy behavior)
+        /// Default: false (disabled - enable after Phase 3 testing)
+        /// Location: refresh refactor/refresh_context.cs
+        /// Expected benefit: Better Interface Segregation Principle compliance, focused dependencies
+        /// </summary>
+        public static bool UseRefreshSplitContext { get; set; } = true;
+        
         #endregion
         
         #region Configuration Methods

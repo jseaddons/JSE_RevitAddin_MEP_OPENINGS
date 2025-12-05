@@ -182,6 +182,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             // Phase 4: Strategy Factory
             var strategyFactory = new ClusteringStrategyFactory();
 
+            // ✅ WIRING: Create flag manager adapter (use null for now since refactored flag manager not ready)
+            Services.Interfaces.Refactor.IFlagManager? flagManagerRefactor = null;
+            
             // Wire all services into RefactoredClusterService
             return new RefactoredClusterService(
                 doc: doc,
@@ -192,7 +195,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 cleanupService: cleanupService,
                 timeoutService: timeoutService,
                 strategyFactory: strategyFactory,
-                flagManager: flagManager,
+                flagManager: null,  // IFlagManager - refactored flag manager not yet ready
                 filterService: filterService
             );
         }
@@ -270,7 +273,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 cleanupService: cleanupService,
                 timeoutService: timeoutService,
                 strategyFactory: strategyFactory,
-                flagManager: flagManager,
+                flagManager: null, // IFlagManager - refactored flag manager not yet ready
                 filterService: filterService
             );
         }

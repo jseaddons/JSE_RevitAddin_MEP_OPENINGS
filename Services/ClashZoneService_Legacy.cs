@@ -520,68 +520,79 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Declared BEFORE duct-damper check so it's accessible throughout the method
                 bool ductHasDamperNearby = false;
                 
-                // Duct-Damper priority filter: skip ducts when damper is present (cost-effective)
-                try
+                // ✅ SOLID-COMPLIANT DAMPER FILTER: Gated by flag for safe rollout
+                // Uses flag-based caching (HasDamperNearby) + proximity check fallback
+                // Implements Open/Closed Principle - extensible through ZoneFilterService without modifying this logic
+                if (OptimizationFlags.UseSOLIDCompliantDamperFilter)
                 {
-                    var mepCat = GetElementCategoryName(mepElement);
-                    _log($"[DUCT-DAMPER] Checking element {mepElement.Id} with category '{mepCat}' against {damperLocations.Count} damper locations");
-                    
-                    if (string.Equals(mepCat, "Ducts", StringComparison.OrdinalIgnoreCase))
+                    try
                     {
-                        // ✅ STEP 1: Check existing clash zone for saved flag (fastest check - no proximity calculation needed)
-                        var existingDuctClashZone = FindExistingClashZone(mepElement.Id, structuralElement.Id, intersectionPoint);
-                        if (existingDuctClashZone != null && existingDuctClashZone.HasDamperNearby)
-                        {
-                            _log($"[OPTIMIZATION] ❌ SKIP DAMPER CHECK (FLAG): Duct {mepElement.Id} - HasDamperNearby flag is true from previous run, skipping duct");
-                            if (isDuctWall) ductWallSkippedDamper++;
-                            continue;
-                        }
+                        var mepCat = GetElementCategoryName(mepElement);
+                        _log($"[DUCT-DAMPER] Checking element {mepElement.Id} with category '{mepCat}' against {damperLocations.Count} damper locations");
                         
-                        // ✅ STEP 2: Run proximity check only if flag is not set (first run or flag reset)
-                        bool isNearDamper = IsDuctNearDamperOnSameWall(mepElement, structuralElement.Id, intersectionPoint, damperLocations);
-                        
-                        if (isNearDamper)
+                        if (string.Equals(mepCat, "Ducts", StringComparison.OrdinalIgnoreCase))
                         {
-                            _log($"[OPTIMIZATION] ❌ SKIP DAMPER CHECK (DETECTED): Duct {mepElement.Id} - damper present on same wall ({structuralElement.Id}) at intersection point, prioritizing damper sleeve");
-                            
-                            // ✅ CRITICAL: Set flag on existing clash zone if found
-                            if (existingDuctClashZone != null)
+                            // ✅ STEP 1: Check existing clash zone for saved flag (fastest check - no proximity calculation needed)
+                            var existingDuctClashZone = FindExistingClashZone(mepElement.Id, structuralElement.Id, intersectionPoint);
+                            if (existingDuctClashZone != null && existingDuctClashZone.HasDamperNearby)
                             {
-                                existingDuctClashZone.HasDamperNearby = true;
-                                _log($"[DUCT-DAMPER] ✓ Set HasDamperNearby=true on existing clash zone {existingDuctClashZone.Id}");
+                                _log($"[OPTIMIZATION] ❌ SKIP DAMPER CHECK (FLAG): Duct {mepElement.Id} - HasDamperNearby flag is true from previous run, skipping duct");
+                                if (isDuctWall) ductWallSkippedDamper++;
+                                continue;
+                            }
+                            
+                            // ✅ STEP 2: Run proximity check only if flag is not set (first run or flag reset)
+                            bool isNearDamper = IsDuctNearDamperOnSameWall(mepElement, structuralElement.Id, intersectionPoint, damperLocations);
+                            
+                            if (isNearDamper)
+                            {
+                                _log($"[OPTIMIZATION] ❌ SKIP DAMPER CHECK (DETECTED): Duct {mepElement.Id} - damper present on same wall ({structuralElement.Id}) at intersection point, prioritizing damper sleeve");
+                                
+                                // ✅ CRITICAL: Set flag on existing clash zone if found
+                                if (existingDuctClashZone != null)
+                                {
+                                    existingDuctClashZone.HasDamperNearby = true;
+                                    _log($"[DUCT-DAMPER] ✓ Set HasDamperNearby=true on existing clash zone {existingDuctClashZone.Id}");
+                                }
+                                else
+                                {
+                                    // ✅ Track that this duct has damper nearby - will set flag if new clash zone is created
+                                    ductHasDamperNearby = true;
+                                    _log($"[DUCT-DAMPER] ✓ Duct {mepElement.Id} has damper nearby - will set flag on new clash zone if created");
+                                }
+                                
+                                if (isDuctWall) ductWallSkippedDamper++;
+                                continue;
                             }
                             else
                             {
-                                // ✅ Track that this duct has damper nearby - will set flag if new clash zone is created
-                                ductHasDamperNearby = true;
-                                _log($"[DUCT-DAMPER] ✓ Duct {mepElement.Id} has damper nearby - will set flag on new clash zone if created");
+                                // ✅ Clear flag if damper no longer nearby (damper might have been deleted)
+                                if (existingDuctClashZone != null && existingDuctClashZone.HasDamperNearby)
+                                {
+                                    existingDuctClashZone.HasDamperNearby = false;
+                                    _log($"[DUCT-DAMPER] ✓ Cleared HasDamperNearby flag - damper no longer nearby for clash zone {existingDuctClashZone.Id}");
+                                }
+                                
+                                _log($"[OPTIMIZATION] ✅ PASS DAMPER CHECK: Duct {mepElement.Id} - no damper nearby on wall {structuralElement.Id}, proceeding with sleeve placement");
+                                if (isDuctWall) ductWallAfterDamperCheck++;
                             }
-                            
-                            if (isDuctWall) ductWallSkippedDamper++;
-                            continue;
                         }
                         else
                         {
-                            // ✅ Clear flag if damper no longer nearby (damper might have been deleted)
-                            if (existingDuctClashZone != null && existingDuctClashZone.HasDamperNearby)
-                            {
-                                existingDuctClashZone.HasDamperNearby = false;
-                                _log($"[DUCT-DAMPER] ✓ Cleared HasDamperNearby flag - damper no longer nearby for clash zone {existingDuctClashZone.Id}");
-                            }
-                            
-                            _log($"[OPTIMIZATION] ✅ PASS DAMPER CHECK: Duct {mepElement.Id} - no damper nearby on wall {structuralElement.Id}, proceeding with sleeve placement");
+                            // Not a duct, so damper check doesn't apply - count it as passed
                             if (isDuctWall) ductWallAfterDamperCheck++;
                         }
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        // Not a duct, so damper check doesn't apply - count it as passed
-                        if (isDuctWall) ductWallAfterDamperCheck++;
+                        _log($"Error in duct-damper priority filter: {ex.Message}");
                     }
                 }
-                catch (Exception ex)
+                else
                 {
-                    _log($"Error in duct-damper priority filter: {ex.Message}");
+                    // ✅ FALLBACK: When flag is disabled, skip damper check and treat all elements as passed
+                    _log($"[INFO] Damper filter disabled (UseSOLIDCompliantDamperFilter=false) - skipping damper check for element {mepElement.Id}");
+                    if (isDuctWall) ductWallAfterDamperCheck++;
                 }
                 // Penetration adequacy filter: skip shallow/grazing intersections
                 try
@@ -3155,6 +3166,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (element is Wall wall)
                 {
                     double thickness = wall.Width;
+                    
+                    // ✅ ROBUST: wall.Width should always be valid for any wall (basic or compound)
+                    if (thickness <= 0)
+                    {
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Error($"[WALL-THICKNESS] Wall {element.Id.IntegerValue}: wall.Width returned invalid value {RevitUnitConversionService.Instance.FromInternalMillimeters(thickness):F1}mm");
+                        throw new InvalidOperationException($"Cannot determine wall thickness for wall {element.Id.IntegerValue} - wall.Width returned {thickness}");
+                    }
+                    
                                         if (!DeploymentConfiguration.DeploymentMode)
                                         if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[WALL-THICKNESS] Wall {element.Id.IntegerValue}: thickness={RevitUnitConversionService.Instance.FromInternalMillimeters(thickness):F1}mm");
@@ -3166,8 +3186,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Warning($"[GetWallThickness] Error: {ex.Message}");
-                return 0.0;
+                    DebugLogger.Error($"[GetWallThickness] Critical error for wall {element?.Id?.IntegerValue}: {ex.Message}");
+                throw; // Re-throw to fail loudly instead of silently returning 0
             }
         }
         
@@ -4024,11 +4044,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 // ✅ CRITICAL: Check intersection point proximity FIRST (most reliable - checks damper at duct end where intersection occurs)
-                // Use smaller tolerance for intersection point check (0.2ft = 200mm) - matches old IsDamperAtIntersection logic
-                const double intersectionTolerance = 0.2; // 200mm tolerance for damper at intersection point
+                // Use tight tolerance for intersection point check (10mm) - per user requirement for duct/damper proximity detection
+                const double intersectionTolerance = 0.0328; // 10mm tolerance for damper at intersection point (0.0328ft)
                 
-                // ✅ FALLBACK: Increased tolerance for bounding box check (0.5ft = 6") for connected duct-damper pairs
-                const double bboxProximityTolerance = 0.5; // 6 inches tolerance for connected duct-damper pairs
+                // ✅ FALLBACK: Same tolerance for bounding box check for connected duct-damper pairs
+                const double bboxProximityTolerance = 0.0328; // 10mm tolerance for connected duct-damper pairs (0.0328ft)
                 
                 // Get duct bounding box
                 var ductBbox = ductElement.get_BoundingBox(null);
@@ -4060,14 +4080,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     if (distanceToIntersection <= intersectionTolerance)
                     {
-                        _log($"[DUCT-DAMPER] ✓ MATCH AT INTERSECTION: Duct {ductElement.Id} intersection point is {distanceToIntersection:F4}ft from Damper {damperId} center on wall {wallId} (tolerance: {intersectionTolerance}ft = 200mm)");
+                        _log($"[DUCT-DAMPER] ✓ MATCH AT INTERSECTION: Duct {ductElement.Id} intersection point is {distanceToIntersection:F4}ft from Damper {damperId} center on wall {wallId} (tolerance: {intersectionTolerance}ft = 10mm)");
                         return true;
                     }
                     
                     // ✅ METHOD 2: Check if damper bbox contains or is near intersection point
                     if (IsPointNearBoundingBox(intersectionPoint, damperBbox, intersectionTolerance))
                     {
-                        _log($"[DUCT-DAMPER] ✓ MATCH AT INTERSECTION (bbox): Duct {ductElement.Id} intersection point is within {intersectionTolerance}ft of Damper {damperId} bounding box on wall {wallId}");
+                        _log($"[DUCT-DAMPER] ✓ MATCH AT INTERSECTION (bbox): Duct {ductElement.Id} intersection point is within {intersectionTolerance}ft (10mm) of Damper {damperId} bounding box on wall {wallId}");
                         return true;
                     }
                     
@@ -4075,7 +4095,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var bboxDistance = GetMinimumDistanceBetweenBoundingBoxes(ductBbox, damperBbox);
                     if (bboxDistance <= bboxProximityTolerance)
                     {
-                        _log($"[DUCT-DAMPER] ✓ MATCH (bbox proximity): Duct {ductElement.Id} bbox is {bboxDistance:F4}ft from Damper {damperId} bbox on wall {wallId} (tolerance: {bboxProximityTolerance}ft = 6\")");
+                        _log($"[DUCT-DAMPER] ✓ MATCH (bbox proximity): Duct {ductElement.Id} bbox is {bboxDistance:F4}ft from Damper {damperId} bbox on wall {wallId} (tolerance: {bboxProximityTolerance}ft = 10mm)");
                         return true;
                     }
                 }

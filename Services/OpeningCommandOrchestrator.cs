@@ -923,6 +923,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             SafeFileLogger.SafeAppendText("cluster_debug.log",
                 $"[{DateTime.Now:HH:mm:ss}] ExecuteClusteringForCategory completed: Status={result}, Placed={placedCount}, Deleted={deletedCount}\n");
             
+            // ✅ CRITICAL DIAGNOSTIC: Check if cluster sleeves still exist AFTER ExecuteClusteringForCategory returns
+            // This helps detect if something is deleting them after the method returns
+            if (placedClusterSleeves != null && placedClusterSleeves.Count > 0)
+            {
+                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss}] 🔍 POST-RETURN VERIFICATION: Checking {placedClusterSleeves.Count} cluster sleeves after ExecuteClusteringForCategory returns...\n");
+                
+                int foundAfterReturn = 0;
+                int missingAfterReturn = 0;
+                foreach (var clusterRef in placedClusterSleeves)
+                {
+                    if (clusterRef == null) continue;
+                    
+                    int clusterId = clusterRef.Id.IntegerValue;
+                    var freshLookup = _document.GetElement(new ElementId(clusterId)) as FamilyInstance;
+                    
+                    if (freshLookup == null || !freshLookup.IsValidObject)
+                    {
+                        missingAfterReturn++;
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ POST-RETURN: Cluster sleeve {clusterId} MISSING (was deleted after method returned!)\n");
+                    }
+                    else
+                    {
+                        foundAfterReturn++;
+                        var loc = freshLookup.Location as LocationPoint;
+                        var pt = loc?.Point;
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ✅ POST-RETURN: Cluster sleeve {clusterId} STILL EXISTS: Location=({pt?.X:F2}, {pt?.Y:F2}, {pt?.Z:F2})\n");
+                    }
+                }
+                
+                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss}] 📊 POST-RETURN RESULT: {foundAfterReturn} found, {missingAfterReturn} missing out of {placedClusterSleeves.Count} cluster sleeves\n");
+            }
+            
             if (result != Autodesk.Revit.UI.Result.Succeeded)
             {
                 if (!DeploymentConfiguration.DeploymentMode)
@@ -1588,6 +1624,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     
                     universalCommand.Execute(_uiDocument.Application);
+                    
+                    // ✅ CRITICAL FIX: Flush deferred parameters from UniversalCommand BEFORE orchestrator regeneration
+                    // The command defers parameters but doesn't flush before returning, orchestrator must flush them
+                    if (universalCommand?.Service != null && OptimizationFlags.UseBatchedParameterWrites)
+                    {
+                        try
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[ORCHESTRATOR-FLUSH] 🔄 Flushing deferred parameters from UniversalCommand...");
+                            }
+                            
+                            universalCommand.Service.FlushDeferredParameters();
+                            
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[ORCHESTRATOR-FLUSH] ✅ Deferred parameters flushed successfully");
+                            }
+                        }
+                        catch (Exception flushEx)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Error($"[ORCHESTRATOR-FLUSH] ⚠️ Failed to flush deferred parameters: {flushEx.Message}");
+                            }
+                        }
+                    }
                     
                     // ✅ PERFORMANCE: Get counts from command properties
                     placedCount = universalCommand.PlacedCount;

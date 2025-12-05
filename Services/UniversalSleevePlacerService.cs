@@ -2045,19 +2045,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 }
                                 
                                 // Set parameters
-                                SetSleeveParameters(sleeveInstance, mepSize, finalWidth, finalHeight, finalDiameter, clashZone, isCircular);
+                                try
+                                {
+                                    SetSleeveParameters(sleeveInstance, mepSize, finalWidth, finalHeight, finalDiameter, clashZone, isCircular);
+                                    File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] ✅ SetSleeveParameters completed for Zone={clashZone.Id}, Sleeve={sleeveInstance.Id.IntegerValue}\n");
+                                }
+                                catch (Exception ex)
+                                {
+                                    File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] ❌ SetSleeveParameters FAILED for Zone={clashZone.Id}, Sleeve={sleeveInstance.Id.IntegerValue}: {ex.Message}\n{ex.StackTrace}\n");
+                                    throw;
+                                }
 
                                 // Set sleeve metadata for fast parameter transfer
-                                SetSleeveMetadata(sleeveInstance, clashZone);
+                                try
+                                {
+                                    SetSleeveMetadata(sleeveInstance, clashZone);
+                                    File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] ✅ SetSleeveMetadata completed for Zone={clashZone.Id}, Sleeve={sleeveInstance.Id.IntegerValue}\n");
+                                }
+                                catch (Exception ex)
+                                {
+                                    File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] ❌ SetSleeveMetadata FAILED for Zone={clashZone.Id}, Sleeve={sleeveInstance.Id.IntegerValue}: {ex.Message}\n{ex.StackTrace}\n");
+                                    throw;
+                                }
 
                                 // ✅ CRITICAL: Set ClashZone_GUID parameter with STABLE GUID per 3-point combo
                                 // GUID is looked up from Global XML first (if entry exists, use that GUID)
                                 // If not found, use clashZone.Id (stable per 3-point combo)
                                 // This ensures GUID is unique and stable across multiple detection runs
-                                SetClashZoneGuidOnSleeveStable(sleeveInstance, clashZone);
+                                try
+                                {
+                                    SetClashZoneGuidOnSleeveStable(sleeveInstance, clashZone);
+                                    File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] ✅ SetClashZoneGuidOnSleeveStable completed for Zone={clashZone.Id}, Sleeve={sleeveInstance.Id.IntegerValue}\n");
+                                }
+                                catch (Exception ex)
+                                {
+                                    File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] ❌ SetClashZoneGuidOnSleeveStable FAILED for Zone={clashZone.Id}, Sleeve={sleeveInstance.Id.IntegerValue}: {ex.Message}\n{ex.StackTrace}\n");
+                                    throw;
+                                }
 
                                 // ⚠️ CRITICAL: Set orientation (rotation for floors, HostOrientation parameter for walls/framing)
-                                SetSleeveOrientation(sleeveInstance, clashZone, planningDto);
+                                try
+                                {
+                                    SetSleeveOrientation(sleeveInstance, clashZone, planningDto);
+                                    File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] ✅ SetSleeveOrientation completed for Zone={clashZone.Id}, Sleeve={sleeveInstance.Id.IntegerValue}\n");
+                                }
+                                catch (Exception ex)
+                                {
+                                    File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] ❌ SetSleeveOrientation FAILED for Zone={clashZone.Id}, Sleeve={sleeveInstance.Id.IntegerValue}: {ex.Message}\n{ex.StackTrace}\n");
+                                    throw;
+                                }
                                 parameterTimer.Stop();
                                 totalParameterTime += parameterTimer.Elapsed;
                                 sleeveLog.AppendLine($"  Parameters: {parameterTimer.ElapsedMilliseconds}ms");
@@ -2225,16 +2261,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                             catch (Exception ex)
                             {
+                                // ✅ UNCONDITIONAL ERROR LOGGING: Write ALWAYS regardless of DeploymentMode
+                                // This ensures we capture why placement failed
+                                try
+                                {
+                                    string errorDetails = $"[{DateTime.Now:HH:mm:ss}] ❌ PLACEMENT EXCEPTION (Zone={clashZone.Id}):\n" +
+                                        $"  Type: {ex.GetType().Name}\n" +
+                                        $"  Message: {ex.Message}\n" +
+                                        $"  StackTrace:\n{ex.StackTrace}\n" +
+                                        $"  Inner Exception: {ex.InnerException?.Message ?? "NONE"}\n" +
+                                        $"---\n";
+                                    
+                                    File.AppendAllText(debugLogPath, errorDetails);
+                                    File.AppendAllText(errorLogPath, errorDetails);
+                                }
+                                catch (Exception fileEx)
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"[ERROR-LOGGING-FAILED] Could not write exception to file: {fileEx.Message}");
+                                }
+                                
                                 if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Error($"[UniversalSleevePlacer] Error placing sleeve for ClashZone {clashZone.Id}: {ex.Message}");
-                                try
-                                {                         // ✅ DEPLOYMENT MODE: Skip file writes
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ EXCEPTION IN OUTER TRY-CATCH: Zone={clashZone.Id}, Error={ex.Message}\n{ex.StackTrace}\n");
-                                    }
-                                }
-                                catch { }
+                                
                                 ErrorCount++;
                                 // Stop timer even on error
                                 if (sleeveTimer.IsRunning) sleeveTimer.Stop();
@@ -2332,37 +2380,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 DebugLogger.Info($"[BATCH-REGEN] ✅ Regenerated {placedSleeveIds.Count} sleeves in {regenTimer.ElapsedMilliseconds}ms");
                             }
                             
-                            // ✅ STEP 5 OPTIMIZATION: Flush all deferred parameters after regeneration
+                            // ✅ BATCHING: Deferred parameters will be flushed by command BEFORE transaction commit
+                            // DON'T flush here - let command handle it at the right time (after all placement done, before commit)
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                DebugLogger.Info($"[BATCH-PARAMS] ═══ BEFORE FLUSH CHECK ═══ UseBatchedParameterWrites={OptimizationFlags.UseBatchedParameterWrites}, _deferredParameters.Count={_deferredParameters?.Count ?? 0}, placedSleeveIds.Count={placedSleeveIds.Count}");
+                                DebugLogger.Info($"[BATCH-PARAMS] ═══ PLACEMENT COMPLETE ═══ UseBatchedParameterWrites={OptimizationFlags.UseBatchedParameterWrites}, _deferredParameters.Count={_deferredParameters?.Count ?? 0}, placedSleeveIds.Count={placedSleeveIds.Count}");
                                 if (_deferredParameters != null && _deferredParameters.Count > 0)
                                 {
                                     var sleeveIds = string.Join(", ", _deferredParameters.Keys.Select(id => id.IntegerValue));
-                                    DebugLogger.Info($"[BATCH-PARAMS] 📋 Deferred sleeve IDs: [{sleeveIds}]");
+                                    DebugLogger.Info($"[BATCH-PARAMS] 📋 Deferred sleeve IDs (will flush in command): [{sleeveIds}]");
                                 }
-                            }
-                            
-                            if (OptimizationFlags.UseBatchedParameterWrites && _deferredParameters != null && _deferredParameters.Count > 0)
-                            {
-                                var flushTimer = System.Diagnostics.Stopwatch.StartNew();
-                                int paramCountBeforeFlush = _deferredParameters.Count;
-                                int totalParams = _deferredParameters.Values.Sum(d => d.Count);
-                                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    DebugLogger.Info($"[BATCH-PARAMS] 🔄 ABOUT TO FLUSH: {paramCountBeforeFlush} sleeves with {totalParams} total parameters after regeneration...");
-                                }
-                                FlushDeferredParameters();
-                                flushTimer.Stop();
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    DebugLogger.Info($"[BATCH-PARAMS] ✅ FLUSH COMPLETE: {paramCountBeforeFlush} sleeves ({totalParams} parameters) in {flushTimer.ElapsedMilliseconds}ms");
-                                }
-                            }
-                            else if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                DebugLogger.Info($"[BATCH-PARAMS] ⚠️ SKIPPED FLUSH: UseBatchedParameterWrites={OptimizationFlags.UseBatchedParameterWrites}, _deferredParameters.Count={_deferredParameters?.Count ?? 0}");
                             }
 
                             // ✅ SNAPSHOT PARAMETER TRANSFER: Load snapshot MEP parameters from DB and apply to placed sleeves
@@ -2407,7 +2434,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     // ✅ Validate sleeve still exists (may have been deleted by clustering)
                                     if (!sleeve.IsValidObject) continue;
 
-                                    var actualBbox = sleeve.get_BoundingBox(null);
+                                    // ✅ CRITICAL FIX: When batch writing is enabled, sleeve.get_BoundingBox() returns STALE values
+                                    // because Width/Height/Depth parameters haven't been flushed yet.
+                                    // Solution: Calculate bounding box from deferred parameter values (fw, fh, fd) instead.
+                                    BoundingBoxXYZ actualBbox = null;
+                                    if (OptimizationFlags.UseBatchedParameterWrites && _deferredParameters != null)
+                                    {
+                                        // ✅ BATCHING ENABLED: Calculate bounding box from deferred parameter values
+                                        // Use the calculated dimensions (fw, fh, fd) that are in deferred parameters
+                                        actualBbox = CalculateBoundingBoxFromDimensions(sleeve, fw, fh, fd, zone);
+                                        
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            SafeFileLogger.SafeAppendText("placement_debug.log",
+                                                $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-BBOX] Zone {zone.Id}: Calculated bbox from DEFERRED params - W={fw * 304.8:F1}mm, H={fh * 304.8:F1}mm, D={fd * 304.8:F1}mm\n");
+                                        }
+                                    }
+                                    
+                                    // ✅ FALLBACK: If batching disabled or calculation failed, read from Revit
+                                    if (actualBbox == null)
+                                    {
+                                        actualBbox = sleeve.get_BoundingBox(null);
+                                    }
+                                    
                                     if (actualBbox != null)
                                     {
                                         // Set bounding box coordinates (WCS)
@@ -2579,16 +2628,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                             {
                                                                 try
                                                                 {
-                                                                    var widthParam = sleeve.LookupParameter("Width");
-                                                                    var heightParam = sleeve.LookupParameter("Height");
-                                                                    var depthParam = sleeve.LookupParameter("Depth");
-
-                                                                    if (widthParam != null && widthParam.HasValue)
-                                                                        actualWidth = widthParam.AsDouble();
-                                                                    if (heightParam != null && heightParam.HasValue)
-                                                                        actualHeight = heightParam.AsDouble();
-                                                                    if (depthParam != null && depthParam.HasValue)
-                                                                        actualDepth = depthParam.AsDouble();
+                                                                    // ✅ CRITICAL FIX FOR BATCHING BUG: Read from deferred cache if batching enabled
+                                                                    // When UseBatchedParameterWrites=true, parameters are not yet written to Revit element,
+                                                                    // so LookupParameter returns OLD/DEFAULT values. This breaks corner placement calculations
+                                                                    // that depend on Width/Height/Depth values being correct.
+                                                                    // FIX: Check _deferredParameters cache first, then fall back to Revit element
+                                                                    
+                                                                    actualWidth = GetParameterValueWithBatchingSupport(sleeve, "Width", actualWidth);
+                                                                    actualHeight = GetParameterValueWithBatchingSupport(sleeve, "Height", actualHeight);
+                                                                    actualDepth = GetParameterValueWithBatchingSupport(sleeve, "Depth", actualDepth);
                                                                 }
                                                                 catch { /* Fallback to zone dimensions */ }
                                                             }
@@ -4410,14 +4458,152 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         // ============================================================================
+        // BATCHING BUG FIX: Read Parameter with Deferred Cache Support
+        // ============================================================================
+        /// <summary>
+        /// Reads a parameter value from sleeve, checking deferred cache first if batching enabled.
+        /// FIX FOR: When UseBatchedParameterWrites=true, parameters are deferred and not yet written
+        /// to Revit element, so LookupParameter returns OLD/DEFAULT values. This breaks calculations
+        /// that depend on Width/Height/Depth being correct (e.g., corner placement, bounding boxes).
+        /// SOLUTION: Check _deferredParameters cache first, then fall back to Revit element.
+        /// </summary>
+        /// <param name="sleeve">The sleeve instance</param>
+        /// <param name="parameterName">Parameter name to read (e.g., "Width", "Height", "Depth")</param>
+        /// <param name="fallbackValue">Value to return if parameter not found or invalid</param>
+        /// <returns>Parameter value from cache (if batching) or Revit element (if not batching)</returns>
+        private double GetParameterValueWithBatchingSupport(FamilyInstance sleeve, string parameterName, double fallbackValue)
+        {
+            if (sleeve == null || !sleeve.IsValidObject)
+                return fallbackValue;
+            
+            try
+            {
+                // ✅ CRITICAL FIX: If batching enabled, check deferred cache first
+                if (OptimizationFlags.UseBatchedParameterWrites && _deferredParameters != null)
+                {
+                    var sleeveId = sleeve.Id;
+                    if (_deferredParameters.ContainsKey(sleeveId) && _deferredParameters[sleeveId].ContainsKey(parameterName))
+                    {
+                        var cachedValue = _deferredParameters[sleeveId][parameterName];
+                        if (cachedValue is double doubleVal)
+                        {
+                            // ✅ DIAGNOSTIC: Log cache hit for debugging
+                            if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
+                            {
+                                DebugLogger.Info($"[BATCH-CACHE-READ] 🎯 Sleeve {sleeveId.IntegerValue}: Read {parameterName}={doubleVal:F6}ft ({doubleVal * 304.8:F1}mm) from DEFERRED CACHE (not yet flushed to Revit)");
+                            }
+                            return doubleVal;
+                        }
+                    }
+                }
+                
+                // ✅ FALLBACK: Read from Revit element (batching disabled or parameter not in cache)
+                var param = sleeve.LookupParameter(parameterName);
+                if (param != null && param.HasValue)
+                {
+                    double revitValue = param.AsDouble();
+                    
+                    // ✅ DIAGNOSTIC: Log Revit read for debugging
+                    if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
+                    {
+                        DebugLogger.Info($"[BATCH-CACHE-READ] 📖 Sleeve {sleeve.Id.IntegerValue}: Read {parameterName}={revitValue:F6}ft ({revitValue * 304.8:F1}mm) from REVIT ELEMENT");
+                    }
+                    return revitValue;
+                }
+                
+                // ✅ DIAGNOSTIC: Log fallback for debugging
+                if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
+                {
+                    DebugLogger.Warning($"[BATCH-CACHE-READ] ⚠️ Sleeve {sleeve.Id.IntegerValue}: Parameter '{parameterName}' not found - using fallback={fallbackValue:F6}ft ({fallbackValue * 304.8:F1}mm)");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Warning($"[BATCH-CACHE-READ] ⚠️ Error reading {parameterName} from sleeve {sleeve.Id.IntegerValue}: {ex.Message}");
+                }
+            }
+            
+            return fallbackValue;
+        }
+        
+        /// <summary>
+        /// ✅ CRITICAL FIX: Calculate bounding box from Width/Height/Depth dimensions when batch writing is enabled.
+        /// When UseBatchedParameterWrites=true, sleeve.get_BoundingBox() returns STALE values because parameters
+        /// haven't been flushed yet. This method constructs the bounding box from the calculated dimensions.
+        /// </summary>
+        /// <param name="sleeve">The sleeve family instance</param>
+        /// <param name="width">Width dimension (in internal units, feet)</param>
+        /// <param name="height">Height dimension (in internal units, feet)</param>
+        /// <param name="depth">Depth dimension (in internal units, feet)</param>
+        /// <param name="zone">The clash zone (for placement point and orientation)</param>
+        /// <returns>Bounding box calculated from dimensions, or null if calculation fails</returns>
+        private BoundingBoxXYZ CalculateBoundingBoxFromDimensions(FamilyInstance sleeve, double width, double height, double depth, ClashZone zone)
+        {
+            try
+            {
+                if (sleeve == null || !sleeve.IsValidObject || zone == null)
+                    return null;
+                
+                // Get placement point from sleeve location
+                var location = sleeve.Location as LocationPoint;
+                XYZ placementPoint;
+                
+                if (location != null)
+                {
+                    placementPoint = location.Point;
+                }
+                else
+                {
+                    // Fallback: Use intersection point from zone
+                    placementPoint = new XYZ(
+                        zone.IntersectionPointX,
+                        zone.IntersectionPointY,
+                        zone.IntersectionPointZ
+                    );
+                }
+                
+                // ✅ Calculate bounding box centered at placement point
+                // For rectangular openings: width (X), depth (Y), height (Z)
+                var bbox = new BoundingBoxXYZ
+                {
+                    Min = new XYZ(
+                        placementPoint.X - width / 2.0,
+                        placementPoint.Y - depth / 2.0,
+                        placementPoint.Z - height / 2.0
+                    ),
+                    Max = new XYZ(
+                        placementPoint.X + width / 2.0,
+                        placementPoint.Y + depth / 2.0,
+                        placementPoint.Z + height / 2.0
+                    ),
+                    Enabled = true
+                };
+                
+                return bbox;
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("placement_errors.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [CALC-BBOX] Error calculating bbox from dimensions for sleeve {sleeve?.Id?.IntegerValue ?? -1}: {ex.Message}\n");
+                }
+                return null;
+            }
+        }
+        
+        // ============================================================================
         // STEP 5 OPTIMIZATION: Flush Deferred Parameters (Batch Write After Regeneration)
         // ============================================================================
         /// <summary>
         /// Applies all accumulated parameter values from _deferredParameters to sleeves after regeneration.
         /// This eliminates per-sleeve Revit regeneration overhead during parameter setting.
         /// Expected gain: 4-6× faster placement (143-203ms → <30ms per sleeve).
+        /// Made PUBLIC so orchestrator can flush when command execution completes.
         /// </summary>
-        private void FlushDeferredParameters()
+        public void FlushDeferredParameters()
         {
             // ✅ SAFETY FLAG: Prevent multiple flushes (critical for performance - only flush once!)
             if (_hasFlushedParameters)
@@ -7195,13 +7381,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     try
                     {
-                        var widthParam = sleeve.LookupParameter("Width");
-                        var heightParam = sleeve.LookupParameter("Height");
-
-                        if (widthParam != null && widthParam.HasValue)
-                            actualWidth = widthParam.AsDouble();
-                        if (heightParam != null && heightParam.HasValue)
-                            actualHeight = heightParam.AsDouble();
+                        // ✅ CRITICAL FIX FOR BATCHING BUG #2: Use cache-aware parameter reading
+                        // This is the SECOND location where parameters are read before flush
+                        // (first was at line 2578 for bounding box calculations)
+                        actualWidth = GetParameterValueWithBatchingSupport(sleeve, "Width", actualWidth);
+                        actualHeight = GetParameterValueWithBatchingSupport(sleeve, "Height", actualHeight);
                     }
                     catch (Exception paramEx)
                     {

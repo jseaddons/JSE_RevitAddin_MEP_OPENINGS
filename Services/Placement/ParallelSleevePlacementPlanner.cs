@@ -131,6 +131,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     // ✅ OOP METHOD: Get clearance from OpeningConditions (same logic as UniversalSleevePlacerService)
                     // ✅ CRITICAL FIX: Use ClashZone.IsInsulated for correct clearance selection (pipes, ducts, cable trays)
                     double clearance;
+                    double clearanceInFeet;
+                    double targetWidth = 0.0;
+                    double targetHeight = 0.0;
+                    
                     if (isPipesCategory)
                     {
                         clearance = GetClearanceForPipeFromClashZone(zone);
@@ -141,22 +145,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     }
                     else if (string.Equals(mepCategory, "Cable Trays", StringComparison.OrdinalIgnoreCase))
                     {
-                        clearance = GetClearanceForCableTrayFromClashZone(zone);
+                        // ✅ CRITICAL FIX: Cable trays need ASYMMETRIC clearances (Top=75mm, Other=25mm)
+                        // Width: 2 * OtherClearance (25mm * 2 = 50mm total)
+                        // Height: TopClearance + OtherClearance (75mm + 25mm = 100mm total)
+                        // CANNOT use single clearance value - must calculate separately
+                        var cableTrayClearances = GetCableTrayAsymmetricClearances(zone);
+                        double topClearanceFt = cableTrayClearances.topClearanceFt;
+                        double otherClearanceFt = cableTrayClearances.otherClearanceFt;
+                        
+                        // ✅ CRITICAL: Calculate cable tray dimensions with asymmetric clearances
+                        // Get insulation contribution
+                        double insulationContribution = 0.0;
+                        if (zone.IsInsulated && zone.InsulationThickness > 0)
+                        {
+                            insulationContribution = 2 * zone.InsulationThickness; // Both sides
+                        }
+                        
+                        // Convert raw dimensions to internal units (feet) if needed
+                        double rawWidthFt = rawWidth; // Already in feet from MepElementSizeData
+                        double rawHeightFt = rawHeight; // Already in feet from MepElementSizeData
+                        
+                        // ✅ ASYMMETRIC CLEARANCE CALCULATION:
+                        // Width: Left and right use OTHER clearance (25mm each = 50mm total)
+                        // Height: Top uses TOP clearance (75mm), bottom uses OTHER clearance (25mm) = 100mm total
+                        targetWidth = rawWidthFt + insulationContribution + (2 * otherClearanceFt);
+                        targetHeight = rawHeightFt + insulationContribution + topClearanceFt + otherClearanceFt;
+                        
+                        // Set clearance to average for risk classification (not used for dimension calculation)
+                        clearance = (topClearanceFt + otherClearanceFt) / 2.0;
+                        clearanceInFeet = clearance;
                     }
                     else
                     {
                         clearance = GetClearanceFromConditions(mepCategory, rawSize * 304.8);
+                        clearanceInFeet = clearance; // Already in internal units (feet)
+                        
+                        // ✅ OOP METHOD: Use sizing service for consistent calculation with insulation awareness
+                        // Formula: Raw + (2 * insulation) + (2 * clearance) - handled by sizing service
+                        // For pipes: Pass diameter as all three parameters (width, height, diameter)
+                        double rawDiameter = isPipesCategory ? rawWidth : Math.Max(rawWidth, rawHeight);
+                        (double targetW, double targetH, _) = _sizingService.CalculateFinalDimensionsFromClashZone(
+                            rawWidth, rawHeight, rawDiameter, zone, clearanceInFeet);
+                        targetWidth = targetW;
+                        targetHeight = targetH;
                     }
-                    double clearanceInFeet = clearance; // Already in internal units (feet)
-                    
-                    // ✅ OOP METHOD: Use sizing service for consistent calculation with insulation awareness
-                    // Formula: Raw + (2 * insulation) + (2 * clearance) - handled by sizing service
-                    // For pipes: Pass diameter as all three parameters (width, height, diameter)
-                    double rawDiameter = isPipesCategory ? rawWidth : Math.Max(rawWidth, rawHeight);
-                    (double targetW, double targetH, _) = _sizingService.CalculateFinalDimensionsFromClashZone(
-                        rawWidth, rawHeight, rawDiameter, zone, clearanceInFeet);
-                    double targetWidth = targetW;
-                    double targetHeight = targetH;
 
                     // ✅ OOP METHOD: Get insulation thickness from ClashZone (already saved to DB during refresh)
                     double insulationThicknessFt = zone.IsInsulated && zone.InsulationThickness > 0 
@@ -213,7 +245,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 
             if (list.Count >= _minParallelCount)
             {
-                Parallel.ForEach(list, new ParallelOptions { MaxDegreeOfParallelism = _maxDegree }, work);
+                System.Threading.Tasks.Parallel.ForEach(list, new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = _maxDegree }, work);
             }
             else
             {
@@ -304,8 +336,71 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
         
         /// <summary>
+        /// ✅ CRITICAL FIX: Get ASYMMETRIC clearances for cable trays (Top and Other separately)
+        /// Returns both topClearanceFt and otherClearanceFt for proper asymmetric calculation
+        /// </summary>
+        private (double topClearanceFt, double otherClearanceFt) GetCableTrayAsymmetricClearances(ClashZone clashZone)
+        {
+            try
+            {
+                bool isInsulated = clashZone?.IsInsulated ?? false;
+                double topClearanceMm = 100.0; // Default fallback
+                double otherClearanceMm = 50.0; // Default fallback
+                
+                // ✅ PRIORITY 1: Read from database (conditions object loaded from SQLite)
+                if (_conditions?.ClearanceSettings != null)
+                {
+                    topClearanceMm = _conditions.ClearanceSettings.CableTrayTop;
+                    otherClearanceMm = _conditions.ClearanceSettings.CableTrayOther;
+                }
+                // ✅ PRIORITY 2: Fallback to UI clearance settings
+                else if (_clearanceSettings != null && _clearanceSettings.Count > 0)
+                {
+                    // Check for insulated cable tray clearance first
+                    if (isInsulated && _clearanceSettings.ContainsKey("cabletray_top_insulated"))
+                    {
+                        topClearanceMm = _clearanceSettings["cabletray_top_insulated"];
+                    }
+                    else if (_clearanceSettings.ContainsKey("cabletray_top_normal"))
+                    {
+                        topClearanceMm = _clearanceSettings["cabletray_top_normal"];
+                    }
+                    else if (_clearanceSettings.ContainsKey("cabletray_top_clearance"))
+                    {
+                        topClearanceMm = _clearanceSettings["cabletray_top_clearance"];
+                    }
+                    
+                    if (isInsulated && _clearanceSettings.ContainsKey("cabletray_other_insulated"))
+                    {
+                        otherClearanceMm = _clearanceSettings["cabletray_other_insulated"];
+                    }
+                    else if (_clearanceSettings.ContainsKey("cabletray_other_normal"))
+                    {
+                        otherClearanceMm = _clearanceSettings["cabletray_other_normal"];
+                    }
+                    else if (_clearanceSettings.ContainsKey("cabletray_other_clearance"))
+                    {
+                        otherClearanceMm = _clearanceSettings["cabletray_other_clearance"];
+                    }
+                }
+                
+                // Convert mm to feet (internal units)
+                double topClearanceFt = topClearanceMm / 304.8;
+                double otherClearanceFt = otherClearanceMm / 304.8;
+                
+                return (topClearanceFt, otherClearanceFt);
+            }
+            catch
+            {
+                // Fallback on error (50mm default)
+                return (50.0 / 304.8, 50.0 / 304.8);
+            }
+        }
+        
+        /// <summary>
         /// Get clearance for cable tray based on ClashZone.IsInsulated (uses authoritative data from database)
         /// This bypasses mepSize which might be stale and uses clashZone.IsInsulated directly
+        /// ⚠️ DEPRECATED: Use GetCableTrayAsymmetricClearances instead for proper asymmetric clearance handling
         /// </summary>
         private double GetClearanceForCableTrayFromClashZone(ClashZone clashZone)
         {

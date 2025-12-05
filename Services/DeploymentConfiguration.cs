@@ -21,7 +21,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// - All BatchedLogger calls are skipped (no string allocations)
         /// - Memory savings: Only ~13% (not worth losing debug capabilities)
         /// </summary>
-        public static bool DeploymentMode { get; set; } = false; // ✅ DEBUG: Deployment mode OFF - DebugLogger and SafeFileLogger ENABLED for full logging
+        public static bool DeploymentMode { get; set; } = false; // ✅ DIAGNOSTIC: Deployment mode OFF - enable full logging to debug batching issue
 
         /// <summary>
         /// Feature flag for Phase B Global XML dedupe. Defaults to false so the existing

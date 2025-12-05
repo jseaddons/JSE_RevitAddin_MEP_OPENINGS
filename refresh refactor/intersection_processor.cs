@@ -265,6 +265,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 return new List<ClashZone>();
             }
 
+            // ✅ CRITICAL FIX: Apply duct-damper proximity filter (SOLID: DIP pattern)
+            // Filter OUT ducts that have dampers in close proximity on the same wall
+            // This implements the duct-damper combo logic where ducts near dampers are SKIPPED
+            _logger("[INTERSECTION-PROCESSOR] Applying MEP intersection filters...");
+            
+            // ✅ SOLID: Use IMepIntersectionFilter interface (DIP)
+            // Can be injected or directly instantiated
+            IMepIntersectionFilter ductDamperFilter = new DuctDamperProximityFilter();
+            var filteredIntersections = ductDamperFilter.FilterIntersections(
+                intersections,
+                _context.Document,
+                msg => _logger(msg));
+            
+            _logger($"[INTERSECTION-PROCESSOR] After MEP intersection filtering: {filteredIntersections.Count} intersections (removed {intersections.Count - filteredIntersections.Count} elements)");
+
             // ✅ STEP 6: Convert intersections to ClashZones using ClashZoneService (Legacy)
             // Note: Using legacy ClashZoneService from ClashZoneService_Legacy.cs
             var clashZoneService = new ClashZoneService(
@@ -275,11 +290,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
 
             // ✅ PROGRESS CALLBACK: Update progress dialog with intersection counts DURING detection
             // Update progress based on raw intersections (before conversion to clash zones)
-            if (_progressCallback != null && intersections.Count > 0)
+            if (_progressCallback != null && filteredIntersections.Count > 0)
             {
                 // Group intersections by MEP element category
                 var countsByCategory = new Dictionary<string, int>();
-                foreach (var (mepElement, hostElement, bbox, point) in intersections)
+                foreach (var (mepElement, hostElement, bbox, point) in filteredIntersections)
                 {
                     if (mepElement == null) continue;
                     
@@ -301,12 +316,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             }
             
             var newClashZones = clashZoneService.DetectNewClashZones(
-                intersections,
+                filteredIntersections,
                 _context.Document,
                 _context.ClearanceSettings,
                 _context.SelectedMepCategories);
 
-            _logger($"[INTERSECTION-PROCESSOR] ✅ Converted {intersections.Count} intersections to {newClashZones.Count} clash zones");
+            _logger($"[INTERSECTION-PROCESSOR] ✅ Converted {filteredIntersections.Count} intersections to {newClashZones.Count} clash zones");
             
             // ✅ PROGRESS CALLBACK: Also update with final clash zone counts (more accurate)
             if (_progressCallback != null && newClashZones.Count > 0)
@@ -321,11 +336,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 }
             }
             // ✅ FIX: Update progress even if no clash zones (show 0)
-            else if (_progressCallback != null && newClashZones.Count == 0 && intersections.Count > 0)
+            else if (_progressCallback != null && newClashZones.Count == 0 && filteredIntersections.Count > 0)
             {
                 // Show intersection counts even if they didn't convert to clash zones
                 var countsByCategory = new Dictionary<string, int>();
-                foreach (var (mepElement, hostElement, bbox, point) in intersections)
+                foreach (var (mepElement, hostElement, bbox, point) in filteredIntersections)
                 {
                     if (mepElement == null) continue;
                     string category = GetCategoryFromElement(mepElement);

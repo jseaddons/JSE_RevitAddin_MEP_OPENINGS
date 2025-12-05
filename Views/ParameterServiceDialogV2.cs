@@ -1282,6 +1282,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     progressForm.Show();
                     progressForm.Refresh();
                     
+                    // ✅ PERFORMANCE MONITORING: Track parameter transfer performance
+                    using (var perfMonitor = new ParameterOperationPerformanceMonitor("Parameter Transfer"))
+                    {
                     // Create parameter transfer service
                     var transferService = new ParameterTransferService();
                     
@@ -1415,6 +1418,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     
                     progressForm.Close();
                     
+                    // Set item count for performance monitoring
+                    perfMonitor.SetItemCount(result.TransferredCount);
+                    
                     if (result.Success)
                     {
                         WinForms.MessageBox.Show(
@@ -1426,6 +1432,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         WinForms.MessageBox.Show($"Transfer failed: {result.Message}", 
                             "Transfer Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
                     }
+                    } // End of performance monitor using block
                 }
             }
             catch (Exception ex)
@@ -1661,10 +1668,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     // Debug: Log the prefix values being used
                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Apply Marks - Project: '{projectPrefix}', Duct: '{ductPrefix}', Pipe: '{pipePrefix}', CableTray: '{cableTrayPrefix}', Damper: '{damperPrefix}', Format: '{numberFormat}'\n");
                     
+                    // ✅ PERFORMANCE MONITORING: Track Apply Marks performance
+                    int totalProcessed = 0;
+                    using (var perfMonitor = new ParameterOperationPerformanceMonitor("Apply Marks"))
+                    {
                     // Apply Marks: Mark ALL sleeves regardless of checkbox state
                     // remarkAll=false means skip sleeves that already have marks
                     var cmd = new MarkParameterCommand("ALL", projectPrefix, "", false, markPrefixes);
                     cmd.Execute(_uiDocument.Application);
+                        
+                        // Get total sleeves count for performance monitoring
+                        var allSleeves = new FilteredElementCollector(_document)
+                            .OfClass(typeof(FamilyInstance))
+                            .Cast<FamilyInstance>()
+                            .Where(fi => {
+                                var famName = fi.Symbol?.Family?.Name ?? string.Empty;
+                                return famName.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0
+                                    || famName.IndexOf("OpeningOnSlab", StringComparison.OrdinalIgnoreCase) >= 0;
+                            })
+                            .Count();
+                        totalProcessed = allSleeves;
+                        perfMonitor.SetItemCount(totalProcessed);
+                    }
                     
                     progressForm.Close();
                     
@@ -1939,10 +1964,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         }
                     }
                     
-                    // Remark only checked categories with remarkAll=true
+                    // ✅ PERFORMANCE MONITORING: Track Remark Selected performance
                     int totalProcessed = 0;
                     var categoriesProcessed = new List<string>();
                     
+                    using (var perfMonitor = new ParameterOperationPerformanceMonitor("Remark Selected"))
+                    {
                     // ✅ CRITICAL FIX: Use markPrefixes.GetRemarkFlag() instead of hardcoded true
                     // This ensures that each category's checkbox state is respected
                     
@@ -1994,6 +2021,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             totalProcessed++;
                             categoriesProcessed.Add(hasDuctAccessoriesSystemOverrideRemark && !remarkDamper ? "Duct Accessories (System Type Overrides)" : "Duct Accessories");
                         }
+                    }
+                    
+                        // Get total sleeves count for performance monitoring
+                        var allSleeves = new FilteredElementCollector(_document)
+                            .OfClass(typeof(FamilyInstance))
+                            .Cast<FamilyInstance>()
+                            .Where(fi => {
+                                var famName = fi.Symbol?.Family?.Name ?? string.Empty;
+                                return famName.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0
+                                    || famName.IndexOf("OpeningOnSlab", StringComparison.OrdinalIgnoreCase) >= 0;
+                            })
+                            .Count();
+                        perfMonitor.SetItemCount(allSleeves);
                     }
                     
                     progressForm.Close();

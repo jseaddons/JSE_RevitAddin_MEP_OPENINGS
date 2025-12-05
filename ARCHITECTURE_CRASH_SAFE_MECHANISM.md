@@ -813,3 +813,91 @@ public class CrashSafeServiceTemplate
 - ✅ Clean up resources
 - ✅ Return control to user quickly
 
+
+---
+
+##  CRITICAL BUG LEARNED: Crash-Safe Nullability Check
+
+### THE BUG (DO NOT REPEAT THIS)
+
+**Issue**: Introduced a nullability check on crash-safe executor that broke crash-safe execution semantics.
+
+\\\csharp
+//  BUG: This check was redundant and masked the real issue
+if (OptimizationFlags.UseCrashSafeExecution && _crashSafeExecutor != null)
+{
+    // Execute with timeout...
+}
+else
+{
+    // Fall back to normal execution (NO timeout protection!)
+}
+\\\
+
+**Why This Was Wrong**:
+
+1. **Redundant Logic**: When \UseCrashSafeExecution = true\, executor is ALWAYS created during initialization.
+   - Checking \_crashSafeExecutor != null\ is redundant - it will always be non-null if the flag is enabled.
+
+2. **Masks Real Issues**: The real problem wasn't nullability - it was **document state validation**. 
+   - By checking nullability, developers thought the problem was solved, but didn't address the actual issue: Is the document still modifiable?
+
+3. **Prevents Proper Crash Prevention**: Without explicit document state checks, operations could proceed in invalid states and crash Revit.
+
+4. **Confusing Semantics**: Made the code unclear about what was actually being protected against.
+
+### THE FIX (WHAT WE DID)
+
+**Removed** the false nullability check and added **explicit document state validation BEFORE entering crash-safe execution**:
+
+\\\csharp
+//  CORRECT: Validate document state EXPLICITLY (don't hide behind nullability checks)
+if (OptimizationFlags.UseSafeTransactionManagement)
+{
+    if (!_doc.IsModifiable)
+    {
+        DebugLogger.Error(\$\"[Service] Document is not modifiable\");
+        return (0, 0, clashZones?.Count ?? 0); // Fail fast
+    }
+}
+
+// No nullability check on executor (always non-null when flag enabled)
+if (OptimizationFlags.UseCrashSafeExecution)
+{
+    try
+    {
+        var result = _crashSafeExecutor.ExecuteWithTimeout(
+            () => ExecutePlacementInternal(clashZones),
+            \"Place All Sleeves\"
+        );
+        // Handle result...
+    }
+    catch (Exception ex)
+    {
+        DebugLogger.Error(\$\"[Service] Crash-safe execution failed: {ex.Message}\");
+    }
+}
+\\\
+
+### KEY LESSONS
+
+|  Wrong Pattern |  Correct Pattern |
+|---|---|
+| Use nullability checks for crash safety | Validate ACTUAL PRECONDITIONS |
+| Check if optional dependency exists | Check if preconditions are met |
+| Hide validation in null checks | Make validation explicit |
+| \"Initialized\" = \"Safe to use\" | \"Initialized\"  \"Safe to use\" |
+
+### Files With Correct Pattern
+
+-  \Services/NewSleevePlacerService.cs\ - Validates document BEFORE crash-safe check (line 140)
+-  \Services/UniversalSleevePlacerService.cs\ - Validates document BEFORE placement (line 484)
+-  \Services/CrashSafeExecutor.cs\ - Core executor (never null when flag enabled)
+
+### Testing Checklist
+
+- [ ] Document state check (\IsModifiable\) happens BEFORE crash-safe execution
+- [ ] No nullability check on executor (\_crashSafeExecutor != null\ removed)
+- [ ] Logs show explicit document validation, not nullability checks
+- [ ] Timeout protection works when flag enabled
+- [ ] Normal execution works when flag disabled

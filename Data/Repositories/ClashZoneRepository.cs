@@ -3139,16 +3139,57 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     cmd.ExecuteNonQuery();
                     cmd.Parameters.Clear();
                     
-                    // ✅ Insert new entry if bounding box is valid (min < max for each dimension)
-                    // SleeveBoundingBox properties are double (not nullable), default to 0.0
-                    // Check if bounding box is valid (not all zeros and min < max)
-                    bool hasValidBoundingBox = 
+                    // ✅ CRITICAL FIX: Use sleeve bounding box if available (placed sleeves), otherwise use intersection point bounding box (unplaced zones)
+                    // This ensures R-tree is populated for ALL zones, not just placed ones
+                    double minX = 0.0, maxX = 0.0, minY = 0.0, maxY = 0.0, minZ = 0.0, maxZ = 0.0;
+                    bool hasValidBoundingBox = false;
+                    
+                    // Priority 1: Use sleeve bounding box if valid (sleeve already placed)
+                    bool hasValidSleeveBoundingBox = 
                         clashZone.SleeveBoundingBoxMinX < clashZone.SleeveBoundingBoxMaxX &&
                         clashZone.SleeveBoundingBoxMinY < clashZone.SleeveBoundingBoxMaxY &&
                         clashZone.SleeveBoundingBoxMinZ < clashZone.SleeveBoundingBoxMaxZ &&
                         (clashZone.SleeveBoundingBoxMinX != 0.0 || clashZone.SleeveBoundingBoxMaxX != 0.0 ||
                          clashZone.SleeveBoundingBoxMinY != 0.0 || clashZone.SleeveBoundingBoxMaxY != 0.0 ||
                          clashZone.SleeveBoundingBoxMinZ != 0.0 || clashZone.SleeveBoundingBoxMaxZ != 0.0);
+                    
+                    if (hasValidSleeveBoundingBox)
+                    {
+                        minX = clashZone.SleeveBoundingBoxMinX;
+                        maxX = clashZone.SleeveBoundingBoxMaxX;
+                        minY = clashZone.SleeveBoundingBoxMinY;
+                        maxY = clashZone.SleeveBoundingBoxMaxY;
+                        minZ = clashZone.SleeveBoundingBoxMinZ;
+                        maxZ = clashZone.SleeveBoundingBoxMaxZ;
+                        hasValidBoundingBox = true;
+                    }
+                    else
+                    {
+                        // Priority 2: Use intersection point with tolerance (for unplaced zones)
+                        // Create a small bounding box around intersection point (1m = ~3.28ft tolerance)
+                        double intersectionX = clashZone.IntersectionPoint?.X ?? clashZone.IntersectionPointX;
+                        double intersectionY = clashZone.IntersectionPoint?.Y ?? clashZone.IntersectionPointY;
+                        double intersectionZ = clashZone.IntersectionPoint?.Z ?? clashZone.IntersectionPointZ;
+                        
+                        // Check if intersection point is valid (not zero)
+                        bool hasValidIntersectionPoint = 
+                            Math.Abs(intersectionX) > 1e-9 || 
+                            Math.Abs(intersectionY) > 1e-9 || 
+                            Math.Abs(intersectionZ) > 1e-9;
+                        
+                        if (hasValidIntersectionPoint)
+                        {
+                            // Create bounding box around intersection point (1m = 3.28084ft tolerance on each side)
+                            double tolerance = 3.28084; // 1 meter in feet
+                            minX = intersectionX - tolerance;
+                            maxX = intersectionX + tolerance;
+                            minY = intersectionY - tolerance;
+                            maxY = intersectionY + tolerance;
+                            minZ = intersectionZ - tolerance;
+                            maxZ = intersectionZ + tolerance;
+                            hasValidBoundingBox = true;
+                        }
+                    }
                     
                     if (hasValidBoundingBox)
                     {
@@ -3157,13 +3198,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             VALUES (@id, @minX, @maxX, @minY, @maxY, @minZ, @maxZ)";
                         
                         cmd.Parameters.AddWithValue("@id", clashZoneId);
-                        cmd.Parameters.AddWithValue("@minX", clashZone.SleeveBoundingBoxMinX);
-                        cmd.Parameters.AddWithValue("@maxX", clashZone.SleeveBoundingBoxMaxX);
-                        cmd.Parameters.AddWithValue("@minY", clashZone.SleeveBoundingBoxMinY);
-                        cmd.Parameters.AddWithValue("@maxY", clashZone.SleeveBoundingBoxMaxY);
-                        cmd.Parameters.AddWithValue("@minZ", clashZone.SleeveBoundingBoxMinZ);
-                        cmd.Parameters.AddWithValue("@maxZ", clashZone.SleeveBoundingBoxMaxZ);
+                        cmd.Parameters.AddWithValue("@minX", minX);
+                        cmd.Parameters.AddWithValue("@maxX", maxX);
+                        cmd.Parameters.AddWithValue("@minY", minY);
+                        cmd.Parameters.AddWithValue("@maxY", maxY);
+                        cmd.Parameters.AddWithValue("@minZ", minZ);
+                        cmd.Parameters.AddWithValue("@maxZ", maxZ);
                         cmd.ExecuteNonQuery();
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            _logger($"[SQLite] ✅ R-tree index updated for ClashZoneId={clashZoneId}: {(hasValidSleeveBoundingBox ? "SleeveBBox" : "IntersectionPoint")} bbox");
+                        }
+                    }
+                    else if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        _logger($"[SQLite] ⚠️ R-tree index NOT updated for ClashZoneId={clashZoneId}: No valid bounding box (SleeveBBox invalid, IntersectionPoint invalid)");
                     }
                 }
             }

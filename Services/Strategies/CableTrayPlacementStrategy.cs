@@ -233,6 +233,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                 double topClearanceMm = 100.0; // Default fallback
                 double otherClearanceMm = 50.0; // Default fallback
                 
+                // 🔥 UNCONDITIONAL DIAGNOSTIC: Log conditions object state
+                SafeFileLogger.SafeAppendText("cabletray_dimension_trace.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CONDITIONS-CHECK] Zone {clashZone.Id}: " +
+                    $"conditions={conditions != null}, ClearanceSettings={conditions?.ClearanceSettings != null}, " +
+                    $"FilterName={conditions?.FilterName ?? "NULL"}, Category={conditions?.Category ?? "NULL"}\n");
+                
+                if (conditions?.ClearanceSettings != null)
+                {
+                    SafeFileLogger.SafeAppendText("cabletray_dimension_trace.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CONDITIONS-VALUES] CableTrayTop={conditions.ClearanceSettings.CableTrayTop}, " +
+                        $"CableTrayOther={conditions.ClearanceSettings.CableTrayOther}\n");
+                }
+                
                 // 1. ✅ PRIMARY: Read from database (conditions object loaded from SQLite)
                 if (conditions?.ClearanceSettings != null)
                 {
@@ -240,14 +253,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                     otherClearanceMm = conditions.ClearanceSettings.CableTrayOther;
                     DebugLogger.Info($"[CableTrayStrategy] ✅ Using DATABASE clearances: Top={topClearanceMm}mm, Other={otherClearanceMm}mm");
                     
-                    // ✅ CRITICAL DIAGNOSTIC: Log database values to file
+                    // 🔥 UNCONDITIONAL: Log database selection
                     SafeFileLogger.SafeAppendText("cabletray_dimension_trace.log",
-                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CABLE-TRAY-CLEARANCE-DB] Zone {clashZone.Id}: " +
-                        $"Database Clearances: Top={topClearanceMm:F1}mm, Other={otherClearanceMm:F1}mm\n");
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CLEARANCE-SOURCE] DATABASE: Top={topClearanceMm}mm, Other={otherClearanceMm}mm\n");
+                    
+                    // 🔥 UNCONDITIONAL: Log database selection
+                    SafeFileLogger.SafeAppendText("cabletray_dimension_trace.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CLEARANCE-SOURCE] DATABASE: Top={topClearanceMm}mm, Other={otherClearanceMm}mm\n");
                 }
                 // 2. Fallback to UI clearance settings (if database not available)
                 else if (uiClearanceSettings != null && uiClearanceSettings.Count > 0)
                 {
+                    // 🔥 UNCONDITIONAL: Log UI fallback
+                    SafeFileLogger.SafeAppendText("cabletray_dimension_trace.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CLEARANCE-SOURCE] UI: {uiClearanceSettings.Count} settings available\n");
+                    
                     // 🔥 DEBUG: Log all UI clearance settings to see what keys are available
                     DebugLogger.Info($"[CableTrayStrategy] ⚠️ Database not available, using UI Clearance Settings ({uiClearanceSettings.Count} items):");
                     foreach (var kvp in uiClearanceSettings)
@@ -292,6 +312,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                         DebugLogger.Info($"[CableTrayStrategy] ⚠️ Insulated key '{otherInsulatedKey}' not found, using normal key: {otherClearanceMm}mm");
                     }
                 }
+                else
+                {
+                    // 🔥 UNCONDITIONAL: Log default fallback
+                    SafeFileLogger.SafeAppendText("cabletray_dimension_trace.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CLEARANCE-SOURCE] DEFAULTS: Top={topClearanceMm}mm, Other={otherClearanceMm}mm\n");
+                }
+                
+                // 🔥 UNCONDITIONAL: Log final values
+                SafeFileLogger.SafeAppendText("cabletray_dimension_trace.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CLEARANCE-FINAL] Zone {clashZone.Id}: Top={topClearanceMm}mm, Other={otherClearanceMm}mm\n");
                 
                 DebugLogger.Info($"[CableTrayStrategy] FINAL clearances: Top={topClearanceMm}mm, Other={otherClearanceMm}mm");
                 DebugLogger.Info($"[CableTrayStrategy] CONDITIONS object: {conditions?.FilterName ?? "NULL"}, Category: {conditions?.Category ?? "NULL"}");
@@ -326,33 +356,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
 
                         DebugLogger.Info($"[CableTrayStrategy] MEP Orientation Analysis: X={absX:F3}, Y={absY:F3}, Z={absZ:F3}");
 
+                        // ✅ CRITICAL FIX: Use mm values directly to avoid variable swapping issues when batching is enabled
+                        double topClearanceForOffset = UnitUtils.ConvertToInternalUnits(topClearanceMm, UnitTypeId.Millimeters);
+                        double otherClearanceForOffset = UnitUtils.ConvertToInternalUnits(otherClearanceMm, UnitTypeId.Millimeters);
+                        double offsetDelta = (topClearanceForOffset - otherClearanceForOffset) / 2.0;
+                        
                         if (absX > absY && absX > absZ)
                         {
                             // X component is dominant - open side likely along X
-                            double verticalOffsetAmount = (topClearance - otherClearance) / 2.0;
-                            offsetVector = new XYZ(verticalOffsetAmount, 0, 0);
-                            DebugLogger.Info($"[CableTrayStrategy] 🔄 Using X-direction offset: {verticalOffsetAmount:F4}ft ({offsetVector})");
+                            offsetVector = new XYZ(offsetDelta, 0, 0);
+                            DebugLogger.Info($"[CableTrayStrategy] 🔄 Using X-direction offset: {offsetDelta:F4}ft ({offsetVector})");
                         }
                         else if (absY > absX && absY > absZ)
                         {
                             // Y component is dominant - open side likely along Y
-                            double verticalOffsetAmount = (topClearance - otherClearance) / 2.0;
-                            offsetVector = new XYZ(0, verticalOffsetAmount, 0);
-                            DebugLogger.Info($"[CableTrayStrategy] 🔄 Using Y-direction offset: {verticalOffsetAmount:F4}ft ({offsetVector})");
+                            offsetVector = new XYZ(0, offsetDelta, 0);
+                            DebugLogger.Info($"[CableTrayStrategy] 🔄 Using Y-direction offset: {offsetDelta:F4}ft ({offsetVector})");
                         }
                         else
                         {
                             // Z component is dominant or equal - use Z direction (upward)
-                            double verticalOffsetAmount = (topClearance - otherClearance) / 2.0;
-                            offsetVector = new XYZ(0, 0, verticalOffsetAmount);
-                            DebugLogger.Info($"[CableTrayStrategy] 🔄 Using Z-direction offset: {verticalOffsetAmount:F4}ft ({offsetVector})");
+                            offsetVector = new XYZ(0, 0, offsetDelta);
+                            DebugLogger.Info($"[CableTrayStrategy] 🔄 Using Z-direction offset: {offsetDelta:F4}ft ({offsetVector})");
                         }
                     }
                     else
                     {
                         // No orientation data - fallback to upward
-                        double verticalOffsetAmount = (topClearance - otherClearance) / 2.0;
-                        offsetVector = new XYZ(0, 0, verticalOffsetAmount);
+                        // ✅ CRITICAL FIX: Use mm values directly to avoid variable swapping issues when batching is enabled
+                        double topClearanceForOffset = UnitUtils.ConvertToInternalUnits(topClearanceMm, UnitTypeId.Millimeters);
+                        double otherClearanceForOffset = UnitUtils.ConvertToInternalUnits(otherClearanceMm, UnitTypeId.Millimeters);
+                        double offsetDelta = (topClearanceForOffset - otherClearanceForOffset) / 2.0;
+                        offsetVector = new XYZ(0, 0, offsetDelta);
                         DebugLogger.Warning($"[CableTrayStrategy] ⚠️ No orientation data for vertical cable tray, using upward fallback");
                     }
                 }
@@ -360,20 +395,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                 {
                     // 🟢 STANDARD LOGIC: For horizontal cable trays and wall intersections, use upward offset
                     DebugLogger.Info($"[CableTrayStrategy] 🟢 Using standard upward offset logic (horizontal or wall intersection)");
-                    double standardOffsetAmount = (topClearance - otherClearance) / 2.0;
-                    offsetVector = new XYZ(0, 0, standardOffsetAmount); // Always offset upward
+                    // ✅ CRITICAL FIX: Use mm values directly to avoid variable swapping issues when batching is enabled
+                    double topClearanceForOffset = UnitUtils.ConvertToInternalUnits(topClearanceMm, UnitTypeId.Millimeters);
+                    double otherClearanceForOffset = UnitUtils.ConvertToInternalUnits(otherClearanceMm, UnitTypeId.Millimeters);
+                    double offsetDelta = (topClearanceForOffset - otherClearanceForOffset) / 2.0;
+                    offsetVector = new XYZ(0, 0, offsetDelta); // Always offset upward
                 }
 
-                // ✅ OOP METHOD: Calculate final size with insulation contribution + asymmetric clearances
+                // ✅ CRITICAL FIX: Calculate final size with insulation contribution + asymmetric clearances
                 // Formula: Width/Height + insulation contribution + clearance on each side
-                double finalWidth = trayWidth + insulationContribution + (2 * otherClearance); // Left and right use other clearance
-                double finalHeight = trayHeight + insulationContribution + topClearance + otherClearance; // Top uses top clearance, bottom uses other
+                // ⚠️ BUG FIX: Ensure we use the CORRECT clearances (not swapped) when batching is enabled
+                // Width: Left and right use OTHER clearance (25mm each = 50mm total)
+                // Height: Top uses TOP clearance (75mm), bottom uses OTHER clearance (25mm) = 100mm total
+                
+                // ✅ CRITICAL VALIDATION: Verify clearances are correct before calculation
+                double topClearanceFt = UnitUtils.ConvertToInternalUnits(topClearanceMm, UnitTypeId.Millimeters);
+                double otherClearanceFt = UnitUtils.ConvertToInternalUnits(otherClearanceMm, UnitTypeId.Millimeters);
+                
+                // ✅ DIAGNOSTIC: Log clearances in both mm and ft to verify correct values
+                SafeFileLogger.SafeAppendText("cabletray_dimension_trace.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CLEARANCE-VERIFY] Zone {clashZone.Id}: " +
+                    $"topClearanceMm={topClearanceMm:F1}mm → topClearanceFt={topClearanceFt:F6}ft, " +
+                    $"otherClearanceMm={otherClearanceMm:F1}mm → otherClearanceFt={otherClearanceFt:F6}ft\n");
+                
+                // ✅ CRITICAL: Use the CORRECT clearances (topClearanceFt and otherClearanceFt) - NOT the variables that might be swapped
+                double finalWidth = trayWidth + insulationContribution + (2 * otherClearanceFt); // Left and right use OTHER clearance (25mm each)
+                double finalHeight = trayHeight + insulationContribution + topClearanceFt + otherClearanceFt; // Top uses TOP clearance (75mm), bottom uses OTHER (25mm)
+                
+                // ✅ DIAGNOSTIC: Log calculation breakdown BEFORE conversion
+                double widthClearanceAdded = 2 * otherClearanceFt;
+                double heightClearanceAdded = topClearanceFt + otherClearanceFt;
+                double widthClearanceAddedMm = UnitUtils.ConvertFromInternalUnits(widthClearanceAdded, UnitTypeId.Millimeters);
+                double heightClearanceAddedMm = UnitUtils.ConvertFromInternalUnits(heightClearanceAdded, UnitTypeId.Millimeters);
+                
+                SafeFileLogger.SafeAppendText("cabletray_dimension_trace.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CLEARANCE-BREAKDOWN] Zone {clashZone.Id}: " +
+                    $"Width clearance added: 2 * {otherClearanceMm:F1}mm = {widthClearanceAddedMm:F1}mm, " +
+                    $"Height clearance added: {topClearanceMm:F1}mm + {otherClearanceMm:F1}mm = {heightClearanceAddedMm:F1}mm\n");
                 
                 // ⚠️ DIAGNOSTIC: Log final calculated dimensions
                 double finalWidthMm = UnitUtils.ConvertFromInternalUnits(finalWidth, UnitTypeId.Millimeters);
                 double finalHeightMm = UnitUtils.ConvertFromInternalUnits(finalHeight, UnitTypeId.Millimeters);
                 double offsetAmount = offsetVector.GetLength();
-                DebugLogger.Info($"[CableTrayStrategy] Top={topClearance:F4}ft, Other={otherClearance:F4}ft, Offset={offsetAmount:F4}ft in direction {offsetVector}");
+                DebugLogger.Info($"[CableTrayStrategy] Top={topClearanceFt:F4}ft ({topClearanceMm:F1}mm), Other={otherClearanceFt:F4}ft ({otherClearanceMm:F1}mm), Offset={offsetAmount:F4}ft in direction {offsetVector}");
                 DebugLogger.Info($"[CableTrayStrategy] FINAL SIZE: Width={finalWidthMm:F1}mm ({finalWidth:F6}ft) x Height={finalHeightMm:F1}mm ({finalHeight:F6}ft), Offset: {offsetVector}");
                 
                 // ✅ CRITICAL DIAGNOSTIC: Log calculation breakdown for debugging "haywire" dimensions
@@ -382,6 +446,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                     $"Raw: W={trayWidthMm:F1}mm, H={trayHeightMm:F1}mm | " +
                     $"Insulation: {UnitUtils.ConvertFromInternalUnits(insulationContribution, UnitTypeId.Millimeters):F1}mm | " +
                     $"Clearances: Top={topClearanceMm:F1}mm, Other={otherClearanceMm:F1}mm | " +
+                    $"Width clearance: {widthClearanceAddedMm:F1}mm (2×{otherClearanceMm:F1}mm), " +
+                    $"Height clearance: {heightClearanceAddedMm:F1}mm ({topClearanceMm:F1}mm+{otherClearanceMm:F1}mm) | " +
                     $"FINAL: W={finalWidthMm:F1}mm ({finalWidth:F6}ft), H={finalHeightMm:F1}mm ({finalHeight:F6}ft)\n");
                 
                 return (offsetVector, finalWidth, finalHeight);

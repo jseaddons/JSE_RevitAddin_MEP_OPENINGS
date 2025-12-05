@@ -97,10 +97,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         else
                         {
                             // Fallback: Check by ClusterInstanceId (may change)
-                            checkCmd.CommandText = @"
-                                SELECT ClusterSleeveId FROM ClusterSleeves 
-                                WHERE ClusterInstanceId = @ClusterInstanceId";
-                            checkCmd.Parameters.AddWithValue("@ClusterInstanceId", clusterInstanceId);
+                        checkCmd.CommandText = @"
+                            SELECT ClusterSleeveId FROM ClusterSleeves 
+                            WHERE ClusterInstanceId = @ClusterInstanceId";
+                        checkCmd.Parameters.AddWithValue("@ClusterInstanceId", clusterInstanceId);
                         }
 
                         var existingId = checkCmd.ExecuteScalar();
@@ -146,34 +146,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 }
                                 else
                                 {
-                                    updateCmd.CommandText = @"
-                                        UPDATE ClusterSleeves SET
-                                            ComboId = @ComboId,
-                                            FilterId = @FilterId,
-                                            Category = @Category,
-                                            BoundingBoxMinX = @BoundingBoxMinX,
-                                            BoundingBoxMinY = @BoundingBoxMinY,
-                                            BoundingBoxMinZ = @BoundingBoxMinZ,
-                                            BoundingBoxMaxX = @BoundingBoxMaxX,
-                                            BoundingBoxMaxY = @BoundingBoxMaxY,
-                                            BoundingBoxMaxZ = @BoundingBoxMaxZ,
-                                            ClusterWidth = @ClusterWidth,
-                                            ClusterHeight = @ClusterHeight,
-                                            ClusterDepth = @ClusterDepth,
-                                            RotationAngleDeg = @RotationAngleDeg,
-                                            IsRotated = @IsRotated,
-                                            PlacementX = @PlacementX,
-                                            PlacementY = @PlacementY,
-                                            PlacementZ = @PlacementZ,
-                                            HostType = @HostType,
-                                            HostOrientation = @HostOrientation,
-                                            ClashZoneIdsJson = @ClashZoneIdsJson,
-                                            ClashZoneGuids = @ClashZoneGuids,
-                                            MepSizes = @MepSizes,
-                                            MepSystemNames = @MepSystemNames,
-                                            MepElementIds = @MepElementIds,
-                                            UpdatedAt = CURRENT_TIMESTAMP
-                                        WHERE ClusterInstanceId = @ClusterInstanceId";
+                                updateCmd.CommandText = @"
+                                    UPDATE ClusterSleeves SET
+                                        ComboId = @ComboId,
+                                        FilterId = @FilterId,
+                                        Category = @Category,
+                                        BoundingBoxMinX = @BoundingBoxMinX,
+                                        BoundingBoxMinY = @BoundingBoxMinY,
+                                        BoundingBoxMinZ = @BoundingBoxMinZ,
+                                        BoundingBoxMaxX = @BoundingBoxMaxX,
+                                        BoundingBoxMaxY = @BoundingBoxMaxY,
+                                        BoundingBoxMaxZ = @BoundingBoxMaxZ,
+                                        ClusterWidth = @ClusterWidth,
+                                        ClusterHeight = @ClusterHeight,
+                                        ClusterDepth = @ClusterDepth,
+                                        RotationAngleDeg = @RotationAngleDeg,
+                                        IsRotated = @IsRotated,
+                                        PlacementX = @PlacementX,
+                                        PlacementY = @PlacementY,
+                                        PlacementZ = @PlacementZ,
+                                        HostType = @HostType,
+                                        HostOrientation = @HostOrientation,
+                                        ClashZoneIdsJson = @ClashZoneIdsJson,
+                                        ClashZoneGuids = @ClashZoneGuids,
+                                        MepSizes = @MepSizes,
+                                        MepSystemNames = @MepSystemNames,
+                                        MepElementIds = @MepElementIds,
+                                        UpdatedAt = CURRENT_TIMESTAMP
+                                    WHERE ClusterInstanceId = @ClusterInstanceId";
                                 }
 
                                 AddClusterSleeveParameters(updateCmd, clusterInstanceId, comboId, filterId, category,
@@ -325,10 +325,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             }
                             else
                             {
-                                checkCmd.CommandText = @"
-                                    SELECT ClusterSleeveId FROM ClusterSleeves 
-                                    WHERE ClusterInstanceId = @ClusterInstanceId";
-                                checkCmd.Parameters.AddWithValue("@ClusterInstanceId", cluster.ClusterInstanceId);
+                            checkCmd.CommandText = @"
+                                SELECT ClusterSleeveId FROM ClusterSleeves 
+                                WHERE ClusterInstanceId = @ClusterInstanceId";
+                            checkCmd.Parameters.AddWithValue("@ClusterInstanceId", cluster.ClusterInstanceId);
                             }
 
                             var existingId = checkCmd.ExecuteScalar();
@@ -374,34 +374,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     }
                                     else
                                     {
-                                        updateCmd.CommandText = @"
-                                            UPDATE ClusterSleeves SET
-                                                ComboId = @ComboId,
-                                                FilterId = @FilterId,
-                                                Category = @Category,
-                                                BoundingBoxMinX = @BoundingBoxMinX,
-                                                BoundingBoxMinY = @BoundingBoxMinY,
-                                                BoundingBoxMinZ = @BoundingBoxMinZ,
-                                                BoundingBoxMaxX = @BoundingBoxMaxX,
-                                                BoundingBoxMaxY = @BoundingBoxMaxY,
-                                                BoundingBoxMaxZ = @BoundingBoxMaxZ,
-                                                ClusterWidth = @ClusterWidth,
-                                                ClusterHeight = @ClusterHeight,
-                                                ClusterDepth = @ClusterDepth,
-                                                RotationAngleDeg = @RotationAngleDeg,
-                                                IsRotated = @IsRotated,
-                                                PlacementX = @PlacementX,
-                                                PlacementY = @PlacementY,
-                                                PlacementZ = @PlacementZ,
-                                                HostType = @HostType,
-                                                HostOrientation = @HostOrientation,
-                                                ClashZoneIdsJson = @ClashZoneIdsJson,
-                                                ClashZoneGuids = @ClashZoneGuids,
-                                                MepSizes = @MepSizes,
-                                                MepSystemNames = @MepSystemNames,
-                                                MepElementIds = @MepElementIds,
-                                                UpdatedAt = CURRENT_TIMESTAMP
-                                            WHERE ClusterInstanceId = @ClusterInstanceId";
+                                    updateCmd.CommandText = @"
+                                        UPDATE ClusterSleeves SET
+                                            ComboId = @ComboId,
+                                            FilterId = @FilterId,
+                                            Category = @Category,
+                                            BoundingBoxMinX = @BoundingBoxMinX,
+                                            BoundingBoxMinY = @BoundingBoxMinY,
+                                            BoundingBoxMinZ = @BoundingBoxMinZ,
+                                            BoundingBoxMaxX = @BoundingBoxMaxX,
+                                            BoundingBoxMaxY = @BoundingBoxMaxY,
+                                            BoundingBoxMaxZ = @BoundingBoxMaxZ,
+                                            ClusterWidth = @ClusterWidth,
+                                            ClusterHeight = @ClusterHeight,
+                                            ClusterDepth = @ClusterDepth,
+                                            RotationAngleDeg = @RotationAngleDeg,
+                                            IsRotated = @IsRotated,
+                                            PlacementX = @PlacementX,
+                                            PlacementY = @PlacementY,
+                                            PlacementZ = @PlacementZ,
+                                            HostType = @HostType,
+                                            HostOrientation = @HostOrientation,
+                                            ClashZoneIdsJson = @ClashZoneIdsJson,
+                                            ClashZoneGuids = @ClashZoneGuids,
+                                            MepSizes = @MepSizes,
+                                            MepSystemNames = @MepSystemNames,
+                                            MepElementIds = @MepElementIds,
+                                            UpdatedAt = CURRENT_TIMESTAMP
+                                        WHERE ClusterInstanceId = @ClusterInstanceId";
                                     }
 
                                     AddClusterSleeveParameters(updateCmd, cluster);

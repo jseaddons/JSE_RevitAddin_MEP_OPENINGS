@@ -66,7 +66,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             
             // ✅ PARALLELIZATION: Calculate hashes in parallel (pure math, no Revit API)
             var zoneHashes = new ConcurrentDictionary<Guid, int>();
-            Parallel.ForEach(clashZones, zone =>
+            System.Threading.Tasks.Parallel.ForEach(clashZones, zone =>
             {
                 try
                 {

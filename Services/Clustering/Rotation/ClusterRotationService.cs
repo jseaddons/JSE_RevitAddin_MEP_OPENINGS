@@ -418,8 +418,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 }
             }
 
-            // ✅ RCS: For walls/framing, use RCS bounding boxes directly (already wall-aligned, no rotation needed)
+            // ✅ CRITICAL FIX: Use corner-based calculation for ALL clusters (not just rotated ones)
+            // Corners are always saved and are the authoritative source for accurate sizing
+            // For walls/framing, we'll transform corners to RCS before calculating dimensions
+            // This ensures consistent sizing regardless of rotation angle (straight or rotated axis)
             var firstSleeveData = cluster[0];
+            bool isWallOrFraming = false;
+            XYZ? wallDirection = null;
+            XYZ? wallOrigin = null;
+            
             if (firstSleeveData != null)
             {
                 try
@@ -436,70 +443,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             
                             if ((isWallHost || isFramingHost) && firstCz.WallDirection != null && !firstCz.WallDirection.IsZeroLength())
                             {
-                                // ✅ RCS: Collect RCS bounding boxes from database (already wall-aligned)
-                                var rcsBboxes = new List<(XYZ min, XYZ max)>();
-                                foreach (var sleeveData in cluster)
-                                {
-                                    try
-                                    {
-                                        int sleeveInstanceId = sleeveData.SleeveInstanceId;
-                                        if (sleeveInstanceId > 0)
-                                        {
-                                            var cz = GetCachedClashZone(sleeveInstanceId, xmlFilePath);
-                                            if (cz != null && 
-                                                !(cz.SleeveBoundingBoxRCS_MinX == 0.0 && cz.SleeveBoundingBoxRCS_MinY == 0.0 && cz.SleeveBoundingBoxRCS_MinZ == 0.0 &&
-                                                  cz.SleeveBoundingBoxRCS_MaxX == 0.0 && cz.SleeveBoundingBoxRCS_MaxY == 0.0 && cz.SleeveBoundingBoxRCS_MaxZ == 0.0))
-                                            {
-                                                rcsBboxes.Add((
-                                                    new XYZ(cz.SleeveBoundingBoxRCS_MinX, cz.SleeveBoundingBoxRCS_MinY, cz.SleeveBoundingBoxRCS_MinZ),
-                                                    new XYZ(cz.SleeveBoundingBoxRCS_MaxX, cz.SleeveBoundingBoxRCS_MaxY, cz.SleeveBoundingBoxRCS_MaxZ)
-                                                ));
-                                            }
-                                        }
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ Error getting RCS bbox for sleeve: {ex.Message}\n");
-                                    }
-                                }
+                                isWallOrFraming = true;
+                                wallDirection = firstCz.WallDirection;
+                                wallOrigin = new XYZ(firstCz.SleevePlacementPointActiveDocumentX, 
+                                                    firstCz.SleevePlacementPointActiveDocumentY, 
+                                                    firstCz.SleevePlacementPointActiveDocumentZ);
                                 
-                                if (rcsBboxes.Count > 0)
-                                {
-                                    // ✅ RCS: Simple union in RCS (no rotation needed - already wall-aligned!)
-                                    double rcsMinX = rcsBboxes.Min(b => b.min.X);
-                                    double rcsMinY = rcsBboxes.Min(b => b.min.Y);
-                                    double rcsMinZ = rcsBboxes.Min(b => b.min.Z);
-                                    double rcsMaxX = rcsBboxes.Max(b => b.max.X);
-                                    double rcsMaxY = rcsBboxes.Max(b => b.max.Y);
-                                    double rcsMaxZ = rcsBboxes.Max(b => b.max.Z);
-                                    
-                                    double rcsWidth = rcsMaxX - rcsMinX;   // RCS X = along wall = Width
-                                    double rcsHeight = rcsMaxZ - rcsMinZ;  // RCS Z = vertical = Height
-                                    double rcsDepth = rcsMaxY - rcsMinY;  // RCS Y = through wall = Depth
-                                    
-                                    // Midpoint in RCS
-                                    XYZ rcsMid = new XYZ((rcsMinX + rcsMaxX) / 2, (rcsMinY + rcsMaxY) / 2, (rcsMinZ + rcsMaxZ) / 2);
-                                    
-                                    // ✅ RCS: Transform midpoint back to WCS for placement
-                                    XYZ wcsMid = WallRcsTransformer.TransformToWcs(rcsMid, firstCz.WallDirection, 
-                                        new XYZ(firstCz.SleevePlacementPointActiveDocumentX, 
-                                               firstCz.SleevePlacementPointActiveDocumentY, 
-                                               firstCz.SleevePlacementPointActiveDocumentZ)) ?? XYZ.Zero;
-                                    
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                            $"[{DateTime.Now:HH:mm:ss}] ✅ RCS: Using wall-aligned RCS bounding boxes: {rcsBboxes.Count}/{cluster.Count} sleeves, " +
-                                            $"Size=({rcsWidth:F1}, {rcsHeight:F1}, {rcsDepth:F1}), RCSMid=({rcsMid.X:F1}, {rcsMid.Y:F1}, {rcsMid.Z:F1}), PlacementPoint=({placementPoint.X:F1}, {placementPoint.Y:F1}, {placementPoint.Z:F1})\n");
-                                    }
-                                    
-                                    // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
-                                    (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ) rcsResult = 
-                                        (rcsWidth, rcsHeight, rcsDepth, placementPoint, null, null, null, null, null, null);
-                                    StoreInCache(cluster, rotationAngle, rcsResult, calcStopwatch);
-                                    return rcsResult;
-                                }
+                                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] 🔍 WALL/FRAMING DETECTED: Will use corner-based calculation with RCS transformation (straight or rotated axis)\n");
                             }
                         }
                     }
@@ -507,7 +458,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 catch (Exception ex)
                 {
                     SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ Error checking RCS for walls: {ex.Message}\n");
+                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ Error checking host type: {ex.Message}\n");
                 }
             }
 
@@ -586,59 +537,61 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
             SafeFileLogger.SafeAppendText("cluster_sizing.log",
                 $"[{DateTime.Now:HH:mm:ss}] 📊 Collected rotatedBboxes: {rotatedBboxes.Count} out of {cluster.Count} sleeves\n");
 
-            // ✅ CRITICAL FIX: For rotated axis-aligned clusters (non-straight axis-aligned to WCS), use corner-based watertight algorithm
-            // Simple union of rotated bounding boxes gives oversized results for diagonal arrangements
-            // ⚠️ IMPORTANT: Corner-based algorithm only needs corners + rotation, NOT rotated bounding boxes
-            // Rotated bounding boxes are only saved for rotated axis-aligned sleeves (45°, 225°, etc.)
-            // But individual sleeves might be straight axis-aligned (0°, 90°) so rotatedBboxes.Count=0
-            // However, corners are ALWAYS saved for all sleeves, so we can use corner-based calculation
-            // ✅ APPLIES TO ALL CATEGORIES: Cable Trays, Ducts, Pipes (all rectangular elements with rotated axis)
+            // ✅ CRITICAL FIX: Use corner-based calculation for ALL clusters (not just rotated ones)
+            // Corners are always saved and are the authoritative source for accurate sizing
+            // This ensures consistent sizing regardless of rotation angle or host type
+            // ✅ APPLIES TO ALL CATEGORIES: Cable Trays, Ducts, Pipes, Walls, Framing (all rectangular elements)
             // This was originally debugged for cable trays but works universally for all categories
-            if (Math.Abs(rotationAngle) > 1e-6)
+            // For walls/framing, we transform corners to RCS before calculating dimensions
+            bool useCornerBasedCalculation = true; // Always use corner-based for accurate sizing
+            if (useCornerBasedCalculation)
             {
                 // ✅ WATERTIGHT ALGORITHM: Use corner-based calculation for accurate sizing
                 // This works even if rotated bounding boxes aren't in database, as long as corners are available
                 // ✅ UNIVERSAL: Applies to ALL categories - Cable Trays, Ducts, Pipes (rectangular elements with rotated axis)
                 // Corners are saved during individual sleeve placement for all categories, so this works universally
+                
+                // ✅ CRITICAL FIX: Extract SleeveInstanceId BEFORE try block so catch block can access it
+                var sleeveIdsInCluster = new List<int>();
+                foreach (var sleeveData in cluster)
+                {
+                    try
+                    {
+                        int sleeveId;
+                        dynamic dynSleeve = sleeveData;
+                        object sleeveIdObj = dynSleeve.SleeveInstanceId;
+                        if (sleeveIdObj == null) continue;
+                        
+                        if (sleeveIdObj is int id)
+                            sleeveId = id;
+                        else if (sleeveIdObj is long longId)
+                            sleeveId = (int)longId;
+                        else
+                            sleeveId = Convert.ToInt32(sleeveIdObj);
+                        
+                        sleeveIdsInCluster.Add(sleeveId);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+                }
+                
                 try
                 {
                     // ✅ DIAGNOSTIC: Log before attempting corner-based calculation
                     double rotationDeg = rotationAngle * 180.0 / Math.PI;
+                    string hostType = isWallOrFraming ? "Wall/Framing" : "Floor/Other";
                     SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                        $"[{DateTime.Now:HH:mm:ss}] 🔍 ATTEMPTING corner-based calculation: rotation={rotationDeg:F1}° (rotated axis-aligned), clusterSize={cluster.Count}, rotatedBboxesCount={rotatedBboxes.Count}\n");
+                        $"[{DateTime.Now:HH:mm:ss}] 🔍 ATTEMPTING corner-based calculation: rotation={rotationDeg:F1}°, hostType={hostType}, clusterSize={cluster.Count}, rotatedBboxesCount={rotatedBboxes.Count}\n");
                     
                     // ✅ PRE-CHECK: Verify at least one sleeve has corners before attempting calculation
                     // Corners are ALWAYS saved for all sleeves during individual placement
+                    // Note: sleeveIdsInCluster was already extracted before the try block
                     bool hasAnyCorners = false;
                     int sleevesWithCorners = 0;
                     
-                    // ✅ CRITICAL FIX: Extract SleeveInstanceId safely BEFORE any checks
-                    var sleeveIdsInCluster = new List<int>();
-                    foreach (var sleeveData in cluster)
-                    {
-                        try
-                        {
-                            int sleeveId;
-                            dynamic dynSleeve = sleeveData;
-                            object sleeveIdObj = dynSleeve.SleeveInstanceId;
-                            if (sleeveIdObj == null) continue;
-                            
-                            if (sleeveIdObj is int id)
-                                sleeveId = id;
-                            else if (sleeveIdObj is long longId)
-                                sleeveId = (int)longId;
-                            else
-                                sleeveId = Convert.ToInt32(sleeveIdObj);
-                            
-                            sleeveIdsInCluster.Add(sleeveId);
-                        }
-                        catch
-                        {
-                            continue;
-                        }
-                    }
-                    
-                    // Now check corners using the extracted IDs
+                    // Now check corners using the extracted IDs (already extracted before try block)
                     foreach (int sleeveId in sleeveIdsInCluster)
                     {
                         var clashZone = GetCachedClashZone(sleeveId, xmlFilePath);
@@ -649,17 +602,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             // ✅ CRITICAL FIX: Explicitly type nullable properties to avoid dynamic dispatch errors
                             double? corner1X = clashZone.SleeveCorner1X;
                             double? corner1Y = clashZone.SleeveCorner1Y;
+                            double? corner1Z = clashZone.SleeveCorner1Z;
                             double? corner2X = clashZone.SleeveCorner2X;
                             double? corner2Y = clashZone.SleeveCorner2Y;
+                            double? corner2Z = clashZone.SleeveCorner2Z;
                             double? corner3X = clashZone.SleeveCorner3X;
                             double? corner3Y = clashZone.SleeveCorner3Y;
+                            double? corner3Z = clashZone.SleeveCorner3Z;
                             double? corner4X = clashZone.SleeveCorner4X;
                             double? corner4Y = clashZone.SleeveCorner4Y;
+                            double? corner4Z = clashZone.SleeveCorner4Z;
                             
                             bool hasCorners = corner1X.HasValue && corner1Y.HasValue &&
                                               corner2X.HasValue && corner2Y.HasValue &&
                                               corner3X.HasValue && corner3Y.HasValue &&
                                               corner4X.HasValue && corner4Y.HasValue;
+                            
+                            bool hasCornerZ = corner1Z.HasValue && corner2Z.HasValue && 
+                                              corner3Z.HasValue && corner4Z.HasValue;
+                            
+                            // ✅ DIAGNOSTIC: Log corner Z availability
+                            if (!hasCornerZ)
+                            {
+                                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                    $"[{DateTime.Now:HH:mm:ss}]   ⚠️ Sleeve {sleeveId}: Corner Z coordinates NOT saved in database! " +
+                                    $"Corner1Z={corner1Z.HasValue}, Corner2Z={corner2Z.HasValue}, Corner3Z={corner3Z.HasValue}, Corner4Z={corner4Z.HasValue}, " +
+                                    $"Will use SleeveBoundingBoxMinZ={clashZone.SleeveBoundingBoxMinZ:F6} as fallback\n");
+                            }
+                            else
+                            {
+                                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                    $"[{DateTime.Now:HH:mm:ss}]   ✅ Sleeve {sleeveId}: Corner Z coordinates found in database! " +
+                                    $"Corner1Z={corner1Z.Value:F6}, Corner2Z={corner2Z.Value:F6}, Corner3Z={corner3Z.Value:F6}, Corner4Z={corner4Z.Value:F6}, " +
+                                    $"PlacementPointZ={clashZone.SleevePlacementPointActiveDocumentZ:F6}, BBoxMinZ={clashZone.SleeveBoundingBoxMinZ:F6}\n");
+                            }
                             
                             if (hasCorners)
                             {
@@ -682,6 +658,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     if (hasAnyCorners)
                     {
                         // ✅ MANUAL CORNER-BASED CALCULATION: Calculate directly here to avoid dynamic type issues
+                        // ✅ CRITICAL: Uses pre-saved corners from database (NO recalculation needed)
+                        // - Corners were batch calculated and saved to database during individual sleeve placement
+                        // - After regeneration, corners were batch saved via SleevePersistenceService.PersistSleeveData
+                        // - Cluster calculation reads corners directly from database (SleeveCorner1X/Y/Z through Corner4X/Y/Z)
+                        // - This ensures accurate cluster sizing using pre-calculated corner coordinates
                         var allCorners = new List<XYZ>();
                         
                         foreach (int sleeveId in sleeveIdsInCluster)
@@ -690,6 +671,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             if (cz != null)
                             {
                                 // ✅ CRITICAL FIX: Explicitly type nullable properties to avoid dynamic dispatch errors
+                                // ✅ READ FROM DATABASE: These corners were batch saved after regeneration
+                                // - No recalculation needed - corners are already in database
                                 double? corner1X = cz.SleeveCorner1X;
                                 double? corner1Y = cz.SleeveCorner1Y;
                                 double? corner1Z = cz.SleeveCorner1Z;
@@ -708,15 +691,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                     corner3X.HasValue && corner3Y.HasValue &&
                                     corner4X.HasValue && corner4Y.HasValue)
                                 {
-                                    // Add all 4 corners (use Z from bounding box for consistency)
-                                    double sleeveMinZ = cz.SleeveBoundingBoxMinZ;
-                                    allCorners.Add(new XYZ(corner1X.Value, corner1Y.Value, sleeveMinZ));
-                                    allCorners.Add(new XYZ(corner2X.Value, corner2Y.Value, sleeveMinZ));
-                                    allCorners.Add(new XYZ(corner3X.Value, corner3Y.Value, sleeveMinZ));
-                                    allCorners.Add(new XYZ(corner4X.Value, corner4Y.Value, sleeveMinZ));
+                                    // ✅ CRITICAL FIX: Use stored corner Z coordinates if available, otherwise fall back to bounding box MinZ
+                                    // The stored corner Z coordinates are the authoritative source - they were calculated from the actual sleeve placement
+                                    double corner1ZValue = corner1Z.HasValue ? corner1Z.Value : cz.SleeveBoundingBoxMinZ;
+                                    double corner2ZValue = corner2Z.HasValue ? corner2Z.Value : cz.SleeveBoundingBoxMinZ;
+                                    double corner3ZValue = corner3Z.HasValue ? corner3Z.Value : cz.SleeveBoundingBoxMinZ;
+                                    double corner4ZValue = corner4Z.HasValue ? corner4Z.Value : cz.SleeveBoundingBoxMinZ;
                                     
+                                    allCorners.Add(new XYZ(corner1X.Value, corner1Y.Value, corner1ZValue));
+                                    allCorners.Add(new XYZ(corner2X.Value, corner2Y.Value, corner2ZValue));
+                                    allCorners.Add(new XYZ(corner3X.Value, corner3Y.Value, corner3ZValue));
+                                    allCorners.Add(new XYZ(corner4X.Value, corner4Y.Value, corner4ZValue));
+                                    
+                                    bool usingStoredZ = corner1Z.HasValue && corner2Z.HasValue && corner3Z.HasValue && corner4Z.HasValue;
                                     SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                        $"[{DateTime.Now:HH:mm:ss}]   ✅ Added 4 corners for sleeve {sleeveId}: C1=({corner1X.Value:F6},{corner1Y.Value:F6}), C2=({corner2X.Value:F6},{corner2Y.Value:F6}), C3=({corner3X.Value:F6},{corner3Y.Value:F6}), C4=({corner4X.Value:F6},{corner4Y.Value:F6})\n");
+                                        $"[{DateTime.Now:HH:mm:ss}]   ✅ Added 4 corners for sleeve {sleeveId}: " +
+                                        $"C1=({corner1X.Value:F6},{corner1Y.Value:F6},{corner1ZValue:F6}), " +
+                                        $"C2=({corner2X.Value:F6},{corner2Y.Value:F6},{corner2ZValue:F6}), " +
+                                        $"C3=({corner3X.Value:F6},{corner3Y.Value:F6},{corner3ZValue:F6}), " +
+                                        $"C4=({corner4X.Value:F6},{corner4Y.Value:F6},{corner4ZValue:F6}) " +
+                                        $"[UsingStoredZ={usingStoredZ}]\n");
                                 }
                             }
                         }
@@ -724,56 +718,192 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                         if (allCorners.Count >= 4)
                         {
                             SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                $"[{DateTime.Now:HH:mm:ss}] 🔧 Starting corner-based calculation with {allCorners.Count} corners, rotation={rotationAngle * 180 / Math.PI:F1}°\n");
+                                $"[{DateTime.Now:HH:mm:ss}] 🔧 Starting corner-based calculation with {allCorners.Count} corners, rotation={rotationAngle * 180 / Math.PI:F1}°, isWallOrFraming={isWallOrFraming}\n");
                             
-                            // ✅ Calculate cluster bounding box by rotating corners back to aligned axis
-                            double cosA = Math.Cos(-rotationAngle); // Negative for inverse rotation
-                            double sinA = Math.Sin(-rotationAngle);
+                            double cornerWidth = 0, cornerHeight = 0; // Initialize to avoid unassigned variable error
+                            double rotatedMinX = 0, rotatedMinY = 0, rotatedMaxX = 0, rotatedMaxY = 0;
+                            double originX = 0, originY = 0;
                             
-                            // ✅ Use corner centroid as rotation origin for accurate geometric center
-                            // Corner centroid works correctly when MEP elements have different orientations
-                            double originX = allCorners.Average(c => c.X);
-                            double originY = allCorners.Average(c => c.Y);
-                            
-                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                $"[{DateTime.Now:HH:mm:ss}]   Origin (corner centroid): ({originX:F6}, {originY:F6}), PlacementPoint=({placementPoint.X:F6}, {placementPoint.Y:F6}), cosA={cosA:F6}, sinA={sinA:F6}\n");
-                            
-                            // Rotate each corner and find min/max in rotated space
-                            double minRotX = double.MaxValue, maxRotX = double.MinValue;
-                            double minRotY = double.MaxValue, maxRotY = double.MinValue;
-                            
-                            foreach (var corner in allCorners)
+                            // ✅ METHODOLOGY COMPLIANCE: According to SLEEVE_PLACEMENT_METHODOLOGY.md (line 850+),
+                            //    RCS transformation is NOT used for walls. Instead:
+                            //    - For straight axis (rotationAngle = 0°): Use world-space corners directly
+                            //    - For rotated axis: Transform corners to cluster's rotated coordinate system using rotation matrix
+                            if (isWallOrFraming && wallDirection != null && wallOrigin != null)
                             {
-                                // Translate to origin
-                                double relX = corner.X - originX;
-                                double relY = corner.Y - originY;
+                                // ✅ WALL/FRAMING: Use rotation matrix approach (NOT RCS) per methodology
+                                // For straight axis (rotationAngle ≈ 0°): Use world-space corners directly
+                                // For rotated axis: Transform corners to cluster's rotated coordinate system
                                 
-                                // Rotate
-                                double rotX = relX * cosA - relY * sinA;
-                                double rotY = relX * sinA + relY * cosA;
+                                // Check if rotation angle is near zero (straight axis)
+                                bool isStraightAxis = Math.Abs(rotationAngle) < 1e-6;
                                 
-                                // Update bounds
-                                minRotX = Math.Min(minRotX, rotX);
-                                maxRotX = Math.Max(maxRotX, rotX);
-                                minRotY = Math.Min(minRotY, rotY);
-                                maxRotY = Math.Max(maxRotY, rotY);
+                                if (isStraightAxis)
+                                {
+                                    // ✅ STRAIGHT AXIS: Use world-space corners directly (no transformation needed)
+                                    // For Y-wall: Width = Y range, Height = Z range
+                                    // For X-wall: Width = X range, Height = Z range
+                                    double wcsMinX = allCorners.Min(c => c.X);
+                                    double wcsMaxX = allCorners.Max(c => c.X);
+                                    double wcsMinY = allCorners.Min(c => c.Y);
+                                    double wcsMaxY = allCorners.Max(c => c.Y);
+                                    
+                                    // ✅ CRITICAL: For walls, width is ALWAYS along the wall direction
+                                    // Y-wall: Wall runs along Y-axis → Width = Y range (along the wall)
+                                    // X-wall: Wall runs along X-axis → Width = X range (along the wall)
+                                    bool isYWall = Math.Abs(wallDirection.Y) > Math.Abs(wallDirection.X);
+                                    
+                                    if (isYWall)
+                                    {
+                                        // ✅ Y-wall: Wall runs along Y-axis, so width (along the wall) = Y range
+                                        cornerWidth = wcsMaxY - wcsMinY;
+                                        rotatedMinX = wcsMinX;
+                                        rotatedMaxX = wcsMaxX;
+                                        rotatedMinY = wcsMinY;
+                                        rotatedMaxY = wcsMaxY;
+                                    }
+                                    else
+                                    {
+                                        // ✅ X-wall: Wall runs along X-axis, so width (along the wall) = X range
+                                        cornerWidth = wcsMaxX - wcsMinX;
+                                        rotatedMinX = wcsMinX;
+                                        rotatedMaxX = wcsMaxX;
+                                        rotatedMinY = wcsMinY;
+                                        rotatedMaxY = wcsMaxY;
+                                    }
+                                    
+                                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                        $"[{DateTime.Now:HH:mm:ss}]   ✅ STRAIGHT AXIS WALL: Using world-space corners directly (no RCS, no rotation). " +
+                                        $"WallType={(isYWall ? "Y-wall" : "X-wall")}, " +
+                                        $"minX={wcsMinX:F6}, maxX={wcsMaxX:F6}, minY={wcsMinY:F6}, maxY={wcsMaxY:F6}, " +
+                                        $"Width={cornerWidth:F6}\n");
+                                }
+                                else
+                                {
+                                    // ✅ ROTATED AXIS: Transform corners to cluster's rotated coordinate system using rotation matrix
+                                    // Per methodology (line 947-996): Use rotation matrix, NOT RCS
+                                    double cosCluster = Math.Cos(rotationAngle);
+                                    double sinCluster = Math.Sin(rotationAngle);
+                                    
+                                    // Use first sleeve center as origin (per methodology line 950)
+                                    originX = wallOrigin.X;
+                                    originY = wallOrigin.Y;
+                                    
+                                    // Transform all corners to cluster's rotated coordinate system
+                                    var transformedCorners = new List<XYZ>();
+                                    foreach (var corner in allCorners)
+                                    {
+                                        // Translate relative to origin
+                                        double relX = corner.X - originX;
+                                        double relY = corner.Y - originY;
+                                        
+                                        // Rotate to cluster's intended axis coordinate system (per methodology line 971-972)
+                                        double clusterX = relX * cosCluster - relY * sinCluster;
+                                        double clusterY = relX * sinCluster + relY * cosCluster;
+                                        
+                                        transformedCorners.Add(new XYZ(clusterX, clusterY, corner.Z));
+                                    }
+                                    
+                                    // Find min/max extents in rotated coordinate system
+                                    double minRotX = transformedCorners.Min(c => c.X);
+                                    double maxRotX = transformedCorners.Max(c => c.X);
+                                    double minRotY = transformedCorners.Min(c => c.Y);
+                                    double maxRotY = transformedCorners.Max(c => c.Y);
+                                    
+                                    cornerWidth = maxRotX - minRotX;
+                                    rotatedMinX = minRotX;
+                                    rotatedMaxX = maxRotX;
+                                    rotatedMinY = minRotY;
+                                    rotatedMaxY = maxRotY;
+                                    
+                                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                        $"[{DateTime.Now:HH:mm:ss}]   ✅ ROTATED AXIS WALL: Transformed {transformedCorners.Count} corners to cluster's rotated coordinate system. " +
+                                        $"Rotation={rotationAngle * 180 / Math.PI:F1}°, " +
+                                        $"minRotX={minRotX:F6}, maxRotX={maxRotX:F6}, minRotY={minRotY:F6}, maxRotY={maxRotY:F6}, " +
+                                        $"Width={cornerWidth:F6}\n");
+                                }
                             }
                             
-                            double cornerWidth = maxRotX - minRotX;
-                            double cornerHeight = maxRotY - minRotY;
+                            if (!isWallOrFraming)
+                            {
+                                // ✅ FLOOR/OTHER: Calculate in WCS with rotation if needed
+                                // Calculate cluster bounding box by rotating corners back to aligned axis
+                                double cosA = Math.Cos(-rotationAngle); // Negative for inverse rotation
+                                double sinA = Math.Sin(-rotationAngle);
+                                
+                                // ✅ Use corner centroid as rotation origin for accurate geometric center
+                                // Corner centroid works correctly when MEP elements have different orientations
+                                originX = allCorners.Average(c => c.X);
+                                originY = allCorners.Average(c => c.Y);
+                                
+                                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                    $"[{DateTime.Now:HH:mm:ss}]   Origin (corner centroid): ({originX:F6}, {originY:F6}), PlacementPoint=({placementPoint.X:F6}, {placementPoint.Y:F6}), cosA={cosA:F6}, sinA={sinA:F6}\n");
+                                
+                                // Rotate each corner and find min/max in rotated space
+                                double minRotX = double.MaxValue, maxRotX = double.MinValue;
+                                double minRotY = double.MaxValue, maxRotY = double.MinValue;
+                                
+                                foreach (var corner in allCorners)
+                                {
+                                    // Translate to origin
+                                    double relX = corner.X - originX;
+                                    double relY = corner.Y - originY;
+                                    
+                                    // Rotate
+                                    double rotX = relX * cosA - relY * sinA;
+                                    double rotY = relX * sinA + relY * cosA;
+                                    
+                                    // Update bounds
+                                    minRotX = Math.Min(minRotX, rotX);
+                                    maxRotX = Math.Max(maxRotX, rotX);
+                                    minRotY = Math.Min(minRotY, rotY);
+                                    maxRotY = Math.Max(maxRotY, rotY);
+                                }
+                                
+                                cornerWidth = maxRotX - minRotX;
+                                cornerHeight = maxRotY - minRotY;
+                                
+                                // Store rotated bounds for extents
+                                rotatedMinX = minRotX;
+                                rotatedMaxX = maxRotX;
+                                rotatedMinY = minRotY;
+                                rotatedMaxY = maxRotY;
+                                
+                                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                    $"[{DateTime.Now:HH:mm:ss}]   Rotated bounds: minX={minRotX:F6}, maxX={maxRotX:F6}, minY={minRotY:F6}, maxY={maxRotY:F6}\n");
+                            }
                             
-                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                $"[{DateTime.Now:HH:mm:ss}]   Rotated bounds: minX={minRotX:F6}, maxX={maxRotX:F6}, minY={minRotY:F6}, maxY={maxRotY:F6}\n");
-                            
-                            // Z dimension from sleeve bounding boxes
-                            var clashZonesForDepth = sleeveIdsInCluster
+                            // ✅ HEIGHT: Calculate from Z range of bounding boxes (vertical dimension)
+                            // For walls/framing: Height = Z range (vertical), NOT from corner Z (all corners have same Z for 2D opening)
+                            // For floors/other: Height = Y range (vertical in rotated space)
+                            var clashZonesForHeight = sleeveIdsInCluster
                                 .Select(id => GetCachedClashZone(id, xmlFilePath))
                                 .Where(cz => cz != null)
                                 .ToList();
                             
-                            double cornerMinZ = clashZonesForDepth.Count > 0 ? clashZonesForDepth.Min(cz => cz.SleeveBoundingBoxMinZ) : 0.0;
-                            double cornerMaxZ = clashZonesForDepth.Count > 0 ? clashZonesForDepth.Max(cz => cz.SleeveBoundingBoxMaxZ) : 0.0;
-                            double cornerDepth = cornerMaxZ - cornerMinZ;
+                            double cornerMinZ = clashZonesForHeight.Count > 0 ? clashZonesForHeight.Min(cz => cz.SleeveBoundingBoxMinZ) : 0.0;
+                            double cornerMaxZ = clashZonesForHeight.Count > 0 ? clashZonesForHeight.Max(cz => cz.SleeveBoundingBoxMaxZ) : 0.0;
+                            double calculatedHeight = cornerMaxZ - cornerMinZ; // Height = Z range (vertical dimension)
+                            
+                            // ✅ CRITICAL FIX: For walls/framing, use Z range for height, not RCS Y
+                            // For floors/other, cornerHeight is already calculated from Y range in rotated space
+                            if (isWallOrFraming)
+                            {
+                                cornerHeight = calculatedHeight; // Override with Z range (vertical) for walls/framing
+                            }
+                            else
+                            {
+                                // For floors/other, cornerHeight is already correct from rotated Y range
+                                // But also verify Z range matches (should be same for 2D opening)
+                                if (Math.Abs(cornerHeight - calculatedHeight) > 0.001) // 0.001 feet = ~0.3mm tolerance
+                                {
+                                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                        $"[{DateTime.Now:HH:mm:ss}]   ⚠️ Height mismatch: Y-range={cornerHeight:F6}ft, Z-range={calculatedHeight:F6}ft, using Y-range\n");
+                                }
+                            }
+                            
+                            // ✅ DEPTH: For walls/framing, depth = wall thickness (overridden later), not from Z range
+                            // The Z range is used for height, not depth
+                            double cornerDepth = 0.0; // Will be set from wall thickness later for walls/framing
                             
                             double widthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(cornerWidth);
                             double heightMm = RevitUnitConversionService.Instance.FromInternalMillimeters(cornerHeight);
@@ -783,10 +913,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                 $"[{DateTime.Now:HH:mm:ss}] ✅ CORNER-BASED SUCCESS: W={widthMm:F1}mm, H={heightMm:F1}mm, D={depthMm:F1}mm (from {allCorners.Count} corners)\n");
                             
                             // ✅ Calculate rotated bounding box extents in world coordinates
-                            double rotatedMinX = minRotX + originX;
-                            double rotatedMinY = minRotY + originY;
-                            double rotatedMaxX = maxRotX + originX;
-                            double rotatedMaxY = maxRotY + originY;
+                            // For WCS calculation, transform back to world coordinates
+                            // For RCS calculation, these are already in RCS coordinates
+                            if (!isWallOrFraming)
+                            {
+                                rotatedMinX = rotatedMinX + originX;
+                                rotatedMinY = rotatedMinY + originY;
+                                rotatedMaxX = rotatedMaxX + originX;
+                                rotatedMaxY = rotatedMaxY + originY;
+                            }
                             
                             (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ) cornerResult = 
                                 (cornerWidth, cornerHeight, cornerDepth, placementPoint,
@@ -798,28 +933,53 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                         }
                         else
                         {
+                            // ⚠️ CRITICAL ERROR: Not enough corners - this should NEVER happen if corners are saved correctly
                             SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                $"[{DateTime.Now:HH:mm:ss}] ⚠️ Not enough corners collected: {allCorners.Count}, falling back to union\n");
+                                $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ CRITICAL ERROR: Not enough corners collected: {allCorners.Count} (need at least 4)\n" +
+                                $"  This indicates corners were NOT saved correctly for individual sleeves!\n" +
+                                $"  Sleeve IDs in cluster: {string.Join(", ", sleeveIdsInCluster)}\n" +
+                                $"  Check if MEP_ElementId is set on individual sleeves and if corners are saved to database.\n" +
+                                $"  Check if SleevePersistenceService.PersistSleeveData was called after placement.\n");
+                            
+                            // ❌ NO FALLBACK: Throw exception to force investigation - corners MUST be available
+                            throw new InvalidOperationException(
+                                $"CRITICAL: Corner-based calculation failed - only {allCorners.Count} corners found (need at least 4). " +
+                                $"This indicates corners were not saved correctly for individual sleeves. " +
+                                $"Sleeve IDs: {string.Join(", ", sleeveIdsInCluster)}. " +
+                                $"Check MEP_ElementId parameter on sleeves and corner saving logic (SleevePersistenceService.PersistSleeveData).");
                         }
                     }
                     else
                     {
+                        // ⚠️ CRITICAL ERROR: No corners found - this should NEVER happen
                         SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ No corners found in any sleeve, falling back to union\n");
+                            $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ CRITICAL ERROR: No corners found in ANY sleeve!\n" +
+                            $"  This indicates corners were NOT saved during individual sleeve placement!\n" +
+                            $"  Sleeve IDs in cluster: {string.Join(", ", sleeveIdsInCluster)}\n" +
+                            $"  Check if MEP_ElementId is set on individual sleeves and if corners are saved to database.\n" +
+                            $"  Check if SleevePersistenceService.PersistSleeveData was called after placement.\n");
+                        
+                        // ❌ NO FALLBACK: Throw exception to force investigation - corners MUST be available
+                        throw new InvalidOperationException(
+                            $"CRITICAL: Corner-based calculation failed - no corners found in any sleeve. " +
+                            $"This indicates corners were not saved during individual sleeve placement. " +
+                            $"Sleeve IDs: {string.Join(", ", sleeveIdsInCluster)}. " +
+                            $"Check MEP_ElementId parameter on sleeves and corner saving logic (SleevePersistenceService.PersistSleeveData).");
                     }
                 }
                 catch (Exception cornerEx)
                 {
                     SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                        $"[{DateTime.Now:HH:mm:ss}] ❌ Corner-based calculation EXCEPTION: {cornerEx.Message}\nStackTrace: {cornerEx.StackTrace}\nFalling back to union.\n");
+                        $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ CRITICAL EXCEPTION in corner-based calculation: {cornerEx.Message}\n" +
+                        $"StackTrace: {cornerEx.StackTrace}\n" +
+                        $"Sleeve IDs in cluster: {string.Join(", ", sleeveIdsInCluster)}\n" +
+                        $"This should NOT happen - corners MUST be available for all sleeves.\n");
+                    
+                    // ❌ NO FALLBACK: Re-throw to force investigation
+                    throw;
                 }
             }
-            else
-            {
-                double rotationDeg = rotationAngle * 180.0 / Math.PI;
-                SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ Skipping corner-based: rotation={rotationDeg:F1}° (straight axis-aligned to WCS), isNearZero={Math.Abs(rotationAngle) <= 1e-6}\n");
-            }
+            // Note: Corner-based calculation is now always attempted and MUST succeed (no fallback to RCS)
 
             // ✅ CRITICAL FIX: For rotated floor clusters, if corner-based calculation failed,
             // reconstruct world bounding boxes from placement points + dimensions (same as straight-axis logic)

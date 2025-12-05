@@ -10,6 +10,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Safety;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Geometry; // For WallRcsTransformer
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
 {
@@ -239,27 +240,114 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                         double deltaZ = (theoreticalMid.Z - placementPoint.Z) * 304.8;
                         double deltaDistance = Math.Sqrt(deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ);
                         
-                        // Override placement point with computed midpoint
-                        placementPoint = theoreticalMid;
+                        // ✅ CRITICAL FIX: If Z delta is too large (>1000mm), stored corner Z coordinates are likely wrong
+                        // Use original placement point instead to prevent cluster sleeves from being placed at wrong elevation
+                        bool useOriginalPoint = Math.Abs(deltaZ) > 1000.0; // 1000mm = 1 meter threshold
                         
-                        // ✅ DIAGNOSTIC LOGGING: Log the override and delta
-                        if (!DeploymentConfiguration.DeploymentMode)
+                        if (useOriginalPoint)
                         {
-                            string midpointMsg = $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] 🔥 WALL/FRAMING MIDPOINT OVERRIDE:\n";
-                            midpointMsg += $"  Original PlacementPoint (from delegate): ({originalPlacementPoint.X:F6}, {originalPlacementPoint.Y:F6}, {originalPlacementPoint.Z:F6})\n";
-                            midpointMsg += $"  TheoreticalMid (from stored bboxes): ({theoreticalMid.X:F6}, {theoreticalMid.Y:F6}, {theoreticalMid.Z:F6})\n";
-                            midpointMsg += $"  Delta: X={deltaX:F2}mm, Y={deltaY:F2}mm, Z={deltaZ:F2}mm, Distance={deltaDistance:F2}mm\n";
-                            midpointMsg += $"  ✅ Using TheoreticalMid for placement (overriding delegate midpoint)\n";
-                            DebugLogger.Info(midpointMsg);
-                            SafeFileLogger.SafeAppendText("cluster_debug.log", midpointMsg);
+                            // ⚠️ CRITICAL: Stored corner Z coordinates are incorrect - use original placement point
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                string warningMsg = $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ⚠️⚠️⚠️ CRITICAL: Huge Z delta detected ({deltaZ:F2}mm)!\n";
+                                warningMsg += $"  Original PlacementPoint (from delegate): ({originalPlacementPoint.X:F6}, {originalPlacementPoint.Y:F6}, {originalPlacementPoint.Z:F6})\n";
+                                warningMsg += $"  TheoreticalMid (from stored bboxes): ({theoreticalMid.X:F6}, {theoreticalMid.Y:F6}, {theoreticalMid.Z:F6})\n";
+                                warningMsg += $"  Delta: X={deltaX:F2}mm, Y={deltaY:F2}mm, Z={deltaZ:F2}mm, Distance={deltaDistance:F2}mm\n";
+                                warningMsg += $"  ⚠️⚠️⚠️ REJECTING TheoreticalMid (stored corner Z coordinates are wrong) - Using Original PlacementPoint instead\n";
+                                DebugLogger.Warning(warningMsg);
+                                SafeFileLogger.SafeAppendText("cluster_debug.log", warningMsg);
+                            }
+                            // Keep original placementPoint (don't override)
+                        }
+                        else
+                        {
+                            // Override placement point with computed midpoint (normal case)
+                            // Corners are already at wall centerline (from individual sleeves), so midpoint is correct
+                            placementPoint = theoreticalMid;
+                            
+                            // ✅ DIAGNOSTIC LOGGING: Log the override and delta
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                string midpointMsg = $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] 🔥 WALL/FRAMING MIDPOINT OVERRIDE:\n";
+                                midpointMsg += $"  Original PlacementPoint (from delegate): ({originalPlacementPoint.X:F6}, {originalPlacementPoint.Y:F6}, {originalPlacementPoint.Z:F6})\n";
+                                midpointMsg += $"  TheoreticalMid (from stored corners): ({theoreticalMid.X:F6}, {theoreticalMid.Y:F6}, {theoreticalMid.Z:F6})\n";
+                                midpointMsg += $"  Delta: X={deltaX:F2}mm, Y={deltaY:F2}mm, Z={deltaZ:F2}mm, Distance={deltaDistance:F2}mm\n";
+                                midpointMsg += $"  ✅ Using TheoreticalMid for placement (overriding delegate midpoint)\n";
+                                DebugLogger.Info(midpointMsg);
+                                SafeFileLogger.SafeAppendText("cluster_debug.log", midpointMsg);
+                            }
                         }
                     }
                     else
                     {
+                        // ✅ WALL CENTERLINE ADJUSTMENT: If midpoint computation failed, adjust original placement point to wall centerline
+                        // Original placementPoint might be at wall face (from intersection), need to move to centerline
+                        // Working logic from methodology document: placePoint = intersection + wallNormal * (-wallThickness * 0.5)
+                        if (cluster != null && cluster.Count > 0)
+                        {
+                            try
+                            {
+                                var firstSleeve = cluster[0];
+                                ClashZone? firstClashZone = null;
+                                if (firstSleeve is ClashZone cz)
+                                {
+                                    firstClashZone = cz;
+                                }
+                                else if (firstSleeve?.ClashZone != null)
+                                {
+                                    firstClashZone = firstSleeve.ClashZone as ClashZone;
+                                }
+                                
+                                if (firstClashZone != null && firstClashZone.StructuralElementNormal != null)
+                                {
+                                    // Get wall normal and thickness
+                                    XYZ wallNormal = firstClashZone.StructuralElementNormal.Normalize();
+                                    double wallThickness = 0.0;
+                                    
+                                    if (isWallHost)
+                                    {
+                                        wallThickness = firstClashZone.WallThickness > 0 ? firstClashZone.WallThickness : firstClashZone.StructuralElementThickness;
+                                    }
+                                    else
+                                    {
+                                        wallThickness = firstClashZone.FramingThickness > 0 ? firstClashZone.FramingThickness : firstClashZone.StructuralElementThickness;
+                                    }
+                                    
+                                    if (wallThickness > 0)
+                                    {
+                                        // ✅ WORKING LOGIC: Move from intersection point (wall face) to wall centerline
+                                        // Formula: placePoint = intersection + wallNormal * (-wallThickness * 0.5)
+                                        // This matches individual sleeve placement logic
+                                        XYZ wallVector = wallNormal.Multiply(-wallThickness);
+                                        placementPoint = placementPoint.Add(wallVector.Multiply(0.5));
+                                        
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                                $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ✅ WALL CENTERLINE ADJUSTMENT (fallback): " +
+                                                $"Original PlacementPoint=({originalPlacementPoint.X:F6}, {originalPlacementPoint.Y:F6}, {originalPlacementPoint.Z:F6}), " +
+                                                $"WallNormal=({wallNormal.X:F6}, {wallNormal.Y:F6}, {wallNormal.Z:F6}), " +
+                                                $"WallThickness={wallThickness * 304.8:F1}mm, " +
+                                                $"Adjusted PlacementPoint=({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6})\n");
+                                        }
+                                    }
+                                }
+                            }
+                            catch (Exception centerlineEx)
+                            {
+                                // If centerline adjustment fails, use original placementPoint
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                        $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ⚠️ Centerline adjustment failed: {centerlineEx.Message}, using original placementPoint\n");
+                                }
+                            }
+                        }
+                        
                         // Log warning if midpoint computation failed
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            string warningMsg = $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ⚠️ WALL/FRAMING: ComputeClusterMidpoint returned null, using delegate placementPoint\n";
+                            string warningMsg = $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ⚠️ WALL/FRAMING: ComputeClusterMidpoint returned null, using delegate placementPoint (adjusted to wall centerline)\n";
                             SafeFileLogger.SafeAppendText("cluster_debug.log", warningMsg);
                         }
                     }
@@ -786,36 +874,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                     }
                 }
 
-                // Set Sleeve Instance ID to -1 (indicates cluster sleeve)
+                // ✅ CRITICAL: Set cluster sleeve identification parameters IMMEDIATELY (not deferred)
+                // These parameters are required for cleanup service to identify cluster sleeves correctly
+                // Even if batching is enabled, these must be set immediately to prevent misidentification
                 Parameter? instanceIdParam = GetParameter(clusterSleeve, "Sleeve Instance ID");
                 if (instanceIdParam != null && !instanceIdParam.IsReadOnly)
                 {
-                    if (deferredParameters != null && OptimizationFlags.UseBatchedParameterWrites)
-                    {
-                        if (!deferredParameters.ContainsKey(clusterSleeve.Id))
-                            deferredParameters[clusterSleeve.Id] = new Dictionary<string, object>();
-                        deferredParameters[clusterSleeve.Id]["Sleeve Instance ID"] = -1;
-                    }
-                    else
-                    {
-                        instanceIdParam.Set(-1);
-                    }
+                    instanceIdParam.Set(-1); // Always set immediately (critical for cleanup)
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetMetadata] ✅ IMMEDIATE (CRITICAL): Set 'Sleeve Instance ID'=-1 for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
+                }
+                else
+                {
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetMetadata] ⚠️ WARNING: 'Sleeve Instance ID' parameter not found or readonly for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
                 }
 
                 // Set Cluster Sleeve Instance ID
                 Parameter? clusterInstanceIdParam = GetParameter(clusterSleeve, "Cluster Sleeve Instance ID");
                 if (clusterInstanceIdParam != null && !clusterInstanceIdParam.IsReadOnly)
                 {
-                    if (deferredParameters != null && OptimizationFlags.UseBatchedParameterWrites)
+                    clusterInstanceIdParam.Set(clusterSleeve.Id.IntegerValue); // Always set immediately (critical for cleanup)
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetMetadata] ✅ IMMEDIATE (CRITICAL): Set 'Cluster Sleeve Instance ID'={clusterSleeve.Id.IntegerValue} for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
+                    
+                    // ✅ CRITICAL VERIFICATION: Verify the parameter was actually set
+                    clusterSleeve.Document?.Regenerate(); // Regenerate to ensure parameter is committed
+                    var verifyParam = GetParameter(clusterSleeve, "Cluster Sleeve Instance ID");
+                    if (verifyParam != null)
                     {
-                        if (!deferredParameters.ContainsKey(clusterSleeve.Id))
-                            deferredParameters[clusterSleeve.Id] = new Dictionary<string, object>();
-                        deferredParameters[clusterSleeve.Id]["Cluster Sleeve Instance ID"] = clusterSleeve.Id.IntegerValue;
+                        int verifyValue = verifyParam.AsInteger();
+                        if (verifyValue == clusterSleeve.Id.IntegerValue)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [SetMetadata] ✅✅✅ VERIFIED: 'Cluster Sleeve Instance ID'={verifyValue} is correctly set\n");
+                        }
+                        else
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [SetMetadata] ⚠️⚠️⚠️ VERIFICATION FAILED: Expected {clusterSleeve.Id.IntegerValue}, got {verifyValue}\n");
+                        }
                     }
-                    else
-                    {
-                        clusterInstanceIdParam.Set(clusterSleeve.Id.IntegerValue);
-                    }
+                }
+                else
+                {
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetMetadata] ⚠️ WARNING: 'Cluster Sleeve Instance ID' parameter not found or readonly for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
                 }
             }
             catch (Exception ex)
@@ -1274,14 +1378,282 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
 
             try
             {
+                // ✅ CRITICAL FIX: Use corners (world-space) for cluster midpoint calculation (matches legacy code)
+                // Corners are saved during individual sleeve placement and are the authoritative reference for clustering
+                // Reference: UniversalSleevePlacerService.SaveSleeveCornersRobust and ClusterRotationService corner-based calculation
+                return ComputeCornerBasedClusterMidpoint(cluster);
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [ComputeClusterMidpoint] ❌ Exception calculating midpoint: {ex.Message}\n");
+                }
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// ✅ SRP COMPLIANCE: Calculate cluster midpoint using corners (world-space) saved during individual sleeve placement.
+        /// Single Responsibility: Corner-based midpoint calculation only.
+        /// Reference: Matches legacy code in UniversalSleevePlacerService and ClusterRotationService.
+        /// </summary>
+        private XYZ? ComputeCornerBasedClusterMidpoint(List<dynamic> cluster)
+        {
+            try
+            {
+                // ✅ CRITICAL: Collect all corners from sleeves (world-space, saved during individual placement)
+                var allCorners = new List<XYZ>();
+                int sleevesWithCorners = 0;
+
+                foreach (var item in cluster)
+                {
+                    ClashZone? clashZone = null;
+                    if (item is ClashZone cz)
+                    {
+                        clashZone = cz;
+                    }
+                    else if (item?.ClashZone != null)
+                    {
+                        clashZone = item.ClashZone as ClashZone;
+                    }
+
+                    if (clashZone == null)
+                        continue;
+
+                    // ✅ CRITICAL FIX: Use corners (SleeveCorner1X/Y/Z through SleeveCorner4X/Y/Z) - world-space coordinates
+                    double? corner1X = clashZone.SleeveCorner1X;
+                    double? corner1Y = clashZone.SleeveCorner1Y;
+                    double? corner1Z = clashZone.SleeveCorner1Z;
+                    double? corner2X = clashZone.SleeveCorner2X;
+                    double? corner2Y = clashZone.SleeveCorner2Y;
+                    double? corner2Z = clashZone.SleeveCorner2Z;
+                    double? corner3X = clashZone.SleeveCorner3X;
+                    double? corner3Y = clashZone.SleeveCorner3Y;
+                    double? corner3Z = clashZone.SleeveCorner3Z;
+                    double? corner4X = clashZone.SleeveCorner4X;
+                    double? corner4Y = clashZone.SleeveCorner4Y;
+                    double? corner4Z = clashZone.SleeveCorner4Z;
+
+                    // Check if all corners are available
+                    if (corner1X.HasValue && corner1Y.HasValue && corner1Z.HasValue &&
+                        corner2X.HasValue && corner2Y.HasValue && corner2Z.HasValue &&
+                        corner3X.HasValue && corner3Y.HasValue && corner3Z.HasValue &&
+                        corner4X.HasValue && corner4Y.HasValue && corner4Z.HasValue)
+                    {
+                        // Add all 4 corners (use Z from corners for consistency)
+                        allCorners.Add(new XYZ(corner1X.Value, corner1Y.Value, corner1Z.Value));
+                        allCorners.Add(new XYZ(corner2X.Value, corner2Y.Value, corner2Z.Value));
+                        allCorners.Add(new XYZ(corner3X.Value, corner3Y.Value, corner3Z.Value));
+                        allCorners.Add(new XYZ(corner4X.Value, corner4Y.Value, corner4Z.Value));
+                        sleevesWithCorners++;
+                    }
+                }
+
+                // Validate that we found at least one sleeve with corners
+                if (allCorners.Count < 4)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [ComputeCornerBasedClusterMidpoint] ❌ Not enough corners found: {allCorners.Count} corners from {sleevesWithCorners}/{cluster.Count} sleeves\n");
+                    }
+                    // ✅ FALLBACK: Use bounding boxes if corners are not available
+                    return ComputeWcsClusterMidpoint(cluster);
+                }
+
+                // ✅ CRITICAL: WALL/FRAMING PLACEMENT POINT LOGIC
+                // For X-wall/Y-wall and X-framing/Y-framing, use special coordinate mapping based on wall axis orientation.
+                // This ensures cluster sleeves are placed correctly relative to individual sleeves.
+                // 
+                // Y-WALL/FRAMING LOGIC:
+                //   - X coordinate: Always use individual sleeve placement point (through wall direction - no extremities expected)
+                //   - Y coordinate: Use cluster width midpoint IF extremities exist (minY/maxY spread), else use individual sleeve placement point
+                //   - Z coordinate: Use cluster height midpoint IF extremities exist (minZ/maxZ spread), else use individual sleeve placement point
+                //
+                // X-WALL/FRAMING LOGIC:
+                //   - X coordinate: Use cluster midpoint IF extremities exist (minX/maxX spread), else use individual sleeve placement point
+                //   - Y coordinate: Always use individual sleeve placement point (along wall direction - no extremities expected)
+                //   - Z coordinate: Use cluster height midpoint IF extremities exist (minZ/maxZ spread), else use individual sleeve placement point
+                //
+                // RATIONALE: Only calculate midpoints for coordinates that have actual spread (extremities).
+                // If all sleeves have the same value for a coordinate (no spread), use individual sleeve placement point.
+                // This applies to both Wall and Structural Framing hosts.
+                bool isYWall = false;
+                bool isXWall = false;
+                bool isWallOrFraming = false;
+                ClashZone? firstClashZone = null;
+                
+                if (cluster != null && cluster.Count > 0)
+                {
+                    try
+                    {
+                        var firstSleeve = cluster[0];
+                        if (firstSleeve is ClashZone cz)
+                        {
+                            firstClashZone = cz;
+                        }
+                        else if (firstSleeve?.ClashZone != null)
+                        {
+                            firstClashZone = firstSleeve.ClashZone as ClashZone;
+                        }
+                        
+                        if (firstClashZone != null)
+                        {
+                            // Check if wall or structural framing host
+                            isWallOrFraming = (firstClashZone.StructuralElementType == "Wall" || 
+                                              firstClashZone.StructuralElementType == "Walls" ||
+                                              string.Equals(firstClashZone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase));
+                            
+                            if (isWallOrFraming)
+                            {
+                                // Check if Y-wall/framing using HostOrientation or WallDirection
+                                isYWall = (firstClashZone.HostOrientation == "Y") ||
+                                         (firstClashZone.WallDirection != null && 
+                                          Math.Abs(firstClashZone.WallDirection.Y) > Math.Abs(firstClashZone.WallDirection.X));
+                                
+                                // Check if X-wall/framing using HostOrientation or WallDirection
+                                isXWall = (firstClashZone.HostOrientation == "X") ||
+                                         (firstClashZone.WallDirection != null && 
+                                          Math.Abs(firstClashZone.WallDirection.X) > Math.Abs(firstClashZone.WallDirection.Y));
+                            }
+                        }
+                    }
+                    catch { }
+                }
+                
+                // ✅ Get individual sleeve placement point for fallback (when no extremities)
+                double placementX = 0.0;
+                double placementY = 0.0;
+                double placementZ = 0.0;
+                if (firstClashZone != null)
+                {
+                    if (firstClashZone.SleevePlacementPoint != null)
+                    {
+                        placementX = firstClashZone.SleevePlacementPoint.X;
+                        placementY = firstClashZone.SleevePlacementPoint.Y;
+                        placementZ = firstClashZone.SleevePlacementPoint.Z;
+                    }
+                    else
+                    {
+                        placementX = firstClashZone.SleevePlacementPointX;
+                        placementY = firstClashZone.SleevePlacementPointY;
+                        placementZ = firstClashZone.SleevePlacementPointZ;
+                    }
+                }
+                
+                // ✅ STEP 1: Calculate extremities (min/max) for all coordinates from collected corners
+                // These represent the spatial spread of individual sleeves in the cluster
+                double minX = allCorners.Min(c => c.X);
+                double maxX = allCorners.Max(c => c.X);
+                double minY = allCorners.Min(c => c.Y);
+                double maxY = allCorners.Max(c => c.Y);
+                double minZ = allCorners.Min(c => c.Z);
+                double maxZ = allCorners.Max(c => c.Z);
+                
+                // ✅ STEP 2: Check if coordinates have extremities (spread > threshold)
+                // If spread is too small (< 1mm), all sleeves have essentially the same value for that coordinate.
+                // In such cases, use individual sleeve placement point instead of calculating midpoint.
+                const double extremityThreshold = 0.00328084; // 1mm in feet (conversion: 1mm = 0.00328084 ft)
+                bool hasXExtremities = (maxX - minX) > extremityThreshold;
+                bool hasYExtremities = (maxY - minY) > extremityThreshold;
+                bool hasZExtremities = (maxZ - minZ) > extremityThreshold;
+                
+                XYZ midpoint;
+                if (isYWall && isWallOrFraming)
+                {
+                    // ✅ Y-WALL/FRAMING: 
+                    // X = individual sleeve placement point (through wall - no extremities expected)
+                    // Y = cluster width midpoint IF has extremities, else individual sleeve placement point
+                    // Z = cluster height midpoint IF has extremities, else individual sleeve placement point
+                    double finalX = placementX; // Always use individual sleeve for X (through wall)
+                    double finalY = hasYExtremities ? (minY + maxY) / 2.0 : placementY;
+                    double finalZ = hasZExtremities ? (minZ + maxZ) / 2.0 : placementZ;
+                    
+                    midpoint = new XYZ(finalX, finalY, finalZ);
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        string hostType = firstClashZone?.StructuralElementType ?? "Unknown";
+                        string calcMsg = $"[{DateTime.Now:HH:mm:ss.fff}] [ComputeCornerBasedClusterMidpoint] ✅ Y-WALL/FRAMING PLACEMENT POINT (Host: {hostType}):\n";
+                        calcMsg += $"  X (from individual sleeve): {finalX:F6}\n";
+                        calcMsg += $"  Y: {(hasYExtremities ? $"cluster width midpoint {finalY:F6} (minY={minY:F6}, maxY={maxY:F6})" : $"individual sleeve {finalY:F6} (no extremities)")}\n";
+                        calcMsg += $"  Z: {(hasZExtremities ? $"cluster height midpoint {finalZ:F6} (minZ={minZ:F6}, maxZ={maxZ:F6})" : $"individual sleeve {finalZ:F6} (no extremities)")}\n";
+                        calcMsg += $"  Final PlacementPoint: ({midpoint.X:F6}, {midpoint.Y:F6}, {midpoint.Z:F6})\n";
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", calcMsg);
+                    }
+                }
+                else if (isXWall && isWallOrFraming)
+                {
+                    // ✅ X-WALL/FRAMING:
+                    // X = cluster midpoint IF has extremities, else individual sleeve placement point
+                    // Y = individual sleeve placement point (along wall - no extremities expected)
+                    // Z = cluster height midpoint IF has extremities, else individual sleeve placement point
+                    double finalX = hasXExtremities ? (minX + maxX) / 2.0 : placementX;
+                    double finalY = placementY; // Always use individual sleeve for Y (along wall)
+                    double finalZ = hasZExtremities ? (minZ + maxZ) / 2.0 : placementZ;
+                    
+                    midpoint = new XYZ(finalX, finalY, finalZ);
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        string hostType = firstClashZone?.StructuralElementType ?? "Unknown";
+                        string calcMsg = $"[{DateTime.Now:HH:mm:ss.fff}] [ComputeCornerBasedClusterMidpoint] ✅ X-WALL/FRAMING PLACEMENT POINT (Host: {hostType}):\n";
+                        calcMsg += $"  X: {(hasXExtremities ? $"cluster midpoint {finalX:F6} (minX={minX:F6}, maxX={maxX:F6})" : $"individual sleeve {finalX:F6} (no extremities)")}\n";
+                        calcMsg += $"  Y (from individual sleeve): {finalY:F6}\n";
+                        calcMsg += $"  Z: {(hasZExtremities ? $"cluster height midpoint {finalZ:F6} (minZ={minZ:F6}, maxZ={maxZ:F6})" : $"individual sleeve {finalZ:F6} (no extremities)")}\n";
+                        calcMsg += $"  Final PlacementPoint: ({midpoint.X:F6}, {midpoint.Y:F6}, {midpoint.Z:F6})\n";
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", calcMsg);
+                    }
+                }
+                else
+                {
+                    // ✅ NON-WALL (FLOOR/OTHER): Use centroid of all corners (standard calculation)
+                    midpoint = new XYZ(
+                        allCorners.Average(c => c.X),
+                        allCorners.Average(c => c.Y),
+                        allCorners.Average(c => c.Z)
+                    );
+                    
+                    // ✅ DIAGNOSTIC LOGGING: Log the corner-based calculation details
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        string calcMsg = $"[{DateTime.Now:HH:mm:ss.fff}] [ComputeCornerBasedClusterMidpoint] ✅ Calculated midpoint from {allCorners.Count} corners ({sleevesWithCorners}/{cluster.Count} sleeves):\n";
+                        calcMsg += $"  Corner Centroid (midpoint): ({midpoint.X:F6}, {midpoint.Y:F6}, {midpoint.Z:F6})\n";
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", calcMsg);
+                    }
+                }
+
+                return midpoint;
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [ComputeCornerBasedClusterMidpoint] ❌ Exception calculating corner-based midpoint: {ex.Message}\n");
+                }
+                // ✅ FALLBACK: Use bounding boxes if corner calculation fails
+                return ComputeWcsClusterMidpoint(cluster);
+            }
+        }
+
+        /// <summary>
+        /// ✅ SRP COMPLIANCE: Calculate cluster midpoint using WCS bounding boxes (for floors and other hosts).
+        /// Single Responsibility: WCS midpoint calculation only.
+        /// </summary>
+        private XYZ? ComputeWcsClusterMidpoint(List<dynamic> cluster)
+        {
+            try
+            {
                 double minX = double.MaxValue, minY = double.MaxValue, minZ = double.MaxValue;
                 double maxX = double.MinValue, maxY = double.MinValue, maxZ = double.MinValue;
                 int validBboxCount = 0;
 
-                // Union all stored sleeve bounding boxes
+                // Union all stored sleeve bounding boxes (WCS)
                 foreach (var item in cluster)
                 {
-                    // Extract ClashZone from dynamic item
                     ClashZone? clashZone = null;
                     if (item is ClashZone cz)
                     {
@@ -1300,13 +1672,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                     double bboxHeight = clashZone.SleeveBoundingBoxMaxY - clashZone.SleeveBoundingBoxMinY;
                     double bboxDepth = clashZone.SleeveBoundingBoxMaxZ - clashZone.SleeveBoundingBoxMinZ;
 
-                    // Skip uninitialized bounding boxes (all zeros or invalid)
+                    // Skip uninitialized bounding boxes
                     if (bboxWidth <= 0 || bboxHeight <= 0 || bboxDepth <= 0)
                     {
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [ComputeClusterMidpoint] ⚠️ Skipping uninitialized bbox for ClashZone {clashZone.Id}: W={bboxWidth:F6}, H={bboxHeight:F6}, D={bboxDepth:F6}\n");
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [ComputeWcsClusterMidpoint] ⚠️ Skipping uninitialized bbox for ClashZone {clashZone.Id}: W={bboxWidth:F6}, H={bboxHeight:F6}, D={bboxDepth:F6}\n");
                         }
                         continue;
                     }
@@ -1327,7 +1699,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [ComputeClusterMidpoint] ❌ No valid bounding boxes found in cluster (size={cluster.Count})\n");
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [ComputeWcsClusterMidpoint] ❌ No valid bounding boxes found in cluster (size={cluster.Count})\n");
                     }
                     return null;
                 }
@@ -1342,7 +1714,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 // ✅ DIAGNOSTIC LOGGING: Log the calculation details
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    string calcMsg = $"[{DateTime.Now:HH:mm:ss.fff}] [ComputeClusterMidpoint] ✅ Calculated midpoint from {validBboxCount}/{cluster.Count} valid bboxes:\n";
+                    string calcMsg = $"[{DateTime.Now:HH:mm:ss.fff}] [ComputeWcsClusterMidpoint] ✅ Calculated WCS midpoint from {validBboxCount}/{cluster.Count} valid bboxes:\n";
                     calcMsg += $"  Bbox Union: Min=({minX:F6}, {minY:F6}, {minZ:F6}), Max=({maxX:F6}, {maxY:F6}, {maxZ:F6})\n";
                     calcMsg += $"  Midpoint: ({midpoint.X:F6}, {midpoint.Y:F6}, {midpoint.Z:F6})\n";
                     SafeFileLogger.SafeAppendText("cluster_debug.log", calcMsg);
@@ -1355,7 +1727,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [ComputeClusterMidpoint] ❌ Exception calculating midpoint: {ex.Message}\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [ComputeWcsClusterMidpoint] ❌ Exception calculating WCS midpoint: {ex.Message}\n");
                 }
                 return null;
             }

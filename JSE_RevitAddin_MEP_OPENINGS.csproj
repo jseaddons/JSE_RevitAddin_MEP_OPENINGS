@@ -67,16 +67,20 @@
   <ItemGroup>
     <!-- ✅ OOP REFACTORING: Exclude backup folders from compilation to avoid duplicate class errors -->
     <Compile Remove="_BACKUPS\**" />
+    <Compile Remove="_BACKUPS/**" />
     <EmbeddedResource Remove="_BACKUPS\**" />
     <None Remove="_BACKUPS\**" />
     <!-- Additional strict removal patterns to suppress lingering backup code from build -->
     <Compile Remove="_BACKUPS/**/*.cs" />
+    <Compile Remove="_BACKUPS/**/**/*.cs" />
     <Compile Remove="Services/Backup/**/*.cs" />
     <Compile Remove="Services/Backup2/**/*.cs" />
     <Compile Remove="Services\\Backup\\**\\*.cs" />
     <Compile Remove="Services\\Backup2\\**\\*.cs" />
     <Compile Remove="**/_BACKUPS/**" />
+    <Compile Remove="**/_BACKUPS/**/*.cs" />
     <Compile Remove="**/Services_Full/**" />
+    <Compile Remove="**/Services_Full/**/*.cs" />
     <Compile Remove="**/Archive/**" />
     
     <Compile Remove="Commands\ApplyOpeningsFromCsvCommand.cs" />
@@ -85,7 +89,8 @@
     <Compile Remove="ViewModels\OpeningStatusItem.cs" />
     <!-- ✅ Temporarily exclude from build - being worked on by another agent -->
     <Compile Remove="Services\SleevePlacementCoordinator.cs" />
-    <Compile Remove="Services\NewSleevePlacerService.cs" />
+    <!-- ✅ ENABLED: NewSleevePlacerService is now ready for use with feature flag -->
+    <!-- <Compile Remove="Services\NewSleevePlacerService.cs" /> -->
     <PackageReference Include="Nice3point.Revit.Build.Tasks" Version="3.0.1" />
     <PackageReference Include="Nice3point.Revit.Toolkit" Version="2023.1.0" />
     <PackageReference Include="Nice3point.Revit.Extensions" Version="2023.1.0" />

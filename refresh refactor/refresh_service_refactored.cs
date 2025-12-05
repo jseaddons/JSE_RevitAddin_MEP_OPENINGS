@@ -7,6 +7,7 @@ using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Refresh;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -21,19 +22,60 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly UIDocument _uiDocument;
         private readonly ApplicationProfileService _appProfileService;
         
+        // ✅ SOLID: DI support for refresh services (Phase 2)
+        private readonly IRefreshDataCacheManager _dataCacheManager;
+        private readonly IClashZoneRepository _clashZoneRepository;
+        private readonly IRefreshPathDeterminer _pathDeterminer;
+        
         // UI controls
         private System.Windows.Forms.Label _statusLabel;
         private System.Windows.Forms.ProgressBar _progressBar;
         private System.Windows.Forms.Button _refreshButton;
         
+        /// <summary>
+        /// ✅ BACKWARD COMPATIBLE: Legacy constructor (direct instantiation)
+        /// Used when UseRefreshDependencyInjection = false
+        /// </summary>
         public RefreshServiceRefactored(
             Document document, 
             UIDocument uiDocument, 
             ApplicationProfileService appProfileService)
+            : this(document, uiDocument, appProfileService, null, null, null)
+        {
+        }
+        
+        /// <summary>
+        /// ✅ DI CONSTRUCTOR: Supports dependency injection (Phase 2)
+        /// Used when UseRefreshDependencyInjection = true
+        /// Falls back to direct instantiation if dependencies are null
+        /// </summary>
+        public RefreshServiceRefactored(
+            Document document, 
+            UIDocument uiDocument, 
+            ApplicationProfileService appProfileService,
+            IRefreshDataCacheManager dataCacheManager,
+            IClashZoneRepository clashZoneRepository,
+            IRefreshPathDeterminer pathDeterminer)
         {
             _document = document ?? throw new ArgumentNullException(nameof(document));
             _uiDocument = uiDocument ?? throw new ArgumentNullException(nameof(uiDocument));
             _appProfileService = appProfileService ?? throw new ArgumentNullException(nameof(appProfileService));
+            
+            // ✅ FEATURE FLAG: Use DI if enabled and provided, otherwise use direct instantiation
+            if (OptimizationFlags.UseRefreshDependencyInjection)
+            {
+                // DI path: Use provided dependencies or create defaults
+                _dataCacheManager = dataCacheManager; // Can be null, will create on-demand
+                _clashZoneRepository = clashZoneRepository; // Can be null, will create on-demand
+                _pathDeterminer = pathDeterminer ?? new RefreshPathDeterminerWrapper(); // Self-bootstrap if null
+            }
+            else
+            {
+                // Legacy path: Direct instantiation (existing behavior)
+                _dataCacheManager = null;
+                _clashZoneRepository = null;
+                _pathDeterminer = null;
+            }
         }
         
         public void SetUIReferences(
@@ -164,434 +206,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return Result.Cancelled;
             }
             
-            // ✅ CORRECT LOGIC: DO NOT reset ReadyForPlacementFlag at start of refresh
-            // The flag should only be reset AFTER placement completes (individual or cluster, whichever is last)
-            // This ensures zones remain ready for placement until they are actually processed
-            // - Individual sleeve placement resets flags in UniversalSleevePlacerService after completion
-            // - Cluster sleeve placement should reset flags after completion
-            // - Only new unresolved zones (within section box) get ReadyForPlacementFlag=1 during refresh
+            // PHASE 2 & 3: Load Data
+            LoadRefreshData(context);
             
-            UpdateProgress(10, "Loading XML data...");
-
-            // PHASE 2: Load XML once (eliminates 4+ redundant loads)
-            using (var xmlOp = context.PerformanceMonitor.TrackOperation("2. XML Loading") as PerformanceMonitor.OperationTracker)
+            // PHASE 4: Determine Path
+            DetermineRefreshPath(context);
+            
+            // PHASE 5: Sync Flags
+            if (context.PathStrategy.ShouldSyncFlags)
             {
-                if (OptimizationFlags.SkipXmlLoadingDuringRefresh)
+                using (context.PerformanceMonitor.TrackOperation("4. Flag Sync"))
                 {
-                    // Database-only mode: bypass XML cache entirely
-                    if (!context.IsDeploymentMode)
-                        DebugLogger.Info("[XML-CACHE] ⚡ OPTIMIZATION: Skipping XML cache loading (database-only mode)");
-                    SafeFileLogger.SafeAppendText(context.RefreshLogName,
-                        $"[{DateTime.Now}] [XML-CACHE] ⚡ OPTIMIZATION: Skipping XML cache loading (database-only mode)\n");
-
-                    // Initialize empty cache (database-only mode)
-                    context.XmlCache = new Services.Refresh.XmlCache();
-                    // FilterXml and GlobalXml are empty dictionaries by default
-                    xmlOp?.SetItemCount(0);
-                }
-                else
-                {
-                    var xmlManager = new XmlCacheManager(_document, context.RefreshLogName);
-                    context.XmlCache = xmlManager.LoadAll(context.SelectedFilterNames, context.SelectedMepCategories);
-                    xmlOp?.SetItemCount(context.XmlCache.FilterXml.Count + context.XmlCache.GlobalXml.Count);
-                }
-            }
-            
-            UpdateProgress(20, "Loading existing clash zones...");
-            
-            // PHASE 3: Load existing clash zones (XML cache or DB-only)
-            using (var loadOp = context.PerformanceMonitor.TrackOperation("3. Load Existing Zones") as PerformanceMonitor.OperationTracker)
-            {
-                if (OptimizationFlags.SkipXmlLoadingDuringRefresh)
-                {
-                    // In database-only mode, rely on SQLite as the primary source
-                    context.ExistingClashZones = LoadExistingClashZonesFromDatabase(context);
-                }
-                else
-                {
-                    context.ExistingClashZones = LoadExistingClashZones(context);
-                }
-                loadOp?.SetItemCount(context.ExistingClashZones?.Count ?? 0);
-            }
-            
-            // ✅ PATH DETERMINATION: Determine which path strategy to use
-            var pathStrategy = RefreshPathDeterminer.DeterminePath(context, context.EnableThreePointValidation);
-            
-            if (!context.IsDeploymentMode)
-            {
-                DebugLogger.Info($"[REFRESH-REFACTORED] Using {pathStrategy.PathName}");
-                DebugLogger.Info($"[REFRESH-REFACTORED] Path settings: AllowStructuralUpdates={pathStrategy.AllowStructuralUpdates}, EnableThreePointValidation={pathStrategy.EnableThreePointValidation}, ShouldResetFlags={pathStrategy.ShouldResetFlags}, ShouldSyncFlags={pathStrategy.ShouldSyncFlags}, ShouldCheckGuids={pathStrategy.ShouldCheckGuids}");
-            }
-            
-            // Store strategy in context for later use
-            context.PathStrategy = pathStrategy;
-            
-            UpdateProgress(30, "Syncing flags from Global XML...");
-            
-            // PHASE 4: Sync flags from Global XML (only if strategy requires it)
-            if (pathStrategy.ShouldSyncFlags)
-            {
-            using (context.PerformanceMonitor.TrackOperation("4. Flag Sync"))
-            {
-                SyncFlagsFromGlobal(context);
+                    SyncFlagsFromGlobal(context);
                 }
             }
             else
             {
                 if (!context.IsDeploymentMode)
-                {
                     DebugLogger.Info("[REFRESH-REFACTORED] Skipping flag sync (not required for this path)");
-                }
             }
             
-            UpdateProgress(40, "Validating clash zones...");
+            // PHASE 6: Validate Zones
+            ValidateZones(context);
             
-            // PHASE 5: Smart validation (only if strategy requires it)
-            using (var validationOp = context.PerformanceMonitor.TrackOperation("5. Validation") as PerformanceMonitor.OperationTracker)
-            {
-                if (pathStrategy.EnableThreePointValidation)
-            {
-                var validationService = new ValidationService(context, new FlagManager(_document));
-                var validationResult = validationService.ValidateClashZones(context.ExistingClashZones);
-                
-                    // ✅ PATH 3: Zone splitting after validation
-                    var processedZones = pathStrategy.ProcessZonesAfterValidation(
-                        context,
-                        validationResult.ValidZones,
-                        validationResult.InvalidZones);
-                    
-                    context.ExistingClashZones = processedZones;
-                    
-                    // ✅ PATH 3: Store validated and invalidated zones separately for distinct placement flows
-                    context.ValidatedZones = validationResult.ValidZones ?? new List<ClashZone>();
-                    context.InvalidatedZones = validationResult.InvalidZones ?? new List<ClashZone>();
-                
-                    // Remove invalid zones from Global XML (only for PATH 3)
-                    if (validationResult.InvalidZones.Count > 0)
-                {
-                    validationService.RemoveInvalidZonesFromGlobal(validationResult.InvalidZones);
-                }
-                
-                validationOp?.SetItemCount(context.ExistingClashZones.Count);
-                }
-                else
-                {
-                    // PATH 1 and PATH 2: No validation needed
-                    if (!context.IsDeploymentMode)
-                    {
-                        DebugLogger.Info("[REFRESH-REFACTORED] Skipping 3-point validation (not required for this path)");
-                    }
-                    validationOp?.SetItemCount(context.ExistingClashZones?.Count ?? 0);
-                }
-            }
+            // PHASE 7: Reset Flags
+            ResetFlags(context);
             
-            // PHASE 5B: Flag reset for deleted sleeves (only if strategy requires it)
-            if (pathStrategy.ShouldResetFlags)
-            {
-                UpdateProgress(45, "Resetting flags for deleted sleeves...");
-                
-                using (context.PerformanceMonitor.TrackOperation("5B. Flag Reset"))
-                {
-                    var flagManager = new FlagManager(_document);
-                    
-                    // Build categories list from existing clash zones
-                    var categoriesToCheck = context.ExistingClashZones?
-                        .Where(cz => !string.IsNullOrWhiteSpace(cz.MepElementCategory))
-                        .Select(cz => cz.MepElementCategory)
-                        .Distinct(StringComparer.OrdinalIgnoreCase)
-                        .ToList() ?? new List<string>();
-                    
-                    if (categoriesToCheck.Count > 0)
-                    {
-                        // Group clash zones by category for flag reset
-                        var clashZonesByCategory = context.ExistingClashZones?
-                            .GroupBy(cz => cz.MepElementCategory, StringComparer.OrdinalIgnoreCase)
-                            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase) 
-                            ?? new Dictionary<string, List<ClashZone>>();
-                        
-                        // ✅ STEP 1: Reset flags (DB first, then XML) - ONLY for zones within section box
-                        // Get section box bounds for filtering
-                        BoundingBoxXYZ? sectionBoxNullable = null;
-                        if (_document.ActiveView is View3D view3D && view3D.IsSectionBoxActive)
-                        {
-                            sectionBoxNullable = Helpers.SectionBoxHelper.GetSectionBoxBounds(view3D);
-                            if (sectionBoxNullable != null && !context.IsDeploymentMode)
-                            {
-                                BoundingBoxXYZ sb = sectionBoxNullable;
-                                DebugLogger.Info($"[REFRESH-REFACTORED] Section box active for flag reset: Min=({sb.Min.X:F2}, {sb.Min.Y:F2}, {sb.Min.Z:F2}), Max=({sb.Max.X:F2}, {sb.Max.Y:F2}, {sb.Max.Z:F2})");
-                            }
-                        }
-                        
-                        // ✅ SIMPLE FIX: Pass filter names so FlagManager only checks zones from selected filters
-                        var resetCount = flagManager.ResetFlagsForDeletedSleeves(
-                            categoriesToCheck,
-                            clashZonesByCategory,
-                            context.RefreshLogName,
-                            sectionBoxNullable,
-                            context.SelectedFilterNames);
-                        
-                        // ✅ STEP 2: Reset instance IDs (DB first, then XML)
-                        pathStrategy.ResetInstanceIdsForDeletedSleeves(
-                            context,
-                            categoriesToCheck,
-                            clashZonesByCategory);
-                        
-                        if (!context.IsDeploymentMode)
-                        {
-                            DebugLogger.Info($"[REFRESH-REFACTORED] Flag reset completed: {resetCount} zones reset");
-                        }
-                        
-                        // ✅ STEP 3: Set ReadyForPlacementFlag=1 for unresolved zones within section box
-                        // This must happen AFTER flag manager resets flags for deleted sleeves
-                        // to ensure we check unresolved status correctly
-                        // ✅ REUSE: sectionBoxNullable already declared above (line 259)
-                        UpdateProgress(46, "Setting placement flags for unresolved zones...");
-                        try
-                        {
-                            // ✅ REUSE: sectionBoxNullable is already set above (line 259-268)
-                            
-                            using (var dbContext = new Data.SleeveDbContext(_document, msg =>
-                            {
-                                if (!context.IsDeploymentMode)
-                                    DebugLogger.Info($"[REFRESH-REFACTORED][SQLite] {msg}");
-                            }))
-                            {
-                                var repository = new Data.Repositories.ClashZoneRepository(dbContext, msg =>
-                                {
-                                    if (!context.IsDeploymentMode)
-                                        DebugLogger.Info($"[REFRESH-REFACTORED][SQLite] {msg}");
-                                });
-
-                                // ✅ DIAGNOSTIC: Log call site before method call (direct DebugLogger to ensure it appears)
-                                if (!context.IsDeploymentMode)
-                                {
-                                    try
-                                    {
-                                        DebugLogger.Info($"[REFRESH-REFACTORED] [BEFORE-FLAG-SET] About to call SetReadyForPlacementForUnresolvedZonesInSectionBox: filters={context.SelectedFilterNames?.Count ?? 0}, categories={context.SelectedMepCategories?.Count ?? 0}, sectionBox={(sectionBoxNullable != null ? "Present" : "NULL")}");
-                                        SafeFileLogger.SafeAppendText(context.RefreshLogName,
-                                            $"[{DateTime.Now}] [REFRESH-REFACTORED] [BEFORE-FLAG-SET] About to call SetReadyForPlacementForUnresolvedZonesInSectionBox: filters={context.SelectedFilterNames?.Count ?? 0}, categories={context.SelectedMepCategories?.Count ?? 0}, sectionBox={(sectionBoxNullable != null ? "Present" : "NULL")}\n");
-                                    }
-                                    catch { }
-                                }
-
-                                int markedCount = repository.SetReadyForPlacementForUnresolvedZonesInSectionBox(
-                                    context.SelectedFilterNames ?? new List<string>(),
-                                    context.SelectedMepCategories ?? new List<string>(),
-                                    sectionBoxNullable);
-
-                                if (!context.IsDeploymentMode)
-                                {
-                                    DebugLogger.Info($"[REFRESH-REFACTORED] ✅ Set ReadyForPlacementFlag=1 for {markedCount} unresolved zones within section box (AFTER flag reset)");
-                                    SafeFileLogger.SafeAppendText(context.RefreshLogName,
-                                        $"[{DateTime.Now}] [REFRESH-REFACTORED] ✅ Set ReadyForPlacementFlag=1 for {markedCount} unresolved zones within section box (AFTER flag reset)\n");
-                                    
-                                    // ✅ DIAGNOSTIC: Log to placement_debug.log for troubleshooting
-                                    try
-                                    {
-                                        var placementLogPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
-                                        File.AppendAllText(placementLogPath,
-                                            $"[{DateTime.Now:HH:mm:ss}] [REFRESH-FLAG-SET] ✅ Set ReadyForPlacementFlag=1 for {markedCount} zones (filters: {string.Join(", ", context.SelectedFilterNames ?? new List<string>())}, categories: {string.Join(", ", context.SelectedMepCategories ?? new List<string>())}, sectionBox: {(sectionBoxNullable != null ? "active" : "none")})\n");
-                                    }
-                                    catch { }
-                                }
-                            }
-                        }
-                        catch (Exception markEx)
-                        {
-                            if (!context.IsDeploymentMode)
-                            {
-                                DebugLogger.Warning($"[REFRESH-REFACTORED] ⚠️ Failed to set ReadyForPlacementFlag for unresolved zones: {markEx.Message}");
-                                SafeFileLogger.SafeAppendText(context.RefreshLogName,
-                                    $"[{DateTime.Now}] [REFRESH-REFACTORED] ⚠️ Failed to set ReadyForPlacementFlag for unresolved zones: {markEx.Message}\n");
-                            }
-                            // Continue with refresh even if marking fails (non-blocking)
-                        }
-                    }
-                    else
-                    {
-                        if (!context.IsDeploymentMode)
-                        {
-                            DebugLogger.Info("[REFRESH-REFACTORED] No categories to check for flag reset");
-                        }
-                    }
-                }
-            }
-            else
-            {
-                if (!context.IsDeploymentMode)
-                {
-                    DebugLogger.Info("[REFRESH-REFACTORED] Skipping flag reset (not required for this path)");
-                }
-            }
+            // PHASE 8: Process Intersections
+            ProcessIntersections(context);
             
-            UpdateProgress(50, "Processing intersections...");
+            // PHASE 9: Capture Parameters
+            CaptureParameters(context);
             
-            // PHASE 6: Intersection detection using IntersectionProcessor (with Replace/Replay/FullDetection modes)
-            using (var intersectionOp = context.PerformanceMonitor.TrackOperation("6. Intersection Processing") as PerformanceMonitor.OperationTracker)
-            {
-                // ✅ INTEGRATION: Use IntersectionProcessor instead of direct detection
-                var xmlManager = new XmlCacheManager(_document, context.RefreshLogName);
-                var validationService = new ValidationService(context, new FlagManager(_document));
-                var paramService = new ParameterCaptureService(context);
-                
-                var logger = new Action<string>(msg => 
-                {
-                    if (!context.IsDeploymentMode)
-                        DebugLogger.Info(msg);
-                    SafeFileLogger.SafeAppendText(context.RefreshLogName, $"[{DateTime.Now}] {msg}\n");
-                });
-                
-                // ✅ PROGRESS CALLBACK: Track intersection counts per category
-                Action<string, int> progressCallback = null;
-                if (_statusLabel != null)
-                {
-                    progressCallback = (category, count) =>
-                    {
-                        try
-                        {
-                            _statusLabel.Text = $"Processing {category}: {count} intersections";
-                        }
-                        catch (Exception ex)
-                        {
-                            DebugLogger.Warning($"[REFRESH-REFACTORED] Error updating progress status: {ex.Message}");
-                        }
-                    };
-                }
-                
-                var processor = new IntersectionProcessor(
-                    context,
-                    xmlManager,
-                    validationService,
-                    paramService,
-                    context.PerformanceMonitor,
-                    logger,
-                    progressCallback);
-                
-                // Phase 1: Prepare existing zones and determine detection decision
-                var decision = processor.PrepareExistingZones();
-                
-                // Phase 2: Run detection if needed (or use existing zones)
-                var allClashZones = processor.RunDetectionIfNeeded(decision);
-                
-                // Context is already updated by IntersectionProcessor
-                // Just ensure AllClashZones is set
-                if (context.AllClashZones == null)
-                {
-                    context.AllClashZones = allClashZones;
-                }
-                
-                // Phase 3: Post-process (updates cache, rebuilds snapshots)
-                processor.PostProcess(decision);
-                
-                intersectionOp?.SetItemCount(allClashZones.Count);
-                
-                // Log mode decision
-                if (!context.IsDeploymentMode)
-                {
-                    DebugLogger.Info($"[REFRESH-REFACTORED] Mode: {decision.Mode}, Detection Run: {decision.ShouldRunDetection}, Reason: {decision.Reason}");
-                }
-            }
-            
-            // ✅ PROGRESS DIALOG: Close progress dialog after intersection detection
-            // ✅ THREAD-SAFE: Use Invoke if needed, ensure proper cleanup
-            // The progress dialog is no longer a separate field, so this block is removed.
-            
-            UpdateProgress(70, "Capturing parameters...");
-            
-            // PHASE 8: Capture minimal parameters (parallel)
-            using (var paramOp = context.PerformanceMonitor.TrackOperation("8. Parameter Capture") as PerformanceMonitor.OperationTracker)
-            {
-                var paramService = new ParameterCaptureService(context);
-                paramService.CaptureParametersParallel(context.NewClashZones);
-                paramOp?.SetItemCount(context.NewClashZones?.Count ?? 0);
-            }
-            
-            // ✅ CRITICAL FIX: Update AllClashZones AFTER parameter capture to include parameters
-            // This ensures parameters are included when saving to database
-            if (context.NewClashZones != null && context.NewClashZones.Count > 0)
-            {
-                var existingIds = new HashSet<Guid>((context.AllClashZones ?? new List<ClashZone>()).Select(z => z.Id));
-                var allZones = context.AllClashZones?.ToList() ?? new List<ClashZone>();
-                
-                foreach (var newZone in context.NewClashZones)
-                {
-                    if (!existingIds.Contains(newZone.Id))
-                    {
-                        allZones.Add(newZone);
-                    }
-                    else
-                    {
-                        // ✅ CRITICAL FIX: Update existing zone with ALL fresh data from new zone (current refresh is source of truth)
-                        // This ensures that fresh data from current refresh (diameters, size parameter, dimensions) always overwrites old database values
-                        // The whole app reliability is based on one source of truth: what is found in current refresh
-                        var existingZone = allZones.FirstOrDefault(z => z.Id == newZone.Id);
-                        if (existingZone != null)
-                        {
-                            // ✅ CRITICAL: Copy ALL fresh MEP element data from new zone (current refresh is source of truth)
-                            // This includes: diameters, size parameter value, dimensions, formatted size, etc.
-                            existingZone.MepElementWidth = newZone.MepElementWidth;
-                            existingZone.MepElementHeight = newZone.MepElementHeight;
-                            existingZone.MepElementOuterDiameter = newZone.MepElementOuterDiameter; // ✅ CRITICAL: Fresh outer diameter from current refresh
-                            existingZone.MepElementNominalDiameter = newZone.MepElementNominalDiameter; // ✅ CRITICAL: Fresh nominal diameter from current refresh
-                            existingZone.MepElementSizeParameterValue = newZone.MepElementSizeParameterValue; // ✅ CRITICAL: Fresh Size parameter value from current refresh
-                            existingZone.MepElementFormattedSize = newZone.MepElementFormattedSize;
-                            existingZone.MepElementSystemAbbreviation = newZone.MepElementSystemAbbreviation;
-                            existingZone.MepElementUniqueId = newZone.MepElementUniqueId;
-                            existingZone.IsInsulated = newZone.IsInsulated;
-                            existingZone.InsulationThickness = newZone.InsulationThickness;
-                            existingZone.MepElementSizeData = newZone.MepElementSizeData;
-                            existingZone.DuctShape = newZone.DuctShape;
-                            existingZone.InsulationType = newZone.InsulationType;
-                            
-                            // ✅ CRITICAL: Copy fresh damper connector detection data from current refresh
-                            // This ensures world coordinate directions (-Y, +X, etc.) overwrite old values (Right, Left, etc.)
-                            existingZone.HasMepConnector = newZone.HasMepConnector;
-                            existingZone.DamperConnectorSide = newZone.DamperConnectorSide;
-                            
-                            // Update parameters
-                            if (newZone.MepParameterValues != null && newZone.MepParameterValues.Count > 0)
-                            {
-                                existingZone.MepParameterValues = newZone.MepParameterValues;
-                            }
-                            if (newZone.HostParameterValues != null && newZone.HostParameterValues.Count > 0)
-                            {
-                                existingZone.HostParameterValues = newZone.HostParameterValues;
-                            }
-                            
-                            // ✅ DIAGNOSTIC: Log the update to verify fresh values are being applied
-                            if (!DeploymentConfiguration.DeploymentMode && string.Equals(newZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
-                            {
-                                var odMm = newZone.MepElementOuterDiameter > 0 ? (newZone.MepElementOuterDiameter * 304.8) : 0.0;
-                                var nomMm = newZone.MepElementNominalDiameter > 0 ? (newZone.MepElementNominalDiameter * 304.8) : 0.0;
-                                SafeFileLogger.SafeAppendText("save_db_diagnostic.log",
-                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [REFRESH-MERGE] ✅ UPDATED existing zone {newZone.Id} with fresh data: OuterDiameter={newZone.MepElementOuterDiameter:F6}ft ({odMm:F1}mm), NominalDiameter={newZone.MepElementNominalDiameter:F6}ft ({nomMm:F1}mm), SizeParameterValue='{newZone.MepElementSizeParameterValue ?? "NULL"}'\n");
-                            }
-                            
-                            // ✅ DIAGNOSTIC: Log damper connector detection updates
-                            if (!DeploymentConfiguration.DeploymentMode && string.Equals(newZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
-                            {
-                                SafeFileLogger.SafeAppendText("save_db_diagnostic.log",
-                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [REFRESH-MERGE] ✅ UPDATED existing zone {newZone.Id} (Duct Accessories) with fresh connector data: HasMepConnector={newZone.HasMepConnector}, DamperConnectorSide='{newZone.DamperConnectorSide ?? "NULL"}'\n");
-                            }
-                        }
-                    }
-                }
-                
-                context.AllClashZones = allZones;
-            }
-            
+            // PHASE 10: Merge and Save
             UpdateProgress(80, "Merging and saving...");
-            
-            // PHASE 9: Merge and save
             using (var saveOp = context.PerformanceMonitor.TrackOperation("9. Save") as PerformanceMonitor.OperationTracker)
             {
                 MergeAndSave(context);
                 saveOp?.SetItemCount(context.AllClashZones?.Count ?? 0);
             }
             
+            // PHASE 11: Final Cleanup
             UpdateProgress(90, "Finalizing...");
-            
-            // PHASE 10: Final cleanup
             using (context.PerformanceMonitor.TrackOperation("10. Cleanup"))
             {
                 FinalCleanup(context);
@@ -1420,6 +1076,363 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 _statusLabel.Text = status;
         }
         
+        // ✅ EXTRACTED METHODS (Phase 3)
+        
+        private void LoadRefreshData(RefreshContext context)
+        {
+            UpdateProgress(10, "Loading XML data...");
+            using (var xmlOp = context.PerformanceMonitor.TrackOperation("2. XML Loading") as PerformanceMonitor.OperationTracker)
+            {
+                if (OptimizationFlags.SkipXmlLoadingDuringRefresh)
+                {
+                    if (!context.IsDeploymentMode)
+                        DebugLogger.Info("[XML-CACHE] ⚡ OPTIMIZATION: Skipping XML cache loading (database-only mode)");
+                    SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                        $"[{DateTime.Now}] [XML-CACHE] ⚡ OPTIMIZATION: Skipping XML cache loading (database-only mode)\n");
+
+                    context.XmlCache = new Services.Refresh.XmlCache();
+                    xmlOp?.SetItemCount(0);
+                }
+                else
+                {
+                    var xmlManager = new XmlCacheManager(_document, context.RefreshLogName);
+                    context.XmlCache = xmlManager.LoadAll(context.SelectedFilterNames, context.SelectedMepCategories);
+                    xmlOp?.SetItemCount(context.XmlCache.FilterXml.Count + context.XmlCache.GlobalXml.Count);
+                }
+            }
+            
+            UpdateProgress(20, "Loading existing clash zones...");
+            using (var loadOp = context.PerformanceMonitor.TrackOperation("3. Load Existing Zones") as PerformanceMonitor.OperationTracker)
+            {
+                if (OptimizationFlags.SkipXmlLoadingDuringRefresh)
+                {
+                    context.ExistingClashZones = LoadExistingClashZonesFromDatabase(context);
+                }
+                else
+                {
+                    context.ExistingClashZones = LoadExistingClashZones(context);
+                }
+                loadOp?.SetItemCount(context.ExistingClashZones?.Count ?? 0);
+            }
+        }
+
+        private void DetermineRefreshPath(RefreshContext context)
+        {
+            IRefreshPathStrategy pathStrategy;
+            
+            // ✅ DI SUPPORT: Use injected path determiner if available (Phase 2/4)
+            if (_pathDeterminer != null)
+            {
+                pathStrategy = _pathDeterminer.DeterminePath(context);
+            }
+            else
+            {
+                // Fallback to static implementation
+                pathStrategy = RefreshPathDeterminer.DeterminePath(context, context.EnableThreePointValidation);
+            }
+            
+            if (!context.IsDeploymentMode)
+            {
+                DebugLogger.Info($"[REFRESH-REFACTORED] Using {pathStrategy.PathName}");
+                DebugLogger.Info($"[REFRESH-REFACTORED] Path settings: AllowStructuralUpdates={pathStrategy.AllowStructuralUpdates}, EnableThreePointValidation={pathStrategy.EnableThreePointValidation}, ShouldResetFlags={pathStrategy.ShouldResetFlags}, ShouldSyncFlags={pathStrategy.ShouldSyncFlags}, ShouldCheckGuids={pathStrategy.ShouldCheckGuids}");
+            }
+            
+            context.PathStrategy = pathStrategy;
+        }
+
+        private void ValidateZones(RefreshContext context)
+        {
+            UpdateProgress(40, "Validating clash zones...");
+            using (var validationOp = context.PerformanceMonitor.TrackOperation("5. Validation") as PerformanceMonitor.OperationTracker)
+            {
+                if (context.PathStrategy.EnableThreePointValidation)
+                {
+                    var validationService = new ValidationService(context, new FlagManager(_document));
+                    var validationResult = validationService.ValidateClashZones(context.ExistingClashZones);
+                    
+                    var processedZones = context.PathStrategy.ProcessZonesAfterValidation(
+                        context,
+                        validationResult.ValidZones,
+                        validationResult.InvalidZones);
+                    
+                    context.ExistingClashZones = processedZones;
+                    context.ValidatedZones = validationResult.ValidZones ?? new List<ClashZone>();
+                    context.InvalidatedZones = validationResult.InvalidZones ?? new List<ClashZone>();
+                
+                    if (validationResult.InvalidZones.Count > 0)
+                    {
+                        validationService.RemoveInvalidZonesFromGlobal(validationResult.InvalidZones);
+                    }
+                
+                    validationOp?.SetItemCount(context.ExistingClashZones.Count);
+                }
+                else
+                {
+                    if (!context.IsDeploymentMode)
+                    {
+                        DebugLogger.Info("[REFRESH-REFACTORED] Skipping 3-point validation (not required for this path)");
+                    }
+                    validationOp?.SetItemCount(context.ExistingClashZones?.Count ?? 0);
+                }
+            }
+        }
+
+        private void ResetFlags(RefreshContext context)
+        {
+            if (context.PathStrategy.ShouldResetFlags)
+            {
+                UpdateProgress(45, "Resetting flags for deleted sleeves...");
+                using (context.PerformanceMonitor.TrackOperation("5B. Flag Reset"))
+                {
+                    var flagManager = new FlagManager(_document);
+                    var categoriesToCheck = context.ExistingClashZones?
+                        .Where(cz => !string.IsNullOrWhiteSpace(cz.MepElementCategory))
+                        .Select(cz => cz.MepElementCategory)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList() ?? new List<string>();
+                    
+                    if (categoriesToCheck.Count > 0)
+                    {
+                        var clashZonesByCategory = context.ExistingClashZones?
+                            .GroupBy(cz => cz.MepElementCategory, StringComparer.OrdinalIgnoreCase)
+                            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase) 
+                            ?? new Dictionary<string, List<ClashZone>>();
+                        
+                        BoundingBoxXYZ? sectionBoxNullable = null;
+                        if (_document.ActiveView is View3D view3D && view3D.IsSectionBoxActive)
+                        {
+                            sectionBoxNullable = Helpers.SectionBoxHelper.GetSectionBoxBounds(view3D);
+                            if (sectionBoxNullable != null && !context.IsDeploymentMode)
+                            {
+                                BoundingBoxXYZ sb = sectionBoxNullable;
+                                DebugLogger.Info($"[REFRESH-REFACTORED] Section box active for flag reset: Min=({sb.Min.X:F2}, {sb.Min.Y:F2}, {sb.Min.Z:F2}), Max=({sb.Max.X:F2}, {sb.Max.Y:F2}, {sb.Max.Z:F2})");
+                            }
+                        }
+                        
+                        var resetCount = flagManager.ResetFlagsForDeletedSleeves(
+                            categoriesToCheck,
+                            clashZonesByCategory,
+                            context.RefreshLogName,
+                            sectionBoxNullable,
+                            context.SelectedFilterNames);
+                        
+                        context.PathStrategy.ResetInstanceIdsForDeletedSleeves(
+                            context,
+                            categoriesToCheck,
+                            clashZonesByCategory);
+                        
+                        if (!context.IsDeploymentMode)
+                        {
+                            DebugLogger.Info($"[REFRESH-REFACTORED] Flag reset completed: {resetCount} zones reset");
+                        }
+                        
+                        UpdateProgress(46, "Setting placement flags for unresolved zones...");
+                        try
+                        {
+                            using (var dbContext = new Data.SleeveDbContext(_document, msg =>
+                            {
+                                if (!context.IsDeploymentMode)
+                                    DebugLogger.Info($"[REFRESH-REFACTORED][SQLite] {msg}");
+                            }))
+                            {
+                                var repository = new Data.Repositories.ClashZoneRepository(dbContext, msg =>
+                                {
+                                    if (!context.IsDeploymentMode)
+                                        DebugLogger.Info($"[REFRESH-REFACTORED][SQLite] {msg}");
+                                });
+
+                                if (!context.IsDeploymentMode)
+                                {
+                                    try
+                                    {
+                                        DebugLogger.Info($"[REFRESH-REFACTORED] [BEFORE-FLAG-SET] About to call SetReadyForPlacementForUnresolvedZonesInSectionBox: filters={context.SelectedFilterNames?.Count ?? 0}, categories={context.SelectedMepCategories?.Count ?? 0}, sectionBox={(sectionBoxNullable != null ? "Present" : "NULL")}");
+                                        SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                            $"[{DateTime.Now}] [REFRESH-REFACTORED] [BEFORE-FLAG-SET] About to call SetReadyForPlacementForUnresolvedZonesInSectionBox: filters={context.SelectedFilterNames?.Count ?? 0}, categories={context.SelectedMepCategories?.Count ?? 0}, sectionBox={(sectionBoxNullable != null ? "Present" : "NULL")}\n");
+                                    }
+                                    catch { }
+                                }
+
+                                int markedCount = repository.SetReadyForPlacementForUnresolvedZonesInSectionBox(
+                                    context.SelectedFilterNames ?? new List<string>(),
+                                    context.SelectedMepCategories ?? new List<string>(),
+                                    sectionBoxNullable);
+
+                                if (!context.IsDeploymentMode)
+                                {
+                                    DebugLogger.Info($"[REFRESH-REFACTORED] ✅ Set ReadyForPlacementFlag=1 for {markedCount} unresolved zones within section box (AFTER flag reset)");
+                                    SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                        $"[{DateTime.Now}] [REFRESH-REFACTORED] ✅ Set ReadyForPlacementFlag=1 for {markedCount} unresolved zones within section box (AFTER flag reset)\n");
+                                    
+                                    try
+                                    {
+                                        var placementLogPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                                        File.AppendAllText(placementLogPath,
+                                            $"[{DateTime.Now:HH:mm:ss}] [REFRESH-FLAG-SET] ✅ Set ReadyForPlacementFlag=1 for {markedCount} zones (filters: {string.Join(", ", context.SelectedFilterNames ?? new List<string>())}, categories: {string.Join(", ", context.SelectedMepCategories ?? new List<string>())}, sectionBox: {(sectionBoxNullable != null ? "active" : "none")})\n");
+                                    }
+                                    catch { }
+                                }
+                            }
+                        }
+                        catch (Exception markEx)
+                        {
+                            if (!context.IsDeploymentMode)
+                            {
+                                DebugLogger.Warning($"[REFRESH-REFACTORED] ⚠️ Failed to set ReadyForPlacementFlag for unresolved zones: {markEx.Message}");
+                                SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                    $"[{DateTime.Now}] [REFRESH-REFACTORED] ⚠️ Failed to set ReadyForPlacementFlag for unresolved zones: {markEx.Message}\n");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (!context.IsDeploymentMode)
+                        {
+                            DebugLogger.Info("[REFRESH-REFACTORED] No categories to check for flag reset");
+                        }
+                    }
+                }
+            }
+            else
+            {
+                if (!context.IsDeploymentMode)
+                {
+                    DebugLogger.Info("[REFRESH-REFACTORED] Skipping flag reset (not required for this path)");
+                }
+            }
+        }
+
+        private void ProcessIntersections(RefreshContext context)
+        {
+            UpdateProgress(50, "Processing intersections...");
+            using (var intersectionOp = context.PerformanceMonitor.TrackOperation("6. Intersection Processing") as PerformanceMonitor.OperationTracker)
+            {
+                var xmlManager = new XmlCacheManager(_document, context.RefreshLogName);
+                var validationService = new ValidationService(context, new FlagManager(_document));
+                var paramService = new ParameterCaptureService(context);
+                
+                var logger = new Action<string>(msg => 
+                {
+                    if (!context.IsDeploymentMode)
+                        DebugLogger.Info(msg);
+                    SafeFileLogger.SafeAppendText(context.RefreshLogName, $"[{DateTime.Now}] {msg}\n");
+                });
+                
+                Action<string, int> progressCallback = null;
+                if (_statusLabel != null)
+                {
+                    progressCallback = (category, count) =>
+                    {
+                        try
+                        {
+                            _statusLabel.Text = $"Processing {category}: {count} intersections";
+                        }
+                        catch (Exception ex)
+                        {
+                            DebugLogger.Warning($"[REFRESH-REFACTORED] Error updating progress status: {ex.Message}");
+                        }
+                    };
+                }
+                
+                var processor = new IntersectionProcessor(
+                    context,
+                    xmlManager,
+                    validationService,
+                    paramService,
+                    context.PerformanceMonitor,
+                    logger,
+                    progressCallback);
+                
+                var decision = processor.PrepareExistingZones();
+                var allClashZones = processor.RunDetectionIfNeeded(decision);
+                
+                if (context.AllClashZones == null)
+                {
+                    context.AllClashZones = allClashZones;
+                }
+                
+                processor.PostProcess(decision);
+                intersectionOp?.SetItemCount(allClashZones.Count);
+                
+                if (!context.IsDeploymentMode)
+                {
+                    DebugLogger.Info($"[REFRESH-REFACTORED] Mode: {decision.Mode}, Detection Run: {decision.ShouldRunDetection}, Reason: {decision.Reason}");
+                }
+            }
+        }
+
+        private void CaptureParameters(RefreshContext context)
+        {
+            UpdateProgress(70, "Capturing parameters...");
+            using (var paramOp = context.PerformanceMonitor.TrackOperation("8. Parameter Capture") as PerformanceMonitor.OperationTracker)
+            {
+                var paramService = new ParameterCaptureService(context);
+                paramService.CaptureParametersParallel(context.NewClashZones);
+                paramOp?.SetItemCount(context.NewClashZones?.Count ?? 0);
+            }
+            
+            if (context.NewClashZones != null && context.NewClashZones.Count > 0)
+            {
+                var existingIds = new HashSet<Guid>((context.AllClashZones ?? new List<ClashZone>()).Select(z => z.Id));
+                var allZones = context.AllClashZones?.ToList() ?? new List<ClashZone>();
+                
+                foreach (var newZone in context.NewClashZones)
+                {
+                    if (!existingIds.Contains(newZone.Id))
+                    {
+                        allZones.Add(newZone);
+                    }
+                    else
+                    {
+                        var existingZone = allZones.FirstOrDefault(z => z.Id == newZone.Id);
+                        if (existingZone != null)
+                        {
+                            existingZone.MepElementWidth = newZone.MepElementWidth;
+                            existingZone.MepElementHeight = newZone.MepElementHeight;
+                            existingZone.MepElementOuterDiameter = newZone.MepElementOuterDiameter;
+                            existingZone.MepElementNominalDiameter = newZone.MepElementNominalDiameter;
+                            existingZone.MepElementSizeParameterValue = newZone.MepElementSizeParameterValue;
+                            existingZone.MepElementFormattedSize = newZone.MepElementFormattedSize;
+                            existingZone.MepElementSystemAbbreviation = newZone.MepElementSystemAbbreviation;
+                            existingZone.MepElementUniqueId = newZone.MepElementUniqueId;
+                            existingZone.IsInsulated = newZone.IsInsulated;
+                            existingZone.InsulationThickness = newZone.InsulationThickness;
+                            existingZone.MepElementSizeData = newZone.MepElementSizeData;
+                            existingZone.DuctShape = newZone.DuctShape;
+                            existingZone.InsulationType = newZone.InsulationType;
+                            
+                            existingZone.HasMepConnector = newZone.HasMepConnector;
+                            existingZone.DamperConnectorSide = newZone.DamperConnectorSide;
+                            
+                            if (newZone.MepParameterValues != null && newZone.MepParameterValues.Count > 0)
+                            {
+                                existingZone.MepParameterValues = newZone.MepParameterValues;
+                            }
+                            if (newZone.HostParameterValues != null && newZone.HostParameterValues.Count > 0)
+                            {
+                                existingZone.HostParameterValues = newZone.HostParameterValues;
+                            }
+                            
+                            if (!DeploymentConfiguration.DeploymentMode && string.Equals(newZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
+                            {
+                                var odMm = newZone.MepElementOuterDiameter > 0 ? (newZone.MepElementOuterDiameter * 304.8) : 0.0;
+                                var nomMm = newZone.MepElementNominalDiameter > 0 ? (newZone.MepElementNominalDiameter * 304.8) : 0.0;
+                                SafeFileLogger.SafeAppendText("save_db_diagnostic.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [REFRESH-MERGE] ✅ UPDATED existing zone {newZone.Id} with fresh data: OuterDiameter={newZone.MepElementOuterDiameter:F6}ft ({odMm:F1}mm), NominalDiameter={newZone.MepElementNominalDiameter:F6}ft ({nomMm:F1}mm), SizeParameterValue='{newZone.MepElementSizeParameterValue ?? "NULL"}'\n");
+                            }
+                            
+                            if (!DeploymentConfiguration.DeploymentMode && string.Equals(newZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
+                            {
+                                SafeFileLogger.SafeAppendText("save_db_diagnostic.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [REFRESH-MERGE] ✅ UPDATED existing zone {newZone.Id} (Duct Accessories) with fresh connector data: HasMepConnector={newZone.HasMepConnector}, DamperConnectorSide='{newZone.DamperConnectorSide ?? "NULL"}'\n");
+                            }
+                        }
+                    }
+                }
+                
+                context.AllClashZones = allZones;
+            }
+        }
+        
         private void ResetUI()
         {
             if (_progressBar != null)
@@ -1427,8 +1440,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             if (_refreshButton != null)
                 _refreshButton.Enabled = true;
-            
-            // The progress dialog is no longer a separate field, so this block is removed.
         }
     }
 }

@@ -10,7 +10,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
     /// Holds all shared state and cached data for a refresh operation.
     /// Loaded once at start, reused throughout refresh, disposed at end.
     /// </summary>
-    public class RefreshContext : IDisposable
+    public class RefreshContext : IDisposable, IRefreshDocumentContext, IRefreshCacheContext, IRefreshSelectionContext, IRefreshSettingsContext
     {
         // Core document reference
         public Document Document { get; }

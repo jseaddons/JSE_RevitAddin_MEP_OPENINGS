@@ -259,7 +259,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         /// Sets IsFilterComboNew = true if FileCombos don't exist (fresh combo)
         /// Sets IsFilterComboNew = false if FileCombos exist (used combo)
         /// </summary>
-        private static void UpdateIsFilterComboNewFlagBasedOnFileCombos(RefreshContext context)
+        public static void UpdateIsFilterComboNewFlagBasedOnFileCombos(RefreshContext context)
         {
             try
             {
