@@ -173,7 +173,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 }
 
                 // Built-in fallbacks for essential parameters that may not have direct parameter names
-                EnsureSystemType(element, collected);
+                // ✅ CRITICAL: Check if element is a Cable Tray (needs "Service Type" instead of "System Type")
+                bool isCableTray = element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_CableTray ||
+                                  element.Category?.Name?.Contains("Cable Tray", StringComparison.OrdinalIgnoreCase) == true ||
+                                  element is Autodesk.Revit.DB.Electrical.CableTray;
+                
+                if (isCableTray)
+                {
+                    // For Cable Trays, use "Service Type" instead of "System Type"
+                    EnsureServiceType(element, collected);
+                }
+                else
+                {
+                    // For Mechanical/Plumbing (Ducts/Pipes), use "System Type"
+                    EnsureSystemType(element, collected);
+                }
+                
                 EnsureSystemName(element, collected);
                 EnsureSystemAbbreviation(element, collected);
             }
@@ -258,9 +273,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             if (!MinimalWhitelist.Contains("System Type"))
                 return;
 
+            // ✅ CRITICAL: Try built-in parameters first (for Ducts/Pipes)
             Parameter param = element.get_Parameter(BuiltInParameter.RBS_DUCT_SYSTEM_TYPE_PARAM) ??
                               element.get_Parameter(BuiltInParameter.RBS_PIPING_SYSTEM_TYPE_PARAM) ??
                               element.get_Parameter(BuiltInParameter.RBS_SYSTEM_CLASSIFICATION_PARAM);
+            
+            // ✅ CRITICAL: If built-in parameters not found, try common parameter name variations
+            if (param == null)
+            {
+                param = element.LookupParameter("MEP System Type") ??
+                        element.LookupParameter("System Classification") ??
+                        element.LookupParameter("MEP System Classification");
+            }
 
             if (param == null)
                 return;
@@ -346,6 +370,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             var value = ParameterValueToString(element, param);
             if (!string.IsNullOrWhiteSpace(value))
                 collected["System Abbreviation"] = value;
+        }
+        
+        /// <summary>
+        /// ✅ CRITICAL: Ensure "Service Type" is captured for Cable Trays and Conduits.
+        /// For Cable Trays, "Service Type" is the equivalent of "System Type" for Mechanical/Plumbing elements.
+        /// </summary>
+        private static void EnsureServiceType(Element element, Dictionary<string, string> collected)
+        {
+            if (collected.ContainsKey("Service Type"))
+                return;
+
+            // ✅ FIX: Only capture if Service Type is in whitelist
+            if (!MinimalWhitelist.Contains("Service Type"))
+                return;
+
+            // Try common parameter name variations for Service Type
+            Parameter param = element.LookupParameter("Service Type") ??
+                             element.LookupParameter("MEP Service Type");
+            
+            if (param == null)
+                return;
+
+            var value = ParameterValueToString(element, param);
+            if (!string.IsNullOrWhiteSpace(value))
+                collected["Service Type"] = value;
         }
 
         private static string ParameterValueToString(Element owner, Parameter parameter)
