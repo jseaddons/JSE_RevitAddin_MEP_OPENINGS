@@ -53,6 +53,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         // ✅ SRP COMPLIANCE: Sleeve rotation service (delegates rotation calculation logic)
         private readonly SleeveRotationService _rotationService;
         
+        // ✅ SRP COMPLIANCE: Sleeve parameter service (delegates all parameter setting operations)
+        // Note: Not readonly because it needs to be recreated with performance monitor when available
+        private SleeveParameterService _parameterService;
+        
+        // ✅ SRP COMPLIANCE: Placement point adjustment service (delegates all placement point adjustment logic)
+        // Note: Not readonly because it needs to be recreated with performance monitor when available
+        private PlacementPointAdjustmentService _placementPointAdjustmentService;
+        
         // ✅ SOLID REFACTORED: Optional refactored command services (injected when flag enabled)
         private readonly IFileNameNormalizer? _fileNameNormalizer;
         private readonly ISectionBoxChecker? _sectionBoxChecker;
@@ -65,15 +73,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         // Family symbol cache for performance
         private static Dictionary<string, FamilySymbol> _familySymbolCache = new Dictionary<string, FamilySymbol>();
-        
-        // ✅ PARAMETER BATCHING: Deferred parameter writes (4-6× faster placement)
-        // Accumulates parameter values during placement loop, writes all after single regeneration
-        // Key: ElementId of sleeve instance
-        // Value: Dictionary of parameter name → value (double or string)
-        private Dictionary<ElementId, Dictionary<string, object>> _deferredParameters = new Dictionary<ElementId, Dictionary<string, object>>();
-        
-        // ✅ SAFETY FLAG: Prevents multiple flushes (critical for performance)
-        private bool _hasFlushedParameters = false;
         
         // ✅ DAMPER PLACEMENT OFFSET: Stores offset for asymmetric clearance placement
         // Key: ClashZone ID (Guid - for matching zone to its calculated offset)
@@ -123,6 +122,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ SRP COMPLIANCE: Initialize rotation service (delegates wall/floor rotation logic)
             _rotationService = new SleeveRotationService();
             
+            // ✅ SRP COMPLIANCE: Initialize parameter service (delegates all parameter setting operations)
+            // Note: Performance monitor will be set later in PlaceAllSleevesInTransaction, so we pass null here
+            _parameterService = new SleeveParameterService(doc, isReplayPath, null);
+            
+            // ✅ SRP COMPLIANCE: Initialize placement point adjustment service
+            // Note: Performance monitor will be set later in PlaceAllSleevesInTransaction, so we pass null here
+            _placementPointAdjustmentService = new PlacementPointAdjustmentService(doc, null);
+            
             // ✅ SOLID REFACTORED: Initialize refactored services (create if not provided when flag enabled)
             if (OptimizationFlags.UseRefactoredCommandServices)
             {
@@ -167,11 +174,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
                 string performanceLogName = $"NewSleevePlacer_{timestamp}.log";
                 _performanceMonitor = new Services.Placement.PlacementPerformanceMonitor(performanceLogName);
+                
+                // ✅ 28 FEATURES COMPLIANCE: Update services with performance monitor
+                // Recreate services with performance monitor for proper tracking
+                _parameterService = new SleeveParameterService(_doc, _isReplayPath, _performanceMonitor);
+                _placementPointAdjustmentService = new PlacementPointAdjustmentService(_doc, _performanceMonitor);
             }
             
             // ✅ PARAMETER BATCHING: Reset flags at start of each placement run
-            _hasFlushedParameters = false;
-            _deferredParameters?.Clear();
+            _parameterService.ResetFlushFlag();
             
             // ✅ DAMPER PLACEMENT OFFSET: Clear stored offsets at start of each placement run
             _damperPlacementAdjustments?.Clear();
@@ -465,28 +476,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // If dimensions not set, try to get from deferred parameters
                         if (storedWidth <= 0 || storedHeight <= 0)
                         {
-                            if (OptimizationFlags.UseBatchedParameterWrites && _deferredParameters != null)
-                            {
-                                var sleeveId = placedSleeve.Id;
-                                if (_deferredParameters.ContainsKey(sleeveId))
-                                {
-                                    var paramsDict = _deferredParameters[sleeveId];
-                                    if (paramsDict.ContainsKey("Width") && paramsDict["Width"] is double w) storedWidth = w;
-                                    if (paramsDict.ContainsKey("Height") && paramsDict["Height"] is double h) storedHeight = h;
-                                }
-                            }
+                            storedWidth = _parameterService.GetParameterValueWithBatchingSupport(placedSleeve, "Width", storedWidth);
+                            storedHeight = _parameterService.GetParameterValueWithBatchingSupport(placedSleeve, "Height", storedHeight);
                         }
                         
                         // ✅ CRITICAL: Also check deferred parameters for Depth/Wall Width (set by SetSleeveParameters)
-                        if (OptimizationFlags.UseBatchedParameterWrites && _deferredParameters != null)
+                        double depthFromParams = _parameterService.GetParameterValueWithBatchingSupport(placedSleeve, "Depth", 0.0);
+                        if (depthFromParams <= 0.0)
                         {
-                            var sleeveId = placedSleeve.Id;
-                            if (_deferredParameters.ContainsKey(sleeveId))
-                            {
-                                var paramsDict = _deferredParameters[sleeveId];
-                                if (paramsDict.ContainsKey("Depth") && paramsDict["Depth"] is double d && d > 0) storedDepth = d;
-                                else if (paramsDict.ContainsKey("Wall Width") && paramsDict["Wall Width"] is double ww && ww > 0) storedDepth = ww;
-                            }
+                            depthFromParams = _parameterService.GetParameterValueWithBatchingSupport(placedSleeve, "Wall Width", 0.0);
+                        }
+                        if (depthFromParams > 0.0)
+                        {
+                            storedDepth = depthFromParams;
                         }
                         
                         placedSleeveData.Add((placedSleeve, clashZone, storedWidth, storedHeight, storedDepth));
@@ -649,14 +651,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             // ✅ PARAMETER BATCHING: Flush deferred parameters AFTER bounding box calculation
             // Bounding boxes must be calculated BEFORE flushing, so they use deferred parameter values
-            if (OptimizationFlags.UseBatchedParameterWrites && _deferredParameters != null && _deferredParameters.Count > 0)
+            if (OptimizationFlags.UseBatchedParameterWrites)
             {
                 try
                 {
-                    int flushedCount = FlushDeferredParameters();
-                    if (!DeploymentConfiguration.DeploymentMode)
+                    int flushedCount = _parameterService.FlushDeferredParameters();
+                    if (!DeploymentConfiguration.DeploymentMode && flushedCount > 0)
                     {
-                        DebugLogger.Info($"[NewSleevePlacer] ✅ Flushed {flushedCount} deferred parameters for {_deferredParameters.Count} sleeves");
+                        DebugLogger.Info($"[NewSleevePlacer] ✅ Flushed {flushedCount} deferred parameters via SleeveParameterService");
                     }
                 }
                 catch (Exception ex)
@@ -712,7 +714,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             if (instance != null)
             {
-                SetSleeveParameters(instance, width, height, diameter, isCircular, zone);
+                _parameterService.SetSleeveParameters(instance, width, height, diameter, isCircular, zone);
                 
                 // ✅ CRITICAL FIX: Update zone with calculated dimensions for bounding box calculation
                 // This ensures dimensions are available when batching is enabled
@@ -765,15 +767,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Determine Placement Point (Intersection Point)
             XYZ placementPoint = zone.IntersectionPoint ?? new XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ);
             
-            // ✅ DAMPER OFFSET: Apply offset for asymmetric clearance placement
-            // If damper placement adjustment was calculated, apply the offset to achieve correct clearance distribution
+            // ✅ SRP COMPLIANCE: Delegate placement point adjustment to dedicated service
+            // This service handles:
+            // 1. Wall/framing centerline adjustment
+            // 2. Damper offset adjustment (if applicable)
+            // This keeps NewSleevePlacerService focused on orchestration, not geometric calculations
+            XYZ damperOffset = null;
             if (_damperPlacementAdjustments.ContainsKey(zone.Id))
             {
                 var (offsetVector, finalWidth, finalHeight, clearanceLeft, clearanceRight, clearanceTop, clearanceBottom) = 
                     _damperPlacementAdjustments[zone.Id];
                 
-                // ✅ CRITICAL: Apply offset to placement point to move sleeve toward connector side
-                placementPoint = placementPoint.Add(offsetVector);
+                damperOffset = offsetVector;
                 
                 // ✅ SOLID ISP: Store individual clearance values in zone for later parameter setting
                 // This allows SetSleeveParameters to set clearance parameters without strategy dependency
@@ -781,14 +786,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 zone.ClearanceRight = clearanceRight;
                 zone.ClearanceTop = clearanceTop;
                 zone.ClearanceBottom = clearanceBottom;
-                
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    DebugLogger.Info($"[NewSleevePlacer] ✅ DAMPER OFFSET APPLIED: Zone {zone.Id}, Offset=({offsetVector.X:F6}, {offsetVector.Y:F6}, {offsetVector.Z:F6}), New Placement=({placementPoint.X:F3}, {placementPoint.Y:F3}, {placementPoint.Z:F3})");
-                    SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ✅ DAMPER OFFSET: Zone {zone.Id}, Offset Vector=({offsetVector.X:F6}, {offsetVector.Y:F6}, {offsetVector.Z:F6}), Applied to Point ({placementPoint.X:F3}, {placementPoint.Y:F3}, {placementPoint.Z:F3})\n");
-                }
             }
+            
+            // ✅ DELEGATE TO SERVICE: All placement point adjustments handled by PlacementPointAdjustmentService
+            placementPoint = _placementPointAdjustmentService.AdjustPlacementPoint(zone, placementPoint, damperOffset);
             
             // ✅ DIAGNOSTIC: Log placement point
             SafeFileLogger.SafeAppendText("placement_debug.log",
@@ -812,7 +813,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             if (instance != null)
             {
-                SetSleeveParameters(instance, width, height, diameter, isCircular, zone);
+                _parameterService.SetSleeveParameters(instance, width, height, diameter, isCircular, zone);
                 
                 // Update zone with calculated dimensions for saving
                 zone.SleeveWidth = width;
@@ -1254,529 +1255,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
-        private void SetSleeveParameters(FamilyInstance instance, double width, double height, double diameter, bool isCircular, ClashZone zone)
-        {
-            // ✅ PERFORMANCE MONITORING: Track parameter setting
-            using (var tracker = _performanceMonitor?.TrackOperation("Set Sleeve Parameters"))
-            {
-                if (instance == null) return;
-
-                // ✅ SAFE ELEMENT VALIDATION: Validate instance is still valid (avoids document mismatch bug)
-                if (OptimizationFlags.UseSafeElementValidation)
-                {
-                    try
-                    {
-                        // ⚠️ CRITICAL: Do NOT compare documents by reference (causes false positives like in parameter transfer)
-                        // Instead, validate by element ID - if doc.GetElement() succeeds, element is in correct document
-                        var validationElement = _doc.GetElement(instance.Id);
-                        if (validationElement == null || !validationElement.IsValidObject)
-                        {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                DebugLogger.Warning($"[NewSleevePlacer] ⚠️ Instance {instance.Id.IntegerValue} is invalid - skipping parameter setting");
-                            }
-                            return;
-                        }
-
-                        // Additional validation: ensure element IDs match (not just document reference)
-                        if (validationElement.Id != instance.Id)
-                        {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                DebugLogger.Warning($"[NewSleevePlacer] ⚠️ Element ID mismatch for instance {instance.Id.IntegerValue}");
-                            }
-                            return;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            DebugLogger.Error($"[NewSleevePlacer] Error validating instance {instance.Id.IntegerValue}: {ex.Message}");
-                        }
-                        return;
-                    }
-                }
-
-                var currentSleeveId = instance.Id;
-
-                // ✅ GLOBAL SETTINGS: Apply rounding based on global configuration (RoundingValue and RoundAlwaysUp)
-                // This matches the legacy UniversalSleevePlacerService behavior
-                // Dampers are excluded from rounding (preserve exact calculated dimensions)
-                bool isDamper = zone?.MepElementCategory != null && 
-                               (zone.MepElementCategory.IndexOf("Damper", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                zone.MepElementCategory.IndexOf("Duct Accessories", StringComparison.OrdinalIgnoreCase) >= 0);
-                
-                double roundedWidth = width;
-                double roundedHeight = height;
-                double roundedDiameter = diameter;
-                
-                if (!isDamper)
-                {
-                    // ✅ Apply rounding for non-damper elements using global settings
-                    // OpeningSettingsHelper reads RoundingValue and RoundAlwaysUp from ApplicationProfileService
-                    (roundedWidth, roundedHeight) = OpeningSettingsHelper.RoundDimensionsToNearest5mm(width, height);
-                    roundedDiameter = OpeningSettingsHelper.RoundDiameterToNearest5mm(diameter);
-                    
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        // Log rounding if values changed
-                        if (Math.Abs(width - roundedWidth) > 1e-6 || Math.Abs(height - roundedHeight) > 1e-6 || Math.Abs(diameter - roundedDiameter) > 1e-6)
-                        {
-                            DebugLogger.Info($"[NewSleevePlacer] [ROUNDING] Zone {zone?.Id}: " +
-                                $"Width {RevitUnitConversionService.Instance.FromInternalMillimeters(width):F1}mm → {RevitUnitConversionService.Instance.FromInternalMillimeters(roundedWidth):F1}mm, " +
-                                $"Height {RevitUnitConversionService.Instance.FromInternalMillimeters(height):F1}mm → {RevitUnitConversionService.Instance.FromInternalMillimeters(roundedHeight):F1}mm, " +
-                                $"Diameter {RevitUnitConversionService.Instance.FromInternalMillimeters(diameter):F1}mm → {RevitUnitConversionService.Instance.FromInternalMillimeters(roundedDiameter):F1}mm");
-                        }
-                    }
-                }
-                else
-                {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"[NewSleevePlacer] [ROUNDING] Zone {zone?.Id}: DAMPER - No rounding applied, using exact calculated dimensions");
-                    }
-                }
-
-                if (isCircular)
-                {
-                    var param = instance.LookupParameter("Diameter") ?? instance.LookupParameter("Sleeve Diameter");
-                    if (param != null && !param.IsReadOnly)
-                    {
-                        TimedSetDouble(param, roundedDiameter, "Diameter", currentSleeveId);
-                    }
-                }
-                else
-                {
-                    var wParam = instance.LookupParameter("Width") ?? instance.LookupParameter("Sleeve Width");
-                    var hParam = instance.LookupParameter("Height") ?? instance.LookupParameter("Sleeve Height");
-                    if (wParam != null && !wParam.IsReadOnly)
-                    {
-                        TimedSetDouble(wParam, roundedWidth, "Width", currentSleeveId);
-                    }
-                    if (hParam != null && !hParam.IsReadOnly)
-                    {
-                        TimedSetDouble(hParam, roundedHeight, "Height", currentSleeveId);
-                    }
-
-                    tracker?.SetItemCount(1);
-                }
-
-                // ✅ SRP COMPLIANCE: Delegate depth parameter setting to dedicated method
-                if (zone != null)
-                {
-                    SetDepthParameter(instance, zone, currentSleeveId);
-                }
-
-                // ✅ CLUSTERING SUPPORT: Set MEP_ElementId and MEP_Category for clustering and parameter transfer
-                if (zone != null)
-                {
-                    // Set MEP_Category - Required for clustering
-                    var mepCategoryParam = instance.LookupParameter("MEP_Category");
-                    if (mepCategoryParam != null && !mepCategoryParam.IsReadOnly)
-                    {
-                        if (OptimizationFlags.UseBatchedParameterWrites)
-                        {
-                            if (!_deferredParameters.ContainsKey(currentSleeveId))
-                                _deferredParameters[currentSleeveId] = new Dictionary<string, object>();
-                            _deferredParameters[currentSleeveId]["MEP_Category"] = zone.MepElementCategory;
-                        }
-                        else
-                        {
-                            mepCategoryParam.Set(zone.MepElementCategory);
-                        }
-                    }
-
-                    // ✅ CRITICAL: Set MEP_ElementId IMMEDIATELY (not deferred) - Required for clustering and corner retrieval
-                    // Without MEP_ElementId, cluster sizing cannot find corners in database
-                    var mepElementIdParam = instance.LookupParameter("MEP_ElementId");
-                    if (mepElementIdParam != null && !mepElementIdParam.IsReadOnly)
-                    {
-                        // ✅ ALWAYS set immediately, regardless of batching flag - this is critical for clustering
-                        mepElementIdParam.Set(zone.MepElementId.IntegerValue);
-                        
-                        // If batching is enabled, also add to deferred for consistency, but immediate set is critical
-                        if (OptimizationFlags.UseBatchedParameterWrites)
-                        {
-                            if (!_deferredParameters.ContainsKey(currentSleeveId))
-                                _deferredParameters[currentSleeveId] = new Dictionary<string, object>();
-                            _deferredParameters[currentSleeveId]["MEP_ElementId"] = zone.MepElementId.IntegerValue;
-                        }
-                        
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("placement_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] ✅ IMMEDIATE: Set 'MEP_ElementId'={zone.MepElementId.IntegerValue} for sleeve {currentSleeveId}\n");
-                        }
-                    }
-                    else
-                    {
-                        // ⚠️ CRITICAL WARNING: MEP_ElementId parameter not found or read-only
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("placement_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] ⚠️⚠️⚠️ CRITICAL: Cannot set 'MEP_ElementId' for sleeve {currentSleeveId} - parameter not found or read-only!\n" +
-                                $"  This will prevent cluster sizing from finding corners in database!\n");
-                        }
-                    }
-                    
-                    // ✅ DAMPER ASYMMETRIC CLEARANCE: Set individual clearance parameters from zone (populated by DamperPlacementStrategy)
-                    // These parameters are used by the sleeve family to display asymmetric clearance visualization
-                    // SOLID ISP: Each clearance parameter is independent, allowing selective setting
-                    
-                    // Set Clearance_Left (100mm on connector side, 50mm on other side, mapped by wall orientation)
-                    var clearanceLeftParam = instance.LookupParameter("Clearance_Left");
-                    if (clearanceLeftParam != null && !clearanceLeftParam.IsReadOnly && zone.ClearanceLeft > 0)
-                    {
-                        if (OptimizationFlags.UseBatchedParameterWrites)
-                        {
-                            if (!_deferredParameters.ContainsKey(currentSleeveId))
-                                _deferredParameters[currentSleeveId] = new Dictionary<string, object>();
-                            _deferredParameters[currentSleeveId]["Clearance_Left"] = zone.ClearanceLeft;
-                        }
-                        else
-                        {
-                            clearanceLeftParam.Set(zone.ClearanceLeft);
-                        }
-                    }
-                    
-                    // Set Clearance_Right
-                    var clearanceRightParam = instance.LookupParameter("Clearance_Right");
-                    if (clearanceRightParam != null && !clearanceRightParam.IsReadOnly && zone.ClearanceRight > 0)
-                    {
-                        if (OptimizationFlags.UseBatchedParameterWrites)
-                        {
-                            if (!_deferredParameters.ContainsKey(currentSleeveId))
-                                _deferredParameters[currentSleeveId] = new Dictionary<string, object>();
-                            _deferredParameters[currentSleeveId]["Clearance_Right"] = zone.ClearanceRight;
-                        }
-                        else
-                        {
-                            clearanceRightParam.Set(zone.ClearanceRight);
-                        }
-                    }
-                    
-                    // Set Clearance_Top
-                    var clearanceTopParam = instance.LookupParameter("Clearance_Top");
-                    if (clearanceTopParam != null && !clearanceTopParam.IsReadOnly && zone.ClearanceTop > 0)
-                    {
-                        if (OptimizationFlags.UseBatchedParameterWrites)
-                        {
-                            if (!_deferredParameters.ContainsKey(currentSleeveId))
-                                _deferredParameters[currentSleeveId] = new Dictionary<string, object>();
-                            _deferredParameters[currentSleeveId]["Clearance_Top"] = zone.ClearanceTop;
-                        }
-                        else
-                        {
-                            clearanceTopParam.Set(zone.ClearanceTop);
-                        }
-                    }
-                    
-                    // Set Clearance_Bottom
-                    var clearanceBottomParam = instance.LookupParameter("Clearance_Bottom");
-                    if (clearanceBottomParam != null && !clearanceBottomParam.IsReadOnly && zone.ClearanceBottom > 0)
-                    {
-                        if (OptimizationFlags.UseBatchedParameterWrites)
-                        {
-                            if (!_deferredParameters.ContainsKey(currentSleeveId))
-                                _deferredParameters[currentSleeveId] = new Dictionary<string, object>();
-                            _deferredParameters[currentSleeveId]["Clearance_Bottom"] = zone.ClearanceBottom;
-                        }
-                        else
-                        {
-                            clearanceBottomParam.Set(zone.ClearanceBottom);
-                        }
-                    }
-                    
-                    if (!DeploymentConfiguration.DeploymentMode && (zone.ClearanceLeft > 0 || zone.ClearanceRight > 0 || zone.ClearanceTop > 0 || zone.ClearanceBottom > 0))
-                    {
-                        DebugLogger.Info($"[NewSleevePlacer] ✅ DAMPER CLEARANCES SET: Zone {zone.Id}, L={RevitUnitConversionService.Instance.FromInternalMillimeters(zone.ClearanceLeft):F1}mm, R={RevitUnitConversionService.Instance.FromInternalMillimeters(zone.ClearanceRight):F1}mm, T={RevitUnitConversionService.Instance.FromInternalMillimeters(zone.ClearanceTop):F1}mm, B={RevitUnitConversionService.Instance.FromInternalMillimeters(zone.ClearanceBottom):F1}mm");
-                    }
-                }
-            }
-        }
-        
-        /// <summary>
-        /// ✅ SRP COMPLIANCE: Dedicated method for setting Depth/Wall Width parameter based on host type.
-        /// Single Responsibility: Calculate and set structural thickness parameter only.
-        /// Maintains all optimization features: batching, performance monitoring, safe validation, diagnostic logging.
-        /// </summary>
-        private void SetDepthParameter(FamilyInstance instance, ClashZone zone, ElementId currentSleeveId)
-        {
-            if (instance == null || zone == null) return;
-            
-            bool isWallHost = zone.StructuralElementType == "Wall" || zone.StructuralElementType == "Walls";
-            bool isFramingHost = string.Equals(zone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
-            
-            // Get the correct thickness based on host type
-            double thickness = 0.0;
-            if (isWallHost)
-            {
-                thickness = zone.WallThickness > 0 ? zone.WallThickness : zone.StructuralElementThickness;
-            }
-            else if (isFramingHost)
-            {
-                thickness = zone.FramingThickness > 0 ? zone.FramingThickness : zone.StructuralElementThickness;
-            }
-            else
-            {
-                thickness = zone.StructuralElementThickness;
-            }
-            
-            // ✅ CRITICAL FIX: For PATH 3 (Non-Fresh), if thickness is 0, retrieve from linked file structural element
-            // This is a fallback - thickness should have been saved during refresh, but if missing, retrieve it now
-            if (!_isReplayPath && thickness <= 0.0 && zone.StructuralElementIdValue > 0)
-            {
-                try
-                {
-                    // Try to get structural element from linked files
-                    Element structuralElement = null;
-                    var linkInstances = new FilteredElementCollector(_doc)
-                        .OfClass(typeof(RevitLinkInstance))
-                        .Cast<RevitLinkInstance>();
-                    
-                    foreach (var linkInstance in linkInstances)
-                    {
-                        var linkDoc = linkInstance.GetLinkDocument();
-                        if (linkDoc != null)
-                        {
-                            try
-                            {
-                                structuralElement = linkDoc.GetElement(new ElementId(zone.StructuralElementIdValue));
-                                if (structuralElement != null)
-                                {
-                                    // Retrieve thickness from linked file element
-                                    if (structuralElement is Wall wall)
-                                    {
-                                        thickness = wall.Width;
-                                    }
-                                    else if (structuralElement is Floor floor)
-                                    {
-                                        thickness = floor.get_Parameter(BuiltInParameter.FLOOR_ATTR_THICKNESS_PARAM)?.AsDouble() ?? 0.0;
-                                    }
-                                    else if (structuralElement?.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
-                                    {
-                                        // Get framing thickness from type parameter 'b'
-                                        var typeId = (structuralElement as FamilyInstance)?.GetTypeId() ?? structuralElement.GetTypeId();
-                                        var typeElem = linkDoc.GetElement(typeId);
-                                        if (typeElem != null)
-                                        {
-                                            var param = typeElem.LookupParameter("b") ?? typeElem.LookupParameter("B");
-                                            if (param != null) thickness = param.AsDouble();
-                                        }
-                                    }
-                                    
-                                    if (thickness > 0.0)
-                                    {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[NewSleevePlacer] [DEPTH-FALLBACK] Retrieved thickness={thickness * 304.8:F1}mm from linked file for structural element {zone.StructuralElementIdValue} (Zone={zone.Id})");
-                                        break;
-                                    }
-                                }
-                            }
-                            catch { continue; }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Warning($"[NewSleevePlacer] [DEPTH-FALLBACK] Error retrieving thickness from linked file for Zone={zone.Id}: {ex.Message}");
-                }
-            }
-            
-            // Set Depth or Wall Width parameter
-            bool depthSetSuccess = false;
-            if (isWallHost)
-            {
-                var wallWidthParam = instance.LookupParameter("Wall Width");
-                if (wallWidthParam != null && !wallWidthParam.IsReadOnly)
-                {
-                    // ✅ OPTIMIZATION: Uses TimedSetDouble which supports parameter batching
-                    TimedSetDouble(wallWidthParam, thickness, "Wall Width", currentSleeveId);
-                    depthSetSuccess = true;
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"[NewSleevePlacer] [DEPTH-SET] Zone={zone.Id}, Sleeve={instance.Id}: Set Wall Width={thickness * 304.8:F1}mm");
-                    }
-                }
-            }
-            
-            if (!depthSetSuccess)
-            {
-                var depthParam = instance.LookupParameter("Depth");
-                if (depthParam != null && !depthParam.IsReadOnly)
-                {
-                    // ✅ OPTIMIZATION: Uses TimedSetDouble which supports parameter batching
-                    TimedSetDouble(depthParam, thickness, "Depth", currentSleeveId);
-                    depthSetSuccess = true;
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"[NewSleevePlacer] [DEPTH-SET] Zone={zone.Id}, Sleeve={instance.Id}: Set Depth={thickness * 304.8:F1}mm");
-                    }
-                }
-            }
-            
-            if (!depthSetSuccess && !DeploymentConfiguration.DeploymentMode)
-            {
-                DebugLogger.Warning($"[NewSleevePlacer] [DEPTH-SET] ❌ Zone={zone.Id}, Sleeve={instance.Id}: Could not set Depth or Wall Width parameter");
-            }
-        }
-        
-        /// <summary>
-        /// ✅ PARAMETER BATCHING: Set parameter value with batching support and diagnostic logging.
-        /// Deferred when batching enabled, immediate when disabled.
-        /// </summary>
-        private void TimedSetDouble(Parameter param, double value, string logicalName, ElementId currentSleeveId)
-        {
-            if (param == null || param.IsReadOnly) return;
-            
-            if (OptimizationFlags.UseBatchedParameterWrites)
-            {
-                if (!_deferredParameters.ContainsKey(currentSleeveId))
-                    _deferredParameters[currentSleeveId] = new Dictionary<string, object>();
-                
-                // ✅ CRITICAL DIAGNOSTIC: Log if parameter is being overwritten
-                bool isOverwrite = _deferredParameters[currentSleeveId].ContainsKey(logicalName);
-                if (isOverwrite && (logicalName == "Width" || logicalName == "Height" || 
-                                   logicalName == "Depth" || logicalName == "Wall Width"))
-                {
-                    var oldValue = _deferredParameters[currentSleeveId][logicalName];
-                    SafeFileLogger.SafeAppendText("parameter_overwrite_debug.log",
-                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] ⚠️ PARAMETER OVERWRITE: Sleeve {currentSleeveId.IntegerValue}, " +
-                        $"Parameter='{logicalName}', OldValue={oldValue}, NewValue={value}\n");
-                }
-                
-                _deferredParameters[currentSleeveId][logicalName] = value;
-            }
-            else
-            {
-                param.Set(value);
-            }
-        }
-        
-        /// <summary>
-        /// ✅ CRITICAL FIX: Read parameter from deferred cache first, then fallback to Revit element.
-        /// This prevents stale reads during corner placement calculations when batching is enabled.
-        /// </summary>
-        private double GetParameterValueWithBatchingSupport(
-            FamilyInstance sleeve, 
-            string parameterName, 
-            double fallbackValue)
-        {
-            if (OptimizationFlags.UseBatchedParameterWrites && _deferredParameters != null)
-            {
-                var sleeveId = sleeve.Id;
-                if (_deferredParameters.ContainsKey(sleeveId) && 
-                    _deferredParameters[sleeveId].ContainsKey(parameterName))
-                {
-                    var cachedValue = _deferredParameters[sleeveId][parameterName];
-                    if (cachedValue is double doubleVal)
-                    {
-                        return doubleVal; // Return cached value
-                    }
-                }
-            }
-            
-            // Fallback to Revit element
-            var param = sleeve.LookupParameter(parameterName);
-            return param?.AsDouble() ?? fallbackValue;
-        }
-        
-        /// <summary>
-        /// ✅ PARAMETER BATCHING: Flush all deferred parameters to Revit elements.
-        /// Applies all accumulated parameter values after regeneration.
-        /// </summary>
-        public int FlushDeferredParameters()
-        {
-            // ✅ SAFETY FLAG: Prevent multiple flushes (critical for performance)
-            if (_hasFlushedParameters)
-            {
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    var stackTrace = new System.Diagnostics.StackTrace(skipFrames: 1, fNeedFileInfo: false);
-                    var caller = stackTrace.GetFrame(0)?.GetMethod()?.Name ?? "Unknown";
-                    DebugLogger.Warning($"[NewSleevePlacer] [BATCH-PARAMS] ⚠️ SAFETY: FlushDeferredParameters called AGAIN from {caller} - IGNORING (already flushed once). This indicates a bug - parameters should only flush once at the end!");
-                }
-                return 0; // ✅ CRITICAL: Exit early to prevent duplicate flushes
-            }
-            
-            if (_deferredParameters == null || _deferredParameters.Count == 0)
-            {
-                _hasFlushedParameters = true; // Mark as flushed even if empty
-                return 0;
-            }
-            
-            int successCount = 0;
-            int failCount = 0;
-            var errorLog = new System.Text.StringBuilder();
-            
-            if (!DeploymentConfiguration.DeploymentMode)
-            {
-                int totalParams = _deferredParameters.Values.Sum(d => d.Count);
-                DebugLogger.Info($"[NewSleevePlacer] [BATCH-PARAMS] 🔄 Flushing {_deferredParameters.Count} individual sleeves with {totalParams} total parameters...");
-            }
-            
-            try
-            {
-                foreach (var kvp in _deferredParameters)
-                {
-                    var sleeveId = kvp.Key;
-                    var paramValues = kvp.Value;
-                    
-                    var sleeve = _doc.GetElement(sleeveId) as FamilyInstance;
-                    if (sleeve == null) continue;
-                    
-                    foreach (var paramKvp in paramValues)
-                    {
-                        var param = sleeve.LookupParameter(paramKvp.Key);
-                        if (param != null && !param.IsReadOnly)
-                        {
-                            try
-                            {
-                                if (paramKvp.Value is double dVal)
-                                    param.Set(dVal);
-                                else if (paramKvp.Value is string sVal)
-                                    param.Set(sVal);
-                                
-                                successCount++;
-                            }
-                            catch (Exception ex)
-                            {
-                                failCount++;
-                                errorLog.AppendLine($"[NewSleevePlacer] Failed to set parameter '{paramKvp.Key}' on sleeve {sleeveId.IntegerValue}: {ex.Message}");
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    DebugLogger.Error($"[NewSleevePlacer] [BATCH-PARAMS] Error during flush: {ex.Message}");
-                }
-            }
-            finally
-            {
-                _hasFlushedParameters = true;
-                
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    int totalParams = _deferredParameters.Values.Sum(d => d.Count);
-                    DebugLogger.Info($"[NewSleevePlacer] [BATCH-PARAMS] ✅ Flushed {successCount} parameters for {_deferredParameters.Count} sleeves, {failCount} failed");
-                    if (errorLog.Length > 0)
-                    {
-                        SafeFileLogger.SafeAppendText("parameter_batching_errors.log", errorLog.ToString());
-                    }
-                }
-                
-                // Clear deferred parameters after flush (ready for next placement batch)
-                _deferredParameters.Clear();
-            }
-            
-            return successCount;
-        }
+        // ✅ SRP COMPLIANCE: All parameter setting methods have been moved to SleeveParameterService
+        // The service is injected via constructor and used throughout this class
         
         /// <summary>
         /// ✅ FAMILY SYMBOL CACHING: Pre-cache family symbols with validation.

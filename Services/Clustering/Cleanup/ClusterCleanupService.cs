@@ -16,7 +16,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
     /// </summary>
     public class ClusterCleanupService : IClusterCleanupService
     {
-        public int CleanupSleevesWithinClusters(Document doc, List<FamilyInstance> placedClusters)
+        /// <summary>
+        /// ✅ CRITICAL FIX: Accept deferred parameters dictionary to read correct dimensions when batching is enabled.
+        /// This prevents cleanup from using stale parameter values from Revit before flush/regeneration.
+        /// </summary>
+        public int CleanupSleevesWithinClusters(Document doc, List<FamilyInstance> placedClusters, Dictionary<ElementId, Dictionary<string, object>> deferredParameters = null)
         {
             int deletedCount = 0;
             try
@@ -122,13 +126,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                         }
                     }
                     
-                    // Get dimensions from parameters
-                    var widthParam = freshCluster.LookupParameter("Width");
-                    var heightParam = freshCluster.LookupParameter("Height");
-                    var depthParam = freshCluster.LookupParameter("Depth");
-                    double paramWidth = widthParam?.AsDouble() ?? 0.0;
-                    double paramHeight = heightParam?.AsDouble() ?? 0.0;
-                    double paramDepth = depthParam?.AsDouble() ?? 0.0;
+                    // ✅ CRITICAL FIX: Read dimensions from deferred parameters first (if batching enabled), then fallback to Revit element
+                    // This prevents reading stale values before flush/regeneration
+                    double paramWidth = 0.0;
+                    double paramHeight = 0.0;
+                    double paramDepth = 0.0;
+                    
+                    // Try to read from deferred parameters first (if batching is enabled)
+                    if (OptimizationFlags.UseBatchedParameterWrites && deferredParameters != null && deferredParameters.ContainsKey(freshCluster.Id))
+                    {
+                        var deferredParams = deferredParameters[freshCluster.Id];
+                        if (deferredParams.ContainsKey("Width") && deferredParams["Width"] is double w) paramWidth = w;
+                        if (deferredParams.ContainsKey("Height") && deferredParams["Height"] is double h) paramHeight = h;
+                        if (deferredParams.ContainsKey("Depth") && deferredParams["Depth"] is double d) paramDepth = d;
+                        
+                        if (!DeploymentConfiguration.DeploymentMode && (paramWidth > 0.001 || paramHeight > 0.001 || paramDepth > 0.001))
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Cluster {clusterId} dimensions from DEFERRED DICT - W={paramWidth*304.8:F1}mm, H={paramHeight*304.8:F1}mm, D={paramDepth*304.8:F1}mm\n");
+                        }
+                    }
+                    
+                    // Fallback to Revit element parameters if deferred parameters not available
+                    if (paramWidth <= 0.001 || paramHeight <= 0.001 || paramDepth <= 0.001)
+                    {
+                        var widthParam = freshCluster.LookupParameter("Width");
+                        var heightParam = freshCluster.LookupParameter("Height");
+                        var depthParam = freshCluster.LookupParameter("Depth");
+                        if (paramWidth <= 0.001) paramWidth = widthParam?.AsDouble() ?? 0.0;
+                        if (paramHeight <= 0.001) paramHeight = heightParam?.AsDouble() ?? 0.0;
+                        if (paramDepth <= 0.001) paramDepth = depthParam?.AsDouble() ?? 0.0;
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Cluster {clusterId} dimensions from REVIT ELEMENT - W={paramWidth*304.8:F1}mm, H={paramHeight*304.8:F1}mm, D={paramDepth*304.8:F1}mm\n");
+                        }
+                    }
                     
                     // ✅ CRITICAL: If parameters are valid and placement point exists, calculate bounding box
                     if (placementPoint != null && paramWidth > 0.001 && paramHeight > 0.001 && paramDepth > 0.001)

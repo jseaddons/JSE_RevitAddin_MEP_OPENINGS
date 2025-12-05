@@ -607,7 +607,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     }
                     
                     // Flush all accumulated deferred parameters in batch
-                    FlushDeferredClusterParameters();
+                    int flushedCount = FlushDeferredClusterParameters();
+                    
+                    // ✅ CRITICAL FIX: Regenerate AFTER flush to ensure Revit has updated parameters for cleanup
+                    // This ensures cleanup service can read correct dimensions from Revit element if deferred dictionary is empty
+                    if (flushedCount > 0)
+                    {
+                        try
+                        {
+                            doc.Regenerate();
+                            System.Threading.Thread.Sleep(100); // Brief pause for regeneration
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] ✅ POST-FLUSH REGENERATION: Regenerated document after flushing {flushedCount} cluster sleeve parameters\n");
+                            }
+                        }
+                        catch (Exception regenEx)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Warning($"[RefactoredClusterService] Error regenerating after parameter flush: {regenEx.Message}");
+                        }
+                    }
                 }
 
                 // ✅ DIAGNOSTIC: Verify all cluster sleeves exist BEFORE cleanup
@@ -644,7 +665,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     {
                         SafeFileLogger.SafeAppendText("cluster_debug.log",
                             $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Calling cleanup service with {validClusters.Count} VALID cluster sleeves for protection\n");
-                        deletedInCleanup = _cleanupService.CleanupSleevesWithinClusters(doc, validClusters);
+                        // ✅ CRITICAL FIX: Pass deferred parameters dictionary to cleanup service so it can read correct dimensions when batching is enabled
+                        // This prevents cleanup from using stale parameter values from Revit before flush/regeneration
+                        // Note: Dictionary may be empty if already flushed, but cleanup will fallback to Revit element after regeneration
+                        deletedInCleanup = _cleanupService.CleanupSleevesWithinClusters(doc, validClusters, _deferredClusterParameters);
                         deletedCount += deletedInCleanup;
                         cleanupTracker.SetItemCount(deletedInCleanup);
                     }
@@ -653,6 +677,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         SafeFileLogger.SafeAppendText("cluster_debug.log",
                             $"[{DateTime.Now:HH:mm:ss}] ⚠️ CLEANUP: No valid cluster sleeves to protect, skipping cleanup service\n");
                     }
+                }
+                
+                // ✅ CRITICAL: Clear deferred parameters AFTER cleanup (not during flush) so cleanup can read from dictionary if needed
+                // This ensures cleanup has access to deferred parameters even if flush already happened
+                if (_deferredClusterParameters.Count > 0)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Clearing {_deferredClusterParameters.Count} deferred cluster parameters AFTER cleanup\n");
+                    }
+                    _deferredClusterParameters.Clear();
                 }
                 
                 // ✅ DIAGNOSTIC: Verify all cluster sleeves exist AFTER cleanup
@@ -1822,7 +1858,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     FlushDeferredClusterParameters();
                     
                     // Now cleanup individual sleeves within placed clusters
-                    deletedCount = _cleanupService.CleanupSleevesWithinClusters(doc, placedClusters);
+                    // ✅ CRITICAL FIX: Pass deferred parameters dictionary to cleanup service so it can read correct dimensions when batching is enabled
+                    deletedCount = _cleanupService.CleanupSleevesWithinClusters(doc, placedClusters, _deferredClusterParameters);
                 }
 
                 // Return placed cluster sleeves if requested
@@ -1882,7 +1919,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             if (_deferredClusterParameters.Count == 0)
             {
                 SafeFileLogger.SafeAppendText("cluster_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-FLUSH] ⚠️⚠️⚠️ WARNING: _deferredClusterParameters is EMPTY! No parameters to flush. This may cause cluster sleeves to be misidentified!\n");
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-FLUSH] ⚠️⚠️⚠️ WARNING: _deferredClusterParameters is EMPTY! No parameters to flush. This may cause cluster sleeves to be misidentified!\n" +
+                    $"  ⚠️ This means parameters were NOT added to deferred dictionary, OR dictionary was cleared before flush.\n" +
+                    $"  ⚠️ Cleanup service will read from Revit element parameters (may be stale if not regenerated).\n");
                 return 0;
             }
 
@@ -1972,8 +2011,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             SafeFileLogger.SafeAppendText("cluster_param_timing.log",
                 $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-PARAMS] ✅ Flushed {successCount} cluster sleeves in {sw.ElapsedMilliseconds}ms ({errorCount} errors)\n");
 
-            // Clear deferred parameters after flushing
-            _deferredClusterParameters.Clear();
+            // ✅ CRITICAL FIX: DO NOT clear deferred parameters here - cleanup service needs them!
+            // Dictionary will be cleared AFTER cleanup in ClusterSleeves method
+            // This ensures cleanup can read correct dimensions from deferred dictionary if batching is enabled
             
             return successCount;
         }

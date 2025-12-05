@@ -1082,15 +1082,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     SelectedMepCategoryName = category,
                                     SelectedHostCategories = hostCategories ?? new List<string>(),
                                     OpeningSettings = openingSettings,
-                                    SelectedMepCategoryNames = mepCategories,
-                                    SelectedReferenceFiles = refFiles,
-                                    SelectedHostFiles = hostFiles,
+                                    SelectedMepCategoryNames = mepCategories ?? new List<string>(),
+                                    SelectedReferenceFiles = refFiles ?? new List<string>(),
+                                    SelectedHostFiles = hostFiles ?? new List<string>(),
                                     ClashZoneStorage = new ClashZoneStorage
                                     {
                                         Filters = new List<FilterGroupForStorage>(),
                                         ClashZones = new List<ClashZone>()
                                     }
                                 };
+                                
+                                // ✅ CRITICAL FIX: If mepCategories loaded but category empty, use first MEP category
+                                if (string.IsNullOrEmpty(filter.SelectedMepCategoryName) && mepCategories != null && mepCategories.Count > 0)
+                                {
+                                    filter.SelectedMepCategoryName = mepCategories[0];
+                                    _log($"[FILTER_MGMT] ℹ️ Category was empty, using first MEP category: '{mepCategories[0]}'");
+                                }
                                 
                                 AddFilterToList(filterListBox, filter);
                                 loadedFilters.Add(filterName);
@@ -1268,10 +1275,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     // ✅ CRITICAL FIX: Also assign MEP categories, reference files, and host files
                     // Always assign if loaded from DB (even if empty, to clear previous values)
-                    if (mepCategories != null)
+                    if (mepCategories != null && mepCategories.Count > 0)
                     {
                         loadedFilter.SelectedMepCategoryNames = mepCategories;
-                        _log($"[FILTER_MGMT] ✅ Applied DB UI state: SelectedMepCategoryNames = {mepCategories.Count} items: [{string.Join(", ", mepCategories)}]");
+                        // ✅ CRITICAL FIX: Also set singular field so GetDisplayCategory() works
+                        loadedFilter.SelectedMepCategoryName = mepCategories[0];
+                        _log($"[FILTER_MGMT] ✅ Applied DB UI state: SelectedMepCategoryNames = {mepCategories.Count} items: [{string.Join(", ", mepCategories)}], SelectedMepCategoryName = '{mepCategories[0]}'");
                     }
                     if (refFiles != null)
                     {
@@ -1314,10 +1323,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             loadedFilter.OpeningSettings = openingSettings;
                             _log($"[FILTER_MGMT] ✅ Applied DB UI state: OpeningSettings updated");
                         }
-                        if (mepCategories != null)
+                        if (mepCategories != null && mepCategories.Count > 0)
                         {
                             loadedFilter.SelectedMepCategoryNames = mepCategories;
-                            _log($"[FILTER_MGMT] ✅ Applied DB UI state: SelectedMepCategoryNames = {mepCategories.Count} items: [{string.Join(", ", mepCategories)}]");
+                            // ✅ CRITICAL FIX: Also set singular field so GetDisplayCategory() works
+                            loadedFilter.SelectedMepCategoryName = mepCategories[0];
+                            _log($"[FILTER_MGMT] ✅ Applied DB UI state: SelectedMepCategoryNames = {mepCategories.Count} items: [{string.Join(", ", mepCategories)}], SelectedMepCategoryName = '{mepCategories[0]}'");
                         }
                         if (refFiles != null)
                         {

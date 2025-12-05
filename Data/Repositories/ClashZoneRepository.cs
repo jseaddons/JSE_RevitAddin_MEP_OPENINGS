@@ -4346,6 +4346,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// </summary>
         public void UpdateSleeveInstanceId(Guid clashZoneGuid, int sleeveInstanceId)
         {
+            // ✅ DATABASE LOGGING: Log the operation
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                var logParams = new Dictionary<string, object>
+                {
+                    { "ClashZoneGuid", clashZoneGuid.ToString() },
+                    { "SleeveInstanceId", sleeveInstanceId }
+                };
+                DatabaseOperationLogger.LogOperation("UPDATE", "ClashZones", logParams, -1, 
+                    $"Updating SleeveInstanceId for zone {clashZoneGuid}");
+            }
+            
+            // ✅ DIAGNOSTIC: Check if row exists before updating
+            bool rowExists = false;
+            using (var checkCmd = _context.Connection.CreateCommand())
+            {
+                checkCmd.CommandText = @"
+                    SELECT COUNT(*) FROM ClashZones 
+                    WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)
+                      AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL";
+                checkCmd.Parameters.AddWithValue("@ClashZoneGuid", clashZoneGuid.ToString());
+                var count = Convert.ToInt32(checkCmd.ExecuteScalar());
+                rowExists = count > 0;
+                
+                if (!rowExists && !DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ⚠️ UpdateSleeveInstanceId: Zone {clashZoneGuid} does NOT exist in ClashZones table (row will be created later in batch persistence)");
+                }
+            }
+            
             using (var cmd = _context.Connection.CreateCommand())
             {
                 cmd.CommandText = @"
@@ -4359,9 +4389,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 cmd.Parameters.AddWithValue("@SleeveInstanceId", sleeveInstanceId > 0 ? (object)sleeveInstanceId : DBNull.Value);
                 
                 var rowsAffected = cmd.ExecuteNonQuery();
+                
+                // ✅ DATABASE LOGGING: Log the result
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    var logParams = new Dictionary<string, object>
+                    {
+                        { "ClashZoneGuid", clashZoneGuid.ToString() },
+                        { "SleeveInstanceId", sleeveInstanceId },
+                        { "RowExists", rowExists }
+                    };
+                    DatabaseOperationLogger.LogOperation("UPDATE", "ClashZones", logParams, rowsAffected, 
+                        rowsAffected > 0 ? $"✅ Updated SleeveInstanceId={sleeveInstanceId} for zone {clashZoneGuid}" 
+                                         : (rowExists ? $"⚠️ UPDATE failed for zone {clashZoneGuid} (row exists but UPDATE returned 0 rows)" 
+                                                      : $"⚠️ No rows updated for zone {clashZoneGuid} (row does not exist yet, will be created in batch persistence)"));
+                }
+                
                 if (rowsAffected == 0 && !DeploymentConfiguration.DeploymentMode)
                 {
-                    _logger($"[SQLite] ⚠️ UpdateSleeveInstanceId: No rows updated in ClashZones for GUID {clashZoneGuid}");
+                    if (rowExists)
+                    {
+                        _logger($"[SQLite] ⚠️ UpdateSleeveInstanceId: Row exists but UPDATE returned 0 rows for GUID {clashZoneGuid} - possible GUID format mismatch");
+                    }
+                    else
+                    {
+                        _logger($"[SQLite] ⚠️ UpdateSleeveInstanceId: Zone {clashZoneGuid} does not exist in ClashZones table yet (will be created in batch persistence)");
+                    }
+                }
+                else if (rowsAffected > 0 && !DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ✅ UpdateSleeveInstanceId: Updated {rowsAffected} row(s) in ClashZones for GUID {clashZoneGuid} with SleeveInstanceId={sleeveInstanceId}");
                 }
             }
             

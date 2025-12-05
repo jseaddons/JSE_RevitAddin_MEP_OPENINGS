@@ -1384,14 +1384,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                             
                                             if (!readFromRevit)
                                             {
-                                                // MEP element exists but "Size" parameter is empty
+                                                // ✅ CRITICAL FIX FOR REVIT 2024: MEP element exists but "Size" parameter is empty - fallback to snapshot
+                                                // In Revit 2024, the "Size" parameter may be NULL/EMPTY even though it's saved in the snapshot
                                                 if (!DeploymentConfiguration.DeploymentMode)
                                                 {
                                                     SafeFileLogger.SafeAppendText("transfer_debug.log",
-                                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ MEP element {mepElementId.IntegerValue} exists but 'Size' parameter is NULL or EMPTY for sleeve {openingId.IntegerValue}\n");
+                                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ MEP element {mepElementId.IntegerValue} exists but 'Size' parameter is NULL or EMPTY for sleeve {openingId.IntegerValue}. Attempting fallback to snapshot...\n");
                                                 }
-                                                result.Warnings.Add($"MEP element {mepElementId.IntegerValue} exists but 'Size' parameter is empty for sleeve {openingId.IntegerValue}.");
-                                                continue;
+                                                
+                                                // ✅ FALLBACK: Try to read from snapshot when Revit parameter is empty (Revit 2024 compatibility)
+                                                if (sourceParams.TryGetValue("Size", out sourceValue) || sourceParams.TryGetValue("MEP Size", out sourceValue))
+                                                {
+                                                    if (!string.IsNullOrWhiteSpace(sourceValue))
+                                                    {
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                                        {
+                                                            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅✅✅ FALLBACK SUCCESS: Read 'MEP Size'='{sourceValue}' from SNAPSHOT (Revit parameter was empty) for sleeve {openingId.IntegerValue}\n");
+                                                        }
+                                                        readFromRevit = false; // Mark as from snapshot
+                                                        result.Warnings.Add($"MEP element {mepElementId.IntegerValue} 'Size' parameter was empty, used snapshot value '{sourceValue}' for sleeve {openingId.IntegerValue}.");
+                                                    }
+                                                    else
+                                                    {
+                                                        if (!DeploymentConfiguration.DeploymentMode)
+                                                        {
+                                                            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ 'Size' or 'MEP Size' found in snapshot but is EMPTY for sleeve {openingId.IntegerValue}\n");
+                                                        }
+                                                        result.Warnings.Add($"MEP element {mepElementId.IntegerValue} 'Size' parameter is empty in both Revit and snapshot for sleeve {openingId.IntegerValue}.");
+                                                        continue;
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    if (!DeploymentConfiguration.DeploymentMode)
+                                                    {
+                                                        SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ⚠️ MEP element {mepElementId.IntegerValue} 'Size' parameter is empty AND 'Size'/'MEP Size' NOT FOUND in snapshot for sleeve {openingId.IntegerValue}. Available snapshot params: [{string.Join(", ", sourceParams.Keys.Take(10))}]\n");
+                                                    }
+                                                    result.Warnings.Add($"MEP element {mepElementId.IntegerValue} 'Size' parameter is empty and not found in snapshot for sleeve {openingId.IntegerValue}.");
+                                                    continue;
+                                                }
                                             }
                                     }
                                     else
