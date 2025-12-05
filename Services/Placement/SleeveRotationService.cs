@@ -11,7 +11,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
     /// - FLOOR: Uses MepElementRotationAngle (pre-calculated during refresh)
     /// - X-WALL: Applies +90° rotation (π/2 radians)
     /// - Y-WALL: Applies 0° rotation (no rotation needed)
-    /// - FRAMING: Applies 0° rotation (Z-oriented, no rotation needed)
+    /// - X-FRAMING: Applies +90° rotation (π/2 radians) - matches X-wall behavior
+    /// - Y-FRAMING: Applies 0° rotation (no rotation needed) - matches Y-wall behavior
     /// 
     /// ✅ TESTABILITY: No Revit API calls, pure calculation logic
     /// ✅ REUSABILITY: Used by NewSleevePlacerService and clustering services
@@ -48,10 +49,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 }
             }
             
-            // ✅ FRAMING ROTATION: Structural framing uses Z-orientation (no rotation needed)
+            // ⚠️⚠️⚠️ CRITICAL FIX: Structural framing needs rotation based on X vs Y orientation (same as walls)
+            // X-FRAMING: Apply +90° rotation (π/2 radians) - matches X-wall behavior
+            // Y-FRAMING: Apply 0° rotation (no rotation) - matches Y-wall behavior
             if (clashZone.StructuralElementType?.Contains("Structural Framing") == true)
             {
-                return 0.0; // No rotation for framing
+                // Check HostOrientation first (most reliable for framing)
+                string hostOrientation = clashZone.HostOrientation ?? "";
+                if (string.Equals(hostOrientation, "X", StringComparison.OrdinalIgnoreCase))
+                {
+                    return Math.PI / 2.0; // 90 degrees in radians for X-framing
+                }
+                else if (string.Equals(hostOrientation, "Y", StringComparison.OrdinalIgnoreCase))
+                {
+                    return 0.0; // No rotation for Y-framing
+                }
+                
+                // Fallback: Check MepElementOrientationDirection (may be set for framing)
+                if (clashZone.MepElementOrientationDirection == "X")
+                {
+                    return Math.PI / 2.0; // 90 degrees in radians for X-framing
+                }
+                else if (clashZone.MepElementOrientationDirection == "Y")
+                {
+                    return 0.0; // No rotation for Y-framing
+                }
+                
+                // Default fallback for framing (if orientation cannot be determined)
+                return 0.0;
             }
             
             // ✅ FLOOR ROTATION: Use pre-calculated MepElementRotationAngle

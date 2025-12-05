@@ -719,7 +719,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     _log($"[FILTER_MGMT] ⚠️ FilterUiStateProvider.GetSelectedMepCategoryNames is null - delegate not registered");
                 }
                 
-                // ⚠️ CRITICAL: If category is empty, prompt user to select a category (don't use stale filter object data)
+                // ⚠️ CRITICAL FIX: If category is empty from UI, try to use the filter's SelectedMepCategoryName as fallback
+                // This handles the case where delegate returns empty but filter has a saved category
+                if (string.IsNullOrEmpty(categoryDisplay) && !string.IsNullOrEmpty(selectedFilter.SelectedMepCategoryName))
+                {
+                    categoryDisplay = MepCategoryConstants.Normalize(selectedFilter.SelectedMepCategoryName);
+                    _log($"[FILTER_MGMT] ⚠️ UI state was empty, falling back to filter's SelectedMepCategoryName: '{categoryDisplay}'");
+                }
+                
+                // ⚠️ CRITICAL: If category is still empty, prompt user to select a category (don't use stale filter object data)
                 if (string.IsNullOrEmpty(categoryDisplay))
                 {
                     _log($"[FILTER_MGMT] ❌ Category is empty - cannot save filter without category");

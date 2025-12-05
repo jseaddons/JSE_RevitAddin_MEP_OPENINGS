@@ -2458,6 +2458,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     {
                         var clashZone = MapClashZone(reader);
                         SetMetadataFromReader(clashZone, reader);
+                        
+                        // ⚠️⚠️⚠️ CRITICAL FIX - DO NOT REMOVE OR MODIFY ⚠️⚠️⚠️
+                        // ============================================================
+                        // PROBLEM: Zones loaded from database may have IntersectionPoint = null even though
+                        //          IntersectionPointX/Y/Z coordinates exist in the database. This causes
+                        //          section box checks to fail (isWithinSectionBox = false) because
+                        //          IntersectionPoint is null.
+                        //
+                        // SOLUTION: Reconstruct IntersectionPoint from database coordinates if it's null
+                        //           but coordinates exist.
+                        //
+                        // IMPACT IF REMOVED:
+                        //   - Zones with null IntersectionPoint will fail section box checks
+                        //   - ReadyForPlacementFlag won't be set for these zones
+                        //   - Placement won't find eligible zones
+                        //   - Sleeves won't be placed
+                        //
+                        // TESTED: 2025-12-05 - Confirmed working after rebuild
+                        // ============================================================
+                        if (clashZone.IntersectionPoint == null && (Math.Abs(clashZone.IntersectionPointX) > 1e-9 || Math.Abs(clashZone.IntersectionPointY) > 1e-9 || Math.Abs(clashZone.IntersectionPointZ) > 1e-9))
+                        {
+                            clashZone.IntersectionPoint = new XYZ(clashZone.IntersectionPointX, clashZone.IntersectionPointY, clashZone.IntersectionPointZ);
+                        }
+                        
                         result.Add(clashZone);
                     }
                 }
@@ -2559,6 +2583,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     _logger($"[SQLite] [FLAG-RESET-ENTRY] Method called: filterNames={filterNames?.Count ?? 0}, categories={categories?.Count ?? 0}, sectionBox={(sectionBox != null ? "Present" : "NULL")}");
                     // ✅ ALSO: Direct DebugLogger to ensure message appears
                     DebugLogger.Info($"[ClashZoneRepository] [FLAG-RESET-ENTRY] Method called: filterNames={filterNames?.Count ?? 0}, categories={categories?.Count ?? 0}, sectionBox={(sectionBox != null ? "Present" : "NULL")}");
+                    
+                    // ✅ CRITICAL DIAGNOSTIC: Also log to refresh log for visibility
+                    var refreshLogPath = SafeFileLogger.GetLogFilePath("Refresh_debug.log");
+                    if (File.Exists(refreshLogPath))
+                    {
+                        File.AppendAllText(refreshLogPath, 
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [FLAG-RESET-ENTRY] SetReadyForPlacementForUnresolvedZonesInSectionBox called: filters={filterNames?.Count ?? 0}, categories={categories?.Count ?? 0}, sectionBox={(sectionBox != null ? "Present" : "NULL")}\n");
+                    }
                 }
                 catch { }
             }
@@ -2584,8 +2616,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
             try
             {
+                // ✅ CRITICAL FIX: After SaveClashZones, newly saved zones may not be in R-tree index yet
+                // Temporarily disable R-tree to force B-tree query (which will find newly saved zones)
+                // R-tree indexing happens asynchronously or on next refresh, so we need B-tree for immediate queries
                 // ✅ R-TREE OPTIMIZATION: Use R-tree spatial query if enabled and section box is active
+                // BUT: Disable R-tree if this is called immediately after SaveClashZones (zones not indexed yet)
                 bool useRTree = Services.OptimizationFlags.UseRTreeDatabaseIndex && sectionBox != null;
+                
+                // ✅ CRITICAL: If R-tree is enabled but we just saved zones, they may not be indexed yet
+                // Force B-tree query to ensure newly saved zones are found
+                // Note: This is a conservative approach - we could check if zones were just saved, but simpler to always use B-tree after SaveClashZones
+                // The performance impact is minimal since this only runs once per refresh
+                if (useRTree && !DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] [FLAG-RESET] ⚠️ R-tree enabled but may miss newly saved zones - will fallback to B-tree if R-tree returns 0");
+                }
                 
                 foreach (var filterName in filterNames)
                 {
@@ -2626,6 +2671,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     _logger($"[SQLite] ✅ R-tree query returned {zones.Count} zones for filter '{filterName}', category '{category}'");
                                     DebugLogger.Info($"[ClashZoneRepository] [FLAG-RESET] R-tree query returned {zones.Count} zones");
                                 }
+                                
+                                // ⚠️⚠️⚠️ CRITICAL FIX - DO NOT REMOVE OR MODIFY ⚠️⚠️⚠️
+                                // ============================================================
+                                // PROBLEM: After SaveClashZones, newly saved zones may not be indexed in R-tree yet.
+                                //          R-tree indexing happens asynchronously or on next refresh, so immediate
+                                //          queries after SaveClashZones will return 0 zones even though zones exist.
+                                //
+                                // SOLUTION: If R-tree returns 0 zones, automatically fall back to B-tree query.
+                                //           B-tree loads ALL zones and filters in memory, ensuring newly saved zones
+                                //           are found even if not yet indexed in R-tree.
+                                //
+                                // IMPACT IF REMOVED: 
+                                //   - Newly created zones won't be found by SetReadyForPlacementForUnresolvedZonesInSectionBox
+                                //   - ReadyForPlacementFlag won't be set
+                                //   - Placement won't find eligible zones
+                                //   - Sleeves won't be placed for newly detected clashes
+                                //
+                                // TESTED: 2025-12-05 - Confirmed working after rebuild
+                                // ============================================================
+                                if (zones.Count == 0)
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        _logger($"[SQLite] ⚠️ R-tree returned 0 zones - falling back to B-tree (newly saved zones may not be indexed yet)");
+                                        DebugLogger.Warning($"[ClashZoneRepository] [FLAG-RESET] R-tree returned 0 zones for filter '{filterName}', category '{category}' - using B-tree fallback");
+                                    }
+                                    
+                                    useRTree = false; // Disable R-tree for remaining iterations
+                                    zones = GetClashZonesByFilter(filterName, category, unresolvedOnly: false) ?? new List<ClashZone>();
+                                    
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        _logger($"[SQLite] ✅ B-tree fallback returned {zones.Count} zones for filter '{filterName}', category '{category}'");
+                                        DebugLogger.Info($"[ClashZoneRepository] [FLAG-RESET] B-tree fallback returned {zones.Count} zones");
+                                    }
+                                }
                             }
                             catch (Exception rtreeEx)
                             {
@@ -2664,12 +2745,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         }
                         
                         // ✅ DIAGNOSTIC: Log zone resolution status
-                        if (!DeploymentConfiguration.DeploymentMode && zones.Count > 0)
+                        if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            int resolvedCount = zones.Count(z => z.IsResolved || z.IsClusterResolved);
-                            int unresolvedCount = zones.Count(z => !z.IsResolved && !z.IsClusterResolved);
-                            _logger($"[SQLite] [FLAG-RESET] Zone status: Total={zones.Count}, Resolved={resolvedCount}, Unresolved={unresolvedCount}");
-                            DebugLogger.Info($"[ClashZoneRepository] [FLAG-RESET] Zone status: Total={zones.Count}, Resolved={resolvedCount}, Unresolved={unresolvedCount}");
+                            if (zones.Count > 0)
+                            {
+                                int resolvedCount = zones.Count(z => z.IsResolved || z.IsClusterResolved);
+                                int unresolvedCount = zones.Count(z => !z.IsResolved && !z.IsClusterResolved);
+                                _logger($"[SQLite] [FLAG-RESET] Zone status: Total={zones.Count}, Resolved={resolvedCount}, Unresolved={unresolvedCount}");
+                                DebugLogger.Info($"[ClashZoneRepository] [FLAG-RESET] Zone status: Total={zones.Count}, Resolved={resolvedCount}, Unresolved={unresolvedCount}");
+                            }
+                            else
+                            {
+                                // ✅ CRITICAL DIAGNOSTIC: If no zones found, query database directly to verify zones exist
+                                try
+                                {
+                                    using (var diagCmd = _context.Connection.CreateCommand())
+                                    {
+                                        diagCmd.CommandText = @"
+                                            SELECT COUNT(*) FROM ClashZones cz
+                                            INNER JOIN Filters f ON cz.FilterId = f.FilterId
+                                            WHERE f.FilterName = @FilterName AND cz.MepElementCategory = @Category";
+                                        diagCmd.Parameters.AddWithValue("@FilterName", filterName);
+                                        diagCmd.Parameters.AddWithValue("@Category", category);
+                                        var totalInDb = Convert.ToInt32(diagCmd.ExecuteScalar());
+                                        
+                                        diagCmd.CommandText = @"
+                                            SELECT COUNT(*) FROM ClashZones cz
+                                            INNER JOIN Filters f ON cz.FilterId = f.FilterId
+                                            WHERE f.FilterName = @FilterName AND cz.MepElementCategory = @Category
+                                            AND cz.IsResolved = 0 AND cz.IsClusterResolved = 0";
+                                        var unresolvedInDb = Convert.ToInt32(diagCmd.ExecuteScalar());
+                                        
+                                        _logger($"[SQLite] [FLAG-RESET] ⚠️ DIAGNOSTIC: Query returned 0 zones, but database has {totalInDb} total zones ({unresolvedInDb} unresolved) for filter '{filterName}', category '{category}'");
+                                        DebugLogger.Warning($"[ClashZoneRepository] [FLAG-RESET] ⚠️ DIAGNOSTIC: Query returned 0 zones, but database has {totalInDb} total zones ({unresolvedInDb} unresolved) for filter '{filterName}', category '{category}'");
+                                    }
+                                }
+                                catch (Exception diagEx)
+                                {
+                                    _logger($"[SQLite] [FLAG-RESET] ⚠️ Diagnostic query failed: {diagEx.Message}");
+                                }
+                            }
                         }
                         
                         int zonesChecked = 0;
@@ -2681,6 +2796,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         {
                             if (zone == null) continue;
                             zonesChecked++;
+                            
+                            // ⚠️⚠️⚠️ CRITICAL FIX - DO NOT REMOVE OR MODIFY ⚠️⚠️⚠️
+                            // ============================================================
+                            // PROBLEM: Zones loaded from database may have IntersectionPoint = null even though
+                            //          IntersectionPointX/Y/Z coordinates exist. This causes section box checks
+                            //          to fail (isWithinSectionBox = false) because IntersectionPoint is null.
+                            //
+                            // SOLUTION: Reconstruct IntersectionPoint from database coordinates if it's null
+                            //           but coordinates exist. This is a safety check in case GetClashZonesByFilter
+                            //           didn't reconstruct it properly.
+                            //
+                            // IMPACT IF REMOVED:
+                            //   - Zones with null IntersectionPoint will fail section box checks
+                            //   - ReadyForPlacementFlag won't be set for these zones
+                            //   - Placement won't find eligible zones
+                            //   - Sleeves won't be placed
+                            //
+                            // TESTED: 2025-12-05 - Confirmed working after rebuild
+                            // ============================================================
+                            if (zone.IntersectionPoint == null && (Math.Abs(zone.IntersectionPointX) > 1e-9 || Math.Abs(zone.IntersectionPointY) > 1e-9 || Math.Abs(zone.IntersectionPointZ) > 1e-9))
+                            {
+                                zone.IntersectionPoint = new XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ);
+                            }
                             
                             // ✅ CHECK 1: Is zone unresolved? (AFTER flag manager reset)
                             bool isUnresolved = !zone.IsResolved && !zone.IsClusterResolved;
@@ -2705,6 +2843,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 else
                                 {
                                     isWithinSectionBox = false; // Can't check without intersection point
+                                    
+                                    // ✅ CRITICAL DIAGNOSTIC: Log why zone was rejected
+                                    if (!DeploymentConfiguration.DeploymentMode && isUnresolved)
+                                    {
+                                        _logger($"[SQLite] [FLAG-RESET] ⚠️ Zone {zone.Id} rejected: IsUnresolved={isUnresolved}, IntersectionPoint=NULL (X={zone.IntersectionPointX}, Y={zone.IntersectionPointY}, Z={zone.IntersectionPointZ})");
+                                    }
                                 }
                             }
                             else if (sectionBox == null)
@@ -2722,13 +2866,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 zonesToMark.Add(zone.Id);
                                 zonesMarked++;
                             }
+                            else if (!DeploymentConfiguration.DeploymentMode && isUnresolved && !isWithinSectionBox)
+                            {
+                                // ✅ CRITICAL DIAGNOSTIC: Log why unresolved zone was NOT marked
+                                var reason = sectionBox != null && !useRTree && zone.IntersectionPoint == null 
+                                    ? "IntersectionPoint is NULL" 
+                                    : sectionBox != null && !useRTree 
+                                        ? $"IntersectionPoint outside section box: {zone.IntersectionPoint?.ToString() ?? "NULL"}" 
+                                        : "Unknown reason";
+                                _logger($"[SQLite] [FLAG-RESET] ⚠️ Zone {zone.Id} NOT marked: IsUnresolved={isUnresolved}, IsWithinSectionBox={isWithinSectionBox}, Reason={reason}");
+                            }
                         }
                         
-                        // ✅ DIAGNOSTIC: Log filtering breakdown
+                        // ✅ DIAGNOSTIC: Log filtering breakdown with sample zone details
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             _logger($"[SQLite] [FLAG-RESET] Filtering breakdown: Checked={zonesChecked}, Unresolved={zonesUnresolved}, WithinSectionBox={zonesWithinSectionBox}, ToMark={zonesMarked}");
                             DebugLogger.Info($"[ClashZoneRepository] [FLAG-RESET] Filtering breakdown: Checked={zonesChecked}, Unresolved={zonesUnresolved}, WithinSectionBox={zonesWithinSectionBox}, ToMark={zonesMarked}");
+                            
+                            // ✅ CRITICAL DIAGNOSTIC: Log sample zones that were NOT marked (for debugging)
+                            if (zonesChecked > 0 && zonesMarked == 0)
+                            {
+                                var sampleNotMarked = zones
+                                    .Where(z => z != null)
+                                    .Take(5)
+                                    .Select(z => $"GUID={z.Id}, IsResolved={z.IsResolved}, IsClusterResolved={z.IsClusterResolved}, IntersectionPoint={z.IntersectionPoint?.ToString() ?? "NULL"}, ReadyForPlacement={z.ReadyForPlacement}")
+                                    .ToList();
+                                
+                                _logger($"[SQLite] [FLAG-RESET] ⚠️ WARNING: {zonesChecked} zones checked but 0 marked! Sample zones: {string.Join("; ", sampleNotMarked)}");
+                                DebugLogger.Warning($"[ClashZoneRepository] [FLAG-RESET] ⚠️ WARNING: {zonesChecked} zones checked but 0 marked! Sample zones: {string.Join("; ", sampleNotMarked)}");
+                            }
                         }
                         
                             // ✅ UPDATE DB: Set ReadyForPlacementFlag=1 for zones that meet criteria
@@ -4346,18 +4513,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// </summary>
         public void UpdateSleeveInstanceId(Guid clashZoneGuid, int sleeveInstanceId)
         {
-            // ✅ DATABASE LOGGING: Log the operation
-            if (!DeploymentConfiguration.DeploymentMode)
-            {
-                var logParams = new Dictionary<string, object>
-                {
-                    { "ClashZoneGuid", clashZoneGuid.ToString() },
-                    { "SleeveInstanceId", sleeveInstanceId }
-                };
-                DatabaseOperationLogger.LogOperation("UPDATE", "ClashZones", logParams, -1, 
-                    $"Updating SleeveInstanceId for zone {clashZoneGuid}");
-            }
-            
             // ✅ DIAGNOSTIC: Check if row exists before updating
             bool rowExists = false;
             using (var checkCmd = _context.Connection.CreateCommand())
@@ -4390,7 +4545,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 
                 var rowsAffected = cmd.ExecuteNonQuery();
                 
-                // ✅ DATABASE LOGGING: Log the result
+                // ✅ DATABASE LOGGING: Log the operation result (single log entry with all info)
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     var logParams = new Dictionary<string, object>

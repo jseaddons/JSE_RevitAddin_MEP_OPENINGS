@@ -123,23 +123,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     }
                 }
 
-                // ✅ CIRCULAR ELEMENT FIX: Always return 0.0° for circular elements (Pipes and Round Ducts)
-                // MEP orientation is meaningless for circular elements - they have the same dimensions in all directions
-                // This applies to BOTH floors and walls - no rotation needed regardless of host type
-                if (isCircularElementCluster)
-                {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"[CLUSTER-ANGLE] {circularElementType} cluster detected: Returning 0.0° (straight axis-aligned to WCS, MEP orientation meaningless for circular elements)");
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [CIRCULAR-RETURN] ✅ {circularElementType} cluster → Returning 0.0° (straight axis, MEP orientation meaningless)\n");
-                    }
-                    return 0.0;
-                }
-
                 // ✅ WALL/STRUCTURAL FRAMING: Rotation based on X-wall vs Y-wall (same as individual sleeves)
                 // Individual sleeves: X-walls get +90°, Y-walls get 0°
                 // Cluster sleeves must match individual sleeve rotation to maintain correct orientation
+                // ⚠️⚠️⚠️ CRITICAL FIX: Check wall orientation BEFORE returning 0.0° for circular elements
+                // Pipes on X-walls need 90° rotation, pipes on Y-walls need 0° rotation
                 // Get host type and orientation from first clash zone
                 ClashZone? firstClashZone = null;
                 foreach (var sleeveData in cluster)
@@ -164,13 +152,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                         // ✅ WALL ROTATION: Match individual sleeve rotation logic
                         // Individual sleeves: X-walls get +90° rotation, Y-walls get 0° rotation
                         // Cluster sleeves must use the SAME rotation to match individual sleeve orientation
+                        // ⚠️⚠️⚠️ CRITICAL FIX: Even circular elements (pipes) need rotation on X-walls
                         string wallDirectionType = firstClashZone.WallDirectionType ?? "";
                         string hostOrientation = firstClashZone.HostOrientation ?? "";
                         
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE-DEBUG] WALL HOST: StructuralType='{firstClashZone.StructuralElementType}', WallDirectionType='{wallDirectionType}', HostOrientation='{hostOrientation}'\n");
+                                $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE-DEBUG] WALL HOST: StructuralType='{firstClashZone.StructuralElementType}', WallDirectionType='{wallDirectionType}', HostOrientation='{hostOrientation}', IsCircular={isCircularElementCluster}\n");
                         }
                         
                         // Check WallDirectionType or HostOrientation to determine X-wall vs Y-wall
@@ -181,21 +170,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                         
                         if (isXWall)
                         {
-                            // X-wall: +90° rotation (matches individual sleeve rotation)
+                            // ⚠️⚠️⚠️ CRITICAL FIX: X-wall needs 90° rotation even for circular elements (pipes)
+                            // Individual sleeves apply 90° rotation for X-walls regardless of element shape
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                DebugLogger.Info($"[CLUSTER-ANGLE] WALL ROTATION: {firstClashZone.StructuralElementType} - X-WALL → Returning 90.0° (matches individual sleeve rotation)");
+                                string elementType = isCircularElementCluster ? $"{circularElementType} on" : "";
+                                DebugLogger.Info($"[CLUSTER-ANGLE] WALL ROTATION: {elementType} {firstClashZone.StructuralElementType} - X-WALL → Returning 90.0° (matches individual sleeve rotation)");
                                 SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE] ✅ X-WALL DETECTED → 90.0° (matches individual sleeve)\n");
+                                    $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE] ✅ X-WALL DETECTED → 90.0° (matches individual sleeve, applies to circular elements too)\n");
                             }
-                            return Math.PI / 2.0; // 90° rotation for X-walls (matches individual sleeves)
+                            return Math.PI / 2.0; // 90° rotation for X-walls (matches individual sleeves, even for pipes)
                         }
                         else if (isYWall)
                         {
                             // Y-wall: 0° rotation (matches individual sleeve rotation)
+                            // Circular elements on Y-walls also get 0° (no rotation needed)
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                DebugLogger.Info($"[CLUSTER-ANGLE] WALL ROTATION: {firstClashZone.StructuralElementType} - Y-WALL → Returning 0.0° (matches individual sleeve rotation)");
+                                string elementType = isCircularElementCluster ? $"{circularElementType} on" : "";
+                                DebugLogger.Info($"[CLUSTER-ANGLE] WALL ROTATION: {elementType} {firstClashZone.StructuralElementType} - Y-WALL → Returning 0.0° (matches individual sleeve rotation)");
                                 SafeFileLogger.SafeAppendText("cluster_debug.log",
                                     $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE] ✅ Y-WALL DETECTED → 0.0° (matches individual sleeve)\n");
                             }
@@ -212,6 +205,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             return 0.0;
                         }
                     }
+                }
+
+                // ✅ CIRCULAR ELEMENT FIX: For floors (non-wall hosts), return 0.0° for circular elements (Pipes and Round Ducts)
+                // MEP orientation is meaningless for circular elements on floors - they have the same dimensions in all directions
+                // ⚠️⚠️⚠️ CRITICAL: This only applies to floors, NOT walls (walls handled above)
+                if (isCircularElementCluster)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[CLUSTER-ANGLE] {circularElementType} cluster on FLOOR detected: Returning 0.0° (straight axis-aligned to WCS, MEP orientation meaningless for circular elements on floors)");
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [CIRCULAR-RETURN] ✅ {circularElementType} cluster on FLOOR → Returning 0.0° (straight axis, MEP orientation meaningless)\n");
+                    }
+                    return 0.0;
                 }
 
                 var rotationAngles = new List<double>();

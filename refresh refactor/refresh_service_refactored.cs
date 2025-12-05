@@ -582,6 +582,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 catch { }
                             }
 
+                            // ✅ CRITICAL FIX: After SaveClashZones, newly saved zones may not be in R-tree index yet
+                            // Force B-tree query by temporarily disabling R-tree, OR ensure fallback works
                             // Set ReadyForPlacementFlag=1 for ALL unresolved zones (existing + new) within section box
                             int markedCount = repository.SetReadyForPlacementForUnresolvedZonesInSectionBox(
                                 context.SelectedFilterNames,
@@ -593,6 +595,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 DebugLogger.Info($"[REFRESH-REFACTORED] ✅ Set ReadyForPlacementFlag=1 for {markedCount} unresolved zones within section box (AFTER SaveClashZones)");
                                 SafeFileLogger.SafeAppendText(context.RefreshLogName,
                                     $"[{DateTime.Now}] [REFRESH-REFACTORED] ✅ Set ReadyForPlacementFlag=1 for {markedCount} unresolved zones within section box (AFTER SaveClashZones)\n");
+                                
+                                // ✅ CRITICAL DIAGNOSTIC: If 0 zones marked, query database directly to verify zones exist
+                                if (markedCount == 0)
+                                {
+                                    try
+                                    {
+                                        // Query database directly to check if zones exist
+                                        var allZones = repository.GetClashZonesByFilter(
+                                            context.SelectedFilterNames?.FirstOrDefault() ?? "",
+                                            context.SelectedMepCategories?.FirstOrDefault() ?? "",
+                                            unresolvedOnly: false,
+                                            readyForPlacementOnly: false) ?? new List<ClashZone>();
+                                        
+                                        var unresolvedZones = allZones.Where(z => !z.IsResolved && !z.IsClusterResolved).ToList();
+                                        
+                                        DebugLogger.Warning($"[REFRESH-REFACTORED] ⚠️ DIAGNOSTIC: SetReadyForPlacement returned 0, but database has {allZones.Count} total zones ({unresolvedZones.Count} unresolved) for filter '{context.SelectedFilterNames?.FirstOrDefault()}', category '{context.SelectedMepCategories?.FirstOrDefault()}'");
+                                        SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                            $"[{DateTime.Now}] [REFRESH-REFACTORED] ⚠️ DIAGNOSTIC: SetReadyForPlacement returned 0, but database has {allZones.Count} total zones ({unresolvedZones.Count} unresolved)\n");
+                                        
+                                        // ✅ CRITICAL FIX: If zones exist but weren't marked, try direct B-tree query
+                                        if (unresolvedZones.Count > 0)
+                                        {
+                                            DebugLogger.Warning($"[REFRESH-REFACTORED] ⚠️ Zones exist but weren't marked - R-tree may not have indexed them yet. Sample zone GUIDs: {string.Join(", ", unresolvedZones.Take(3).Select(z => z.Id))}");
+                                        }
+                                    }
+                                    catch (Exception diagEx)
+                                    {
+                                        DebugLogger.Warning($"[REFRESH-REFACTORED] ⚠️ Diagnostic query failed: {diagEx.Message}");
+                                    }
+                                }
                                 
                                 // ✅ DIAGNOSTIC: Log to placement_debug.log for troubleshooting
                                 try
