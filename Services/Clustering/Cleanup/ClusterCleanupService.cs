@@ -105,43 +105,88 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                         continue;
                     }
                     
-                    // ✅ METHODOLOGY ADHERENCE: Get bounding box from actual placed cluster sleeve
-                    // Use null view to get bounding box in all views (most reliable)
-                    var bbox = freshCluster.get_BoundingBox(null);
-                    if (bbox != null && bbox.Enabled)
+                    // ✅ CRITICAL FIX: Calculate bounding box from placement point + parameters
+                    // Don't rely on get_BoundingBox() which may be stale if parameters haven't been flushed/regenerated
+                    // Get placement point from instance
+                    XYZ placementPoint = null;
+                    if (freshCluster.Location is LocationPoint locationPoint)
                     {
-                        // ✅ DIAGNOSTIC: Also get cluster dimensions from parameters for verification
-                        var widthParam = freshCluster.LookupParameter("Width");
-                        var heightParam = freshCluster.LookupParameter("Height");
-                        var depthParam = freshCluster.LookupParameter("Depth");
-                        double paramWidth = widthParam?.AsDouble() ?? 0.0;
-                        double paramHeight = heightParam?.AsDouble() ?? 0.0;
-                        double paramDepth = depthParam?.AsDouble() ?? 0.0;
-                        
-                        double bboxWidth = (bbox.Max.X - bbox.Min.X) * 304.8;
-                        double bboxHeight = (bbox.Max.Y - bbox.Min.Y) * 304.8;
-                        double bboxDepth = (bbox.Max.Z - bbox.Min.Z) * 304.8;
-                        
-                        clusterBboxes.Add(bbox);
-                        clusterBboxMap[clusterId] = bbox;
-                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Cluster {clusterId} bbox - " +
-                            $"Min=({bbox.Min.X:F3}, {bbox.Min.Y:F3}, {bbox.Min.Z:F3}), " +
-                            $"Max=({bbox.Max.X:F3}, {bbox.Max.Y:F3}, {bbox.Max.Z:F3}), " +
-                            $"BBoxSize=({bboxWidth:F1}mm x {bboxHeight:F1}mm x {bboxDepth:F1}mm), " +
-                            $"Params=(W={paramWidth*304.8:F1}mm, H={paramHeight*304.8:F1}mm, D={paramDepth*304.8:F1}mm)\n");
-                        
-                        // ✅ DIAGNOSTIC: Warn if bounding box seems too small compared to parameters
-                        if (paramWidth > 0.001 && bboxWidth < paramWidth * 0.5)
+                        placementPoint = locationPoint.Point;
+                    }
+                    else if (freshCluster.Location is LocationCurve locationCurve)
+                    {
+                        var curve = locationCurve.Curve;
+                        if (curve != null)
                         {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                                $"[{DateTime.Now:HH:mm:ss}] ⚠️ CLEANUP: Cluster {clusterId} bbox width ({bboxWidth:F1}mm) is much smaller than parameter width ({paramWidth*304.8:F1}mm) - possible stale bbox\n");
+                            placementPoint = curve.GetEndPoint(0);
                         }
+                    }
+                    
+                    // Get dimensions from parameters
+                    var widthParam = freshCluster.LookupParameter("Width");
+                    var heightParam = freshCluster.LookupParameter("Height");
+                    var depthParam = freshCluster.LookupParameter("Depth");
+                    double paramWidth = widthParam?.AsDouble() ?? 0.0;
+                    double paramHeight = heightParam?.AsDouble() ?? 0.0;
+                    double paramDepth = depthParam?.AsDouble() ?? 0.0;
+                    
+                    // ✅ CRITICAL: If parameters are valid and placement point exists, calculate bounding box
+                    if (placementPoint != null && paramWidth > 0.001 && paramHeight > 0.001 && paramDepth > 0.001)
+                    {
+                        // Calculate bounding box from placement point + dimensions
+                        double halfWidth = paramWidth / 2.0;
+                        double halfHeight = paramHeight / 2.0;
+                        double halfDepth = paramDepth / 2.0;
+                        
+                        var calculatedBbox = new BoundingBoxXYZ();
+                        calculatedBbox.Min = new XYZ(
+                            placementPoint.X - halfWidth,
+                            placementPoint.Y - halfHeight,
+                            placementPoint.Z - halfDepth
+                        );
+                        calculatedBbox.Max = new XYZ(
+                            placementPoint.X + halfWidth,
+                            placementPoint.Y + halfHeight,
+                            placementPoint.Z + halfDepth
+                        );
+                        calculatedBbox.Enabled = true;
+                        
+                        clusterBboxes.Add(calculatedBbox);
+                        clusterBboxMap[clusterId] = calculatedBbox;
+                        
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Cluster {clusterId} bbox (CALCULATED from params) - " +
+                            $"PlacementPoint=({placementPoint.X:F3}, {placementPoint.Y:F3}, {placementPoint.Z:F3}), " +
+                            $"Min=({calculatedBbox.Min.X:F3}, {calculatedBbox.Min.Y:F3}, {calculatedBbox.Min.Z:F3}), " +
+                            $"Max=({calculatedBbox.Max.X:F3}, {calculatedBbox.Max.Y:F3}, {calculatedBbox.Max.Z:F3}), " +
+                            $"BBoxSize=({paramWidth*304.8:F1}mm x {paramHeight*304.8:F1}mm x {paramDepth*304.8:F1}mm), " +
+                            $"Params=(W={paramWidth*304.8:F1}mm, H={paramHeight*304.8:F1}mm, D={paramDepth*304.8:F1}mm)\n");
                     }
                     else
                     {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ CLEANUP: Cluster {clusterId} has no bounding box or bbox is disabled - SKIPPING\n");
+                        // Fallback to get_BoundingBox() if parameters are missing
+                        var bbox = freshCluster.get_BoundingBox(null);
+                        if (bbox != null && bbox.Enabled)
+                        {
+                            clusterBboxes.Add(bbox);
+                            clusterBboxMap[clusterId] = bbox;
+                            
+                            double bboxWidth = (bbox.Max.X - bbox.Min.X) * 304.8;
+                            double bboxHeight = (bbox.Max.Y - bbox.Min.Y) * 304.8;
+                            double bboxDepth = (bbox.Max.Z - bbox.Min.Z) * 304.8;
+                            
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Cluster {clusterId} bbox (FALLBACK from get_BoundingBox) - " +
+                                $"Min=({bbox.Min.X:F3}, {bbox.Min.Y:F3}, {bbox.Min.Z:F3}), " +
+                                $"Max=({bbox.Max.X:F3}, {bbox.Max.Y:F3}, {bbox.Max.Z:F3}), " +
+                                $"BBoxSize=({bboxWidth:F1}mm x {bboxHeight:F1}mm x {bboxDepth:F1}mm), " +
+                                $"Params=(W={paramWidth*304.8:F1}mm, H={paramHeight*304.8:F1}mm, D={paramDepth*304.8:F1}mm)\n");
+                        }
+                        else
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] ⚠️ CLEANUP: Cluster {clusterId} has no valid placement point or parameters - SKIPPING\n");
+                        }
                     }
                 }
 

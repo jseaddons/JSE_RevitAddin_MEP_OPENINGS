@@ -1593,6 +1593,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 var categoryDisplay = GetDisplayCategory(filter);
+                
+                // ✅ CRITICAL FIX: If GetDisplayCategory returns empty (SelectedMepCategoryName not set),
+                // try to get category from SelectedMepCategoryNames list or from mepCategories
+                if (string.IsNullOrEmpty(categoryDisplay))
+                {
+                    if (filter.SelectedMepCategoryNames != null && filter.SelectedMepCategoryNames.Count > 0)
+                    {
+                        categoryDisplay = MepCategoryConstants.Normalize(filter.SelectedMepCategoryNames[0]);
+                        _log($"[FILTER_MGMT] ℹ️ GetDisplayCategory was empty, using first MEP category from list: '{categoryDisplay}'");
+                    }
+                    else
+                    {
+                        _log($"[FILTER_MGMT] ⚠️ Cannot load UI state - no category available (SelectedMepCategoryName and SelectedMepCategoryNames are both empty)");
+                        categoryDisplay = ""; // Will cause query to return no results, but won't crash
+                    }
+                }
+                
                 UseFilterRepository(repo =>
                 {
                     var (hostCategories, settings, mepCategories, refFiles, hostFiles) = repo.LoadFilterUIState(filterName, categoryDisplay);
@@ -1610,7 +1627,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (mepCategories != null && mepCategories.Count > 0)
                     {
                         filter.SelectedMepCategoryNames = mepCategories;
-                        _log($"[FILTER_MGMT] ✅ Loaded SelectedMepCategoryNames from database: {string.Join(", ", mepCategories)}");
+                        // ✅ CRITICAL FIX: Also set singular field so GetDisplayCategory() returns correct value
+                        filter.SelectedMepCategoryName = mepCategories[0];
+                        _log($"[FILTER_MGMT] ✅ Loaded SelectedMepCategoryNames from database: {string.Join(", ", mepCategories)}, set SelectedMepCategoryName to '{mepCategories[0]}'");
                     }
                     if (refFiles != null && refFiles.Count > 0)
                     {
@@ -2113,6 +2132,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     try
                     {
                         var categoryDisplay = GetDisplayCategory(filter);
+                        
+                        // ✅ CRITICAL FIX: If GetDisplayCategory returns empty, try to get from SelectedMepCategoryNames list
+                        if (string.IsNullOrEmpty(categoryDisplay) && filter.SelectedMepCategoryNames != null && filter.SelectedMepCategoryNames.Count > 0)
+                        {
+                            categoryDisplay = MepCategoryConstants.Normalize(filter.SelectedMepCategoryNames[0]);
+                            _log($"[FILTER_MGMT] ℹ️ GetDisplayCategory was empty, using first MEP category from XML list: '{categoryDisplay}'");
+                        }
+                        else if (string.IsNullOrEmpty(categoryDisplay))
+                        {
+                            _log($"[FILTER_MGMT] ⚠️ GetDisplayCategory returned empty and no MEP categories in filter - cannot load UI state from database");
+                        }
+                        
                         UseFilterRepository(repo =>
                         {
                             var (hostCategories, settings, mepCategories, refFiles, hostFiles) = repo.LoadFilterUIState(filter.Name, categoryDisplay);
@@ -2129,7 +2160,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             if (mepCategories != null && mepCategories.Count > 0)
                             {
                                 filter.SelectedMepCategoryNames = mepCategories;
-                                _log($"[FILTER_MGMT] ✅ Loaded SelectedMepCategoryNames from database for filter '{filter.Name}': {string.Join(", ", mepCategories)}");
+                                // ✅ CRITICAL FIX: Also set singular field so GetDisplayCategory() returns correct value
+                                filter.SelectedMepCategoryName = mepCategories[0];
+                                _log($"[FILTER_MGMT] ✅ Loaded SelectedMepCategoryNames from database for filter '{filter.Name}': {string.Join(", ", mepCategories)}, set SelectedMepCategoryName to '{mepCategories[0]}'");
                             }
                             if (refFiles != null && refFiles.Count > 0)
                             {

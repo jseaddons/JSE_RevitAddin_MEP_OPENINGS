@@ -399,6 +399,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         clashZone.SleeveInstanceId = placedSleeve.Id.IntegerValue;
                         clashZone.IsResolved = true;
                         
+                        // ✅ CRITICAL FIX: Immediately update SleeveInstanceId in database
+                        // This ensures the database is updated even if batch persistence is skipped or fails
+                        // Required for cleanup service to identify individual sleeves correctly
+                        try
+                        {
+                            UpdateSleeveInstanceIdImmediately(clashZone.Id, placedSleeve.Id.IntegerValue);
+                        }
+                        catch (Exception ex)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Warning($"[NewSleevePlacer] Failed to update SleeveInstanceId immediately for zone {clashZone.Id}: {ex.Message}");
+                            }
+                            // Continue - batch persistence will try again later
+                        }
+                        
                         // ✅ CRITICAL FIX: Store dimensions for bounding box calculation when batching is enabled
                         // Get dimensions from zone (already set in PlaceSleeveNormal or PlaceSleeveFromSavedData)
                         double storedWidth = clashZone.SleeveWidth > 0 ? clashZone.SleeveWidth : 0;
@@ -1831,6 +1847,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
+        /// <summary>
+        /// ✅ CRITICAL FIX: Immediately updates SleeveInstanceId in database after placement.
+        /// This ensures the database is updated even if batch persistence is skipped or fails.
+        /// Required for cleanup service to identify individual sleeves correctly.
+        /// </summary>
+        private void UpdateSleeveInstanceIdImmediately(Guid zoneId, int sleeveInstanceId)
+        {
+            try
+            {
+                using (var context = new SleeveDbContext(_doc, msg => { }))
+                {
+                    var repository = new ClashZoneRepository(context, msg => { });
+                    repository.UpdateSleeveInstanceId(zoneId, sleeveInstanceId);
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ✅ IMMEDIATE DB UPDATE: Set SleeveInstanceId={sleeveInstanceId} for zone {zoneId}\n");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Warning($"[NewSleevePlacer] Failed to update SleeveInstanceId immediately: {ex.Message}");
+                }
+                throw; // Re-throw so caller can handle
+            }
+        }
+        
         private void UpdateSleeveDataInDatabase(ClashZone zone, FamilyInstance sleeve)
         {
             try
