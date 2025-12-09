@@ -328,7 +328,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         /// This is a simplified version - full implementation should be migrated from UniversalClusterService
         /// </summary>
         public (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ)
-        CalculateRotatedBoundingBox(List<dynamic> cluster, List<FamilyInstance> actualSleeves, double rotationAngle, string? xmlFilePath = null)
+        CalculateRotatedBoundingBox(List<dynamic> cluster, List<FamilyInstance>? actualSleeves, double rotationAngle, string? xmlFilePath = null)
         {
             // ✅ PERFORMANCE: Track calculation time (initialize at start for all code paths)
             var calcStopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -379,7 +379,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
             }
             
             // Simplified rotated bounding box calculation (union + optional corner refinement) without external ambiguous loggers.
-            if (cluster == null || cluster.Count == 0 || actualSleeves == null || actualSleeves.Count == 0)
+            // ✅ OPTIMIZATION: actualSleeves is now optional - database data is primary source
+            if (cluster == null || cluster.Count == 0)
                 return (0,0,0,XYZ.Zero,null,null,null,null,null,null);
 
             // ✅ CRITICAL FIX: Calculate placement point from intersection points (centroid), not bounding box midpoint
@@ -1680,18 +1681,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     return (wf,hf,df,finalPlacementPoint,null,null,null,null,null,null);
                 }
                 
-                // Last resort: Fallback to Revit bounding boxes if database data is missing
-                var revitBboxes = actualSleeves.Select(s => s.get_BoundingBox(null)).Where(b => b != null && b.Enabled).ToList();
-                if (revitBboxes.Count == 0) return (0,0,0,XYZ.Zero,null,null,null,null,null,null);
-                double minXr = revitBboxes.Min(b=>b.Min.X); double minYr = revitBboxes.Min(b=>b.Min.Y); double minZr = revitBboxes.Min(b=>b.Min.Z);
-                double maxXr = revitBboxes.Max(b=>b.Max.X); double maxYr = revitBboxes.Max(b=>b.Max.Y); double maxZr = revitBboxes.Max(b=>b.Max.Z);
-                double wr = maxXr - minXr; double hr = maxYr - minYr; double dr = maxZr - minZr; XYZ midR = new XYZ((minXr+maxXr)/2,(minYr+maxYr)/2,(minZr+maxZr)/2);
+                // Last resort: Fallback to Revit bounding boxes if database data is missing (only if actualSleeves provided)
+                if (actualSleeves != null && actualSleeves.Count > 0)
+                {
+                    var revitBboxes = actualSleeves.Select(s => s.get_BoundingBox(null)).Where(b => b != null && b.Enabled).ToList();
+                    if (revitBboxes.Count > 0)
+                    {
+                        double minXr = revitBboxes.Min(b=>b.Min.X); double minYr = revitBboxes.Min(b=>b.Min.Y); double minZr = revitBboxes.Min(b=>b.Min.Z);
+                        double maxXr = revitBboxes.Max(b=>b.Max.X); double maxYr = revitBboxes.Max(b=>b.Max.Y); double maxZr = revitBboxes.Max(b=>b.Max.Z);
+                        double wr = maxXr - minXr; double hr = maxYr - minYr; double dr = maxZr - minZr;
+                        
+                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ FALLBACK (axis-aligned from Revit): W={wr:F1}mm, H={hr:F1}mm, D={dr:F1}mm (database data missing, using Revit API)\n");
+                        
+                        // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
+                        return (wr,hr,dr,placementPoint,null,null,null,null,null,null);
+                    }
+                }
                 
+                // ✅ CRITICAL: If no database data AND no Revit fallback, return invalid
                 SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ FALLBACK (axis-aligned from Revit): W={wr:F1}mm, H={hr:F1}mm, D={dr:F1}mm (database data missing, using Revit API)\n");
-                
-                // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
-                return (wr,hr,dr,placementPoint,null,null,null,null,null,null);
+                    $"[{DateTime.Now:HH:mm:ss}] ❌ CRITICAL: No database data AND no Revit fallback available - cannot calculate bounding box\n");
+                return (0,0,0,XYZ.Zero,null,null,null,null,null,null);
             }
 
             // ✅ CRITICAL FIX: For rotated axis clusters, rotated bounding boxes are in different coordinate systems
@@ -1874,6 +1885,78 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         public void ClearRotationData()
         {
             _clusterRotationData.Clear();
+        }
+
+        /// <summary>
+        /// ✅ OPTIMIZATION: Pre-load ClashZones into cache before parallel processing
+        /// This eliminates database lookups during parallel execution (major performance improvement)
+        /// </summary>
+        public int PreloadClashZones(IEnumerable<int> sleeveIds, string? xmlFilePath = null)
+        {
+            if (sleeveIds == null)
+                return 0;
+
+            int preloadedCount = 0;
+            var uniqueIds = sleeveIds.Where(id => id > 0).Distinct().ToList();
+            
+            // ✅ BATCH PRE-LOAD: Load all ClashZones in a single pass (before parallel processing)
+            // This populates the cache so GetCachedClashZone hits cache instead of doing database lookups
+            foreach (int sleeveId in uniqueIds)
+            {
+                // Skip if already in cache
+                if (_clashZoneCache.ContainsKey(sleeveId))
+                    continue;
+
+                // Load and cache
+                try
+                {
+                    var cz = _getClashZoneFunc(sleeveId, xmlFilePath);
+                    var clashZone = cz as ClashZone;
+                    
+                    if (clashZone != null && _clashZoneCache.Count < MAX_CLASHZONE_CACHE_SIZE)
+                    {
+                        _clashZoneCache[sleeveId] = clashZone;
+                        preloadedCount++;
+                    }
+                }
+                catch
+                {
+                    // Skip failed lookups
+                }
+            }
+
+            return preloadedCount;
+        }
+
+        /// <summary>
+        /// ✅ OPTIMIZATION: Pre-load ClashZones from dictionary (FAST - no database queries)
+        /// Use this when ClashZones are already loaded in memory (e.g., from batch database query)
+        /// </summary>
+        public int PreloadClashZonesFromDictionary(Dictionary<int, ClashZone> clashZones)
+        {
+            if (clashZones == null || clashZones.Count == 0)
+                return 0;
+
+            int preloadedCount = 0;
+            
+            // ✅ FAST PATH: Directly populate cache from dictionary (no database queries)
+            foreach (var kvp in clashZones)
+            {
+                int sleeveId = kvp.Key;
+                ClashZone clashZone = kvp.Value;
+                
+                if (sleeveId > 0 && clashZone != null && _clashZoneCache.Count < MAX_CLASHZONE_CACHE_SIZE)
+                {
+                    // Skip if already in cache
+                    if (!_clashZoneCache.ContainsKey(sleeveId))
+                    {
+                        _clashZoneCache[sleeveId] = clashZone;
+                        preloadedCount++;
+                    }
+                }
+            }
+
+            return preloadedCount;
         }
         
         /// <summary>

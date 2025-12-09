@@ -141,7 +141,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Default: false (off for safety – enable after verifying memory/time tradeoff)
         /// Location: Services/MepIntersectionService.cs (FindIntersectionsBatchInternal)
         /// </summary>
-        public static bool PrecomputeHostSolids { get; set; } = false;
+        public static bool PrecomputeHostSolids { get; set; } = true;
 
         /// <summary>
         /// Log aggregated geometry extraction metrics (total ms, cache hits/misses) at end of batch
@@ -150,7 +150,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Default: true (useful during optimization phase; disable for production noise reduction)
         /// Location: Services/MepIntersectionService.cs (end of FindIntersectionsBatchInternal)
         /// </summary>
-        public static bool LogGeometryExtractionMetrics { get; set; } = true;
+        public static bool LogGeometryExtractionMetrics { get; set; } = false;
 
         /// <summary>
         /// Enable detailed timing diagnostics for Flag Reset operation during refresh
@@ -159,7 +159,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Default: true (helps identify specific bottleneck in 817ms Flag Reset time)
         /// Location: Services/FlagManager_Legacy.cs (ResetFlagsForDeletedSleeves)
         /// </summary>
-        public static bool LogFlagResetDiagnostics { get; set; } = true;
+        public static bool LogFlagResetDiagnostics { get; set; } = false;
 
         /// <summary>
         /// Use streamlined clash zone creation path when intersections come from optimized MepIntersectionService
@@ -322,7 +322,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// When false: No performance logging (deployment mode)
         /// Default: false (disabled for deployment - enable for diagnostics)
         /// </summary>
-        public static bool LogPerformanceMetrics { get; set; } = false;
+        public static bool LogPerformanceMetrics { get; set; } = true;
         
         #endregion
         
@@ -338,7 +338,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Enable diagnostic mode for performance monitoring
         /// Default: false (disabled for deployment)
         /// </summary>
-        public static bool UseDiagnosticMode { get; set; } = false; // ✅ DEPLOYMENT: Diagnostic mode OFF - minimal logging for production distribution
+        public static bool UseDiagnosticMode { get; set; } = true; // ✅ DIAGNOSTIC: Diagnostic mode ON - full logging for debugging
         
         #endregion
         
@@ -430,27 +430,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         #region Refactoring Flags (Phase 1 - Safe Rollout)
         
         /// <summary>
-        /// Enable new SleeveRepository for data persistence (XML/DB)
-        /// When true: Uses extracted SleeveRepository service
-        /// When false: Uses legacy private methods in UniversalSleevePlacerService
-        /// Default: false (disabled initially)
+        /// [OBSOLETE] Enable new SleeveRepository for data persistence (XML/DB)
+        /// This flag is obsolete - the refactoring was never completed. The service exists as a stub but is not used.
+        /// UseNewSleevePlacerService is the active refactored path instead.
         /// </summary>
+        [Obsolete("This flag is obsolete - refactoring was never completed. UseNewSleevePlacerService is the active refactored path.")]
         public static bool UseNewSleeveRepository { get; set; } = false;
 
         /// <summary>
-        /// Enable new ZoneFilterService for clash zone filtering
-        /// When true: Uses extracted ZoneFilterService
-        /// When false: Uses legacy private methods in UniversalSleevePlacerService
-        /// Default: false (disabled initially)
+        /// [OBSOLETE] Enable new ZoneFilterService for clash zone filtering
+        /// This flag is obsolete - the refactoring was never completed. The service exists but is not used.
+        /// UseNewSleevePlacerService is the active refactored path instead.
         /// </summary>
+        [Obsolete("This flag is obsolete - refactoring was never completed. UseNewSleevePlacerService is the active refactored path.")]
         public static bool UseNewZoneFilter { get; set; } = false;
 
         /// <summary>
-        /// Enable new FamilyManager for family loading and caching
-        /// When true: Uses extracted FamilyManager service
-        /// When false: Uses legacy private methods in UniversalSleevePlacerService
-        /// Default: false (disabled initially)
+        /// [OBSOLETE] Enable new FamilyManager for family loading and caching
+        /// This flag is obsolete - the refactoring was never completed. The service was never implemented.
+        /// UseNewSleevePlacerService is the active refactored path instead.
         /// </summary>
+        [Obsolete("This flag is obsolete - refactoring was never completed. UseNewSleevePlacerService is the active refactored path.")]
         public static bool UseNewFamilyManager { get; set; } = false;
 
         /// <summary>
@@ -536,12 +536,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         #endregion
 
         /// <summary>
-        /// Enable parallel planning for pipes (experimental)
-        /// When true: Pipes can use parallel planning optimization for pre-computing dimensions
-        /// When false: Pipes use normal sequential processing (safe default)
-        /// Default: false (disabled initially - enable after validation)
-        /// Location: Services/UniversalSleevePlacerService.cs
+        /// [OBSOLETE] Enable parallel planning for pipes (experimental)
+        /// This flag is obsolete and not useful - pipes are already included in parallel planning phase.
+        /// The flag only controls whether pipes can USE pre-computed planning data, but all categories
+        /// (including pipes) are already processed in parallel during planning. The flag adds unnecessary
+        /// complexity without benefit. Parallel planning works for all categories regardless of this flag.
         /// </summary>
+        [Obsolete("This flag is obsolete and not useful - pipes are already included in parallel planning. All categories use pre-computed planning data regardless of this flag.")]
         public static bool EnableParallelPlanningForPipes { get; set; } = false;
 
         #endregion
@@ -576,7 +577,56 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Location: Services/ParameterTransferService.cs
         /// Expected gain: 20-30% reduction in parameter lookup overhead.
         /// </summary>
-        public static bool UseBatchParameterLookups { get; set; } = true; // ✅ ENABLED: Batch parameter lookup optimization (re-enabled after fixing document validation bug)
+        public static bool UseBatchParameterLookups { get; set; } = true;
+
+        /// <summary>
+        /// Enable batch parameter capture during refresh (ParameterCaptureService).
+        /// When true: Collects all unique element IDs first, gets elements once and caches them, then processes parameters (30-50% faster).
+        /// When false: Gets elements one-by-one per clash zone (current behavior).
+        /// Default: true (enabled - validated and safe, preserves all parameters).
+        /// Location: refresh refactor/parameter_capture_service.cs
+        /// Expected gain: 30-50% reduction in parameter capture time (701ms → ~350-500ms).
+        /// ⚠️ CRITICAL: Must preserve all parameters - validation ensures no data loss.
+        /// </summary>
+        public static bool UseBatchParameterCapture { get; set; } = true; // ✅ ENABLED: Batch parameter lookup optimization (re-enabled after fixing document validation bug)
+
+        /// <summary>
+        /// Enable bulk database operations for cluster save (ClusterSleeveRepository).
+        /// When true: Uses bulk check query + bulk INSERT/UPDATE operations (90%+ faster).
+        /// When false: Uses individual SELECT + INSERT/UPDATE per cluster (current behavior).
+        /// Default: false (disabled initially - enable after validation to ensure data integrity).
+        /// Location: Data/Repositories/ClusterSleeveRepository.cs (BatchSaveClusterSleeves)
+        /// Expected gain: 90%+ reduction in database save time (7616ms → ~500ms).
+        /// ⚠️ CRITICAL: Must preserve all cluster data - validation ensures no data loss.
+        /// </summary>
+        public static bool UseBulkClusterSave { get; set; } = false;
+
+        /// <summary>
+        /// Enable database-only pre-calculation (avoids Revit API calls during parallel processing).
+        /// When true: Uses database data (corners, placement points) instead of Revit API calls (50-70% faster).
+        /// When false: Uses Revit API to get elements (current behavior, causes serialization).
+        /// Default: false (disabled initially - enable after validation).
+        /// Location: Services/Clustering/PreCalculation/ClusterPreCalculationService.cs
+        /// Expected gain: 50-70% reduction in pre-calculation time (14803ms → ~6000-7500ms).
+        /// ⚠️ CRITICAL: Requires all sleeve data (corners, placement points) to be in database.
+        /// </summary>
+        public static bool UseDatabaseOnlyPreCalculation { get; set; } = true; // ✅ ENABLED: Use database data instead of Revit API (50-70% faster)
+
+        /// <summary>
+        /// Limit parallel threads for cluster pre-calculation (reduces Revit API contention).
+        /// When set: Limits MaxDegreeOfParallelism to this value (reduces thread contention).
+        /// When 0: Auto-detects optimal thread count based on processor type.
+        /// When -1: Uses Environment.ProcessorCount (all cores, may cause contention with Revit API).
+        /// Default: 0 (auto-detect) - Recommended manual values:
+        ///   - i5 (4-6 cores): 2-3 threads
+        ///   - i7 (6-8 cores): 4-6 threads (or use all if database-only mode)
+        ///   - i9 (8-16 cores): 6-8 threads (or use all if database-only mode)
+        ///   - Xeon (16+ cores): 8-12 threads (or use all if database-only mode)
+        /// Location: Services/Clustering/PreCalculation/ClusterPreCalculationService.cs
+        /// Expected gain: 20-30% improvement on i5 processors by reducing thread contention.
+        /// ⚠️ NOTE: With UseDatabaseOnlyPreCalculation=true, thread limiting is less critical (no Revit API contention).
+        /// </summary>
+        public static int ClusterPreCalculationMaxThreads { get; set; } = 0; // 0 = auto-detect, -1 = all cores, >0 = manual limit
 
         #endregion
         

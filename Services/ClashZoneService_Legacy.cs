@@ -2328,6 +2328,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             // ✅ NOTE: pipeOuterDiameter and pipeNominalDiameter are already extracted above (before formatted size calculation)
             
+            // ✅ STAGE 1 (REFRESH): Capture MEP and Host parameters using ParameterSnapshotService
+            // This captures all whitelisted parameters from MEP elements and stores them in ClashZone
+            // Later, during Stage 2 (Place Sleeve), these parameters will be transferred to physical sleeve elements
+            List<SerializableKeyValue> mepParameterValues = new List<SerializableKeyValue>();
+            List<SerializableKeyValue> hostParameterValues = new List<SerializableKeyValue>();
+            
+            try
+            {
+                if (_clashZoneStorage != null)
+                {
+                    var parameterSnapshotService = new ParameterSnapshotService();
+                    
+                    // Build whitelist from storage (includes common keys, user-defined keys, and learned keys)
+                    var whitelist = parameterSnapshotService.BuildWhitelist(_clashZoneStorage, new[] { (mepElement, structuralElement) });
+                    
+                    // Capture MEP element parameters
+                    mepParameterValues = parameterSnapshotService.CaptureParams(mepElement, whitelist);
+                    
+                    // Capture host element parameters
+                    hostParameterValues = parameterSnapshotService.CaptureParams(structuralElement, whitelist);
+                    
+                    if (!DeploymentConfiguration.DeploymentMode && (mepParameterValues.Count > 0 || hostParameterValues.Count > 0))
+                    {
+                        _log($"[PARAM-SNAPSHOT] Captured {mepParameterValues.Count} MEP parameters and {hostParameterValues.Count} host parameters for ClashZone (MEP={mepElement.Id}, Host={structuralElement.Id})");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Non-fatal: Log error but continue with empty parameter lists
+                _log($"[PARAM-SNAPSHOT] ⚠️ Error capturing parameters: {ex.Message}");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Warning($"[PARAM-SNAPSHOT] Failed to capture parameters for MEP={mepElement?.Id}, Host={structuralElement?.Id}: {ex.Message}");
+                }
+            }
+            
             var clashZone = new ClashZone
             {
                 MepElementId = mepElement.Id,
@@ -2394,6 +2431,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 MepElementFormattedSize = formattedSize, // Pre-calculated formatted size (e.g., "600x300", "Ø200")
                 MepElementSizeParameterValue = sizeParameterValue, // ✅ SIZE PARAMETER VALUE: Raw Size parameter as string (e.g., "20 mmø", "200 mm dia symbol") for snapshot table and parameter transfer
                 MepElementSystemAbbreviation = systemAbbreviation, // Pre-calculated system abbreviation (e.g., "SA", "RA")
+                
+                // ✅ STAGE 1 (REFRESH): Store captured parameter snapshots for later transfer to sleeves (Stage 2)
+                // These parameters are captured from MEP and Host elements during refresh and stored in XML
+                // During sleeve placement, ParameterTransferService will transfer these to physical sleeve elements
+                MepParameterValues = mepParameterValues, // Full parameter snapshot from MEP element (whitelisted parameters only)
+                HostParameterValues = hostParameterValues, // Full parameter snapshot from host element (whitelisted parameters only)
                 
                 // ✅ DIAGNOSTIC: Log ClashZone creation with pipe diameters and size parameter value
                 // This helps verify the values are being set correctly in the ClashZone object
@@ -4657,6 +4700,61 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             existingZone.RequiredClearance = CalculateRequiredClearance(existingZone.MepElementSize);
             existingZone.MepElementGeometryHash = CalculateElementGeometryHash(mepElement);
             existingZone.StructuralElementGeometryHash = CalculateElementGeometryHash(structuralElement);
+            
+            // ✅ STAGE 1 (REFRESH): Capture MEP and Host parameters using ParameterSnapshotService
+            // This ensures existing ClashZones also get parameter snapshots updated during refresh
+            // Same logic as CreateClashZone - capture all whitelisted parameters
+            try
+            {
+                if (_clashZoneStorage != null)
+                {
+                    var parameterSnapshotService = new ParameterSnapshotService();
+                    
+                    // Build whitelist from storage (includes common keys, user-defined keys, and learned keys)
+                    var whitelist = parameterSnapshotService.BuildWhitelist(_clashZoneStorage, new[] { (mepElement, structuralElement) });
+                    
+                    // Capture MEP element parameters
+                    var mepParameterValues = parameterSnapshotService.CaptureParams(mepElement, whitelist);
+                    
+                    // Capture host element parameters
+                    var hostParameterValues = parameterSnapshotService.CaptureParams(structuralElement, whitelist);
+                    
+                    // Update existing zone with captured parameters
+                    existingZone.MepParameterValues = mepParameterValues;
+                    existingZone.HostParameterValues = hostParameterValues;
+                    
+                    // ✅ CRITICAL DIAGNOSTIC: Log parameter assignment with sample keys
+                    if (!DeploymentConfiguration.DeploymentMode && (mepParameterValues.Count > 0 || hostParameterValues.Count > 0))
+                    {
+                        var mepSampleKeys = mepParameterValues.Take(5).Select(kv => kv?.Key ?? "null").Where(k => !string.IsNullOrEmpty(k)).ToList();
+                        var mepSampleStr = mepSampleKeys.Count > 0 ? string.Join(", ", mepSampleKeys) : "none";
+                        if (mepParameterValues.Count > mepSampleKeys.Count) mepSampleStr += $" (+{mepParameterValues.Count - mepSampleKeys.Count} more)";
+                        
+                        _log($"[PARAM-SNAPSHOT] ✅ ASSIGNED {mepParameterValues.Count} MEP parameters and {hostParameterValues.Count} host parameters to existing ClashZone {existingZone.Id} (MEP={mepElement.Id}, Host={structuralElement.Id})");
+                        _log($"[PARAM-SNAPSHOT] ✅ MEP parameter sample keys: {mepSampleStr}");
+                        
+                        // ✅ VERIFY: Check if parameters are actually in the zone object
+                        var verifyMepCount = existingZone.MepParameterValues?.Count ?? 0;
+                        if (verifyMepCount != mepParameterValues.Count)
+                        {
+                            _log($"[PARAM-SNAPSHOT] ⚠️⚠️⚠️ VERIFICATION FAILED: Assigned {mepParameterValues.Count} but zone now has {verifyMepCount} MEP parameters!");
+                        }
+                        else
+                        {
+                            _log($"[PARAM-SNAPSHOT] ✅ VERIFICATION PASSED: Zone has {verifyMepCount} MEP parameters after assignment");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Non-fatal: Log error but continue
+                _log($"[PARAM-SNAPSHOT] ⚠️ Error capturing parameters for existing ClashZone: {ex.Message}");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Warning($"[PARAM-SNAPSHOT] Failed to capture parameters for existing ClashZone MEP={mepElement?.Id}, Host={structuralElement?.Id}: {ex.Message}");
+                }
+            }
             
             // ✅ CRITICAL FIX: Check for existing individual sleeve at intersection point
             // This ensures IsResolved flag is set correctly for existing clash zones

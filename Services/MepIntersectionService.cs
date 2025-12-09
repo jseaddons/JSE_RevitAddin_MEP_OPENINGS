@@ -220,11 +220,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         public static bool IsDamperElement(Element element)
         {
-            if (element is FamilyInstance fi)
+            // ✅ CRITICAL FIX: Check category FIRST - Duct Accessories are dampers
+            // This ensures all Duct Accessories are detected, even if family name doesn't contain "Damper"
+            if (element?.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
             {
-                var familyName = fi.Symbol?.Family?.Name?.ToLower() ?? "";
-                return familyName.Contains("damper");
+                // ✅ EXCLUDE: Skip VCD and VOLUME dampers (not in walls)
+                if (element is FamilyInstance fi && fi.Symbol != null)
+                {
+                    var familyName = fi.Symbol.Family?.Name ?? "";
+                    var typeName = fi.Symbol.Name ?? "";
+                    var combinedName = $"{familyName} {typeName}".ToUpperInvariant();
+                    
+                    if (combinedName.Contains("VCD") || combinedName.Contains("VOLUME"))
+                        return false;
+                }
+                
+                // ✅ All other Duct Accessories are treated as dampers
+                return true;
             }
+            
+            // ✅ FALLBACK: Check family name for non-DuctAccessory elements (shouldn't happen, but safe)
+            if (element is FamilyInstance fi2)
+            {
+                var familyName = fi2.Symbol?.Family?.Name ?? "";
+                var typeName = fi2.Symbol?.Name ?? "";
+                var combinedName = $"{familyName} {typeName}".ToUpperInvariant();
+                
+                // ✅ EXCLUDE: Skip VCD and VOLUME dampers (not in walls)
+                if (combinedName.Contains("VCD") || combinedName.Contains("VOLUME"))
+                    return false;
+                
+                return familyName.Contains("Damper", StringComparison.OrdinalIgnoreCase);
+            }
+            
             return false;
         }
         
@@ -588,13 +616,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     SafeFileLogger.SafeAppendText(IntersectionDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] MEP[{mepElement.Id.IntegerValue}] BBOX_ft W={mw:F3} H={mh:F3} D={md:F3} Cat={(BuiltInCategory)mepElement.Category.Id.IntegerValue}\n");
                 }
 
+                // ✅ CRITICAL FIX: Check for dampers FIRST, before trying to get line
+                // Dampers should always use FindDamperIntersectionsInternal, even if they have a LocationPoint/Curve
+                bool isDamper = IsDamperElement(mepElement);
+                
+                // ✅ ALWAYS LOG: Log damper detection (not just in diagnostic mode) to debug why intersections aren't found
+                if (isDamper)
+                {
+                    log($"[DamperDetection] ✅ Element {mepElement.Id} (Category={mepElement.Category?.Name}) is a damper - using damper intersection logic");
+                    
+                    var damperResults = FindDamperIntersectionsInternal(mepElement, mepBBox, 
+                        structuralData.Select(sd => (sd.element, sd.transform)).ToList(), mepTransform, log);
+                    
+                    log($"[DamperDetection] ✅ Damper {mepElement.Id} found {damperResults.Count} intersections");
+                    
+                    results.AddRange(damperResults.Select(i => (mepElement, i.Item1, i.Item2, i.Item3)));
+                    continue;
+                }
+                else if (mepElement.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
+                {
+                    // ✅ DIAGNOSTIC: Log why Duct Accessory was NOT detected as damper
+                    log($"[DamperDetection] ⚠️ Element {mepElement.Id} is DuctAccessory but NOT detected as damper - Family={((mepElement as FamilyInstance)?.Symbol?.Family?.Name ?? "null")}, Type={((mepElement as FamilyInstance)?.Symbol?.Name ?? "null")}");
+                }
+
                 var (line, isFallbackLine) = GetElementLineWithSource(mepElement, mepBBox, log);
                 if (line == null)
                 {
-                    // Handle damper-style elements
-                    var damperResults = FindDamperIntersectionsInternal(mepElement, mepBBox, 
-                        structuralData.Select(sd => (sd.element, sd.transform)).ToList(), null, log);
-                    results.AddRange(damperResults.Select(i => (mepElement, i.Item1, i.Item2, i.Item3)));
+                    // Handle other non-line elements (fallback)
+                    if (OptimizationFlags.UseDiagnosticMode)
+                        log($"[MEP-Processing] Element {mepElement.Id} has no line - skipping");
                     continue;
                 }
                 
@@ -1998,7 +2048,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var hostDampers = new FilteredElementCollector(doc)
                     .OfClass(typeof(FamilyInstance))
                     .Cast<FamilyInstance>()
-                    .Where(fi => fi.Symbol?.Family?.Name?.Contains("Damper") == true)
+                    .Where(fi => 
+                    {
+                        var familyName = fi.Symbol?.Family?.Name ?? "";
+                        var typeName = fi.Symbol?.Name ?? "";
+                        var combinedName = $"{familyName} {typeName}".ToUpperInvariant();
+                        
+                        // ✅ EXCLUDE: Skip VCD and VOLUME dampers (not in walls)
+                        if (combinedName.Contains("VCD") || combinedName.Contains("VOLUME"))
+                            return false;
+                        
+                        return familyName.Contains("Damper");
+                    })
                     .ToList();
 
                 foreach (var damper in hostDampers)
@@ -2037,7 +2098,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var linkedDampers = new FilteredElementCollector(linkDoc)
                         .OfClass(typeof(FamilyInstance))
                         .Cast<FamilyInstance>()
-                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Damper") == true)
+                        .Where(fi => 
+                        {
+                            var familyName = fi.Symbol?.Family?.Name ?? "";
+                            var typeName = fi.Symbol?.Name ?? "";
+                            var combinedName = $"{familyName} {typeName}".ToUpperInvariant();
+                            
+                            // ✅ EXCLUDE: Skip VCD and VOLUME dampers (not in walls)
+                            if (combinedName.Contains("VCD") || combinedName.Contains("VOLUME"))
+                                return false;
+                            
+                            return familyName.Contains("Damper");
+                        })
                         .ToList();
 
                     foreach (var damper in linkedDampers)
@@ -2158,8 +2230,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 hostDamperBBox.Max.Y + tolerance,
                 hostDamperBBox.Max.Z + tolerance);
 
-            if (OptimizationFlags.UseDiagnosticMode)
-                log($"[DamperIntersection] Processing element {damperElement.Id} with bbox Min=({hostDamperBBox.Min.X:F2}, {hostDamperBBox.Min.Y:F2}, {hostDamperBBox.Min.Z:F2}) Max=({hostDamperBBox.Max.X:F2}, {hostDamperBBox.Max.Y:F2}, {hostDamperBBox.Max.Z:F2})");
+            // ✅ ALWAYS LOG: Always log damper intersection processing (not just in diagnostic mode)
+            log($"[DamperIntersection] Processing damper {damperElement.Id} with bbox Min=({hostDamperBBox.Min.X:F2}, {hostDamperBBox.Min.Y:F2}, {hostDamperBBox.Min.Z:F2}) Max=({hostDamperBBox.Max.X:F2}, {hostDamperBBox.Max.Y:F2}, {hostDamperBBox.Max.Z:F2})");
+            log($"[DamperIntersection] Testing against {structuralElements.Count} structural elements");
 
             foreach (var tuple in structuralElements)
             {
@@ -2180,11 +2253,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                     }
 
-                    if (!BoundingBoxService.BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max))
+                    bool bboxesIntersect = BoundingBoxService.BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max);
+                    if (!bboxesIntersect)
+                    {
+                        // ✅ LOG FIRST FEW: Log first few non-intersections to debug (limit to avoid spam)
+                        if (results.Count == 0 && structuralElements.IndexOf(tuple) < 3)
+                        {
+                            log($"[DamperIntersection] ⚠️ No bbox intersection: damper {damperElement.Id} (expanded: Min=({expandedMin.X:F2},{expandedMin.Y:F2},{expandedMin.Z:F2}) Max=({expandedMax.X:F2},{expandedMax.Y:F2},{expandedMax.Z:F2})) vs structural {structuralElement.Id} (Min=({structBBox.Min.X:F2},{structBBox.Min.Y:F2},{structBBox.Min.Z:F2}) Max=({structBBox.Max.X:F2},{structBBox.Max.Y:F2},{structBBox.Max.Z:F2}))");
+                        }
                         continue;
+                    }
 
-                    if (OptimizationFlags.UseDiagnosticMode)
-                        log($"[DamperIntersection] Intersection candidate: damper {damperElement.Id} with structural {structuralElement.Id}");
+                    log($"[DamperIntersection] ✅ Intersection candidate: damper {damperElement.Id} with structural {structuralElement.Id}");
+
+                    // ✅ FIX: Check if damper is completely contained within wall (buried inside)
+                    // This handles the case where damper is fully inside the wall geometry
+                    bool isDamperContainedInWall = 
+                        hostDamperBBox.Min.X >= structBBox.Min.X &&
+                        hostDamperBBox.Min.Y >= structBBox.Min.Y &&
+                        hostDamperBBox.Min.Z >= structBBox.Min.Z &&
+                        hostDamperBBox.Max.X <= structBBox.Max.X &&
+                        hostDamperBBox.Max.Y <= structBBox.Max.Y &&
+                        hostDamperBBox.Max.Z <= structBBox.Max.Z;
+
+                    // ✅ ALWAYS LOG: Log containment check (not just in diagnostic mode)
+                    if (isDamperContainedInWall)
+                    {
+                        log($"[DamperIntersection] ✅ Damper {damperElement.Id} is COMPLETELY CONTAINED within structural {structuralElement.Id} (buried inside wall)");
+                    }
 
                     var intersectionMin = new XYZ(
                         Math.Max(hostDamperBBox.Min.X, structBBox.Min.X),
@@ -2195,10 +2291,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         Math.Min(hostDamperBBox.Max.Y, structBBox.Max.Y),
                         Math.Min(hostDamperBBox.Max.Z, structBBox.Max.Z));
 
-                    if (intersectionMin.X > intersectionMax.X ||
-                        intersectionMin.Y > intersectionMax.Y ||
-                        intersectionMin.Z > intersectionMax.Z)
+                    // ✅ FIX: If damper is contained, use damper's bounding box as intersection
+                    // Otherwise, check if intersection bounding box is valid
+                    if (isDamperContainedInWall)
                     {
+                        // Damper is completely inside wall - use damper's bbox as intersection
+                        intersectionMin = hostDamperBBox.Min;
+                        intersectionMax = hostDamperBBox.Max;
+                    }
+                    else if (intersectionMin.X > intersectionMax.X ||
+                             intersectionMin.Y > intersectionMax.Y ||
+                             intersectionMin.Z > intersectionMax.Z)
+                    {
+                        // No valid intersection bounding box
+                        if (OptimizationFlags.UseDiagnosticMode)
+                        {
+                            log($"[DamperIntersection] ⚠️ No valid intersection bbox: damper {damperElement.Id} vs structural {structuralElement.Id} (Min=({intersectionMin.X:F3},{intersectionMin.Y:F3},{intersectionMin.Z:F3}) Max=({intersectionMax.X:F3},{intersectionMax.Y:F3},{intersectionMax.Z:F3}))");
+                        }
                         continue;
                     }
 

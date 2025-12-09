@@ -385,7 +385,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                             PipesNormal   REAL,
                             PipesInsulated REAL,
                             CableTrayTop  REAL,
+                            CableTrayTopInsulated REAL,
                             CableTrayOther REAL,
+                            CableTrayOtherInsulated REAL,
+                            DuctAccessoryMepNormal REAL,
+                            DuctAccessoryMepInsulated REAL,
+                            DuctAccessoryOtherNormal REAL,
+                            DuctAccessoryOtherInsulated REAL,
                             OpeningPrefs  TEXT,
                             UpdatedAt     DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
                             FOREIGN KEY(FilterId) REFERENCES Filters(FilterId) ON DELETE CASCADE,
@@ -564,6 +570,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     AddColumnIfMissing("ClashZones", "MepAngleToYDeg", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "MepWidth", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "MepHeight", "REAL", transaction);
+                    // ✅ REFERENCE LEVEL: Add MEP element Reference Level column
+                    AddColumnIfMissing("ClashZones", "MepElementLevelName", "TEXT", transaction);
+                    // ✅ REFERENCE LEVEL ELEVATION: Add MEP element Reference Level elevation (critical for Elevation from Level and Bottom of Opening calculation)
+                    if (AddColumnIfMissing("ClashZones", "MepElementLevelElevation", "REAL DEFAULT 0.0", transaction))
+                        _logger("[SQLite] ✅ Added MepElementLevelElevation column to ClashZones (Reference Level elevation in feet)");
+                    // ✅ WALL CENTERLINE POINT: Pre-calculated during refresh to enable multi-threaded placement
+                    if (AddColumnIfMissing("ClashZones", "WallCenterlinePointX", "REAL DEFAULT 0.0", transaction))
+                        _logger("[SQLite] ✅ Added WallCenterlinePointX column to ClashZones (pre-calculated wall centerline point)");
+                    if (AddColumnIfMissing("ClashZones", "WallCenterlinePointY", "REAL DEFAULT 0.0", transaction))
+                        _logger("[SQLite] ✅ Added WallCenterlinePointY column to ClashZones (pre-calculated wall centerline point)");
+                    if (AddColumnIfMissing("ClashZones", "WallCenterlinePointZ", "REAL DEFAULT 0.0", transaction))
+                        _logger("[SQLite] ✅ Added WallCenterlinePointZ column to ClashZones (pre-calculated wall centerline point)");
                     // ✅ PIPE DIAMETER COLUMNS: Add outer diameter and nominal diameter columns for pipes
                     if (AddColumnIfMissing("ClashZones", "MepElementOuterDiameter", "REAL DEFAULT 0.0", transaction))
                         _logger("[SQLite] ✅ Added MepElementOuterDiameter column to ClashZones (pipe outer diameter in feet)");
@@ -721,7 +739,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     AddColumnIfMissing("Conditions", "PipesNormal", "REAL", transaction);
                     AddColumnIfMissing("Conditions", "PipesInsulated", "REAL", transaction);
                     AddColumnIfMissing("Conditions", "DuctAccessoryMepNormal", "REAL", transaction);
+                    AddColumnIfMissing("Conditions", "DuctAccessoryMepInsulated", "REAL", transaction);
                     AddColumnIfMissing("Conditions", "DuctAccessoryOtherNormal", "REAL", transaction);
+                    AddColumnIfMissing("Conditions", "DuctAccessoryOtherInsulated", "REAL", transaction);
+                    AddColumnIfMissing("Conditions", "CableTrayTopInsulated", "REAL", transaction);
+                    AddColumnIfMissing("Conditions", "CableTrayOtherInsulated", "REAL", transaction);
                     AddColumnIfMissing("Conditions", "OpeningPrefs", "TEXT", transaction);
                     AddColumnIfMissing("Conditions", "HorizontalLevel", "TEXT", transaction);
                     AddColumnIfMissing("Conditions", "VerticalLevel", "TEXT", transaction);

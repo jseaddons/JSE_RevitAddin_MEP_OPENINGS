@@ -102,6 +102,57 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
             set => _intersectionPointZ = value;
         }
         
+        // ✅ WALL CENTERLINE POINT: Backing fields to store X/Y/Z independently of XYZ object
+        // This is pre-calculated during refresh to avoid Revit API calls during placement (enables multi-threading)
+        private double _wallCenterlinePointX = 0.0;
+        private double _wallCenterlinePointY = 0.0;
+        private double _wallCenterlinePointZ = 0.0;
+        
+        /// <summary>
+        /// Pre-calculated wall centerline point (no Revit API access needed during placement)
+        /// ✅ CRITICAL: Calculated during refresh when wall element is available
+        /// ✅ PERFORMANCE: Enables multi-threaded placement point adjustment (no Revit API calls needed)
+        /// For dampers: This is the wall centerline point corresponding to the damper centroid
+        /// </summary>
+        [XmlIgnore]
+        public XYZ WallCenterlinePoint
+        {
+            get => new XYZ(_wallCenterlinePointX, _wallCenterlinePointY, _wallCenterlinePointZ);
+            set
+            {
+                _wallCenterlinePointX = value?.X ?? 0.0;
+                _wallCenterlinePointY = value?.Y ?? 0.0;
+                _wallCenterlinePointZ = value?.Z ?? 0.0;
+            }
+        }
+        
+        /// <summary>
+        /// XML serializable wall centerline point X coordinate
+        /// </summary>
+        public double WallCenterlinePointX
+        {
+            get => _wallCenterlinePointX;
+            set => _wallCenterlinePointX = value;
+        }
+        
+        /// <summary>
+        /// XML serializable wall centerline point Y coordinate
+        /// </summary>
+        public double WallCenterlinePointY
+        {
+            get => _wallCenterlinePointY;
+            set => _wallCenterlinePointY = value;
+        }
+        
+        /// <summary>
+        /// XML serializable wall centerline point Z coordinate
+        /// </summary>
+        public double WallCenterlinePointZ
+        {
+            get => _wallCenterlinePointZ;
+            set => _wallCenterlinePointZ = value;
+        }
+        
         /// <summary>
         /// The bounding box of the clash zone
         /// </summary>

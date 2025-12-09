@@ -32,12 +32,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refactored
             try
             {
                 // ✅ STANDARDIZED: Use normalized category names to match clash zone file naming
+                // ✅ CRITICAL: CombinedKey format ensures each filter has its own clearance values per category
+                // Example: "Ventilation_duct_accessories" (75mm) vs "Plumbing_duct_accessories" (50mm)
+                // The filter name comes from the UI selection and is passed through the placement command
                 string normalizedCategory = NormalizeCategoryName(category);
                 string combinedKey = $"{filterName}_{normalizedCategory}";
 
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    DebugLogger.Info($"[ConditionsLoader] Using combined key '{combinedKey}' (Filter: '{filterName}', Category: '{category}')");
+                    DebugLogger.Info($"[ConditionsLoader] 🔍 Loading conditions with CombinedKey='{combinedKey}' (Filter='{filterName}', Category='{category}') - " +
+                        $"This ensures the correct clearance values are loaded for the current filter selection");
                 }
 
                 var conditions = _conditionsService.LoadConditions(combinedKey);

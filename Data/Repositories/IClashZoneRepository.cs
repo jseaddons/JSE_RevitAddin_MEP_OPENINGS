@@ -74,6 +74,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// <param name="sleeveInstanceIds">Collection of Revit element ids for sleeves.</param>
         /// <returns>Dictionary<int, Dictionary<string,string>></returns>
         System.Collections.Generic.Dictionary<int, System.Collections.Generic.Dictionary<string, string>> GetSnapshotMepParametersForSleeveIds(System.Collections.Generic.IEnumerable<int> sleeveInstanceIds);
+
+        /// <summary>
+        /// Batch update IsResolvedFlag, IsClusterResolvedFlag, SleeveInstanceId, and ClusterInstanceId for placed sleeves.
+        /// </summary>
+        void BatchUpdateFlags(List<(System.Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterInstanceId)> updates);
     }
 }
 

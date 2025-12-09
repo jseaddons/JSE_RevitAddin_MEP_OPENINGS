@@ -11,6 +11,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Safety;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Geometry; // For WallRcsTransformer
+using JSE_RevitAddin_MEP_OPENINGS.Services.Placement; // For SleeveParameterService
 // OpeningSettingsHelper is already in JSE_RevitAddin_MEP_OPENINGS.Services namespace
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
@@ -560,6 +561,51 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 // Set metadata (including HostOrientation for proper orientation)
                 SetMetadata(inst, targetCategory, null, deferredParameters);
 
+                // ✅ SCHEDULE LEVEL & ELEVATION FROM LEVEL: Set from first ClashZone's MEP element level
+                try
+                {
+                    var firstSleeve = cluster[0];
+                    ClashZone? firstClashZone = null;
+                    if (firstSleeve is ClashZone cz)
+                    {
+                        firstClashZone = cz;
+                    }
+                    else if (firstSleeve?.ClashZone != null)
+                    {
+                        firstClashZone = firstSleeve.ClashZone as ClashZone;
+                    }
+                    else if (firstSleeve?.SleeveInstanceId != null && _getClashZoneBySleeveInstanceId != null)
+                    {
+                        firstClashZone = _getClashZoneBySleeveInstanceId(firstSleeve.SleeveInstanceId, xmlFilePath);
+                    }
+
+                    if (firstClashZone != null)
+                    {
+                        // ✅ Use SleeveParameterService to set Schedule Level and Elevation from Level
+                        var parameterService = new SleeveParameterService(doc);
+                        parameterService.SetScheduleLevelAndElevationForCluster(inst, firstClashZone, inst.Id);
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ Set Schedule Level and Elevation from Level for cluster sleeve {inst.Id} from ClashZone {firstClashZone.Id}\n");
+                        }
+                    }
+                    else if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ Could not get ClashZone for cluster - Schedule Level and Elevation from Level not set\n");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ Error setting Schedule Level and Elevation from Level for cluster: {ex.Message}\n");
+                    }
+                }
+
                 // Mark clash zones as cluster-resolved
                 BoundingBoxXYZ? clusterBbox = null;
                 try
@@ -957,15 +1003,79 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
 
             try
             {
-                // ✅ PARAMETER READING: Read "Schedule of Level" parameter with fallback names
+                // ✅ MAIN LOGIC: Calculate "Elevation from Level" from placement point and level elevation
+                // This is the PRIMARY method - Revit should set this automatically, but we calculate it explicitly to ensure it's correct
                 double? scheduleOfLevel = null;
-                Parameter scheduleParam = clusterSleeve.LookupParameter("Schedule of Level")
-                                       ?? clusterSleeve.LookupParameter("Schedule Level")
-                                       ?? clusterSleeve.LookupParameter("Elevation from Level");
+                
+                // ✅ STEP 1: Try to read from sleeve parameter (should be set automatically by Revit)
+                Parameter scheduleParam = clusterSleeve.LookupParameter("Elevation from Level")  // ✅ FIRST: This is what user sees in Properties
+                                       ?? clusterSleeve.LookupParameter("Schedule of Level")
+                                       ?? clusterSleeve.LookupParameter("Schedule Level");
 
                 if (scheduleParam != null && scheduleParam.StorageType == StorageType.Double)
                 {
                     scheduleOfLevel = scheduleParam.AsDouble();
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ✅ Cluster sleeve {clusterSleeve.Id.IntegerValue}: " +
+                            $"Read Elevation from Level={scheduleOfLevel.Value * 304.8:F1}mm from sleeve parameter '{scheduleParam.Definition.Name}'\n");
+                    }
+                }
+                
+                // ✅ STEP 2: If not found, calculate from placement point and level elevation (MAIN LOGIC)
+                if (!scheduleOfLevel.HasValue)
+                {
+                    try
+                    {
+                        // Get placement point (center of opening)
+                        LocationPoint? locationPoint = clusterSleeve.Location as LocationPoint;
+                        if (locationPoint != null)
+                        {
+                            XYZ placementPoint = locationPoint.Point;
+                            
+                            // Get level from sleeve
+                            Level? level = clusterSleeve.get_Parameter(BuiltInParameter.INSTANCE_REFERENCE_LEVEL_PARAM)?.AsElementId() != null
+                                ? clusterSleeve.Document.GetElement(clusterSleeve.get_Parameter(BuiltInParameter.INSTANCE_REFERENCE_LEVEL_PARAM).AsElementId()) as Level
+                                : null;
+                            
+                            if (level != null)
+                            {
+                                // Calculate: Elevation from Level = Placement Point Z - Level Elevation
+                                scheduleOfLevel = placementPoint.Z - level.Elevation;
+                                
+                                // ✅ CRITICAL: Set the parameter on the sleeve so it's available for future reads
+                                if (scheduleParam != null && !scheduleParam.IsReadOnly && scheduleParam.StorageType == StorageType.Double)
+                                {
+                                    scheduleParam.Set(scheduleOfLevel.Value);
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ✅ Cluster sleeve {clusterSleeve.Id.IntegerValue}: " +
+                                            $"CALCULATED and SET Elevation from Level={scheduleOfLevel.Value * 304.8:F1}mm " +
+                                            $"(PlacementPoint.Z={placementPoint.Z * 304.8:F1}mm, Level.Elevation={level.Elevation * 304.8:F1}mm, Level='{level.Name}')\n");
+                                    }
+                                }
+                                else if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ✅ Cluster sleeve {clusterSleeve.Id.IntegerValue}: " +
+                                        $"CALCULATED Elevation from Level={scheduleOfLevel.Value * 304.8:F1}mm " +
+                                        $"(PlacementPoint.Z={placementPoint.Z * 304.8:F1}mm, Level.Elevation={level.Elevation * 304.8:F1}mm, Level='{level.Name}') " +
+                                        $"but parameter is read-only or wrong type - using calculated value\n");
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception calcEx)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ⚠️ Cluster sleeve {clusterSleeve.Id.IntegerValue}: " +
+                                $"Error calculating Elevation from Level: {calcEx.Message}\n");
+                        }
+                    }
                 }
 
                 // ✅ VALIDATION: Check if Schedule of Level is valid
@@ -1009,7 +1119,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 }
 
                 // ✅ PARAMETER SETTING: Set "Bottom of Opening" parameter with batching support
-                var bottomParam = clusterSleeve.LookupParameter("Bottom of Opening");
+                // Parameter name is "Bottom Of Opening" (capital O in "Of") as shown in Revit Properties
+                // Try same variations as individual sleeves for consistency
+                var bottomParam = clusterSleeve.LookupParameter("Bottom Of Opening")  // ✅ FIRST: Exact name from Properties
+                               ?? clusterSleeve.LookupParameter("Bottom of Opening")
+                               ?? clusterSleeve.LookupParameter("BottomOfOpening")
+                               ?? clusterSleeve.Symbol?.LookupParameter("Bottom Of Opening")
+                               ?? clusterSleeve.Symbol?.LookupParameter("Bottom of Opening")
+                               ?? clusterSleeve.Symbol?.LookupParameter("BottomOfOpening");
+                
                 if (bottomParam != null && !bottomParam.IsReadOnly)
                 {
                     if (deferredParameters != null && OptimizationFlags.UseBatchedParameterWrites)
@@ -1046,7 +1164,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                     {
                         SafeFileLogger.SafeAppendText("cluster_debug.log",
                             $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ⚠️ Cluster sleeve {clusterSleeve.Id.IntegerValue}: " +
-                            $"'Bottom of Opening' parameter not found or read-only\n");
+                            $"'Bottom of Opening' parameter not found or read-only (tried: 'Bottom Of Opening', 'Bottom of Opening', 'BottomOfOpening' on instance and symbol)\n");
                     }
                 }
             }

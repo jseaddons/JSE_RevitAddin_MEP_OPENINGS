@@ -29,11 +29,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.PreCalculation
         /// <param name="clustersByGroup">Dictionary of clusters grouped by SleeveGroupKey</param>
         /// <param name="doc">Revit document (for retrieving actual sleeve elements)</param>
         /// <param name="xmlFilePath">Optional XML file path for logging</param>
+        /// <param name="preloadedClashZones">Optional dictionary of pre-loaded ClashZones by SleeveInstanceId (avoids individual database lookups)</param>
         /// <returns>Dictionary mapping cluster index to pre-calculated results</returns>
         Dictionary<int, ClusterCalculationResult> PreCalculateAllClusters(
             Dictionary<SleeveGroupKey, List<List<dynamic>>> clustersByGroup,
             Document doc,
-            string? xmlFilePath = null);
+            string? xmlFilePath = null,
+            Dictionary<int, ClashZone>? preloadedClashZones = null);
     }
 
     /// <summary>

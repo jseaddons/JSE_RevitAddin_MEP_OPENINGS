@@ -95,5 +95,110 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
         JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Returning null (no level found)");
         return null;
     }
+        /// <summary>
+        /// ✅ NEW: Gets the elevation of the reference Level for a host element.
+        /// CRITICAL: Returns the elevation from the LINKED document directly if the element is linked.
+        /// This avoids the need for a matching level to exist in the active document just to get the elevation value.
+        /// Returns null if not found.
+        /// </summary>
+        public static double? GetHostReferenceLevelElevation(Document doc, Element? host)
+        {
+            if (host == null) return null;
+
+            int hostId = host.Id.IntegerValue;
+
+            // ✅ PRIORITY 1: Try to get from linked document first
+            if (host.Document.IsLinked)
+            {
+                try
+                {
+                    // Get the level from the linked document
+                    Parameter linkedRefLevelParam = host.LookupParameter("Reference Level") ?? host.LookupParameter("Level");
+                    
+                    if (linkedRefLevelParam != null && linkedRefLevelParam.StorageType == StorageType.ElementId)
+                    {
+                        ElementId linkedLevelId = linkedRefLevelParam.AsElementId();
+                        
+                        if (linkedLevelId != ElementId.InvalidElementId)
+                        {
+                            // Get the level from the linked document
+                            Level? linkedLevel = host.Document.GetElement(linkedLevelId) as Level;
+                            if (linkedLevel != null)
+                            {
+                                // JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Found level in linked doc: '{linkedLevel.Name}', Elevation: {linkedLevel.Elevation}");
+                                return linkedLevel.Elevation;
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Log error but don't fail
+                    JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] ERROR: Host {hostId} - Error getting level elevation from linked document: {ex.Message}");
+                }
+            }
+
+            // ✅ PRIORITY 2: Fallback to active document level lookup (existing method)
+            // This is useful for non-linked elements or if linked lookup failed
+            Level? level = GetHostReferenceLevel(doc, host);
+            if (level != null)
+            {
+                return level.Elevation;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// ✅ NEW: Gets Reference Level elevation from ClashZone.MepParameterValues.
+        /// Prioritizes "Reference Level" as primary source, falls back to other level parameters if not found.
+        /// Returns null if not found.
+        /// </summary>
+        /// <param name="doc">Active document (for level lookup by name)</param>
+        /// <param name="mepParameterValues">MEP parameter values from ClashZone (captured during refresh)</param>
+        /// <returns>Reference Level elevation if found, null otherwise</returns>
+        public static double? GetReferenceLevelElevationFromParameters(Document doc, System.Collections.Generic.List<Models.SerializableKeyValue>? mepParameterValues)
+        {
+            if (mepParameterValues == null || mepParameterValues.Count == 0)
+                return null;
+
+            // ✅ PRIMARY: Try "Reference Level" first
+            var refLevelParam = mepParameterValues
+                .FirstOrDefault(p => string.Equals(p.Key, "Reference Level", StringComparison.OrdinalIgnoreCase));
+            
+            if (refLevelParam != null && !string.IsNullOrWhiteSpace(refLevelParam.Value))
+            {
+                var levelByName = new FilteredElementCollector(doc)
+                    .OfClass(typeof(Level))
+                    .Cast<Level>()
+                    .FirstOrDefault(l => string.Equals(l.Name, refLevelParam.Value, StringComparison.OrdinalIgnoreCase));
+                
+                if (levelByName != null)
+                {
+                    return levelByName.Elevation;
+                }
+            }
+
+            // ✅ FALLBACK: If "Reference Level" not found, try other level parameters
+            var fallbackLevelParam = mepParameterValues
+                .FirstOrDefault(p => string.Equals(p.Key, "Level", StringComparison.OrdinalIgnoreCase) ||
+                                     string.Equals(p.Key, "Schedule Level", StringComparison.OrdinalIgnoreCase) ||
+                                     string.Equals(p.Key, "Schedule of Level", StringComparison.OrdinalIgnoreCase));
+            
+            if (fallbackLevelParam != null && !string.IsNullOrWhiteSpace(fallbackLevelParam.Value))
+            {
+                var levelByName = new FilteredElementCollector(doc)
+                    .OfClass(typeof(Level))
+                    .Cast<Level>()
+                    .FirstOrDefault(l => string.Equals(l.Name, fallbackLevelParam.Value, StringComparison.OrdinalIgnoreCase));
+                
+                if (levelByName != null)
+                {
+                    return levelByName.Elevation;
+                }
+            }
+
+            return null;
+        }
     }
 }

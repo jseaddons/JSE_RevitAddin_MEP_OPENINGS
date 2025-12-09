@@ -74,11 +74,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         // Family symbol cache for performance
         private static Dictionary<string, FamilySymbol> _familySymbolCache = new Dictionary<string, FamilySymbol>();
         
-        // ✅ DAMPER PLACEMENT OFFSET: Stores offset for asymmetric clearance placement
-        // Key: ClashZone ID (Guid - for matching zone to its calculated offset)
-        // Value: (offsetVector, finalWidth, finalHeight, clearanceLeft, clearanceRight, clearanceTop, clearanceBottom)
-        private Dictionary<Guid, (XYZ offsetVector, double finalWidth, double finalHeight, double clearanceLeft, double clearanceRight, double clearanceTop, double clearanceBottom)> _damperPlacementAdjustments = 
-            new Dictionary<Guid, (XYZ, double, double, double, double, double, double)>();
+        // ✅ DAMPER CLEARANCE VALUES: Stores clearance values for damper parameter setting
+        // Key: ClashZone ID (Guid - for matching zone to its calculated clearances)
+        // Value: (finalWidth, finalHeight, clearanceLeft, clearanceRight, clearanceTop, clearanceBottom)
+        // ✅ NOTE: offsetVector is NO LONGER stored - damper placement point adjustment is handled by DamperPlacementPointService ONLY
+        private Dictionary<Guid, (double finalWidth, double finalHeight, double clearanceLeft, double clearanceRight, double clearanceTop, double clearanceBottom)> _damperPlacementAdjustments = 
+            new Dictionary<Guid, (double, double, double, double, double, double)>();
+        
+        // ✅ PARALLEL PLANNING: Optional planner for parallel pre-computation (OOP, DI-ready)
+        // When enabled via DeploymentConfiguration.EnableParallelPlanning, pre-computes dimensions, clearance, and risk in parallel
+        // Includes dampers (Duct Accessories) - ParallelSleevePlacementPlanner handles all categories
+        private readonly ISleevePlacementPlanner? _planner;
 
         public NewSleevePlacerService(
             Document doc,
@@ -96,10 +102,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             IFileNameNormalizer? fileNameNormalizer = null,
             ISectionBoxChecker? sectionBoxChecker = null,
             // ✅ CRASH-SAFE: Optional crash-safe executor (created if not provided when flag enabled)
-            CrashSafeExecutor? crashSafeExecutor = null)
+            CrashSafeExecutor? crashSafeExecutor = null,
+            // ✅ PARALLEL PLANNING: Optional planner for parallel pre-computation (enabled via safety flag)
+            ISleevePlacementPlanner? planner = null)
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _conditions = conditions ?? new OpeningConditions();
+            
+            // ✅ DIAGNOSTIC: Log conditions object state at construction
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Info($"[NewSleevePlacer] 🔍 CONDITIONS CHECK: conditions={(_conditions != null ? "NOT NULL" : "NULL")}, " +
+                    $"ClearanceSettings={(_conditions?.ClearanceSettings != null ? "NOT NULL" : "NULL")}");
+                if (_conditions?.ClearanceSettings != null)
+                {
+                    DebugLogger.Info($"[NewSleevePlacer] 🔍 CLEARANCE VALUES: RectNormal={_conditions.ClearanceSettings.RectangularNormal}mm, " +
+                        $"RoundNormal={_conditions.ClearanceSettings.RoundNormal}mm, " +
+                        $"PipesNormal={_conditions.ClearanceSettings.PipesNormal}mm, " +
+                        $"CableTrayTop={_conditions.ClearanceSettings.CableTrayTop}mm, " +
+                        $"DuctAccessoryMepNormal={_conditions.ClearanceSettings.DuctAccessoryMepNormal}mm, " +
+                        $"DuctAccessoryOtherNormal={_conditions.ClearanceSettings.DuctAccessoryOtherNormal}mm, " +
+                        $"DuctAccessoryMepInsulated={_conditions.ClearanceSettings.DuctAccessoryMepInsulated}mm, " +
+                        $"DuctAccessoryOtherInsulated={_conditions.ClearanceSettings.DuctAccessoryOtherInsulated}mm");
+                }
+            }
             _strategy = strategy ?? throw new ArgumentNullException(nameof(strategy));
             _clearanceSettings = clearanceSettings ?? new Dictionary<string, double>();
             _sleeveRepository = sleeveRepository ?? throw new ArgumentNullException(nameof(sleeveRepository));
@@ -150,6 +176,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             else
             {
                 _crashSafeExecutor = null;
+            }
+            
+            // ✅ PARALLEL PLANNING: Initialize planner (create if not provided and flag enabled)
+            // Safety flag: DeploymentConfiguration.EnableParallelPlanning controls whether planner is used
+            if (DeploymentConfiguration.EnableParallelPlanning)
+            {
+                _planner = planner ?? new ParallelSleevePlacementPlanner(
+                    conditions,
+                    clearanceSettings,
+                    minParallelCount: 12, // Minimum zones before parallel processing kicks in
+                    maxDegree: null, // Use all CPU cores
+                    sizingService: _sizingService);
+            }
+            else
+            {
+                _planner = null; // Parallel planning disabled via safety flag
             }
         }
 
@@ -282,6 +324,89 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
             
+            // ✅ PARALLEL PLANNING: Pre-compute all sleeve data in parallel (includes dampers)
+            // Safety flag: DeploymentConfiguration.EnableParallelPlanning controls this feature
+            // When enabled: Pre-computes dimensions, clearance, rotation, and risk classification in parallel
+            // Benefits: Early skip detection, risk-based reordering, parallel computation, better diagnostics
+            Dictionary<Guid, SleevePlacementPlanningDto>? planningMap = null;
+            SleevePlacementPlanningResult? planningResult = null;
+            
+            if (DeploymentConfiguration.EnableParallelPlanning && _planner != null && filteredZones.Count > 0)
+            {
+                using (var planningTracker = _performanceMonitor?.TrackOperation("Parallel Sleeve Placement Planning"))
+                {
+                    try
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[NewSleevePlacer] 🚀 PARALLEL PLANNING: Starting parallel pre-computation for {filteredZones.Count} zones (including dampers)");
+                        }
+                        
+                        // ✅ PARALLEL PROCESSING: Run planning in parallel (pure computations, no Revit API calls)
+                        // This includes dampers (Duct Accessories) - ParallelSleevePlacementPlanner handles all categories
+                        planningResult = _planner.Plan(filteredZones);
+                        planningTracker?.SetItemCount(planningResult.TotalCount);
+                        
+                        // Create lookup map: ClashZoneId -> PlanningDto for fast access during placement
+                        planningMap = planningResult.Items
+                            .ToDictionary(dto => dto.ClashZoneId, dto => dto);
+                        
+                        // ✅ EARLY SKIP: Filter out zones marked for skip (avoids Revit API calls)
+                        var skipGuids = planningResult.Items
+                            .Where(dto => dto.ShouldSkip)
+                            .Select(dto => dto.ClashZoneId)
+                            .ToHashSet();
+                        
+                        // Update filtered zones to exclude skipped ones
+                        filteredZones = filteredZones
+                            .Where(cz => !skipGuids.Contains(cz.Id))
+                            .ToList();
+                        
+                        // ✅ REORDERING: Sort by risk (low risk first, high risk last)
+                        // This ensures problematic zones are processed last (less likely to block good zones)
+                        filteredZones = filteredZones
+                            .OrderBy(cz => planningMap.ContainsKey(cz.Id) 
+                                ? (int)planningMap[cz.Id].ClearanceRisk 
+                                : int.MaxValue)
+                            .ThenByDescending(cz => planningMap.ContainsKey(cz.Id) 
+                                ? planningMap[cz.Id].RawMepSizeFt 
+                                : 0)
+                            .ToList();
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[NewSleevePlacer] ✅ PARALLEL PLANNING: Completed in {planningResult.PlanningDurationMs:F1}ms - " +
+                                $"Processed: {planningResult.TotalCount}, Skipped: {planningResult.SkippedCount}, " +
+                                $"High Risk: {planningResult.HighRiskCount}, Critical: {planningResult.CriticalRiskCount}, " +
+                                $"Remaining: {filteredZones.Count}");
+                            
+                            // ✅ BATCH LOGGING: Log all planning results at once (performance optimization)
+                            if (planningResult.Items.Count > 0)
+                            {
+                                var logLines = planningResult.Items
+                                    .Select(dto => $"[{DateTime.Now:HH:mm:ss.fff}] {dto.LogSummary}")
+                                    .ToList();
+                                SafeFileLogger.SafeAppendText("planning_debug.log", string.Join("\n", logLines) + "\n");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // ✅ GRACEFUL FALLBACK: If planning fails, continue with sequential processing
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Warning($"[NewSleevePlacer] ⚠️ Parallel planning failed: {ex.Message} - Falling back to sequential processing");
+                        }
+                        planningMap = null;
+                        planningResult = null;
+                    }
+                }
+            }
+            else if (!DeploymentConfiguration.EnableParallelPlanning && !DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Info($"[NewSleevePlacer] ⏭️ PARALLEL PLANNING: Disabled via safety flag (DeploymentConfiguration.EnableParallelPlanning=false) - Using sequential processing");
+            }
+            
             // ✅ TIMEOUT PROTECTION: Check timeout periodically
             foreach (var clashZone in filteredZones)
             {
@@ -300,12 +425,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 try
                 {
-                    // Skip if already resolved (unless we are forcing update, but typically we skip)
-                    if (clashZone.IsResolved || clashZone.IsClusterResolved)
+                    // ✅ CRITICAL FIX: Skip if already resolved OR if SleeveInstanceId > 0 (even if IsResolved flag is not set)
+                    // This prevents placing sleeves over existing sleeves (especially for dampers)
+                    // ✅ CRITICAL: If IsClusterResolved=true, skip individual placement (zone is part of a cluster)
+                    // ✅ CRITICAL: If ClusterSleeveInstanceId > 0, skip individual placement (cluster sleeve already exists)
+                    bool shouldSkip = clashZone.IsResolved || 
+                                     clashZone.IsClusterResolved || 
+                                     clashZone.SleeveInstanceId > 0 || 
+                                     clashZone.ClusterSleeveInstanceId > 0;
+                    
+                    if (shouldSkip)
                     {
                         // ✅ DIAGNOSTIC: Log why zone is being skipped (always log, even in deployment mode for debugging)
+                        string skipReason = "";
+                        if (clashZone.IsResolved) skipReason += "IsResolved=true, ";
+                        if (clashZone.IsClusterResolved) skipReason += "IsClusterResolved=true, ";
+                        if (clashZone.SleeveInstanceId > 0) skipReason += $"SleeveId={clashZone.SleeveInstanceId}, ";
+                        if (clashZone.ClusterSleeveInstanceId > 0) skipReason += $"ClusterId={clashZone.ClusterSleeveInstanceId}, ";
+                        skipReason = skipReason.TrimEnd(',', ' ');
+                        
                         SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ⏭️ SKIP Zone {clashZone.Id}: IsResolved={clashZone.IsResolved}, IsClusterResolved={clashZone.IsClusterResolved}, SleeveId={clashZone.SleeveInstanceId}, ClusterId={clashZone.ClusterSleeveInstanceId}\n");
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ⏭️ SKIP Zone {clashZone.Id}: {skipReason}\n");
                         skipped++;
                         continue;
                     }
@@ -406,9 +546,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                         }
                         
-                        // Update ClashZone with new Sleeve ID
+                        // ✅ CRITICAL: Update ClashZone with new Sleeve ID and flag
+                        // This ensures in-memory object is updated immediately (before batch flag update)
                         clashZone.SleeveInstanceId = placedSleeve.Id.IntegerValue;
                         clashZone.IsResolved = true;
+                        
+                        // ✅ DIAGNOSTIC: Log flag update for debugging
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("placement_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ✅ SET FLAG: Zone {clashZone.Id}: IsResolved=true, SleeveId={clashZone.SleeveInstanceId}\n");
+                        }
                         
                         // ✅ CRITICAL FIX: Immediately update SleeveInstanceId in database
                         // This ensures the database is updated even if batch persistence is skipped or fails
@@ -622,13 +770,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
             
-            // Batch update flags at the end
-            if (placedSleeveData.Count > 0)
+            // ✅ CRITICAL FIX: Batch update flags at the end (only if FlagManager is provided)
+            // ✅ FLAG MANAGEMENT: Update IsResolvedFlag and IsClusterResolvedFlag in database after placement
+            // This ensures flags are set correctly for dampers and all other MEP elements
+            // ✅ FIX: Only update flags for zones that were actually placed (have SleeveInstanceId > 0)
+            // Note: Cluster placement handles its own flag updates separately
+            if (placedSleeveData.Count > 0 && _flagManager != null)
             {
                 try
                 {
+                    // ✅ CRITICAL: Filter to only zones with SleeveInstanceId > 0 (actually placed)
+                    // This ensures we don't try to update flags for zones that failed placement
                     var batchUpdates = placedSleeveData
-                        .Where(x => x.zone.SleeveInstanceId > 0)
+                        .Where(x => x.zone != null && x.zone.SleeveInstanceId > 0)
                         .Select(x => (x.zone, x.zone.SleeveInstanceId))
                         .ToList();
 
@@ -640,12 +794,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             placedSleeveData[0].zone.MepElementCategory,
                             _filterName
                         );
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[NewSleevePlacer] ✅ Updated flags for {batchUpdates.Count} placed sleeves (Category: {placedSleeveData[0].zone.MepElementCategory})");
+                            SafeFileLogger.SafeAppendText("placement_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ✅ BATCH FLAG UPDATE: Updated IsResolvedFlag=1 for {batchUpdates.Count} sleeves\n");
+                        }
+                    }
+                    else if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        // ✅ DIAGNOSTIC: Log when no flags are updated (all zones have SleeveInstanceId = 0)
+                        int zonesWithNoSleeveId = placedSleeveData.Count(x => x.zone == null || x.zone.SleeveInstanceId <= 0);
+                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ⚠️ NO FLAG UPDATE: {zonesWithNoSleeveId} zones have SleeveInstanceId <= 0 (flags won't be updated)\n");
                     }
                 }
                 catch (Exception ex)
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Error($"[NewSleevePlacer] Error updating flags: {ex.Message}");
+                    {
+                        DebugLogger.Error($"[NewSleevePlacer] ❌ Error updating flags: {ex.Message}");
+                        DebugLogger.Error($"[NewSleevePlacer] Stack trace: {ex.StackTrace}");
+                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ❌ FLAG UPDATE ERROR: {ex.Message}\n");
+                    }
+                }
+            }
+            else if (placedSleeveData.Count > 0 && _flagManager == null)
+            {
+                // ✅ DIAGNOSTIC: Log warning if FlagManager is not provided (flags won't be updated)
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Warning($"[NewSleevePlacer] ⚠️ FlagManager is null - flags will NOT be updated in database for {placedSleeveData.Count} placed sleeves. IsResolvedFlag will remain 0.");
+                    SafeFileLogger.SafeAppendText("placement_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ⚠️ FLAG MANAGER NULL: Flags will NOT be updated for {placedSleeveData.Count} sleeves\n");
                 }
             }
             
@@ -730,18 +913,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return instance;
         }
 
-        private FamilyInstance PlaceSleeveNormal(ClashZone zone)
+        private FamilyInstance PlaceSleeveNormal(ClashZone zone, SleevePlacementPlanningDto? planningDto = null)
         {
             // ✅ DIAGNOSTIC: Log entry into PlaceSleeveNormal
             SafeFileLogger.SafeAppendText("placement_debug.log",
-                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] 🔨 PlaceSleeveNormal START: Zone {zone.Id}\n");
+                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] 🔨 PlaceSleeveNormal START: Zone {zone.Id}, HasPlanningDto={planningDto != null}\n");
             
-            // Calculate dimensions based on MEP element and clearance using strategy
-            var (width, height, diameter, isCircular) = CalculateSleeveDimensions(zone);
+            // ✅ PARALLEL PLANNING: Pass planningDto to dimension calculation
+            // If planningDto is provided, CalculateSleeveDimensions will use pre-computed values (faster)
+            // This includes dampers - parallel planning handles all categories
+            var (width, height, diameter, isCircular) = CalculateSleeveDimensions(zone, planningDto);
             
-            // ✅ DIAGNOSTIC: Log calculated dimensions
+            // ✅ DIAGNOSTIC: Log calculated dimensions (in both feet and mm for readability)
+            double widthMm = width * 304.8;
+            double heightMm = height * 304.8;
+            double diameterMm = diameter * 304.8;
             SafeFileLogger.SafeAppendText("placement_debug.log",
-                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] 📐 DIMENSIONS: Zone {zone.Id}, W={width:F6}ft, H={height:F6}ft, D={diameter:F6}ft, Circular={isCircular}\n");
+                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] 📐 FINAL DIMENSIONS: Zone {zone.Id}, " +
+                $"W={width:F6}ft ({widthMm:F1}mm), H={height:F6}ft ({heightMm:F1}mm), D={diameter:F6}ft ({diameterMm:F1}mm), Circular={isCircular}\n");
             
             if (width <= 0 && height <= 0 && diameter <= 0)
             {
@@ -768,17 +957,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             XYZ placementPoint = zone.IntersectionPoint ?? new XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ);
             
             // ✅ SRP COMPLIANCE: Delegate placement point adjustment to dedicated service
-            // This service handles:
-            // 1. Wall/framing centerline adjustment
-            // 2. Damper offset adjustment (if applicable)
+            // PlacementPointAdjustmentService handles non-dampers, DamperPlacementPointService handles dampers
             // This keeps NewSleevePlacerService focused on orchestration, not geometric calculations
-            XYZ damperOffset = null;
+            
+            // ✅ EXTRACT CLEARANCE VALUES: Store individual clearance values in zone for later parameter setting
+            // This is done BEFORE placement point adjustment so values are available for parameter setting
+            // ✅ NOTE: offsetVector is NO LONGER used - damper placement point is handled by DamperPlacementPointService ONLY
             if (_damperPlacementAdjustments.ContainsKey(zone.Id))
             {
-                var (offsetVector, finalWidth, finalHeight, clearanceLeft, clearanceRight, clearanceTop, clearanceBottom) = 
+                var (finalWidth, finalHeight, clearanceLeft, clearanceRight, clearanceTop, clearanceBottom) = 
                     _damperPlacementAdjustments[zone.Id];
-                
-                damperOffset = offsetVector;
                 
                 // ✅ SOLID ISP: Store individual clearance values in zone for later parameter setting
                 // This allows SetSleeveParameters to set clearance parameters without strategy dependency
@@ -788,8 +976,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 zone.ClearanceBottom = clearanceBottom;
             }
             
-            // ✅ DELEGATE TO SERVICE: All placement point adjustments handled by PlacementPointAdjustmentService
-            placementPoint = _placementPointAdjustmentService.AdjustPlacementPoint(zone, placementPoint, damperOffset);
+            // ✅ DELEGATE TO SERVICE: PlacementPointAdjustmentService delegates to DamperPlacementPointService for dampers
+            // This maintains SRP - one class handles damper placement, another handles other MEP elements
+            placementPoint = _placementPointAdjustmentService.AdjustPlacementPoint(zone, placementPoint, null);
             
             // ✅ DIAGNOSTIC: Log placement point
             SafeFileLogger.SafeAppendText("placement_debug.log",
@@ -834,16 +1023,62 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// 1. Cable trays use GetCableTrayPlacementAdjustment which correctly reads clearances from conditions.ClearanceSettings (database)
         /// 2. Other categories use GetClearance which may read from strategy or fallback
         /// 3. All parameter reads during placement use GetParameterValueWithBatchingSupport to prevent stale reads
+        /// 
+        /// ✅ PARALLEL PLANNING: If planningDto is provided (from parallel planning phase), use pre-computed dimensions.
+        /// This includes dampers - parallel planning handles all categories including Duct Accessories.
         /// </summary>
-        private (double width, double height, double diameter, bool isCircular) CalculateSleeveDimensions(ClashZone zone)
+        private (double width, double height, double diameter, bool isCircular) CalculateSleeveDimensions(ClashZone zone, SleevePlacementPlanningDto? planningDto = null)
         {
             // ✅ PERFORMANCE MONITORING: Track dimension calculation
             using (var tracker = _performanceMonitor?.TrackOperation("Calculate Sleeve Dimensions"))
             {
+                // ✅ PARALLEL PLANNING: Use pre-computed dimensions if available (from parallel planning phase)
+                // This includes dampers - ParallelSleevePlacementPlanner handles Duct Accessories category
+                // Safety: Only use planning data if EnableParallelPlanning flag is enabled and planningDto is valid
+                if (DeploymentConfiguration.EnableParallelPlanning && planningDto != null && !planningDto.ShouldSkip)
+                {
+                    // ✅ USE PRE-COMPUTED DIMENSIONS: From parallel planning (includes dampers)
+                    // Note: For dampers with asymmetric clearance, we still need strategy for offset calculation
+                    // But dimensions can come from planning phase
+                    bool isDamper = string.Equals(zone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase);
+                    
+                    if (!isDamper)
+                    {
+                        // ✅ NON-DAMPER: Use pre-computed dimensions directly (faster, already calculated in parallel)
+                        tracker?.SetItemCount(1);
+                        return (planningDto.TargetWidthFt, planningDto.TargetHeightFt, Math.Max(planningDto.TargetWidthFt, planningDto.TargetHeightFt), false);
+                    }
+                    else
+                    {
+                        // ✅ DAMPER: Use pre-computed dimensions but still need strategy for offset calculation
+                        // Planning phase calculated dimensions, but we need strategy for asymmetric clearance offset
+                        // Fall through to strategy-based calculation below
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[NewSleevePlacer] 📋 DAMPER: Using pre-computed dimensions from planning: " +
+                                $"W={planningDto.TargetWidthFt * 304.8:F1}mm, H={planningDto.TargetHeightFt * 304.8:F1}mm, " +
+                                $"but still need strategy for offset calculation");
+                        }
+                    }
+                }
+                
                 // ✅ DAMPER PLACEMENT STRATEGY: Handle dampers with connector-aware asymmetric clearance
                 // Dampers with MEP connectors require special offset calculation to achieve 100mm on connector side, 50mm on other
                 if (_strategy is DamperPlacementStrategy damperStrategy)
                 {
+                    // ✅ COMPREHENSIVE LOGGING: Log raw MEP dimensions and clearance settings BEFORE strategy call
+                    double rawWidthMm = zone.MepElementWidth * 304.8;
+                    double rawHeightMm = zone.MepElementHeight * 304.8;
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("clearance_calculation_trace.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [DAMPER-PRE-STRATEGY] Zone {zone.Id}, " +
+                            $"RawMEP W={rawWidthMm:F1}mm, H={rawHeightMm:F1}mm, " +
+                            $"DB Clearances: MEP={(zone.IsInsulated ? _conditions?.ClearanceSettings?.DuctAccessoryMepInsulated : _conditions?.ClearanceSettings?.DuctAccessoryMepNormal) ?? 0}mm, " +
+                            $"Other={(zone.IsInsulated ? _conditions?.ClearanceSettings?.DuctAccessoryOtherInsulated : _conditions?.ClearanceSettings?.DuctAccessoryOtherNormal) ?? 0}mm, " +
+                            $"IsInsulated={zone.IsInsulated}, HasConditions={_conditions != null}, HasClearanceSettings={_conditions?.ClearanceSettings != null}\n");
+                    }
+                    
                     // ✅ OOP METHOD: Get damper placement adjustment including offset and individual clearances (SOLID DIP)
                     // This method handles:
                     // 1. Connector detection (which side has MEP connector)
@@ -851,6 +1086,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // 3. Offset calculation (25mm toward connector to redistribute from 75/75 to 100/50)
                     // 4. Wall-specific handling (Z-axis swap for vertical connectors, axis-based offset)
                     var damperAdj = damperStrategy.GetDamperPlacementAdjustment(zone, _conditions);
+                    
+                    // ✅ COMPREHENSIVE LOGGING: Log final dimensions AFTER strategy call
+                    double finalWidthMm = damperAdj.finalWidth * 304.8;
+                    double finalHeightMm = damperAdj.finalHeight * 304.8;
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("clearance_calculation_trace.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [DAMPER-POST-STRATEGY] Zone {zone.Id}, " +
+                            $"Final W={damperAdj.finalWidth:F6}ft ({finalWidthMm:F1}mm), H={damperAdj.finalHeight:F6}ft ({finalHeightMm:F1}mm), " +
+                            $"ClearanceApplied W={finalWidthMm - rawWidthMm:F1}mm, H={finalHeightMm - rawHeightMm:F1}mm\n");
+                    }
                     
                     // ✅ SOLID ISP: Extract individual clearance values from damper strategy result
                     // These will be stored in ClashZone and set as sleeve parameters later
@@ -860,10 +1106,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     double clearanceTop = damperAdj.finalWidth > 0 ? damperAdj.finalHeight : zone.ClearanceTop;
                     double clearanceBottom = damperAdj.finalHeight > 0 ? damperAdj.finalWidth : zone.ClearanceBottom;
                     
-                    // ✅ CRITICAL: Store damper placement adjustment for later use in PlaceSleeveNormal
-                    // Key: zone.Id (Guid) for matching, Value: offset vector + final dimensions + individual clearances
+                    // ✅ CRITICAL: Store damper clearance values for later parameter setting
+                    // Key: zone.Id (Guid) for matching, Value: final dimensions + individual clearances
+                    // ✅ NOTE: offsetVector is NO LONGER stored - damper placement point adjustment is handled by DamperPlacementPointService ONLY
                     _damperPlacementAdjustments[zone.Id] = (
-                        damperAdj.offsetVector,
                         damperAdj.finalWidth,
                         damperAdj.finalHeight,
                         clearanceLeft,
@@ -874,7 +1120,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        DebugLogger.Info($"[NewSleevePlacer] ✅ DAMPER STRATEGY: Zone {zone.Id}, Offset=({damperAdj.offsetVector.X:F6}, {damperAdj.offsetVector.Y:F6}, {damperAdj.offsetVector.Z:F6}), Final W={damperAdj.finalWidth:F6}ft, H={damperAdj.finalHeight:F6}ft");
+                        DebugLogger.Info($"[NewSleevePlacer] ✅ DAMPER STRATEGY: Zone {zone.Id}, Final W={damperAdj.finalWidth:F6}ft, H={damperAdj.finalHeight:F6}ft (placement point handled by DamperPlacementPointService)");
                     }
                     
                     tracker?.SetItemCount(1);
@@ -924,16 +1170,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 
                 // ✅ OOP METHOD: Use strategy to calculate clearance for other categories
-                double clearance = _clearanceService.GetClearance(zone, _conditions, _clearanceSettings, _strategy);
-            
                 double rawWidth = zone.MepElementWidth;
                 double rawHeight = zone.MepElementHeight;
                 double rawDiameter = zone.MepElementOuterDiameter > 0 ? zone.MepElementOuterDiameter : 0;
+                
+                // ✅ COMPREHENSIVE LOGGING: Log raw dimensions BEFORE clearance calculation
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("clearance_calculation_trace.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [NON-DAMPER-PRE-CLEARANCE] Zone {zone.Id}, Category={zone.MepElementCategory}, " +
+                        $"Raw W={rawWidth:F6}ft ({rawWidth * 304.8:F1}mm), H={rawHeight:F6}ft ({rawHeight * 304.8:F1}mm), " +
+                        $"D={rawDiameter:F6}ft ({rawDiameter * 304.8:F1}mm), IsInsulated={zone.IsInsulated}\n");
+                }
+                
+                double clearance = _clearanceService.GetClearance(zone, _conditions, _clearanceSettings, _strategy);
+                double clearanceMm = clearance * 304.8; // Convert feet (internal units) to mm (1ft = 304.8mm)
+                
+                // ✅ COMPREHENSIVE LOGGING: Log clearance value AFTER retrieval
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("clearance_calculation_trace.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [NON-DAMPER-CLEARANCE] Zone {zone.Id}, " +
+                        $"Clearance={clearance:F6}ft ({clearanceMm:F1}mm)\n");
+                }
             
                 // ✅ OOP METHOD: Use insulation-aware sizing service for consistent calculation (SOLID principles)
                 // Formula: RawSize + (2 × InsulationThickness) + (2 × Clearance)
                 (double finalWidth, double finalHeight, double finalDiameter) = _sizingService.CalculateFinalDimensionsFromClashZone(
                     rawWidth, rawHeight, rawDiameter, zone, clearance);
+                
+                // ✅ COMPREHENSIVE LOGGING: Log final dimensions AFTER sizing calculation
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("clearance_calculation_trace.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [NON-DAMPER-POST-SIZING] Zone {zone.Id}, " +
+                        $"Final W={finalWidth:F6}ft ({finalWidth * 304.8:F1}mm), H={finalHeight:F6}ft ({finalHeight * 304.8:F1}mm), " +
+                        $"D={finalDiameter:F6}ft ({finalDiameter * 304.8:F1}mm), " +
+                        $"ClearanceApplied W={finalWidth * 304.8 - rawWidth * 304.8:F1}mm, H={finalHeight * 304.8 - rawHeight * 304.8:F1}mm\n");
+                }
             
                 // ✅ GLOBAL SETTINGS: Determine opening type (circular vs rectangular) using global configuration rules
                 // This matches the legacy UniversalSleevePlacerService.SelectUniversalFamily() logic
@@ -1196,7 +1470,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return null;
                 }
 
-            // Determine level - use active view level as fallback
+            // ✅ CRITICAL FIX: Use absolute placement point (do NOT pass level to NewFamilyInstance)
+            // When level is passed, Revit interprets Z coordinate as relative to level elevation
+            // But our placement point is ABSOLUTE (already in host document coordinates)
+            // Solution: Create instance without level, then set level parameter separately
+            
+            // Determine level for parameter setting (not for placement)
             Level level = _doc.ActiveView?.GenLevel;
             
             // Try to find level by name if available
@@ -1227,8 +1506,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return null;
                 }
                 
-                // Place instance
-                FamilyInstance instance = _doc.Create.NewFamilyInstance(point, symbol, level, StructuralType.NonStructural);
+                // ✅ CRITICAL FIX: Place instance WITHOUT level parameter to preserve absolute coordinates
+                // The placement point is ABSOLUTE (already transformed to host document coordinates)
+                // Passing level to NewFamilyInstance causes Revit to interpret Z as relative to level elevation
+                FamilyInstance instance = _doc.Create.NewFamilyInstance(point, symbol, StructuralType.NonStructural);
+                
+                // ✅ Set level parameter separately (for schedule consistency, not for placement)
+                if (instance != null && level != null)
+                {
+                    try
+                    {
+                        Parameter levelParam = instance.get_Parameter(BuiltInParameter.INSTANCE_REFERENCE_LEVEL_PARAM);
+                        if (levelParam != null && !levelParam.IsReadOnly)
+                        {
+                            levelParam.Set(level.Id);
+                        }
+                        else
+                        {
+                            var levelByName = instance.LookupParameter("Level");
+                            if (levelByName != null && !levelByName.IsReadOnly)
+                            {
+                                levelByName.Set(level.Id);
+                            }
+                        }
+                    }
+                    catch (Exception levelEx)
+                    {
+                        // Level parameter setting is optional - log but don't fail
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("placement_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ⚠️ Failed to set level parameter for zone {zone.Id}: {levelEx.Message}\n");
+                        }
+                    }
+                }
                 
                 // ✅ SAFE ELEMENT VALIDATION: Validate instance was created successfully
                 if (OptimizationFlags.UseSafeElementValidation)

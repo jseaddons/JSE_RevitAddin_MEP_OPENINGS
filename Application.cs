@@ -12,6 +12,7 @@ using System.Reflection;
 using System.Xml.Linq;
 
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Switch;
 namespace JSE_RevitAddin_MEP_OPENINGS
 {
     /// <summary>
@@ -22,6 +23,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS
     {
         public override void OnStartup()
         {
+            // ✅ DIAGNOSTIC SWITCH: Set diagnostic logging here
+            // Change this value to true/false to enable/disable diagnostic logging
+            // true  = Full diagnostic logging ON, Deployment mode OFF (SLOW - 9 zones/sec)
+            // false = Full diagnostic logging OFF, Deployment mode ON (FAST - 30 zones/sec)
+            // 
+            // ⚠️ TO CHECK STATUS: Click "Diagnostic Status" button in Revit ribbon
+            // ⚠️ TO TOGGLE: Click "Toggle Diagnostic" button in Revit ribbon
+            MasterSwitch.DiagnosticLogging = false; // ⬅️ CHANGE THIS VALUE: true = ON (SLOW), false = OFF (FAST)
+            
+            // ✅ LOG STARTUP STATUS: Always log diagnostic status at startup so you know the current state
+            try
+            {
+                string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                string logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs");
+                Directory.CreateDirectory(logDir);
+                string startupLogPath = Path.Combine(logDir, "addin_startup.log");
+                File.AppendAllText(startupLogPath, 
+                    $"[{DateTime.Now}] 🔌 DIAGNOSTIC STATUS: DiagnosticLogging={(MasterSwitch.DiagnosticLogging ? "ON (SLOW)" : "OFF (FAST)")}, " +
+                    $"DeploymentMode={DeploymentConfiguration.DeploymentMode}, " +
+                    $"UseDiagnosticMode={OptimizationFlags.UseDiagnosticMode}\n");
+            }
+            catch { }
             // IMMEDIATE LOGGING - Create file as soon as add-in loads (Build: 2025-11-20 14:30)
             try
             {
@@ -191,6 +214,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS
         var button6 = panel.AddPushButton<TestParameterServiceDialogV2Command>("Parameter Service");
         button6.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
         button6.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+
+        // ✅ DIAGNOSTIC SWITCH: Toggle diagnostic logging on/off
+        var buttonDiagnostic = panel.AddPushButton<ToggleDiagnosticCommand>("Toggle Diagnostic");
+        buttonDiagnostic.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+        buttonDiagnostic.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+        buttonDiagnostic.ToolTip = "Toggle diagnostic logging on/off. Click to switch between full logging and deployment mode.";
+
+        // ✅ DIAGNOSTIC STATUS: Check current diagnostic mode status
+        var buttonStatus = panel.AddPushButton<DiagnosticStatusCommand>("Diagnostic Status");
+        buttonStatus.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+        buttonStatus.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+        buttonStatus.ToolTip = "Check current diagnostic mode status and flag values.";
 
             try
             {

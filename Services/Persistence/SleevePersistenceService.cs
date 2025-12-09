@@ -562,37 +562,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                     categoryForLookup = firstPlacedZone.zone.MepElementCategory;
                 }
 
-                // ✅ SRP: Delegate filter lookup to specialized service
-                var filterLookupService = new FilterLookupService(dbContext);
-                int filterId = filterLookupService.GetFilterId(filterName, categoryForLookup);
+                // ✅ CRITICAL FIX: Always save snapshots, even if filter lookup fails
+                // Get placed zones with SleeveInstanceId > 0 (REQUIRED for snapshot save)
+                var placedZones = placedSleeveData
+                    .Where(p => p.zone != null && p.zone.SleeveInstanceId > 0)
+                    .Select(p => p.zone)
+                    .Distinct()
+                    .ToList();
 
-                if (filterId > 0)
-                {
-                    // ✅ Get placed zones with SleeveInstanceId > 0
-                    var placedZones = placedSleeveData
-                        .Where(p => p.zone != null && p.zone.SleeveInstanceId > 0)
-                        .Select(p => p.zone)
-                        .Distinct()
-                        .ToList();
-
-                    if (placedZones.Count > 0)
-                    {
-                        repository.SaveSleeveSnapshotsForPlacedSleeves(filterId, placedZones);
-
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("database_operations.log",
-                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SleevePersistenceService] ✅ Saved sleeve snapshots for {placedZones.Count} placed sleeves\n");
-                        }
-                    }
-                }
-                else
+                if (placedZones.Count == 0)
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         SafeFileLogger.SafeAppendText("database_operations.log",
-                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SleevePersistenceService] ⚠️ FilterId not found for FilterName='{filterName}' - cannot save sleeve snapshots\n");
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SleevePersistenceService] ⚠️ No zones with SleeveInstanceId > 0 found - cannot save snapshots. Total placed: {placedSleeveData.Count}\n");
                     }
+                    return;
+                }
+
+                // ✅ SRP: Delegate filter lookup to specialized service
+                var filterLookupService = new FilterLookupService(dbContext);
+                int filterId = filterLookupService.GetFilterId(filterName, categoryForLookup);
+
+                if (filterId <= 0)
+                {
+                    // ✅ CRITICAL FIX: Use filterId = -1 if lookup fails (repository will handle ComboId lookup)
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("database_operations.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SleevePersistenceService] ⚠️ FilterId not found for FilterName='{filterName}' - will use ComboId lookup from database\n");
+                    }
+                    // Continue anyway - repository will try to find ComboId from database
+                }
+
+                // ✅ CRITICAL: Always save snapshots if we have placed zones with SleeveInstanceId
+                // Note: SaveSleeveSnapshotsForPlacedSleeves will automatically load MepParameterValues from ClashZones table if missing
+                repository.SaveSleeveSnapshotsForPlacedSleeves(filterId > 0 ? filterId : -1, placedZones);
+
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("database_operations.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SleevePersistenceService] ✅ Saved sleeve snapshots for {placedZones.Count} placed sleeves (FilterId={filterId})\n");
                 }
             }
             catch (Exception ex)

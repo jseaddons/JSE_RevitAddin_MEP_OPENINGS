@@ -1266,6 +1266,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Check for damper keywords
                     var damperKeywords = new[] { "damper", "dam", "fire", "smoke", "motorized", "motorised" };
                     
+                    // ✅ EXCLUDE: Skip VCD and VOLUME dampers (not in walls)
+                    if (combinedName.Contains("vcd") || combinedName.Contains("volume"))
+                    {
+                        _logger($"[METHOD3] Skipping VCD/VOLUME damper: '{combinedName}'");
+                        return false;
+                    }
+                    
                     if (damperKeywords.Any(keyword => combinedName.Contains(keyword)))
                     {
                         _logger($"[METHOD3] Damper detected: '{combinedName}' contains damper keywords");

@@ -3334,8 +3334,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 if (filter == null) return;
                 
                 // Build combined key using same logic as SaveConditionsToXml
+                // ✅ FIX: Strip .xml extension from filter name if present (prevents duplicate database entries)
+                string cleanFilterName = filter.Name;
+                if (cleanFilterName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+                {
+                    cleanFilterName = cleanFilterName.Substring(0, cleanFilterName.Length - 4);
+                }
                 string normalizedCategory = MepCategoryConstants.GetXmlSuffix(category);
-                string combinedKey = $"{filter.Name}_{normalizedCategory}";
+                string combinedKey = $"{cleanFilterName}_{normalizedCategory}";
                 
                 // Load conditions from database
                 using (var dbContext = new SleeveDbContext(_document))
@@ -4369,8 +4375,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     // 🛡️ ARCHITECTURE FIX: Save CONDITIONS XML using combined key (FilterName_Category)
                     // This allows different clearance/opening types per category within the same filter
                     // ✅ STANDARDIZED: Use MepCategoryConstants.GetXmlSuffix() for consistent naming (same as RefreshService)
+                    // ✅ FIX: Strip .xml extension from filter name if present (prevents duplicate database entries)
+                    string cleanFilterName = filter.Name;
+                    if (cleanFilterName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+                    {
+                        cleanFilterName = cleanFilterName.Substring(0, cleanFilterName.Length - 4);
+                    }
                     string normalizedCategory = MepCategoryConstants.GetXmlSuffix(filter.Category.ToString());
-                    string combinedKey = $"{filter.Name}_{normalizedCategory}";
+                    string combinedKey = $"{cleanFilterName}_{normalizedCategory}";
                     bool saved = conditionsService.SaveConditions(conditions, combinedKey);
                     if (saved)
                     {

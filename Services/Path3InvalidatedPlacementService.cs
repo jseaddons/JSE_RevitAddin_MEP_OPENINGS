@@ -6,6 +6,9 @@ using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces;
+using JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -251,14 +254,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         // ✅ PATH 3 INVALIDATED: Calculate new size using PATH 2 logic (full calculation)
                         // This ensures sizes are recalculated based on new intersection points and conditions
-                        var placerService = new UniversalSleevePlacerService(
+                        // ✅ WIRED TO NEW SERVICE: Using NewSleevePlacerService (refactored SOLID architecture)
+                        // ✅ FLAG MANAGER ADAPTER: Wrap legacy FlagManager in adapter to implement IFlagManager interface
+                        Services.Interfaces.Refactor.IFlagManager? flagManagerAdapter = null;
+                        if (_flagManager != null)
+                        {
+                            flagManagerAdapter = new FlagManagerAdapter(_document, null, _flagManager);
+                        }
+                        
+                        var placerService = new NewSleevePlacerService(
                             _document,
                             conditions,
                             strategy,
                             clearanceSettings,
-                            filterName ?? "Unknown",
-                            _flagManager,
-                            isReplayPath: false); // ✅ PATH 2 logic: Full calculation
+                            new SleeveRepository(), // ✅ Required: Create repository instance
+                            null, // zoneFilterService - can be null
+                            null, // familyManager - can be null
+                            flagManagerAdapter, // ✅ Use FlagManagerAdapter to convert FlagManager to IFlagManager
+                            isReplayPath: false, // ✅ PATH 2 logic: Full calculation
+                            filterName ?? "Unknown");
                         
                         // Calculate size (this will update zone.SleeveWidth, SleeveHeight, SleeveDepth)
                         // Note: This is a simplified approach - in production, you might want to call
@@ -301,19 +315,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 // ✅ PATH 3 INVALIDATED: Use PATH 2 placement logic (sizing and placement, no flag check)
-                var placerService = new UniversalSleevePlacerService(
+                // ✅ WIRED TO NEW SERVICE: Using NewSleevePlacerService (refactored SOLID architecture)
+                // ✅ FLAG MANAGER ADAPTER: Wrap legacy FlagManager in adapter to implement IFlagManager interface
+                Services.Interfaces.Refactor.IFlagManager? flagManagerAdapter = null;
+                if (_flagManager != null)
+                {
+                    flagManagerAdapter = new FlagManagerAdapter(_document, null, _flagManager);
+                }
+                
+                var placerService = new NewSleevePlacerService(
                     _document,
                     conditions,
                     strategy,
                     clearanceSettings,
-                    filterName,
-                    _flagManager,
-                    isReplayPath: false); // ✅ PATH 2 logic: Full calculation and placement
+                    new SleeveRepository(), // ✅ Required: Create repository instance
+                    null, // zoneFilterService - can be null
+                    null, // familyManager - can be null
+                    flagManagerAdapter, // ✅ Use FlagManagerAdapter to convert FlagManager to IFlagManager
+                    isReplayPath: false, // ✅ PATH 2 logic: Full calculation and placement
+                    filterName);
                 
                 var placementOutcome = placerService.PlaceAllSleevesInTransaction(invalidatedZones);
                 
-                result.PlacedCount = placementOutcome.PlacedCount;
-                result.ErrorCount = placementOutcome.ErrorCount;
+                // ✅ FIX: PlaceAllSleevesInTransaction returns tuple (int placed, int skipped, int errors)
+                result.PlacedCount = placementOutcome.placed;
+                result.ErrorCount = placementOutcome.errors;
                 
                 // Update flags after placement (IsResolved = true, SleeveInstanceId)
                 UpdateFlagsAfterPlacement(invalidatedZones, category);

@@ -45,6 +45,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             "Fire Rating"
         };
 
+        // ✅ MUST-CAPTURE: Always capture these critical parameters (no limits applied)
+        private static readonly string[] MUST_CAPTURE_KEYS = new[]
+        {
+            "System Type",
+            "System Name",
+            "System Abbreviation",
+            "Reference Level",
+            "Schedule of Level",
+            "Schedule Level" // alias for schedule of level
+        };
+
         private readonly ISet<string> _commonMepKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "Size","Diameter","Nominal Diameter","Outside Diameter","Width","Height",
@@ -104,10 +115,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public List<SerializableKeyValue> CaptureParams(Element element, HashSet<string> whitelist)
         {
             var result = new List<SerializableKeyValue>();
-            if (element == null || whitelist == null || whitelist.Count == 0) return result;
+            if (element == null || whitelist == null || whitelist.Count == 0)
+            {
+                if (!DeploymentConfiguration.DeploymentMode && element != null)
+                {
+                    DebugLogger.Warning($"[{DateTime.Now}] [PARAM-CAPTURE] ⚠️ Element {element.Id} ({element.Category?.Name}): No whitelist provided or whitelist is empty\n");
+                }
+                return result;
+            }
             
             // ✅ FIX 6: Emergency parameter limit
             const int MAX_PARAMETERS = 30;
+
+            // ✅ PRIORITY ORDER: Must-capture keys first, then remaining whitelist
+            var orderedKeys = new List<string>();
+            var mustCaptureSet = new HashSet<string>(MUST_CAPTURE_KEYS, StringComparer.OrdinalIgnoreCase);
+            foreach (var k in MUST_CAPTURE_KEYS)
+            {
+                if (whitelist.Contains(k)) orderedKeys.Add(k);
+            }
+            foreach (var k in whitelist)
+            {
+                if (!mustCaptureSet.Contains(k)) orderedKeys.Add(k);
+            }
+            
+            // ✅ ENHANCED LOGGING: Show whitelist for all elements (to debug parameter issues)
+            // Log whitelist for all elements to help diagnose parameter capture issues
+            bool shouldLogDetails = !DeploymentConfiguration.DeploymentMode && whitelist.Count > 0;
+            
+            if (shouldLogDetails)
+            {
+                var whitelistSample = string.Join(", ", whitelist.Take(15));
+                var moreCount = whitelist.Count > 15 ? $" (+{whitelist.Count - 15} more)" : "";
+                DebugLogger.Info($"[{DateTime.Now}] [PARAM-CAPTURE] 🔍 WHITELIST for Element {element.Id} ({element.Category?.Name}): {whitelist.Count} parameters in whitelist: {whitelistSample}{moreCount}\n");
+                DebugLogger.Info($"[{DateTime.Now}] [PARAM-CAPTURE] 🔍 ORDERED KEYS for Element {element.Id}: {orderedKeys.Count} parameters to try: {string.Join(", ", orderedKeys.Take(15))}{moreCount}\n");
+            }
             
             // DEBUG: Log all available parameters for duct accessories
             if (element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
@@ -132,10 +174,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                               element.Category?.Name?.Contains("Cable Tray", StringComparison.OrdinalIgnoreCase) == true ||
                               element is CableTray;
             
-            foreach (var key in whitelist)
+            foreach (var key in orderedKeys)
             {
                 // ✅ FIX 6: Emergency brake - stop if limit reached
-                if (result.Count >= MAX_PARAMETERS)
+                bool isMustCapture = mustCaptureSet.Contains(key);
+                if (!isMustCapture && result.Count >= MAX_PARAMETERS)
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Warning($"[PARAM_SNAPSHOT] Parameter limit ({MAX_PARAMETERS}) reached for element {element.Id}");
@@ -150,21 +193,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     actualKey = "Service Type"; // Use "Service Type" for Cable Trays
                 }
 
-                // ✅ FIX 1: Only capture ESSENTIAL parameters OR user-defined/learned parameters from whitelist
-                // User-defined params (from ParameterKeyWhitelist/LearnedParameterKeys) should always be captured
-                // Essential params are always captured
-                // Common system params (from _commonMepKeys/_commonHostKeys) are only captured if they're in ESSENTIAL_PARAMETERS
+                // ✅ CRITICAL FIX: If parameter is in whitelist, ALWAYS capture it (regardless of essential/common)
+                // The whitelist is the source of truth - if it's whitelisted, capture it
+                // This ensures consistent parameter capture across all elements
+                // Essential parameters are prioritized but all whitelisted params should be captured
                 bool isEssential = ESSENTIAL_PARAMETERS.Contains(actualKey) || 
                                    (isCableTray && actualKey.Equals("Service Type", StringComparison.OrdinalIgnoreCase) && ESSENTIAL_PARAMETERS.Contains("Service Type"));
-                bool isCommonKey = _commonMepKeys.Contains(actualKey) || _commonHostKeys.Contains(actualKey);
                 
-                // Only capture if:
-                // 1. It's an essential parameter, OR
-                // 2. It's a user-defined/learned parameter (not in common keys)
-                if (!isEssential && isCommonKey)
-                {
-                    continue; // Skip common system params that aren't essential
-                }
+                // ✅ FIX: Don't filter out whitelisted parameters - if it's in whitelist, capture it
+                // The whitelist already contains only the parameters we want to capture
+                // No need for additional filtering that causes inconsistency
 
                 // ✅ CRITICAL: Use actualKey (mapped for Cable Trays) instead of original key
                 var p = LookupParam(element, actualKey);
@@ -328,21 +366,51 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var value = ConvertParameterToString(element, p);
                 if (string.IsNullOrWhiteSpace(value)) 
                 {
-                    // ✅ CRITICAL: Log empty essential parameters
+                    // ✅ ENHANCED LOGGING: Show parameter details when empty (to diagnose why parameters exist in model but are empty here)
+                    var paramDetails = $"StorageType={p.StorageType}, IsReadOnly={p.IsReadOnly}, HasValue={p.HasValue}";
+                    if (p.StorageType == StorageType.ElementId)
+                    {
+                        try
+                        {
+                            var elemId = p.AsElementId();
+                            paramDetails += $", ElementId={elemId?.IntegerValue ?? -1}";
+                        }
+                        catch { }
+                    }
+                    else if (p.StorageType == StorageType.Double)
+                    {
+                        try
+                        {
+                            var dblVal = p.AsDouble();
+                            paramDetails += $", DoubleValue={dblVal}";
+                        }
+                        catch { }
+                    }
+                    else if (p.StorageType == StorageType.Integer)
+                    {
+                        try
+                        {
+                            var intVal = p.AsInteger();
+                            paramDetails += $", IntegerValue={intVal}";
+                        }
+                        catch { }
+                    }
+                    
+                    // ✅ CRITICAL: Log empty essential parameters with full details
                     if (isEssential && (key.Equals("System Type", StringComparison.OrdinalIgnoreCase) ||
                                        key.Equals("System Name", StringComparison.OrdinalIgnoreCase) ||
                                        key.Equals("System Abbreviation", StringComparison.OrdinalIgnoreCase)))
                     {
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Warning($"[{DateTime.Now}] [PARAM_CAPTURE] ⚠️⚠️⚠️ CRITICAL: Essential parameter '{key}' found but value is empty on element {element.Id} ({element.Category?.Name}) - this will prevent parameter transfer!\n");
+                            DebugLogger.Warning($"[{DateTime.Now}] [PARAM_CAPTURE] ⚠️⚠️⚠️ CRITICAL: Essential parameter '{key}' found but value is empty on element {element.Id} ({element.Category?.Name}) - {paramDetails} - this will prevent parameter transfer!\n");
                         }
                     }
                     else
                     {
-                        // DEBUG: Log empty non-essential parameter values
+                        // ✅ ENHANCED LOGGING: Log empty non-essential parameter values with details
                         if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Parameter '{key}' found but value is empty\n");
+                            DebugLogger.Info($"[{DateTime.Now}] [PARAM-CAPTURE] Element {element.Id} ({element.Category?.Name}): Parameter '{key}' found but value is empty - {paramDetails}\n");
                     }
                     continue;
                 }
@@ -387,41 +455,93 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
 
+            // ✅ ENHANCED LOGGING: Summary of captured parameters
+            if (!DeploymentConfiguration.DeploymentMode && result.Count > 0)
+            {
+                var capturedKeys = string.Join(", ", result.Select(kv => kv.Key).Take(10));
+                var moreCount = result.Count > 10 ? $" (+{result.Count - 10} more)" : "";
+                DebugLogger.Info($"[{DateTime.Now}] [PARAM-CAPTURE] ✅ SUMMARY: Element {element.Id} ({element.Category?.Name}): Captured {result.Count} parameters: {capturedKeys}{moreCount}\n");
+            }
+            else if (!DeploymentConfiguration.DeploymentMode && result.Count == 0 && orderedKeys.Count > 0)
+            {
+                DebugLogger.Warning($"[{DateTime.Now}] [PARAM-CAPTURE] ⚠️ WARNING: Element {element.Id} ({element.Category?.Name}): No parameters captured from {orderedKeys.Count} whitelisted parameters!\n");
+            }
+
             return result;
         }
 
         /// <summary>
         /// Convert a parameter value to a robust invariant string.
+        /// ✅ ENHANCED: Tries multiple methods to extract parameter value.
         /// </summary>
         private string ConvertParameterToString(Element owner, Parameter p)
         {
             if (p == null) return string.Empty;
 
+            // ✅ METHOD 1: Try AsString() first (most common for text parameters)
             string value = p.AsString();
             if (!string.IsNullOrEmpty(value)) return value;
 
+            // ✅ METHOD 2: Try AsValueString() (formatted display value)
             value = p.AsValueString();
             if (!string.IsNullOrEmpty(value)) return value;
 
+            // ✅ METHOD 3: Try storage type-specific conversions
             switch (p.StorageType)
             {
                 case StorageType.Integer:
-                    return p.AsInteger().ToString(CultureInfo.InvariantCulture);
+                    try
+                    {
+                        if (p.HasValue)
+                            return p.AsInteger().ToString(CultureInfo.InvariantCulture);
+                    }
+                    catch { }
+                    return string.Empty;
+                    
                 case StorageType.Double:
-                    // ✅ FIX 1: Round doubles to 3 decimals to reduce string size
-                    return Math.Round(p.AsDouble(), 3).ToString(CultureInfo.InvariantCulture);
+                    try
+                    {
+                        if (p.HasValue)
+                        {
+                            // ✅ FIX 1: Round doubles to 3 decimals to reduce string size
+                            return Math.Round(p.AsDouble(), 3).ToString(CultureInfo.InvariantCulture);
+                        }
+                    }
+                    catch { }
+                    return string.Empty;
+                    
                 case StorageType.ElementId:
                     try
                     {
-                        var id = p.AsElementId();
-                        if (id == null) return string.Empty;
-                        // Prefer referenced element name for readability if available
-                        var e = owner?.Document?.GetElement(id);
-                        var name = e?.Name;
-                        if (!string.IsNullOrWhiteSpace(name)) return name;
-                        return id.IntegerValue.ToString(CultureInfo.InvariantCulture);
+                        if (p.HasValue)
+                        {
+                            var id = p.AsElementId();
+                            if (id == null || id == ElementId.InvalidElementId) return string.Empty;
+                            
+                            // Prefer referenced element name for readability if available
+                            var e = owner?.Document?.GetElement(id);
+                            if (e != null)
+                            {
+                                var name = e.Name;
+                                if (!string.IsNullOrWhiteSpace(name)) return name;
+                                
+                                // Try Category name if element name is empty
+                                var catName = e.Category?.Name;
+                                if (!string.IsNullOrWhiteSpace(catName)) return catName;
+                            }
+                            
+                            // Fallback to ElementId integer value
+                            return id.IntegerValue.ToString(CultureInfo.InvariantCulture);
+                        }
                     }
-                    catch { return string.Empty; }
+                    catch { }
+                    return string.Empty;
+                    
+                case StorageType.String:
+                    // Already tried AsString() and AsValueString() above
+                    // If still empty, parameter truly has no value
+                    return string.Empty;
+                    
                 default:
                     return string.Empty;
             }

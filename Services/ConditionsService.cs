@@ -79,6 +79,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var combinedKey = !string.IsNullOrWhiteSpace(customKey)
                     ? customKey
                     : BuildCombinedKey(resolvedFilterName, categorySuffix);
+                
+                // ✅ FIX: Normalize CombinedKey to prevent duplicate rows with .xml suffix
+                combinedKey = NormalizeCombinedKeyForDatabase(combinedKey);
+                
                 var xmlKey = customKey ?? resolvedFilterName;
 
                 conditions.FilterName = resolvedFilterName;
@@ -251,16 +255,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private string ResolveFilterName(OpeningConditions conditions, string combinedKey)
         {
             if (!string.IsNullOrWhiteSpace(conditions?.FilterName))
-                return conditions.FilterName;
+            {
+                string filterName = conditions.FilterName;
+                // ✅ FIX: Strip .xml extension if present (prevents duplicate entries)
+                if (filterName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+                {
+                    filterName = filterName.Substring(0, filterName.Length - 4);
+                }
+                return filterName;
+            }
 
             if (string.IsNullOrWhiteSpace(combinedKey))
                 return "Default";
 
             var index = combinedKey.LastIndexOf('_');
             if (index <= 0)
+            {
+                // ✅ FIX: Strip .xml extension if present
+                if (combinedKey.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+                {
+                    return combinedKey.Substring(0, combinedKey.Length - 4);
+                }
                 return combinedKey;
+            }
 
-            return combinedKey.Substring(0, index);
+            string resolvedName = combinedKey.Substring(0, index);
+            // ✅ FIX: Strip .xml extension if present
+            if (resolvedName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+            {
+                resolvedName = resolvedName.Substring(0, resolvedName.Length - 4);
+            }
+            return resolvedName;
         }
 
         private string ResolveNormalizedCategory(OpeningConditions conditions, string combinedKey)
@@ -300,10 +325,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (string.IsNullOrWhiteSpace(filterName))
                 filterName = "Default";
 
+            // ✅ FIX: Strip .xml extension from filter name if present (prevents duplicate entries)
+            // Filter names should not include file extensions in CombinedKey
+            if (filterName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+            {
+                filterName = filterName.Substring(0, filterName.Length - 4);
+            }
+
             if (string.IsNullOrWhiteSpace(categorySuffix))
                 return filterName;
 
             return $"{filterName}_{categorySuffix}";
+        }
+
+        /// <summary>
+        /// ✅ FIX: Normalizes CombinedKey by stripping .xml extension to prevent duplicate rows in database
+        /// This ensures consistent key format: "FilterName_Category" without any .xml suffixes
+        /// </summary>
+        private string NormalizeCombinedKeyForDatabase(string combinedKey)
+        {
+            if (string.IsNullOrWhiteSpace(combinedKey))
+                return combinedKey;
+
+            // Strip .xml extension if present anywhere in the key
+            // Handle cases like "Ventilation_duct_accessories.xml_du..." or "Ventilation_duct_accessories"
+            string normalized = combinedKey;
+            
+            // Check if key contains .xml (could be in middle or end)
+            int xmlIndex = normalized.IndexOf(".xml", StringComparison.OrdinalIgnoreCase);
+            if (xmlIndex >= 0)
+            {
+                // Remove .xml and anything after it that looks like a file extension pattern
+                // Example: "Ventilation_duct_accessories.xml_du" -> "Ventilation_duct_accessories"
+                normalized = normalized.Substring(0, xmlIndex);
+            }
+            
+            return normalized;
         }
 
         /// <summary>
@@ -402,6 +459,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
+        /// <summary>
+        /// Load conditions from SQLite database using CombinedKey (FilterName_Category format)
+        /// ✅ CRITICAL: CombinedKey ensures each filter has its own clearance values per category
+        /// Example: "Ventilation_duct_accessories" vs "Plumbing_duct_accessories" = different clearances
+        /// ✅ FIX: Normalizes CombinedKey to prevent duplicate row issues
+        /// </summary>
         private OpeningConditions LoadConditionsFromSqlite(string combinedKey)
         {
             if (_document == null || string.IsNullOrWhiteSpace(combinedKey))
@@ -409,14 +472,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             try
             {
+                // ✅ FIX: Normalize CombinedKey before database lookup
+                string normalizedKey = NormalizeCombinedKeyForDatabase(combinedKey);
+                
                 using (var context = new SleeveDbContext(_document, msg => _log($"[SQLite] {msg}")))
                 {
                     var conditionRepository = new ConditionRepository(context, msg => _log($"[SQLite] {msg}"));
-                    var conditions = conditionRepository.GetConditions(combinedKey);
+                    var conditions = conditionRepository.GetConditions(normalizedKey);
                     if (conditions != null)
                     {
                         conditions.FilterName = ResolveFilterName(conditions, combinedKey);
                         conditions.Category = ResolveNormalizedCategory(conditions, combinedKey);
+                        
+                        // ✅ DIAGNOSTIC: Log which filter's conditions were loaded (critical for multi-filter scenarios)
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            var clearance = conditions.ClearanceSettings ?? new ClearanceSettings();
+                            DebugLogger.Info($"[ConditionsService] ✅ Loaded conditions from SQLite for CombinedKey='{normalizedKey}' " +
+                                $"(Filter='{conditions.FilterName}', Category='{conditions.Category}') - " +
+                                $"DuctAccessoryOther={clearance.DuctAccessoryOtherNormal}mm, " +
+                                $"DuctAccessoryMep={clearance.DuctAccessoryMepNormal}mm");
+                        }
+                    }
+                    else if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Warning($"[ConditionsService] ⚠️ No conditions found in SQLite for CombinedKey='{normalizedKey}' - will use defaults");
                     }
                     return conditions;
                 }

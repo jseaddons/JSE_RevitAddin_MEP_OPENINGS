@@ -5,6 +5,7 @@ using System.Reflection;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
 {
@@ -112,11 +113,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         {
             if (!decision.ShouldRunDetection)
             {
-                _logger($"[INTERSECTION-PROCESSOR] ⚡ Skipping detection - {decision.Reason}");
+                _logger($"[INTERSECTION-PROCESSOR] ⚡ SUPERFAST PATH: Skipping detection - {decision.Reason}");
                 
-                // For Replace/Replay modes, use existing zones only
+                // ✅ SUPERFAST PATH: For validated zones (when DeploymentMode ON and Adopt OFF)
+                // Use existing zones only - no new detection, no damper processing
+                // This is the fastest path: just load from database and update flags
                 _context.NewClashZones = new List<ClashZone>();
                 _context.AllClashZones = _context.ExistingClashZones ?? new List<ClashZone>();
+                
+                if (!_context.IsDeploymentMode)
+                {
+                    _logger($"[INTERSECTION-PROCESSOR] ✅ SUPERFAST PATH: Using {_context.AllClashZones.Count} existing zones from database (no detection, no damper processing)");
+                }
                 
                 return _context.AllClashZones;
             }
@@ -132,12 +140,84 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             // This reduces memory footprint by 60-80% (see CONSOLIDATED_PENDING_OPTIMIZATIONS.md #7)
             var newClashZones = RunDetectionWithCollectorLevelFilters();
 
-            _context.NewClashZones = newClashZones ?? new List<ClashZone>();
+            // ✅ ALTERNATIVE APPROACH: Process dampers separately (outside MepIntersectionService)
+            // This ensures dampers are always processed, even if MepIntersectionService doesn't handle them
+            var damperClashZones = ProcessDampersSeparately();
+            _logger($"[INTERSECTION-PROCESSOR] ✅ Damper processing: {damperClashZones.Count} ClashZones created from dampers");
+
+            // ✅ MERGE: Combine normal intersections with damper ClashZones
+            var allNewClashZones = new List<ClashZone>();
+            allNewClashZones.AddRange(newClashZones ?? new List<ClashZone>());
+            allNewClashZones.AddRange(damperClashZones);
+
+            _context.NewClashZones = allNewClashZones;
             _context.AllClashZones = CombineExistingAndNew(_context.ExistingClashZones, _context.NewClashZones);
 
-            _logger($"[INTERSECTION-PROCESSOR] Detection complete: {_context.NewClashZones.Count} new zones, {_context.AllClashZones.Count} total");
+            _logger($"[INTERSECTION-PROCESSOR] Detection complete: {_context.NewClashZones.Count} new zones ({newClashZones?.Count ?? 0} from intersections + {damperClashZones.Count} from dampers), {_context.AllClashZones.Count} total");
 
             return _context.AllClashZones;
+        }
+
+        /// <summary>
+        /// ✅ ALTERNATIVE APPROACH: Process dampers separately outside MepIntersectionService.
+        /// This ensures dampers are always processed, even if MepIntersectionService doesn't handle them.
+        /// SOLID: Single Responsibility - damper processing is isolated in DamperProcessingService.
+        /// </summary>
+        private List<ClashZone> ProcessDampersSeparately()
+        {
+            try
+            {
+                // Get section box from view
+                var view3D = _context.Document.ActiveView as View3D;
+                if (view3D == null)
+                {
+                    view3D = new FilteredElementCollector(_context.Document)
+                        .OfClass(typeof(View3D))
+                        .Cast<View3D>()
+                        .FirstOrDefault(v => !v.IsTemplate);
+                }
+
+                BoundingBoxXYZ? sectionBox = null;
+                if (view3D != null)
+                {
+                    var sectionBoxOutline = GetSectionBoxOutline(view3D);
+                    if (sectionBoxOutline != null)
+                    {
+                        sectionBox = new BoundingBoxXYZ
+                        {
+                            Min = sectionBoxOutline.MinimumPoint,
+                            Max = sectionBoxOutline.MaximumPoint
+                        };
+                    }
+                }
+
+                // Get ClashZoneStorage from context (or create new one)
+                var clashZoneStorage = _context.XmlCache?.FilterXml?.Values?.FirstOrDefault() ?? new ClashZoneStorage();
+
+                // Create damper processing service (pass PerformanceMonitor for performance tracking)
+                var damperService = new DamperProcessingService(
+                    _context.Document,
+                    _logger,
+                    clashZoneStorage,
+                    null, // Use default damper type detector
+                    null, // Use default connector detector
+                    null, // Use default parameter snapshot service
+                    _performanceMonitor); // Pass performance monitor for tracking
+
+                // Process dampers (pass selected reference files to respect UI selection)
+                var damperClashZones = damperService.ProcessDampers(
+                    _context.SelectedMepCategories,
+                    _context.SelectedHostTypes,
+                    _context.SelectedReferenceFiles,
+                    sectionBox);
+
+                return damperClashZones ?? new List<ClashZone>();
+            }
+            catch (Exception ex)
+            {
+                _logger($"[INTERSECTION-PROCESSOR] ⚠️ Error in ProcessDampersSeparately: {ex.Message}");
+                return new List<ClashZone>();
+            }
         }
 
         /// <summary>
@@ -963,26 +1043,68 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             // 1. Replace mode: "Adopt to modified document" is OFF AND all combos processed
             // 2. Replay mode: Has unresolved zones AND combo is processed (use existing data)
             // 3. FullDetection: Otherwise, run detection
+            // ✅ CRITICAL: Superfast path (skip detection) ONLY when DeploymentMode is ON
+            // During testing (DeploymentMode OFF), always run detection to populate database
 
-            if (!_context.EnableThreePointValidation && allCombosProcessed)
+            bool isDeploymentMode = DeploymentConfiguration.DeploymentMode;
+            
+            // ✅ DIAGNOSTIC LOGGING: Log decision factors for troubleshooting
+            _logger($"[INTERSECTION-PROCESSOR] Decision Factors: EnableThreePointValidation={_context.EnableThreePointValidation}, allCombosProcessed={allCombosProcessed}, hasUnresolvedZones={hasUnresolvedZones}, DeploymentMode={isDeploymentMode}");
+            
+            // ✅ SUPERFAST PATH: Skip detection for validated zones ONLY when DeploymentMode is ON
+            // Conditions:
+            // 1. "Adopt to Document" is UNCHECKED (!EnableThreePointValidation)
+            // 2. All file combos are processed (validated zones, IsFilterComboNew=0)
+            // 3. DeploymentMode is ON (skip detection)
+            // During testing (DeploymentMode OFF), always run detection to populate database
+            if (!_context.EnableThreePointValidation && allCombosProcessed && isDeploymentMode)
             {
                 decision.Mode = RefreshMode.Replace;
                 decision.ShouldRunDetection = false;
-                decision.Reason = "Replace mode: Adopt disabled and all combos processed - only update flags";
+                decision.Reason = "Replace mode (SUPERFAST PATH): Adopt disabled, all combos processed (validated zones), DeploymentMode ON - skip detection, only update flags";
+                
+                if (!_context.IsDeploymentMode)
+                {
+                    _logger($"[INTERSECTION-PROCESSOR] ⚡ SUPERFAST PATH: Skipping detection for validated zones (DeploymentMode ON, Adopt OFF, all combos processed)");
+                }
             }
-            else if (hasUnresolvedZones && allCombosProcessed && !_context.EnableThreePointValidation)
+            else if (hasUnresolvedZones && allCombosProcessed && !_context.EnableThreePointValidation && isDeploymentMode)
             {
-                // Replay mode: Use existing zones without detection
+                // Replay mode: Use existing zones without detection (ONLY when DeploymentMode is ON)
                 decision.Mode = RefreshMode.Replay;
                 decision.ShouldRunDetection = false;
-                decision.Reason = "Replay mode: Unresolved zones exist and combo processed - use existing data";
+                decision.Reason = "Replay mode (SUPERFAST PATH): Unresolved zones exist, combo processed (validated zones), DeploymentMode ON - use existing data, skip detection";
+                
+                if (!_context.IsDeploymentMode)
+                {
+                    _logger($"[INTERSECTION-PROCESSOR] ⚡ SUPERFAST PATH: Skipping detection for validated zones with unresolved sleeves (DeploymentMode ON, Adopt OFF, all combos processed)");
+                }
             }
             else
             {
+                // FullDetection: Run detection
+                // This happens when:
+                // - DeploymentMode is OFF (testing mode - always run detection to populate database)
+                // - New combos exist (IsFilterComboNew=1)
+                // - "Adopt to Document" is CHECKED
                 decision.Mode = RefreshMode.FullDetection;
                 decision.ShouldRunDetection = true;
-                decision.Reason = "FullDetection: New combos or missing data - run detection";
+                
+                if (isDeploymentMode)
+                {
+                    decision.Reason = $"FullDetection: DeploymentMode ON but conditions not met for superfast path - run detection (EnableThreePointValidation={_context.EnableThreePointValidation}, allCombosProcessed={allCombosProcessed})";
+                }
+                else
+                {
+                    decision.Reason = $"FullDetection: DeploymentMode OFF (testing mode) - always run detection to populate database (EnableThreePointValidation={_context.EnableThreePointValidation}, allCombosProcessed={allCombosProcessed})";
+                }
+                
+                // ✅ DIAGNOSTIC: Log why superfast path was NOT used
+                _logger($"[INTERSECTION-PROCESSOR] ⚠️ FULL DETECTION MODE: {decision.Reason}");
             }
+
+            // ✅ DIAGNOSTIC: Log final decision
+            _logger($"[INTERSECTION-PROCESSOR] ✅ FINAL DECISION: Mode={decision.Mode}, ShouldRunDetection={decision.ShouldRunDetection}, Reason='{decision.Reason}'");
 
             return decision;
         }

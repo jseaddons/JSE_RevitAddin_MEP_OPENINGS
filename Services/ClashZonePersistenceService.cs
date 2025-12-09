@@ -261,8 +261,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             {
                                 var odMm = zone.MepElementOuterDiameter > 0 ? (zone.MepElementOuterDiameter * 304.8) : 0.0;
                                 var nomMm = zone.MepElementNominalDiameter > 0 ? (zone.MepElementNominalDiameter * 304.8) : 0.0;
+                                
+                                // ✅ ENHANCED: Show parameter counts with detailed diagnostics
+                                int mepParamCount = zone.MepParameterValues?.Count ?? 0;
+                                int hostParamCount = zone.HostParameterValues?.Count ?? 0;
+                                string mepParamSample = "";
+                                if (mepParamCount > 0)
+                                {
+                                    var sampleKeys = zone.MepParameterValues.Take(5).Select(kv => kv?.Key ?? "null").Where(k => !string.IsNullOrEmpty(k)).ToList();
+                                    mepParamSample = string.Join(", ", sampleKeys);
+                                    if (mepParamCount > 5) mepParamSample += $" (+{mepParamCount - sampleKeys.Count} more)";
+                                }
+                                
+                                // ✅ CRITICAL DIAGNOSTIC: Log if parameters are missing
+                                if (mepParamCount == 0)
+                                {
+                                    SafeFileLogger.SafeAppendText("save_db_diagnostic.log",
+                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZonePersistence] ⚠️⚠️⚠️ BEFORE SAVE: Zone {zone.Id} has ZERO MEP parameters! MepParameterValues={(zone.MepParameterValues != null ? "NOT NULL but empty" : "NULL")}, MEP={zone.MepElementId?.IntegerValue ?? zone.MepElementIdValue}\n");
+                                }
+                                
                                 SafeFileLogger.SafeAppendText("save_db_diagnostic.log",
-                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZonePersistence] 🔍 BEFORE SAVE: Zone {zone.Id}, OuterDiameter={zone.MepElementOuterDiameter:F6}ft ({odMm:F1}mm), NominalDiameter={zone.MepElementNominalDiameter:F6}ft ({nomMm:F1}mm), SizeParameterValue='{zone.MepElementSizeParameterValue ?? "NULL"}', MepElementFormattedSize='{zone.MepElementFormattedSize ?? "NULL"}'\n");
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZonePersistence] 🔍 BEFORE SAVE: Zone {zone.Id}, OuterDiameter={zone.MepElementOuterDiameter:F6}ft ({odMm:F1}mm), NominalDiameter={zone.MepElementNominalDiameter:F6}ft ({nomMm:F1}mm), SizeParameterValue='{zone.MepElementSizeParameterValue ?? "NULL"}', MepElementFormattedSize='{zone.MepElementFormattedSize ?? "NULL"}', MepParams={mepParamCount} ({mepParamSample}), HostParams={hostParamCount}\n");
                             }
                         }
                         

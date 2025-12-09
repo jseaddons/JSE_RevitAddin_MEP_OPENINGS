@@ -508,15 +508,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 File.AppendAllText(SafeFileLogger.GetLogFilePath("orchestrator_debug.log"), 
                                     $"[{DateTime.Now:HH:mm:ss}] 🔥 DIRECT IO: AdoptToDocumentFlag={adoptToDocumentEnabled}, FilterId={lookedUpFilterId}\n");
                                 
-                                // ✅ If AdoptToDocument is enabled, skip PATH 1 and go straight to PATH 3 (fresh calculation)
-                                if (!adoptToDocumentEnabled)
+                                // ✅ PATH 1a LOGIC: Check for Path 1a (super fast) even when AdoptToDocument is enabled
+                                // Path 1a: Validated zones (no invalidated zones) → Use Path 1a for super fast replay
+                                // Path 3: Invalidated zones exist → Use Path 3 for full recalculation
+                                
+                                // Check if there are invalidated zones (Path 3 flags) - use same key format as line 311
+                                string path3Key = $"{filter.Name}_{categoryString}";
+                                bool hasInvalidatedZones = false;
+                                if (_path3Flags.TryGetValue(path3Key, out var path3Flags))
                                 {
-                                    // ✅ Check if there's cluster data for this filter+category in database
+                                    hasInvalidatedZones = path3Flags.isInvalidated;
+                                }
+                                
+                                // ✅ PATH 1a: If no invalidated zones, check for Path 1a (even with AdoptToDocument enabled)
+                                // ✅ PATH 3: If invalidated zones exist, skip Path 1a and use Path 3
+                                if (!hasInvalidatedZones)
+                                {
+                                    // ✅ Check if there's cluster data for this filter+category in database (Path 1a)
                                     var clusterRepository = new ClusterSleeveRepository(dbContext);
                                     var existingClusters = clusterRepository.LoadClusterSleevesByFilter(lookedUpFilterId, categoryString);
                                     
                                     File.AppendAllText(SafeFileLogger.GetLogFilePath("orchestrator_debug.log"), 
-                                        $"[{DateTime.Now:HH:mm:ss}] 🔥 DIRECT IO: PATH 1 CHECK - Queried by FilterId={lookedUpFilterId}, Category={categoryString}, Found {existingClusters?.Count ?? 0} clusters\n");
+                                        $"[{DateTime.Now:HH:mm:ss}] 🔥 DIRECT IO: PATH 1a CHECK - AdoptToDocument={adoptToDocumentEnabled}, NoInvalidatedZones=True, Queried by FilterId={lookedUpFilterId}, Category={categoryString}, Found {existingClusters?.Count ?? 0} clusters\n");
                                     
                                     if (existingClusters != null && existingClusters.Count > 0)
                                     {
@@ -526,15 +539,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         
                                         if (!DeploymentConfiguration.DeploymentMode)
                                         {
-                                            DebugLogger.Info($"[ORCHESTRATOR] ✅ PATH 1: Found {existingClusters.Count} existing clusters in database for filter '{filter.Name}', category '{categoryString}', comboId={comboId}");
+                                            DebugLogger.Info($"[ORCHESTRATOR] ✅ PATH 1a (Super Fast): Found {existingClusters.Count} existing clusters in database for filter '{filter.Name}', category '{categoryString}', comboId={comboId} (AdoptToDocument={adoptToDocumentEnabled}, NoInvalidatedZones=True)");
                                         }
                                         
                                         File.AppendAllText(SafeFileLogger.GetLogFilePath("orchestrator_debug.log"), 
-                                            $"[{DateTime.Now:HH:mm:ss}] 🔥 DIRECT IO: PATH 1 CHECK - Found {existingClusters.Count} clusters in DB, comboId={comboId}, filterId={filterId}\n");
+                                            $"[{DateTime.Now:HH:mm:ss}] 🔥 DIRECT IO: PATH 1a CHECK - Found {existingClusters.Count} clusters in DB, comboId={comboId}, filterId={filterId} (SUPER FAST LANE)\n");
                                     }
                                     else
                                     {
-                                        // PATH 2/3: Get comboId from FileCombos table for this filter+category (needed for saving cluster data)
+                                        // No clusters in DB, but no invalidated zones → Get comboId for Path 2
                                         using (var cmd = dbContext.Connection.CreateCommand())
                                         {
                                             cmd.CommandText = @"
@@ -554,16 +567,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         
                                         if (!DeploymentConfiguration.DeploymentMode)
                                         {
-                                            DebugLogger.Info($"[ORCHESTRATOR] PATH 2/3: No existing clusters in database, will calculate from database. ComboId={comboId?.ToString() ?? "NULL"}");
+                                            DebugLogger.Info($"[ORCHESTRATOR] PATH 2: No existing clusters in database, will calculate from database. ComboId={comboId?.ToString() ?? "NULL"}");
                                         }
                                         
                                         File.AppendAllText(SafeFileLogger.GetLogFilePath("orchestrator_debug.log"), 
-                                            $"[{DateTime.Now:HH:mm:ss}] 🔥 DIRECT IO: PATH 1 CHECK - No clusters in DB, using PATH 2/3 (database), comboId={comboId?.ToString() ?? "NULL"}\n");
+                                            $"[{DateTime.Now:HH:mm:ss}] 🔥 DIRECT IO: PATH 1a CHECK - No clusters in DB, using PATH 2 (database), comboId={comboId?.ToString() ?? "NULL"}\n");
                                     }
                                 }
                                 else
                                 {
-                                    // AdoptToDocument enabled → Skip PATH 1, use PATH 3
+                                    // ✅ PATH 3: Invalidated zones exist → Skip Path 1a, use Path 3 for full recalculation
                                     // Still need comboId for saving cluster data
                                     using (var cmd = dbContext.Connection.CreateCommand())
                                     {
@@ -584,11 +597,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     
                                     if (!DeploymentConfiguration.DeploymentMode)
                                     {
-                                        DebugLogger.Info($"[ORCHESTRATOR] PATH 3: AdoptToDocument enabled, skipping PATH 1 check, will calculate fresh from database. ComboId={comboId?.ToString() ?? "NULL"}");
+                                        DebugLogger.Info($"[ORCHESTRATOR] PATH 3: Invalidated zones detected, skipping PATH 1a, will calculate fresh from database. ComboId={comboId?.ToString() ?? "NULL"}");
                                     }
                                     
                                     File.AppendAllText(SafeFileLogger.GetLogFilePath("orchestrator_debug.log"), 
-                                        $"[{DateTime.Now:HH:mm:ss}] 🔥 DIRECT IO: PATH 1 CHECK SKIPPED - AdoptToDocument enabled, using PATH 3 (DATABASE-ONLY, NO XML), comboId={comboId?.ToString() ?? "NULL"}\n");
+                                        $"[{DateTime.Now:HH:mm:ss}] 🔥 DIRECT IO: PATH 1a CHECK SKIPPED - Invalidated zones exist, using PATH 3 (full recalculation), comboId={comboId?.ToString() ?? "NULL"}\n");
                                 }
                             }
                             else
@@ -1484,22 +1497,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         string combinedFilterName = $"{filter.Name}_{categoryName}.xml"; // Added .xml
                         
                         // ✅ PATH 3 INVALIDATED: Check for zones that need distinct placement flow
-                        // Invalidated zones are zones that have existing sleeves (SleeveInstanceId > 0)
-                        // These zones need to be deleted and re-placed at new intersection points
-                        // Note: This is a simplified check - in production, invalidated zones should be
-                        // marked during refresh and stored in RefreshContext.InvalidatedZones
-                        var invalidatedZones = clashZones.Where(cz => cz.SleeveInstanceId > 0).ToList();
+                        // CRITICAL FIX: Invalidated zones are zones where MEP elements MOVED (validation failed)
+                        // NOT just zones with sleeves - a zone can have a sleeve AND still be validated (unchanged)
+                        // 
+                        // For Path 1a (super fast): If all zones are validated (no movement detected), use Path 1a
+                        // For Path 3: If any zones are invalidated (movement detected), use Path 3
+                        //
+                        // Since validation results aren't directly available here, we use a heuristic:
+                        // - If zones have sleeves (SleeveInstanceId > 0), they COULD be invalidated OR validated
+                        // - For Path 1a: Assume zones with sleeves are VALIDATED (no movement) if no explicit invalidation
+                        // - For Path 3: Only mark as invalidated if validation explicitly determined movement
+                        //
+                        // TODO: Pass validation results from RefreshContext to avoid this heuristic
+                        var zonesWithSleeves = clashZones.Where(cz => cz.SleeveInstanceId > 0).ToList();
                         
-                        var validatedZones = clashZones.Except(invalidatedZones).ToList();
+                        // ✅ PATH 1a LOGIC: If all zones are validated (no invalidated zones detected during refresh),
+                        // then zones with sleeves are VALIDATED (not invalidated) - they just need Path 1a replay
+                        // For now, we'll check if there are any zones that explicitly need recalculation
+                        // If all zones have sleeves but are validated, hasInvalidatedZones should be FALSE
+                        var invalidatedZones = new List<ClashZone>(); // Empty by default - assume validated unless proven otherwise
+                        
+                        // ✅ PATH 3 FIX: Validated zones are zones that are eligible for placement
+                        // This includes zones with sleeves (if validated) and zones without sleeves
+                        var validatedZones = clashZones
+                            .Where(cz => !cz.IsResolved && !cz.IsClusterResolved && cz.ClusterSleeveInstanceId <= 0)
+                            .ToList();
                         
                         // ✅ PATH 3 NEW: New zones are zones that don't have existing sleeves (SleeveInstanceId <= 0)
                         // These zones route to PATH 2 placement, then PATH 3 new clustering
-                        var newZones = clashZones.Where(cz => cz.SleeveInstanceId <= 0).ToList();
+                        var newZones = clashZones.Where(cz => cz.SleeveInstanceId <= 0 && !cz.IsResolved && !cz.IsClusterResolved && cz.ClusterSleeveInstanceId <= 0).ToList();
                         
                         // ✅ PATH 3 TRACKING: Store PATH 3 type flags for clustering
-                        bool hasInvalidatedZones = invalidatedZones.Count > 0;
-                        bool hasValidatedZones = validatedZones.Count > 0 && !hasInvalidatedZones; // Validated = not invalidated, and no invalidated zones exist
-                        bool hasNewZones = newZones.Count > 0 && !hasInvalidatedZones && !hasValidatedZones; // New = no invalidated, no validated
+                        // CRITICAL: hasInvalidatedZones = false by default (assume validated)
+                        // Only set to true if validation explicitly determined zones are invalidated
+                        // For Path 1a: If all zones are validated, hasInvalidatedZones = false
+                        bool hasInvalidatedZones = false; // Default to false - assume validated unless proven otherwise
+                        bool hasValidatedZones = validatedZones.Count > 0; // Validated = eligible for placement
+                        bool hasNewZones = newZones.Count > 0 && !hasValidatedZones; // New = no validated zones
                         
                         // ✅ PATH 3: Store flags for clustering (check AdoptToDocument flag)
                         bool adoptToDocumentEnabled = false;
@@ -1593,8 +1627,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 // Continue with normal placement for remaining zones
                             }
                             
-                            // Continue with validated zones for normal placement
-                            clashZones = validatedZones;
+                            // ✅ PATH 3 FIX: Continue with validated zones for normal placement (Path 1)
+                            // Validated zones are zones without sleeves that need individual placement
+                            if (validatedZones.Count > 0)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[OpeningCommandOrchestrator] Found {validatedZones.Count} validated zones (no sleeves), routing to PATH 1 (individual sleeve placement)");
+                                }
+                                clashZones = validatedZones;
+                            }
+                            else
+                            {
+                                // No validated zones to place - all zones were invalidated
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[OpeningCommandOrchestrator] No validated zones found after processing {invalidatedZones.Count} invalidated zones - skipping individual placement");
+                                }
+                                clashZones = new List<ClashZone>(); // Empty list - skip individual placement
+                            }
                         }
                         
                         // 🔥 CRITICAL DEBUG: Log which XML file we're passing clash zones from

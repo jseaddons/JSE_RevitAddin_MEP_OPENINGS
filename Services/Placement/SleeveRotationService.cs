@@ -35,23 +35,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 return 0.0; // Default: no rotation
 
             // ✅ WALL ROTATION: Based on wall orientation direction (X or Y)
+            // ✅ CRITICAL FIX: Use HostOrientation (wall orientation), not MepElementOrientationDirection
+            // X-WALL: Apply +90° rotation (π/2 radians)
+            // Y-WALL: Apply 0° rotation (no rotation)
             if (clashZone.StructuralElementType?.Contains("Wall") == true)
             {
-                // X-WALL: Apply +90° rotation (π/2 radians)
-                // Y-WALL: Apply 0° rotation (no rotation)
+                // ✅ PRIORITY 1: Check HostOrientation (most reliable - set during refresh)
+                string hostOrientation = clashZone.HostOrientation ?? "";
+                if (string.Equals(hostOrientation, "X", StringComparison.OrdinalIgnoreCase) || 
+                    string.Equals(hostOrientation, "X-WALL", StringComparison.OrdinalIgnoreCase))
+                {
+                    return Math.PI / 2.0; // 90 degrees in radians for X-WALL
+                }
+                else if (string.Equals(hostOrientation, "Y", StringComparison.OrdinalIgnoreCase) || 
+                         string.Equals(hostOrientation, "Y-WALL", StringComparison.OrdinalIgnoreCase))
+                {
+                    return 0.0; // No rotation for Y-WALL
+                }
+                
+                // ✅ FALLBACK: Check MepElementOrientationDirection (if HostOrientation not set)
+                // Note: This is a fallback - HostOrientation should be set during refresh
                 if (clashZone.MepElementOrientationDirection == "X")
                 {
-                    return Math.PI / 2.0; // 90 degrees in radians
+                    return Math.PI / 2.0; // 90 degrees in radians for X-WALL
                 }
                 else if (clashZone.MepElementOrientationDirection == "Y")
                 {
-                    return 0.0; // No rotation for Y-walls
+                    return 0.0; // No rotation for Y-WALL
                 }
-                else
-                {
-                    // Default fallback for walls
-                    return 0.0;
-                }
+                
+                // Default fallback for walls (if orientation cannot be determined)
+                return 0.0;
             }
             
             // ⚠️⚠️⚠️ CRITICAL FIX: Structural framing needs rotation based on X vs Y orientation (same as walls)

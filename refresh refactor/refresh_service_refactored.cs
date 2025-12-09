@@ -1177,6 +1177,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             UpdateProgress(40, "Validating clash zones...");
             using (var validationOp = context.PerformanceMonitor.TrackOperation("5. Validation") as PerformanceMonitor.OperationTracker)
             {
+                // ✅ DEPLOYMENT MODE CHECK: When DeploymentMode is OFF, skip validation entirely
+                // This ensures full detection runs for all zones (no splitting into validated/invalidated)
+                // During testing, we want to populate the database with complete data
+                if (!context.IsDeploymentMode)
+                {
+                    DebugLogger.Info("[REFRESH-REFACTORED] ⚠️ DeploymentMode OFF: Skipping validation - treating all zones as needing full detection");
+                    // Treat all zones as invalidated (needing full detection) when DeploymentMode is OFF
+                    context.ValidatedZones = new List<ClashZone>();
+                    context.InvalidatedZones = context.ExistingClashZones ?? new List<ClashZone>();
+                    validationOp?.SetItemCount(context.ExistingClashZones?.Count ?? 0);
+                    return;
+                }
+                
+                // ✅ DEPLOYMENT MODE ON: Run validation based on path strategy
                 if (context.PathStrategy.EnableThreePointValidation)
                 {
                     var validationService = new ValidationService(context, new FlagManager(_document));
@@ -1435,14 +1449,93 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             existingZone.HasMepConnector = newZone.HasMepConnector;
                             existingZone.DamperConnectorSide = newZone.DamperConnectorSide;
                             
+                            // ✅ CRITICAL FIX: Merge parameters instead of overwriting
+                            // Preserve existing parameters from database, add new ones from refresh
+                            var existingMepCount = existingZone.MepParameterValues?.Count ?? 0;
+                            var newMepCount = newZone.MepParameterValues?.Count ?? 0;
+                            
+                            // ✅ DIAGNOSTIC: Log merge operation
+                            if (!DeploymentConfiguration.DeploymentMode && string.Equals(newZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
+                            {
+                                SafeFileLogger.SafeAppendText("save_db_diagnostic.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [REFRESH-MERGE] Zone {newZone.Id}: Existing MEP params={existingMepCount}, New MEP params={newMepCount}\n");
+                            }
+                            
                             if (newZone.MepParameterValues != null && newZone.MepParameterValues.Count > 0)
                             {
-                                existingZone.MepParameterValues = newZone.MepParameterValues;
+                                if (existingZone.MepParameterValues == null || existingZone.MepParameterValues.Count == 0)
+                                {
+                                    // No existing parameters - use new ones
+                                    existingZone.MepParameterValues = newZone.MepParameterValues;
+                                }
+                                else
+                                {
+                                    // Merge: Add new parameters that don't already exist
+                                    // ✅ FIX: Handle duplicate keys by taking the first occurrence
+                                    var existingDict = existingZone.MepParameterValues
+                                        .Where(kv => kv != null && !string.IsNullOrEmpty(kv.Key))
+                                        .GroupBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                                        .ToDictionary(g => g.Key, g => g.First().Value, StringComparer.OrdinalIgnoreCase);
+                                    
+                                    foreach (var newParam in newZone.MepParameterValues)
+                                    {
+                                        if (newParam != null && !string.IsNullOrEmpty(newParam.Key) && !existingDict.ContainsKey(newParam.Key))
+                                        {
+                                            existingDict[newParam.Key] = newParam.Value;
+                                        }
+                                    }
+                                    
+                                    existingZone.MepParameterValues = existingDict
+                                        .Select(kv => new SerializableKeyValue { Key = kv.Key, Value = kv.Value })
+                                        .ToList();
+                                    
+                                    // ✅ DIAGNOSTIC: Log merge result
+                                    if (!DeploymentConfiguration.DeploymentMode && string.Equals(newZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        SafeFileLogger.SafeAppendText("save_db_diagnostic.log",
+                                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [REFRESH-MERGE] Zone {newZone.Id}: Merged MEP params - had {existingMepCount}, added {newMepCount}, total now {existingZone.MepParameterValues.Count}\n");
+                                    }
+                                }
                             }
+                            else if (existingMepCount > 0)
+                            {
+                                // ✅ DIAGNOSTIC: Log that we're preserving existing parameters
+                                if (!DeploymentConfiguration.DeploymentMode && string.Equals(newZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    SafeFileLogger.SafeAppendText("save_db_diagnostic.log",
+                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [REFRESH-MERGE] Zone {newZone.Id}: Preserving {existingMepCount} existing MEP params (newZone has {newMepCount})\n");
+                                }
+                            }
+                            // ✅ If newZone has no parameters, preserve existing ones (don't overwrite with null/empty)
+                            
                             if (newZone.HostParameterValues != null && newZone.HostParameterValues.Count > 0)
                             {
-                                existingZone.HostParameterValues = newZone.HostParameterValues;
+                                if (existingZone.HostParameterValues == null || existingZone.HostParameterValues.Count == 0)
+                                {
+                                    existingZone.HostParameterValues = newZone.HostParameterValues;
+                                }
+                                else
+                                {
+                                    // ✅ FIX: Handle duplicate keys by taking the first occurrence
+                                    var existingDict = existingZone.HostParameterValues
+                                        .Where(kv => kv != null && !string.IsNullOrEmpty(kv.Key))
+                                        .GroupBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                                        .ToDictionary(g => g.Key, g => g.First().Value, StringComparer.OrdinalIgnoreCase);
+                                    
+                                    foreach (var newParam in newZone.HostParameterValues)
+                                    {
+                                        if (newParam != null && !string.IsNullOrEmpty(newParam.Key) && !existingDict.ContainsKey(newParam.Key))
+                                        {
+                                            existingDict[newParam.Key] = newParam.Value;
+                                        }
+                                    }
+                                    
+                                    existingZone.HostParameterValues = existingDict
+                                        .Select(kv => new SerializableKeyValue { Key = kv.Key, Value = kv.Value })
+                                        .ToList();
+                                }
                             }
+                            // ✅ If newZone has no parameters, preserve existing ones (don't overwrite with null/empty)
                             
                             if (!DeploymentConfiguration.DeploymentMode && string.Equals(newZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
                             {

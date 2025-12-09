@@ -147,7 +147,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                 return (XYZ.Zero, 0, 0);
             }
             
-            if (conditions == null || conditions.ClearanceSettings == null)
+                // ✅ COMPREHENSIVE LOGGING: Log conditions object state
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("clearance_calculation_trace.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [DAMPER-STRATEGY-ENTRY] Zone {clashZone.Id}, " +
+                        $"Conditions={conditions != null}, ClearanceSettings={conditions?.ClearanceSettings != null}, " +
+                        $"IsInsulated={clashZone.IsInsulated}\n");
+                }
+                
+                if (conditions == null || conditions.ClearanceSettings == null)
             {
                 DebugLogger.Error($"[DamperStrategy] Zone {clashZone.Id}: Conditions or ClearanceSettings is null, returning zero offset and original dimensions");
                 return (XYZ.Zero, clashZone.MepElementWidth, clashZone.MepElementHeight);
@@ -178,8 +187,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                 }
                 
                 // Get clearance from OpeningConditions (loaded from UI via CONDITIONS XML) - CRASH-PROOF: validate clearances
-                double otherClearanceMm = conditions.ClearanceSettings.DuctAccessoryOtherNormal;
-                double mepClearanceMm = conditions.ClearanceSettings.DuctAccessoryMepNormal;
+                // ✅ FIX: Use insulated clearances if zone is insulated
+                bool isInsulated = clashZone.IsInsulated;
+                double otherClearanceMm = isInsulated
+                    ? conditions.ClearanceSettings.DuctAccessoryOtherInsulated
+                    : conditions.ClearanceSettings.DuctAccessoryOtherNormal;
+                double mepClearanceMm = isInsulated
+                    ? conditions.ClearanceSettings.DuctAccessoryMepInsulated
+                    : conditions.ClearanceSettings.DuctAccessoryMepNormal;
                 
                 // CRASH-PROOF: Validate clearance values
                 if (double.IsNaN(otherClearanceMm) || double.IsInfinity(otherClearanceMm) || otherClearanceMm < 0)
@@ -191,6 +206,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                 {
                     DebugLogger.Warning($"[DamperStrategy] Zone {clashZone.Id}: Invalid mepClearanceMm={mepClearanceMm}, using 100mm default");
                     mepClearanceMm = 100.0;
+                }
+                
+                // ✅ COMPREHENSIVE LOGGING: Log clearance values read from database BEFORE conversion
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("clearance_calculation_trace.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [DAMPER-STRATEGY-CLEARANCE] Zone {clashZone.Id}, " +
+                        $"MEP Clearance={mepClearanceMm}mm, Other Clearance={otherClearanceMm}mm, " +
+                        $"IsInsulated={clashZone.IsInsulated}, " +
+                        $"Raw MEP W={clashZone.MepElementWidth * 304.8:F1}mm, H={clashZone.MepElementHeight * 304.8:F1}mm\n");
                 }
                 
                 double otherClearance = UnitUtils.ConvertToInternalUnits(otherClearanceMm, UnitTypeId.Millimeters);
@@ -502,6 +527,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                     double finalWidth = damperWidth + insulationContribution + left + right;
                     double finalHeight = damperHeight + insulationContribution + top + bottom;
                     
+                    // ✅ COMPREHENSIVE LOGGING: Always log clearance breakdown to trace file (not just when debug enabled)
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("clearance_calculation_trace.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [DAMPER-CLEARANCE-BREAKDOWN] Zone {clashZone.Id}, " +
+                            $"HasConnector=True, ConnectorDir='{connectorDir}', " +
+                            $"Left={left * 304.8:F1}mm, Right={right * 304.8:F1}mm, " +
+                            $"Top={top * 304.8:F1}mm, Bottom={bottom * 304.8:F1}mm, " +
+                            $"WidthTotal={((left + right) * 304.8):F1}mm, HeightTotal={((top + bottom) * 304.8):F1}mm, " +
+                            $"Base W={damperWidth * 304.8:F1}mm, H={damperHeight * 304.8:F1}mm, " +
+                            $"Final W={finalWidth * 304.8:F1}mm, H={finalHeight * 304.8:F1}mm\n");
+                    }
+                    
                     // ✅ PERFORMANCE OPTIMIZATION: Conditional detailed logging
                     if (EnableDebugLogging)
                     {
@@ -555,6 +593,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                         damperWidth, damperHeight, 0, clashZone, otherClearance);
                     double finalWidth = finalW;
                     double finalHeight = finalH;
+                    
+                    // ✅ COMPREHENSIVE LOGGING: Always log clearance breakdown for no-connector case
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("clearance_calculation_trace.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [DAMPER-CLEARANCE-BREAKDOWN] Zone {clashZone.Id}, " +
+                            $"HasConnector=False, " +
+                            $"SymmetricClearance={otherClearance * 304.8:F1}mm (all sides), " +
+                            $"WidthTotal={((otherClearance * 2) * 304.8):F1}mm, HeightTotal={((otherClearance * 2) * 304.8):F1}mm, " +
+                            $"Base W={damperWidth * 304.8:F1}mm, H={damperHeight * 304.8:F1}mm, " +
+                            $"Final W={finalWidth * 304.8:F1}mm, H={finalHeight * 304.8:F1}mm\n");
+                    }
                     
                     // ✅ OOP METHOD: Show actual calculation from sizing service (includes insulation if present)
                     if (EnableDebugLogging)

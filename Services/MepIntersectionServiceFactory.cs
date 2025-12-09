@@ -119,14 +119,67 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 log?.Invoke($"[R24-FIX] FindIntersectionsBatch called: {mepElements.Count} MEP + {structuralElements.Count} structural");
+                log?.Invoke($"[R24-FIX] ✅ DAMPER DETECTION CODE IS ACTIVE - Starting element processing loop");
+                
+                int damperCount = 0;
+                int nonDamperCount = 0;
+                int processedCount = 0;
                 
                 foreach (var (mepElem, mepTransform) in mepElements)
                 {
+                    processedCount++;
                     try
                     {
-                        // Get MEP Line (Centerline)
+                        // ✅ ALWAYS LOG: Log every element to see what's being processed
+                        var categoryName = mepElem.Category?.Name ?? "NULL";
+                        var categoryId = mepElem.Category?.Id?.IntegerValue ?? -1;
+                        log?.Invoke($"[R24-FIX] [{processedCount}/{mepElements.Count}] Processing element {mepElem.Id} (Category={categoryName}, CategoryId={categoryId})");
+                        
+                        // ✅ CRITICAL FIX: Check for dampers FIRST, before trying to get line
+                        // Dampers should use damper intersection logic, not line-based logic
+                        bool isDamper = IsDamperElement(mepElem);
+                        log?.Invoke($"[R24-FIX] [{processedCount}/{mepElements.Count}] Element {mepElem.Id}: IsDamperElement={isDamper}, Category={categoryName}, CategoryId={categoryId}, OST_DuctAccessory={(int)BuiltInCategory.OST_DuctAccessory}");
+                        
+                        if (isDamper)
+                        {
+                            damperCount++;
+                            log?.Invoke($"[R24-FIX] [{processedCount}/{mepElements.Count}] ✅ Element {mepElem.Id} (Category={categoryName}) is a damper - using damper intersection logic (Damper #{damperCount})");
+                            
+                            var damperBBox = mepElem.get_BoundingBox(null);
+                            if (damperBBox == null)
+                            {
+                                log?.Invoke($"[DamperDetection] ⚠️ Damper {mepElem.Id} has no bounding box - skipping");
+                                continue;
+                            }
+                            
+                            // Transform damper bbox if needed
+                            if (mepTransform != null && !mepTransform.IsIdentity)
+                            {
+                                var min = mepTransform.OfPoint(damperBBox.Min);
+                                var max = mepTransform.OfPoint(damperBBox.Max);
+                                damperBBox = new BoundingBoxXYZ
+                                {
+                                    Min = new XYZ(Math.Min(min.X, max.X), Math.Min(min.Y, max.Y), Math.Min(min.Z, max.Z)),
+                                    Max = new XYZ(Math.Max(min.X, max.X), Math.Max(min.Y, max.Y), Math.Max(min.Z, max.Z))
+                                };
+                            }
+                            
+                            // Use damper intersection logic
+                            var damperResults = FindDamperIntersectionsForFactory(mepElem, damperBBox, structuralElements, mepTransform, log);
+                            results.AddRange(damperResults);
+                            continue;
+                        }
+                        
+                        // Get MEP Line (Centerline) - for non-dampers
+                        nonDamperCount++;
+                        log?.Invoke($"[MEP-Processing] Element {mepElem.Id} is NOT a damper - using line-based logic (Non-Damper #{nonDamperCount})");
+                        
                         var mepLine = GetElementLine(mepElem);
-                        if (mepLine == null) continue;
+                        if (mepLine == null)
+                        {
+                            log?.Invoke($"[MEP-Processing] ⚠️ Element {mepElem.Id} has no line - skipping");
+                            continue;
+                        }
                         
                         // Transform MEP line if needed
                         if (mepTransform != null && !mepTransform.IsIdentity)
@@ -188,6 +241,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
                 
+                log?.Invoke($"[R24-FIX] ✅ Processing complete: {damperCount} dampers processed, {nonDamperCount} non-dampers processed");
                 log?.Invoke($"[R24-FIX] Found {results.Count} intersections");
                 return results;
             }
@@ -214,6 +268,166 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return bb1.Min.X <= bb2.Max.X && bb1.Max.X >= bb2.Min.X &&
                    bb1.Min.Y <= bb2.Max.Y && bb1.Max.Y >= bb2.Min.Y &&
                    bb1.Min.Z <= bb2.Max.Z && bb1.Max.Z >= bb2.Min.Z;
+        }
+
+        /// <summary>
+        /// ✅ Check if an element is a damper (Duct Accessory category, excluding VCD/VOLUME)
+        /// </summary>
+        private static bool IsDamperElement(Element element)
+        {
+            // ✅ CRITICAL FIX: Check category FIRST - Duct Accessories are dampers
+            if (element?.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
+            {
+                // ✅ EXCLUDE: Skip VCD and VOLUME dampers (not in walls)
+                if (element is FamilyInstance fi && fi.Symbol != null)
+                {
+                    var familyName = fi.Symbol.Family?.Name ?? "";
+                    var typeName = fi.Symbol.Name ?? "";
+                    var combinedName = $"{familyName} {typeName}".ToUpperInvariant();
+                    
+                    if (combinedName.Contains("VCD") || combinedName.Contains("VOLUME"))
+                        return false;
+                }
+                
+                return true;
+            }
+            
+            // ✅ FALLBACK: Check family name
+            if (element is FamilyInstance fi2)
+            {
+                var familyName = fi2.Symbol?.Family?.Name ?? "";
+                var typeName = fi2.Symbol?.Name ?? "";
+                var combinedName = $"{familyName} {typeName}".ToUpperInvariant();
+                
+                if (combinedName.Contains("VCD") || combinedName.Contains("VOLUME"))
+                    return false;
+                
+                return familyName.Contains("Damper", StringComparison.OrdinalIgnoreCase);
+            }
+            
+            return false;
+        }
+        
+        /// <summary>
+        /// ✅ Find damper intersections using bounding box overlap and containment checks
+        /// </summary>
+        private static List<(Element, Element, BoundingBoxXYZ, XYZ)> FindDamperIntersectionsForFactory(
+            Element damperElement,
+            BoundingBoxXYZ damperBBox,
+            List<(Element, Transform?)> structuralElements,
+            Transform? damperTransform,
+            Action<string>? log)
+        {
+            var results = new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
+            
+            const double tolerance = 0.5; // 6 inches
+            var expandedMin = new XYZ(
+                damperBBox.Min.X - tolerance,
+                damperBBox.Min.Y - tolerance,
+                damperBBox.Min.Z - tolerance);
+            var expandedMax = new XYZ(
+                damperBBox.Max.X + tolerance,
+                damperBBox.Max.Y + tolerance,
+                damperBBox.Max.Z + tolerance);
+            
+            log?.Invoke($"[DamperIntersection] Processing damper {damperElement.Id} with bbox Min=({damperBBox.Min.X:F2}, {damperBBox.Min.Y:F2}, {damperBBox.Min.Z:F2}) Max=({damperBBox.Max.X:F2}, {damperBBox.Max.Y:F2}, {damperBBox.Max.Z:F2})");
+            log?.Invoke($"[DamperIntersection] Testing against {structuralElements.Count} structural elements");
+            
+            foreach (var (structuralElement, structTransform) in structuralElements)
+            {
+                try
+                {
+                    var structBBox = structuralElement.get_BoundingBox(null);
+                    if (structBBox == null) continue;
+                    
+                    // Transform structural bbox if needed
+                    if (structTransform != null && !structTransform.IsIdentity)
+                    {
+                        var min = structTransform.OfPoint(structBBox.Min);
+                        var max = structTransform.OfPoint(structBBox.Max);
+                        structBBox = new BoundingBoxXYZ
+                        {
+                            Min = new XYZ(Math.Min(min.X, max.X), Math.Min(min.Y, max.Y), Math.Min(min.Z, max.Z)),
+                            Max = new XYZ(Math.Max(min.X, max.X), Math.Max(min.Y, max.Y), Math.Max(min.Z, max.Z))
+                        };
+                    }
+                    
+                    // Check bounding box intersection
+                    if (!BoundingBoxesOverlap(new BoundingBoxXYZ { Min = expandedMin, Max = expandedMax }, structBBox))
+                    {
+                        continue;
+                    }
+                    
+                    log?.Invoke($"[DamperIntersection] ✅ Intersection candidate: damper {damperElement.Id} with structural {structuralElement.Id}");
+                    
+                    // Check if damper is completely contained within wall
+                    bool isDamperContainedInWall = 
+                        damperBBox.Min.X >= structBBox.Min.X &&
+                        damperBBox.Min.Y >= structBBox.Min.Y &&
+                        damperBBox.Min.Z >= structBBox.Min.Z &&
+                        damperBBox.Max.X <= structBBox.Max.X &&
+                        damperBBox.Max.Y <= structBBox.Max.Y &&
+                        damperBBox.Max.Z <= structBBox.Max.Z;
+                    
+                    if (isDamperContainedInWall)
+                    {
+                        log?.Invoke($"[DamperIntersection] ✅ Damper {damperElement.Id} is COMPLETELY CONTAINED within structural {structuralElement.Id} (buried inside wall)");
+                    }
+                    
+                    // Calculate intersection bounding box
+                    var intersectionMin = new XYZ(
+                        Math.Max(damperBBox.Min.X, structBBox.Min.X),
+                        Math.Max(damperBBox.Min.Y, structBBox.Min.Y),
+                        Math.Max(damperBBox.Min.Z, structBBox.Min.Z));
+                    var intersectionMax = new XYZ(
+                        Math.Min(damperBBox.Max.X, structBBox.Max.X),
+                        Math.Min(damperBBox.Max.Y, structBBox.Max.Y),
+                        Math.Min(damperBBox.Max.Z, structBBox.Max.Z));
+                    
+                    // If damper is contained, use damper's bounding box
+                    if (isDamperContainedInWall)
+                    {
+                        intersectionMin = damperBBox.Min;
+                        intersectionMax = damperBBox.Max;
+                    }
+                    else if (intersectionMin.X > intersectionMax.X ||
+                             intersectionMin.Y > intersectionMax.Y ||
+                             intersectionMin.Z > intersectionMax.Z)
+                    {
+                        continue; // No valid intersection
+                    }
+                    
+                    var intersectionBBox = new BoundingBoxXYZ
+                    {
+                        Min = intersectionMin,
+                        Max = intersectionMax
+                    };
+                    
+                    // Calculate intersection point
+                    XYZ intersectionPoint;
+                    if (structuralElement is Wall wall)
+                    {
+                        // For walls, project damper center onto wall face
+                        var damperCenter = (damperBBox.Min + damperBBox.Max) * 0.5;
+                        intersectionPoint = damperCenter; // Simplified - could project onto wall face
+                    }
+                    else
+                    {
+                        // For floors/framing, use intersection bbox center
+                        intersectionPoint = (intersectionBBox.Min + intersectionBBox.Max) * 0.5;
+                    }
+                    
+                    results.Add((damperElement, structuralElement, intersectionBBox, intersectionPoint));
+                    log?.Invoke($"[DamperIntersection] ✅ Added intersection: damper {damperElement.Id} with structural {structuralElement.Id} at ({intersectionPoint.X:F3}, {intersectionPoint.Y:F3}, {intersectionPoint.Z:F3})");
+                }
+                catch (Exception ex)
+                {
+                    log?.Invoke($"[DamperIntersection] ERROR: Failed to process damper intersection for element {structuralElement.Id}: {ex.Message}");
+                }
+            }
+            
+            log?.Invoke($"[DamperIntersection] ✅ Damper {damperElement.Id} found {results.Count} intersections");
+            return results;
         }
 
         private static BoundingBoxXYZ? CreateBoundingBox(List<XYZ> points)

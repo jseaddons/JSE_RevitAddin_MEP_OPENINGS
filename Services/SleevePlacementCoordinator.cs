@@ -4,6 +4,9 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces;
+using JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -226,19 +229,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 : new Dictionary<string, double>();
 
             // ✅ CRITICAL: isReplayPath = false for PATH 2 (Sizing)
-            // This makes UniversalSleevePlacerService use PATH 2/3 logic:
+            // This makes NewSleevePlacerService use PATH 2/3 logic:
             // - Full clearance calculation from conditions
             // - Calculate sleeve placement points
             // - Calculate sleeve dimensions
             // - Save all data to DB/XML
-            var placerService = new UniversalSleevePlacerService(
+            // ✅ WIRED TO NEW SERVICE: Using NewSleevePlacerService (refactored SOLID architecture)
+            // ✅ FLAG MANAGER ADAPTER: Wrap legacy FlagManager in adapter to implement IFlagManager interface
+            Services.Interfaces.Refactor.IFlagManager? flagManagerAdapter = null;
+            if (request.FlagManager != null)
+            {
+                flagManagerAdapter = new FlagManagerAdapter(request.Document, null, request.FlagManager);
+            }
+            
+            var placerService = new NewSleevePlacerService(
                 request.Document,
                 request.Conditions,
                 request.Strategy,
                 clearanceSettings,
-                request.FilterName,
-                request.FlagManager,
-                isReplayPath: false); // ✅ PATH 2: Full calculation, not replay
+                new SleeveRepository(), // ✅ Required: Create repository instance
+                null, // zoneFilterService - can be null
+                null, // familyManager - can be null
+                flagManagerAdapter, // ✅ Use FlagManagerAdapter to convert FlagManager to IFlagManager
+                isReplayPath: false, // ✅ PATH 2: Full calculation, not replay
+                request.FilterName);
 
             var placementOutcome = placerService.PlaceAllSleevesInTransaction(
                 request.ClashZones?.ToList() ?? new List<ClashZone>());

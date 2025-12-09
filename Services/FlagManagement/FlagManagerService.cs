@@ -449,83 +449,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
         {
             if (clashZones == null || clashZones.Count == 0)
                 return;
-                
             if (string.IsNullOrWhiteSpace(category))
                 throw new ArgumentException("Category cannot be null or empty", nameof(category));
-            
             try
             {
-                var dbUpdates = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId, bool? MarkedForClusterProcess, int AfterClusterSleeveId, bool? IsClusteredFlag)>();
-                
-                // ✅ STEP 1: Update in-memory ClashZone objects and prepare batch database updates
+                var dbUpdates = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterInstanceId)>();
                 foreach (var (clashZone, sleeveId) in clashZones)
                 {
                     if (clashZone == null || sleeveId <= 0) continue;
-                    
-                    int oldSleeveInstanceId = clashZone.SleeveInstanceId;
-                    int oldClusterInstanceId = clashZone.ClusterSleeveInstanceId;
-                    
                     if (isCluster)
                     {
-                        // Save original SleeveInstanceId before clearing
                         if (clashZone.AfterClusterSleevePlacedSleeveInstanceId <= 0 && clashZone.SleeveInstanceId > 0)
                         {
                             clashZone.AfterClusterSleevePlacedSleeveInstanceId = clashZone.SleeveInstanceId;
                         }
-                        
-                        // Cluster sleeve placed
                         clashZone.IsClusterResolved = true;
                         clashZone.ClusterSleeveInstanceId = sleeveId;
                         clashZone.IsResolved = true;
                         clashZone.SleeveInstanceId = -1;
-                        
-                        // Use original sleeve ID for database matching
-                        if (clashZone.AfterClusterSleevePlacedSleeveInstanceId > 0)
-                        {
-                            oldSleeveInstanceId = clashZone.AfterClusterSleevePlacedSleeveInstanceId;
-                        }
                     }
                     else
                     {
-                        // Individual sleeve placed
                         clashZone.IsResolved = true;
                         clashZone.SleeveInstanceId = sleeveId;
                         clashZone.IsClusterResolved = false;
                         clashZone.ClusterSleeveInstanceId = -1;
                     }
-                    
-                    // Add to batch update list
                     dbUpdates.Add((
                         clashZone.Id,
                         clashZone.IsResolved,
                         clashZone.IsClusterResolved,
                         clashZone.SleeveInstanceId,
-                        clashZone.ClusterSleeveInstanceId,
-                        clashZone.MepElementIdValue,
-                        clashZone.StructuralElementIdValue,
-                        clashZone.IntersectionPointX,
-                        clashZone.IntersectionPointY,
-                        clashZone.IntersectionPointZ,
-                        oldSleeveInstanceId,
-                        oldClusterInstanceId,
-                        clashZone.MarkedForClusteringSleeveProcess,
-                        clashZone.AfterClusterSleevePlacedSleeveInstanceId,
-                        null
+                        clashZone.ClusterSleeveInstanceId
                     ));
                 }
-                
                 if (dbUpdates.Count == 0) return;
-                
-                // ✅ STEP 2: Batch update database (single transaction for all sleeves - 4-6× faster)
-                // ⚠️ NOTE: BatchUpdateFlags not yet implemented in IClashZoneRepository
-                // TODO: Implement BatchUpdateFlags extension method or add to repository interface
-                // For now, update flags individually through existing repository methods
-                
                 _logger.Info($"📝 BATCH: Flagging {dbUpdates.Count} clash zones as placed", "FlagManager");
-                
-                // TODO: Call repository method to batch update flags
-                // _repository.BatchUpdateFlags(dbUpdates);
-                
+                _repository.BatchUpdateFlags(dbUpdates);
                 _logger.Info($"✅ BATCH: Updated flags for {dbUpdates.Count} clash zones", "FlagManager");
             }
             catch (Exception ex)

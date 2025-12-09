@@ -84,6 +84,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
             if (conditions?.ClearanceSettings == null)
             {
                 // Default: 50mm
+                DebugLogger.Info($"[DuctStrategy] Clearance: Using default 50mm (conditions or ClearanceSettings is null)");
                 return UnitUtils.ConvertToInternalUnits(50.0, UnitTypeId.Millimeters);
             }
             
@@ -101,6 +102,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                 clearanceMm = mepSize.IsInsulated 
                     ? conditions.ClearanceSettings.RectangularInsulated 
                     : conditions.ClearanceSettings.RectangularNormal;
+            }
+            
+            // ✅ FIX: Check if clearance is 0.0 or invalid (database may have NULL values that return 0.0)
+            // If clearance is 0.0 or less, fall back to default values
+            if (clearanceMm <= 0.0 || double.IsNaN(clearanceMm) || double.IsInfinity(clearanceMm))
+            {
+                DebugLogger.Warning($"[DuctStrategy] Clearance: Invalid value {clearanceMm}mm from database, using default 50mm");
+                clearanceMm = 50.0; // Default clearance for ducts
             }
             
             DebugLogger.Info($"[DuctStrategy] Clearance: Shape={mepSize.Shape}, Insulated={mepSize.IsInsulated}, Clearance={clearanceMm}mm");

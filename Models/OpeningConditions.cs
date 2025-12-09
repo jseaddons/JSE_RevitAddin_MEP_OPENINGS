@@ -91,25 +91,45 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         
         // Cable Tray clearances
         /// <summary>
-        /// Clearance for cable tray top side
+        /// Clearance for cable tray top side (normal/non-insulated)
         /// </summary>
         public double CableTrayTop { get; set; } = 100.0;
         
         /// <summary>
-        /// Clearance for cable tray other sides (left, right, bottom)
+        /// Clearance for cable tray top side (insulated)
+        /// </summary>
+        public double CableTrayTopInsulated { get; set; } = 100.0;
+        
+        /// <summary>
+        /// Clearance for cable tray other sides (left, right, bottom) (normal/non-insulated)
         /// </summary>
         public double CableTrayOther { get; set; } = 50.0;
         
+        /// <summary>
+        /// Clearance for cable tray other sides (left, right, bottom) (insulated)
+        /// </summary>
+        public double CableTrayOtherInsulated { get; set; } = 50.0;
+        
         // Duct Accessory (Damper) clearances
         /// <summary>
-        /// Clearance for duct accessories MEP side (for MSFD dampers - connector side)
+        /// Clearance for duct accessories MEP side (for MSFD dampers - connector side) (normal/non-insulated)
         /// </summary>
         public double DuctAccessoryMepNormal { get; set; } = 100.0;
         
         /// <summary>
-        /// Clearance for duct accessories other sides (for Standard and MSFD non-connector sides)
+        /// Clearance for duct accessories MEP side (for MSFD dampers - connector side) (insulated)
+        /// </summary>
+        public double DuctAccessoryMepInsulated { get; set; } = 100.0;
+        
+        /// <summary>
+        /// Clearance for duct accessories other sides (for Standard and MSFD non-connector sides) (normal/non-insulated)
         /// </summary>
         public double DuctAccessoryOtherNormal { get; set; } = 50.0;
+        
+        /// <summary>
+        /// Clearance for duct accessories other sides (for Standard and MSFD non-connector sides) (insulated)
+        /// </summary>
+        public double DuctAccessoryOtherInsulated { get; set; } = 50.0;
     }
     
     /// <summary>

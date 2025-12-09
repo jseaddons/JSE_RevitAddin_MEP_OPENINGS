@@ -21,11 +21,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         }
 
         /// <summary>
+        /// ✅ FIX: Normalizes CombinedKey by stripping .xml extension to prevent duplicate rows
+        /// </summary>
+        private string NormalizeCombinedKey(string combinedKey)
+        {
+            if (string.IsNullOrWhiteSpace(combinedKey))
+                return combinedKey;
+
+            // Strip .xml extension if present anywhere in the key
+            // Handle cases like "Ventilation_duct_accessories.xml_du..." or "Ventilation_duct_accessories"
+            string normalized = combinedKey;
+            
+            // Check if key contains .xml (could be in middle or end)
+            int xmlIndex = normalized.IndexOf(".xml", StringComparison.OrdinalIgnoreCase);
+            if (xmlIndex >= 0)
+            {
+                // Remove .xml and anything after it that looks like a file extension pattern
+                // But preserve the category suffix (e.g., "_duct_accessories")
+                normalized = normalized.Substring(0, xmlIndex);
+                
+                // If we removed .xml from the middle, we might have broken the structure
+                // Reconstruct: filterName_categorySuffix
+                // Example: "Ventilation_duct_accessories.xml_du" -> "Ventilation_duct_accessories"
+                // The category suffix should already be there before .xml
+            }
+            
+            return normalized;
+        }
+
+        /// <summary>
         /// ⚠️⚠️⚠️ PROTECTED METHOD - DO NOT MODIFY WITHOUT EXTENSIVE TESTING ⚠️⚠️⚠️
         /// 
         /// Upserts (inserts or updates) opening conditions in SQLite database.
         /// 
         /// ✅ WORKING AS OF 2025-11-15: Conditions are successfully populating in SQLite database
+        /// ✅ FIXED 2025-12-09: Normalizes CombinedKey to prevent duplicate rows with .xml suffix
         /// 
         /// ⚠️ CRITICAL VALIDATION CHECKS (DO NOT REMOVE):
         /// 1. FilterId must be > 0 (indicates filter was successfully registered)
@@ -37,6 +67,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// - All validation failures are logged
         /// - Existing conditions are updated, new conditions are inserted
         /// - All operations are logged for debugging
+        /// - CombinedKey is normalized to prevent duplicates
         /// 
         /// ⚠️ DO NOT:
         /// - Remove validation checks
@@ -68,17 +99,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 return; // ⚠️ DO NOT remove this early return - prevents null reference exceptions
             }
 
-            int? existingId = GetConditionId(combinedKey);
+            // ✅ FIX: Normalize CombinedKey to prevent duplicate rows
+            string normalizedKey = NormalizeCombinedKey(combinedKey);
+            if (normalizedKey != combinedKey)
+            {
+                _logger($"[SQLite] ✅ Normalized CombinedKey: '{combinedKey}' -> '{normalizedKey}'");
+            }
+
+            // ✅ FIX: Clean up any duplicate rows with .xml suffix before lookup
+            CleanupDuplicateConditions(normalizedKey);
+
+            int? existingId = GetConditionId(normalizedKey);
 
             if (existingId.HasValue)
             {
-                _logger($"[SQLite] Updating existing conditions for '{combinedKey}' (ConditionId={existingId.Value}, FilterId={filterId})");
-                UpdateConditions(existingId.Value, filterId, combinedKey, normalizedCategory, conditions);
+                _logger($"[SQLite] Updating existing conditions for '{normalizedKey}' (ConditionId={existingId.Value}, FilterId={filterId})");
+                UpdateConditions(existingId.Value, filterId, normalizedKey, normalizedCategory, conditions);
             }
             else
             {
-                _logger($"[SQLite] Inserting new conditions for '{combinedKey}' (FilterId={filterId}, Category={normalizedCategory})");
-                InsertConditions(filterId, combinedKey, normalizedCategory, conditions);
+                _logger($"[SQLite] Inserting new conditions for '{normalizedKey}' (FilterId={filterId}, Category={normalizedCategory})");
+                InsertConditions(filterId, normalizedKey, normalizedCategory, conditions);
             }
         }
 
@@ -111,9 +152,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         PipesNormal,
                         PipesInsulated,
                         CableTrayTop,
+                        CableTrayTopInsulated,
                         CableTrayOther,
+                        CableTrayOtherInsulated,
                         DuctAccessoryMepNormal,
+                        DuctAccessoryMepInsulated,
                         DuctAccessoryOtherNormal,
+                        DuctAccessoryOtherInsulated,
                         OpeningPrefs,
                         HorizontalLevel,
                         VerticalLevel,
@@ -130,9 +175,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         @PipesNormal,
                         @PipesInsulated,
                         @CableTrayTop,
+                        @CableTrayTopInsulated,
                         @CableTrayOther,
+                        @CableTrayOtherInsulated,
                         @DuctAccessoryMepNormal,
+                        @DuctAccessoryMepInsulated,
                         @DuctAccessoryOtherNormal,
+                        @DuctAccessoryOtherInsulated,
                         @OpeningPrefs,
                         @HorizontalLevel,
                         @VerticalLevel,
@@ -175,9 +224,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         PipesNormal = @PipesNormal,
                         PipesInsulated = @PipesInsulated,
                         CableTrayTop = @CableTrayTop,
+                        CableTrayTopInsulated = @CableTrayTopInsulated,
                         CableTrayOther = @CableTrayOther,
+                        CableTrayOtherInsulated = @CableTrayOtherInsulated,
                         DuctAccessoryMepNormal = @DuctAccessoryMepNormal,
+                        DuctAccessoryMepInsulated = @DuctAccessoryMepInsulated,
                         DuctAccessoryOtherNormal = @DuctAccessoryOtherNormal,
+                        DuctAccessoryOtherInsulated = @DuctAccessoryOtherInsulated,
                         OpeningPrefs = @OpeningPrefs,
                         HorizontalLevel = @HorizontalLevel,
                         VerticalLevel = @VerticalLevel,
@@ -229,9 +282,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             cmd.Parameters.AddWithValue("@PipesNormal", clearance.PipesNormal);
             cmd.Parameters.AddWithValue("@PipesInsulated", clearance.PipesInsulated);
             cmd.Parameters.AddWithValue("@CableTrayTop", clearance.CableTrayTop);
+            cmd.Parameters.AddWithValue("@CableTrayTopInsulated", clearance.CableTrayTopInsulated);
             cmd.Parameters.AddWithValue("@CableTrayOther", clearance.CableTrayOther);
+            cmd.Parameters.AddWithValue("@CableTrayOtherInsulated", clearance.CableTrayOtherInsulated);
             cmd.Parameters.AddWithValue("@DuctAccessoryMepNormal", clearance.DuctAccessoryMepNormal);
+            cmd.Parameters.AddWithValue("@DuctAccessoryMepInsulated", clearance.DuctAccessoryMepInsulated);
             cmd.Parameters.AddWithValue("@DuctAccessoryOtherNormal", clearance.DuctAccessoryOtherNormal);
+            cmd.Parameters.AddWithValue("@DuctAccessoryOtherInsulated", clearance.DuctAccessoryOtherInsulated);
 
             var openingPrefs = conditions.OpeningTypePreferences ?? new OpeningTypePreferences();
             
@@ -259,6 +316,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             if (string.IsNullOrWhiteSpace(combinedKey))
                 return null;
 
+            // ✅ FIX: Normalize CombinedKey before database lookup
+            string normalizedKey = NormalizeCombinedKey(combinedKey);
+
             using (var cmd = _context.Connection.CreateCommand())
             {
                 cmd.CommandText = @"
@@ -273,9 +333,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         c.PipesNormal,
                         c.PipesInsulated,
                         c.CableTrayTop,
+                        c.CableTrayTopInsulated,
                         c.CableTrayOther,
+                        c.CableTrayOtherInsulated,
                         c.DuctAccessoryMepNormal,
+                        c.DuctAccessoryMepInsulated,
                         c.DuctAccessoryOtherNormal,
+                        c.DuctAccessoryOtherInsulated,
                         c.OpeningPrefs,
                         c.HorizontalLevel,
                         c.VerticalLevel,
@@ -287,7 +351,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     INNER JOIN Filters f ON c.FilterId = f.FilterId
                     WHERE c.CombinedKey = @CombinedKey
                     LIMIT 1";
-                cmd.Parameters.AddWithValue("@CombinedKey", combinedKey);
+                cmd.Parameters.AddWithValue("@CombinedKey", normalizedKey);
 
                 using (var reader = cmd.ExecuteReader())
                 {
@@ -310,9 +374,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             PipesNormal = GetDouble(reader, "PipesNormal"),
                             PipesInsulated = GetDouble(reader, "PipesInsulated"),
                             CableTrayTop = GetDouble(reader, "CableTrayTop"),
+                            CableTrayTopInsulated = GetDouble(reader, "CableTrayTopInsulated"),
                             CableTrayOther = GetDouble(reader, "CableTrayOther"),
+                            CableTrayOtherInsulated = GetDouble(reader, "CableTrayOtherInsulated"),
                             DuctAccessoryMepNormal = GetDouble(reader, "DuctAccessoryMepNormal"),
-                            DuctAccessoryOtherNormal = GetDouble(reader, "DuctAccessoryOtherNormal")
+                            DuctAccessoryMepInsulated = GetDouble(reader, "DuctAccessoryMepInsulated"),
+                            DuctAccessoryOtherNormal = GetDouble(reader, "DuctAccessoryOtherNormal"),
+                            DuctAccessoryOtherInsulated = GetDouble(reader, "DuctAccessoryOtherInsulated")
                         }
                     };
 
@@ -349,14 +417,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             }
         }
 
+        /// <summary>
+        /// ✅ FIX: Gets ConditionId, checking both normalized key and key with .xml suffix
+        /// This handles legacy duplicate rows that may exist
+        /// </summary>
         private int? GetConditionId(string combinedKey)
         {
+            // ✅ FIX: Normalize the key first
+            string normalizedKey = NormalizeCombinedKey(combinedKey);
+            
             using (var cmd = _context.Connection.CreateCommand())
             {
+                // ✅ FIX: Check for normalized key first (preferred)
                 cmd.CommandText = @"
                     SELECT ConditionId FROM Conditions
-                    WHERE CombinedKey = @CombinedKey";
-                cmd.Parameters.AddWithValue("@CombinedKey", combinedKey);
+                    WHERE CombinedKey = @CombinedKey
+                    LIMIT 1";
+                cmd.Parameters.AddWithValue("@CombinedKey", normalizedKey);
 
                 var result = cmd.ExecuteScalar();
                 if (result != null && int.TryParse(result.ToString(), out int conditionId))
@@ -365,7 +442,83 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 }
             }
 
+            // ✅ FIX: If not found with normalized key, check for key with .xml suffix (legacy)
+            // This handles cases where duplicate exists with .xml suffix
+            if (normalizedKey != combinedKey)
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = @"
+                        SELECT ConditionId FROM Conditions
+                        WHERE CombinedKey = @CombinedKey
+                        LIMIT 1";
+                    cmd.Parameters.AddWithValue("@CombinedKey", combinedKey);
+
+                    var result = cmd.ExecuteScalar();
+                    if (result != null && int.TryParse(result.ToString(), out int conditionId))
+                    {
+                        _logger($"[SQLite] ⚠️ Found legacy row with .xml suffix for '{combinedKey}', will be cleaned up");
+                        return conditionId;
+                    }
+                }
+            }
+
             return null;
+        }
+
+        /// <summary>
+        /// ✅ FIX: Removes duplicate condition rows that have .xml suffix in CombinedKey
+        /// Keeps only the normalized version (without .xml)
+        /// </summary>
+        private void CleanupDuplicateConditions(string normalizedKey)
+        {
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    // Find all rows that start with normalizedKey but have .xml in them
+                    // Example: normalizedKey = "Ventilation_duct_accessories"
+                    // Find: "Ventilation_duct_accessories.xml_du..." or similar
+                    cmd.CommandText = @"
+                        SELECT ConditionId, CombinedKey FROM Conditions
+                        WHERE CombinedKey LIKE @Pattern
+                          AND CombinedKey != @NormalizedKey";
+                    cmd.Parameters.AddWithValue("@Pattern", normalizedKey + ".xml%");
+                    cmd.Parameters.AddWithValue("@NormalizedKey", normalizedKey);
+
+                    var duplicatesToDelete = new List<int>();
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            int conditionId = reader.GetInt32(0);
+                            string duplicateKey = reader.GetString(1);
+                            duplicatesToDelete.Add(conditionId);
+                            _logger($"[SQLite] 🧹 Found duplicate condition row: ConditionId={conditionId}, CombinedKey='{duplicateKey}' (will be deleted)");
+                        }
+                    }
+
+                    // Delete duplicate rows
+                    if (duplicatesToDelete.Count > 0)
+                    {
+                        using (var deleteCmd = _context.Connection.CreateCommand())
+                        {
+                            string idList = string.Join(",", duplicatesToDelete);
+                            deleteCmd.CommandText = $@"
+                                DELETE FROM Conditions
+                                WHERE ConditionId IN ({idList})";
+                            
+                            int deleted = deleteCmd.ExecuteNonQuery();
+                            _logger($"[SQLite] ✅ Cleaned up {deleted} duplicate condition row(s) for normalized key '{normalizedKey}'");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log but don't fail - cleanup is best effort
+                _logger($"[SQLite] ⚠️ Error during duplicate cleanup for '{normalizedKey}': {ex.Message}");
+            }
         }
 
         /// <summary>

@@ -249,17 +249,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                 // 1. ✅ PRIMARY: Read from database (conditions object loaded from SQLite)
                 if (conditions?.ClearanceSettings != null)
                 {
-                    topClearanceMm = conditions.ClearanceSettings.CableTrayTop;
-                    otherClearanceMm = conditions.ClearanceSettings.CableTrayOther;
-                    DebugLogger.Info($"[CableTrayStrategy] ✅ Using DATABASE clearances: Top={topClearanceMm}mm, Other={otherClearanceMm}mm");
+                    // ✅ FIX: Use insulated clearances if zone is insulated
+                    bool isInsulated = clashZone.IsInsulated;
+                    topClearanceMm = isInsulated
+                        ? conditions.ClearanceSettings.CableTrayTopInsulated
+                        : conditions.ClearanceSettings.CableTrayTop;
+                    otherClearanceMm = isInsulated
+                        ? conditions.ClearanceSettings.CableTrayOtherInsulated
+                        : conditions.ClearanceSettings.CableTrayOther;
+                    
+                    DebugLogger.Info($"[CableTrayStrategy] ✅ Using DATABASE clearances: Top={topClearanceMm}mm, Other={otherClearanceMm}mm (IsInsulated={isInsulated})");
                     
                     // 🔥 UNCONDITIONAL: Log database selection
                     SafeFileLogger.SafeAppendText("cabletray_dimension_trace.log",
-                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CLEARANCE-SOURCE] DATABASE: Top={topClearanceMm}mm, Other={otherClearanceMm}mm\n");
-                    
-                    // 🔥 UNCONDITIONAL: Log database selection
-                    SafeFileLogger.SafeAppendText("cabletray_dimension_trace.log",
-                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CLEARANCE-SOURCE] DATABASE: Top={topClearanceMm}mm, Other={otherClearanceMm}mm\n");
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CLEARANCE-SOURCE] DATABASE: Top={topClearanceMm}mm, Other={otherClearanceMm}mm, IsInsulated={isInsulated}\n");
                 }
                 // 2. Fallback to UI clearance settings (if database not available)
                 else if (uiClearanceSettings != null && uiClearanceSettings.Count > 0)

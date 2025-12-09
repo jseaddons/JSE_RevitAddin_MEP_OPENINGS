@@ -144,7 +144,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             public long MaxMilliseconds { get; set; }
         }
         
-        internal class OperationTracker : IDisposable
+        public class OperationTracker : IDisposable
         {
             private readonly PerformanceMonitor _monitor;
             private readonly string _operationName;

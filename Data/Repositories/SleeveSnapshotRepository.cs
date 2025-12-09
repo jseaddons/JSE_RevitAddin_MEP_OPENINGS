@@ -55,10 +55,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     }
                 }
 
+                int rowsProcessed = 0;
+                int rowsAddedToIndex = 0;
+                
                 using (var reader = cmd.ExecuteReader())
                 {
                     while (reader.Read())
                     {
+                        rowsProcessed++;
                         try
                         {
                             var view = new SleeveSnapshotView
@@ -89,14 +93,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             if (view.SleeveInstanceId.HasValue && view.SleeveInstanceId.Value > 0)
                             {
                                 index.BySleeve[view.SleeveInstanceId.Value] = view;
+                                rowsAddedToIndex++;
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    _logger?.Invoke($"[SQLite] ✅ Added to BySleeve: SnapshotId={view.SnapshotId}, SleeveInstanceId={view.SleeveInstanceId.Value}");
+                                }
                             }
                             else if (view.SleeveInstanceId.HasValue)
                             {
                                 // ✅ DIAGNOSTIC: Log when SleeveInstanceId is 0 or negative
                                 _logger?.Invoke($"[SQLite] ⚠️ Snapshot {view.SnapshotId} has invalid SleeveInstanceId={view.SleeveInstanceId.Value} (must be > 0)");
                             }
+                            else
+                            {
+                                // ✅ DIAGNOSTIC: Log when SleeveInstanceId is NULL
+                                _logger?.Invoke($"[SQLite] ℹ️ Snapshot {view.SnapshotId} has NULL SleeveInstanceId (checking ClusterInstanceId)");
+                            }
 
                             if (view.ClusterInstanceId.HasValue && view.ClusterInstanceId.Value > 0)
+                            {
+                                index.ByCluster[view.ClusterInstanceId.Value] = view;
+                                rowsAddedToIndex++;
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    _logger?.Invoke($"[SQLite] ✅ Added to ByCluster: SnapshotId={view.SnapshotId}, ClusterInstanceId={view.ClusterInstanceId.Value}");
+                                }
+                            }
                             {
                                 index.ByCluster[view.ClusterInstanceId.Value] = view;
                             }
@@ -118,6 +140,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             }
 
             _logger?.Invoke($"[SQLite] ✅ Loaded {index.BySleeve.Count} individual and {index.ByCluster.Count} cluster snapshots");
+            
+            // ✅ DIAGNOSTIC: Log all loaded snapshots for debugging
+            if (!DeploymentConfiguration.DeploymentMode && index.BySleeve.Count > 0)
+            {
+                var sleeveIdsLoaded = string.Join(", ", index.BySleeve.Keys.Take(10));
+                _logger?.Invoke($"[SQLite] Loaded individual sleeve snapshots: [{sleeveIdsLoaded}]");
+            }
+            
+            if (!DeploymentConfiguration.DeploymentMode && index.ByCluster.Count > 0)
+            {
+                var clusterIdsLoaded = string.Join(", ", index.ByCluster.Keys.Take(10));
+                _logger?.Invoke($"[SQLite] Loaded cluster snapshots: [{clusterIdsLoaded}]");
+            }
+            
+            if (!DeploymentConfiguration.DeploymentMode && index.BySleeve.Count == 0 && index.ByCluster.Count == 0)
+            {
+                _logger?.Invoke($"[SQLite] ⚠️⚠️⚠️ WARNING: No snapshots were loaded (both individual and cluster are empty)!");
+            }
+            
             return index;
         }
 

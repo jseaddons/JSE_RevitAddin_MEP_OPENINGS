@@ -730,6 +730,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return result;
                 }
                 
+                // ✅ DIAGNOSTIC: Log snapshot index status BEFORE processing
+                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ Snapshot index loaded: BySleeve.Count={snapshotIndex.BySleeve.Count}, ByCluster.Count={snapshotIndex.ByCluster.Count}\n");
+                
+                if (snapshotIndex.BySleeve.Count > 0)
+                {
+                    var sampleSleeveIds = string.Join(", ", snapshotIndex.BySleeve.Keys.Take(5));
+                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] Sample SleeveInstanceIds: [{sampleSleeveIds}]\n");
+                }
+                
+                if (snapshotIndex.ByCluster.Count > 0)
+                {
+                    var sampleClusterIds = string.Join(", ", snapshotIndex.ByCluster.Keys.Take(5));
+                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] Sample ClusterInstanceIds: [{sampleClusterIds}]\n");
+                }
+
                 // Execute each mapping
                 foreach (var mapping in config.Mappings)
                 {
