@@ -25,6 +25,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
             try
             {
                 // ✅ STEP 1: Get wall bounding box
+                // ✅ NOTE: If wall is from linked document, caller should transform bbox BEFORE calling this method (like damper code does)
+                // This keeps the helper simple and matches the working damper pattern
                 BoundingBoxXYZ wallBbox = wall.get_BoundingBox(null);
                 if (wallBbox == null)
                 {
@@ -587,6 +589,133 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
         }
         
         /// <summary>
+        /// ✅ LEGACY RAY-TRACE METHOD: Get wall centerline point by finding 2 wall faces and calculating midpoint.
+        /// This is the "half in and half out" method for ducts, pipes, and cable trays.
+        /// Uses ReferenceIntersector to find wall faces in both directions, then calculates midpoint.
+        /// </summary>
+        public static XYZ GetWallCenterlinePointFromRayTrace(Wall wall, XYZ intersectionPoint, Document hostDocument = null)
+        {
+            DebugLogger.Log($"[CENTERLINE-DEBUG] ===== WALL CENTERLINE FROM RAY-TRACE (LEGACY METHOD) =====");
+            DebugLogger.Log($"[CENTERLINE-DEBUG] Wall ID: {wall?.Id?.IntegerValue}");
+            DebugLogger.Log($"[CENTERLINE-DEBUG] Input intersectionPoint: {intersectionPoint}");
+            
+            if (wall == null || hostDocument == null)
+            {
+                DebugLogger.Log($"[CENTERLINE-DEBUG] Wall or hostDocument is null, returning input point");
+                return intersectionPoint;
+            }
+            
+            try
+            {
+                // ✅ STEP 1: Get wall normal to determine ray direction
+                XYZ wallNormal = wall.Orientation.Normalize();
+                
+                // ✅ LINKED DOCUMENT FIX: Transform normal if wall is from linked document
+                Document wallDoc = wall.Document;
+                Transform linkTransform = null;
+                
+                if (wallDoc != null && wallDoc != hostDocument)
+                {
+                    var linkInstances = new FilteredElementCollector(hostDocument)
+                        .OfClass(typeof(RevitLinkInstance))
+                        .Cast<RevitLinkInstance>();
+                    
+                    foreach (var linkInstance in linkInstances)
+                    {
+                        var linkDoc = linkInstance.GetLinkDocument();
+                        if (linkDoc != null && linkDoc.Equals(wallDoc))
+                        {
+                            linkTransform = linkInstance.GetTotalTransform();
+                            wallNormal = linkTransform.OfVector(wallNormal).Normalize();
+                            DebugLogger.Log($"[CENTERLINE-DEBUG] Transformed wall normal from link to host coordinates");
+                            break;
+                        }
+                    }
+                }
+                
+                // ✅ STEP 2: Create ReferenceIntersector to find wall faces
+                var view3D = new FilteredElementCollector(hostDocument)
+                    .OfClass(typeof(View3D))
+                    .Cast<View3D>()
+                    .FirstOrDefault(v => !v.IsTemplate);
+                
+                if (view3D == null)
+                {
+                    DebugLogger.Log($"[CENTERLINE-DEBUG] No 3D view found, using fallback method");
+                    return GetWallCenterlinePoint(wall, intersectionPoint, hostDocument);
+                }
+                
+                var refIntersector = new ReferenceIntersector(
+                    new ElementClassFilter(typeof(Wall)),
+                    FindReferenceTarget.Face,
+                    view3D);
+                refIntersector.FindReferencesInRevitLinks = true;
+                
+                // ✅ STEP 3: Cast rays in both directions to find wall faces
+                var rayDir = wallNormal;
+                var hitsFwd = refIntersector.Find(intersectionPoint, rayDir)?.Where(h => h != null).OrderBy(h => h.Proximity).Take(2).ToList();
+                var hitsBack = refIntersector.Find(intersectionPoint, rayDir.Negate())?.Where(h => h != null).OrderBy(h => h.Proximity).Take(2).ToList();
+                
+                // ✅ STEP 4: Find the two closest wall faces (one in each direction)
+                ReferenceWithContext? face1 = null;
+                ReferenceWithContext? face2 = null;
+                
+                if (hitsFwd != null && hitsFwd.Count > 0)
+                {
+                    // Check if the forward hit is the same wall
+                    var forwardHit = hitsFwd.FirstOrDefault(h => 
+                    {
+                        var refElem = hostDocument.GetElement(h.GetReference().ElementId);
+                        return refElem != null && refElem.Id == wall.Id;
+                    });
+                    if (forwardHit != null)
+                    {
+                        face1 = forwardHit;
+                    }
+                }
+                
+                if (hitsBack != null && hitsBack.Count > 0)
+                {
+                    // Check if the backward hit is the same wall
+                    var backwardHit = hitsBack.FirstOrDefault(h => 
+                    {
+                        var refElem = hostDocument.GetElement(h.GetReference().ElementId);
+                        return refElem != null && refElem.Id == wall.Id;
+                    });
+                    if (backwardHit != null)
+                    {
+                        face2 = backwardHit;
+                    }
+                }
+                
+                // ✅ STEP 5: Calculate midpoint between the two faces (half in and half out)
+                if (face1 != null && face2 != null)
+                {
+                    var point1 = intersectionPoint + rayDir * face1.Proximity;
+                    var point2 = intersectionPoint - rayDir * face2.Proximity;
+                    var midpoint = (point1 + point2) * 0.5;
+                    
+                    DebugLogger.Log($"[CENTERLINE-DEBUG] Found 2 wall faces: Face1 distance={face1.Proximity * 304.8:F1}mm, Face2 distance={face2.Proximity * 304.8:F1}mm");
+                    DebugLogger.Log($"[CENTERLINE-DEBUG] Point1=({point1.X:F6}ft, {point1.Y:F6}ft, {point1.Z:F6}ft), Point2=({point2.X:F6}ft, {point2.Y:F6}ft, {point2.Z:F6}ft)");
+                    DebugLogger.Log($"[CENTERLINE-DEBUG] Midpoint (centerline)=({midpoint.X:F6}ft, {midpoint.Y:F6}ft, {midpoint.Z:F6}ft)");
+                    DebugLogger.Log($"[CENTERLINE-DEBUG] ===== END WALL CENTERLINE FROM RAY-TRACE =====");
+                    
+                    return midpoint;
+                }
+                else
+                {
+                    DebugLogger.Log($"[CENTERLINE-DEBUG] Could not find 2 wall faces (face1={face1 != null}, face2={face2 != null}), using fallback method");
+                    return GetWallCenterlinePoint(wall, intersectionPoint, hostDocument);
+                }
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[CENTERLINE-DEBUG] Exception in GetWallCenterlinePointFromRayTrace: {ex.Message}");
+                return GetWallCenterlinePoint(wall, intersectionPoint, hostDocument);
+            }
+        }
+        
+        /// <summary>
         /// Generic centerline point calculator that automatically determines element type
         /// and applies the appropriate centerline calculation method
         /// </summary>
@@ -602,8 +731,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
             if (element.Category.Id.IntegerValue == (int)BuiltInCategory.OST_Walls)
             {
                 if (element is Wall wall)
-                    // ✅ OTHER MEP ELEMENTS: Use original projection method (works correctly for ducts/pipes)
-                    return GetWallCenterlinePoint(wall, intersectionPoint, hostDocument);
+                {
+                    // ✅ BBOX METHOD: For ducts, pipes, and cable trays, use bbox method (same as dampers) - cheaper and more reliable
+                    // This calculates the final placement point at wall centerline using bounding box center
+                    return GetWallCenterlinePointFromBbox(wall, intersectionPoint, hostDocument);
+                }
                 else
                     return intersectionPoint;
             }

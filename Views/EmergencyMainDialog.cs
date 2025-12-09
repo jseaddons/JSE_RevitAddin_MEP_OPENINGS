@@ -6825,6 +6825,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     var selectedReferenceFiles = GetSelectedReferenceFiles();
                     var selectedHostFiles = GetSelectedHostFiles();
                     var clearanceSettings = GetClearanceSettings();
+                    
+                    // ✅ CRITICAL DIAGNOSTIC: Log UI selections with full details including linked file names
+                    DebugLogger.Info($"[ON_REFRESH_CLICK] UI Selections - Filters: {selectedFilterItems?.Count ?? 0} [{string.Join(", ", selectedFilterItems ?? new List<string>())}]");
+                    DebugLogger.Info($"[ON_REFRESH_CLICK] UI Selections - MEP Categories: {selectedMepCategories?.Count ?? 0} [{string.Join(", ", selectedMepCategories ?? new List<string>())}]");
+                    DebugLogger.Info($"[ON_REFRESH_CLICK] UI Selections - Reference Files: {selectedReferenceFiles?.Count ?? 0} [{string.Join(", ", selectedReferenceFiles ?? new List<string>())}]");
+                    DebugLogger.Info($"[ON_REFRESH_CLICK] UI Selections - Host Files: {selectedHostFiles?.Count ?? 0} [{string.Join(", ", selectedHostFiles ?? new List<string>())}]");
+                    
+                    System.Diagnostics.Debug.WriteLine($"[ON_REFRESH_CLICK] UI Selections - Filters: {selectedFilterItems?.Count ?? 0} [{string.Join(", ", selectedFilterItems ?? new List<string>())}]");
+                    System.Diagnostics.Debug.WriteLine($"[ON_REFRESH_CLICK] UI Selections - MEP Categories: {selectedMepCategories?.Count ?? 0} [{string.Join(", ", selectedMepCategories ?? new List<string>())}]");
+                    System.Diagnostics.Debug.WriteLine($"[ON_REFRESH_CLICK] UI Selections - Reference Files: {selectedReferenceFiles?.Count ?? 0} [{string.Join(", ", selectedReferenceFiles ?? new List<string>())}]");
+                    System.Diagnostics.Debug.WriteLine($"[ON_REFRESH_CLICK] UI Selections - Host Files: {selectedHostFiles?.Count ?? 0} [{string.Join(", ", selectedHostFiles ?? new List<string>())}]");
+                    
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), 
+                        $"[{DateTime.Now}] [ON_REFRESH_CLICK] UI Selections - Filters: {selectedFilterItems?.Count ?? 0} [{string.Join(", ", selectedFilterItems ?? new List<string>())}]\n" +
+                        $"[{DateTime.Now}] [ON_REFRESH_CLICK] UI Selections - MEP Categories: {selectedMepCategories?.Count ?? 0} [{string.Join(", ", selectedMepCategories ?? new List<string>())}]\n" +
+                        $"[{DateTime.Now}] [ON_REFRESH_CLICK] UI Selections - Reference Files: {selectedReferenceFiles?.Count ?? 0} [{string.Join(", ", selectedReferenceFiles ?? new List<string>())}]\n" +
+                        $"[{DateTime.Now}] [ON_REFRESH_CLICK] UI Selections - Host Files: {selectedHostFiles?.Count ?? 0} [{string.Join(", ", selectedHostFiles ?? new List<string>())}]\n");
 
                     // Guard: No filters selected → prompt and STOP (do nothing else)
                     if (selectedFilterItems == null || selectedFilterItems.Count == 0)
@@ -6916,15 +6933,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     }
 
                     // ✅ FEATURE FLAG: Use factory to create appropriate refresh service (legacy or refactored)
+                    DebugLogger.Info("[ON_REFRESH_CLICK] Creating refresh service...");
+                    System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] Creating refresh service...");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), 
+                        $"[{DateTime.Now}] [ON_REFRESH_CLICK] Creating refresh service...\n");
+                    
                     var refreshService = Services.RefreshServiceFactory.Create(document, _uiDocument, _appProfileService);
                     refreshService.SetUIReferences(_statusLabel, _progressBar, _refreshButton);
                     
                     // 🔥 CRITICAL FIX: Load existing clash zone data to preserve cluster information
                     // This prevents the Refresh process from overwriting existing cluster data
                     // Note: Refactored service loads data internally, but we call this for legacy compatibility
+                    DebugLogger.Info("[ON_REFRESH_CLICK] Loading existing clash zone data...");
+                    System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] Loading existing clash zone data...");
                     refreshService.LoadExistingClashZoneData();
                     
+                    DebugLogger.Info("[ON_REFRESH_CLICK] Calling ExecuteRefresh...");
+                    System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] Calling ExecuteRefresh...");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), 
+                        $"[{DateTime.Now}] [ON_REFRESH_CLICK] Calling ExecuteRefresh...\n");
+                    
+                    // ✅ ExecuteRefresh returns void (via IRefreshService interface)
+                    // The wrapper logs the result internally (Result.Succeeded/Cancelled/Failed)
                     refreshService.ExecuteRefresh(selectedFilterItems, selectedMepCategories, selectedReferenceFiles, selectedHostFiles, clearanceSettings);
+                    
+                    DebugLogger.Info("[ON_REFRESH_CLICK] ExecuteRefresh completed");
+                    System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] ExecuteRefresh completed");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), 
+                        $"[{DateTime.Now}] [ON_REFRESH_CLICK] ExecuteRefresh completed\n");
                     
                     // ✅ TIMING: Stop timing and log elapsed time
                     refreshStopwatch.Stop();
@@ -6980,7 +7016,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                                 {
                                     var repository = new Data.Repositories.ClashZoneRepository(dbContext);
                                     
-                                    // ✅ CRITICAL FIX: Reuse selectedMepCategories from outer scope (already declared at line 6203)
+                                    // ✅ CRITICAL FIX: Reuse selectedFilterName from outer scope (already declared at line 6862)
+                                    // Use GetClashZonesByFilter with selected filter name to ensure we only check zones for the selected filter
                                     if (selectedMepCategories != null && selectedMepCategories.Count > 0)
                                     {
                                         foreach (var category in selectedMepCategories)
@@ -6990,8 +7027,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                                             
                                             try
                                             {
-                                                // Get unresolved clash zones from database
-                                                var allZones = repository.GetClashZonesByCategory(category);
+                                                // ✅ CRITICAL FIX: Use GetClashZonesByFilter with selected filter name (not GetClashZonesByCategory)
+                                                // This ensures we only check zones for the selected filter, not all filters
+                                                var allZones = repository.GetClashZonesByFilter(selectedFilterName, category, unresolvedOnly: false);
                                                 if (allZones != null && allZones.Count > 0)
                                                 {
                                                     // A clash zone is unresolved if BOTH IsResolved=false AND IsClusterResolved=false
@@ -7001,15 +7039,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                                                     
                                                     if (categoryUnresolved > 0)
                                                     {
-                                                        DebugLogger.Info($"[OK_BUTTON_DEBUG] Database '{category}': {categoryUnresolved} unresolved out of {allZones.Count} total zones");
-                                                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Database '{category}': {categoryUnresolved}/{allZones.Count} unresolved\n");
+                                                        DebugLogger.Info($"[OK_BUTTON_DEBUG] Database Filter='{selectedFilterName}', Category='{category}': {categoryUnresolved} unresolved out of {allZones.Count} total zones");
+                                                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Database Filter='{selectedFilterName}', Category='{category}': {categoryUnresolved}/{allZones.Count} unresolved\n");
                                                     }
                                                 }
                                             }
                                             catch (Exception dbEx)
                                             {
-                                                DebugLogger.Warning($"[OK_BUTTON_DEBUG] Error checking database for category '{category}': {dbEx.Message}");
-                                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [OK_BUTTON_DEBUG] ERROR checking database for '{category}': {dbEx.Message}\n");
+                                                DebugLogger.Warning($"[OK_BUTTON_DEBUG] Error checking database for filter='{selectedFilterName}', category='{category}': {dbEx.Message}");
+                                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [OK_BUTTON_DEBUG] ERROR checking database for Filter='{selectedFilterName}', Category='{category}': {dbEx.Message}\n");
                                             }
                                         }
                                     }
@@ -7073,9 +7111,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 }
                 else
                 {
+                    // ✅ CRITICAL FIX: Log when document is null (prevents silent failure)
+                    DebugLogger.Warning("[ON_REFRESH_CLICK] ❌ Document is null - refresh cannot proceed");
+                    System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] ❌ Document is null - refresh cannot proceed");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), 
+                        $"[{DateTime.Now}] [ON_REFRESH_CLICK] ❌ Document is null - refresh cannot proceed\n");
+                    
                     _statusLabel.Text = "No active document";
-                _progressBar.Visible = false;
-                _refreshButton.Enabled = true;
+                    _progressBar.Visible = false;
+                    _refreshButton.Enabled = true;
+                    
+                    System.Windows.Forms.MessageBox.Show(
+                        "No active Revit document found. Please open a Revit project file before running Refresh.",
+                        "No Document",
+                        System.Windows.Forms.MessageBoxButtons.OK,
+                        System.Windows.Forms.MessageBoxIcon.Warning);
                 }
 
                 System.Diagnostics.Debug.WriteLine("[ON_REFRESH_CLICK] RefreshService.ExecuteRefresh() method completed successfully");

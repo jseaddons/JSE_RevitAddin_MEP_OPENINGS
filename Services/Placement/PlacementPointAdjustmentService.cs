@@ -121,78 +121,63 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 return placementPoint;
             }
 
-            // ✅ PERFORMANCE: Use pre-calculated wall centerline point from database (enables multi-threading)
-            // ✅ CRITICAL: Wall centerline point is calculated during refresh when wall element is available
-            // This avoids Revit API calls during placement, enabling parallel processing
+            // ✅ PERFORMANCE: Use pre-calculated sleeve placement point from database (enables multi-threading)
+            // ✅ CRITICAL: SleevePlacementPoint is now calculated during refresh using bbox method (same as dampers)
+            // This is the final placement point at wall centerline, no adjustment needed
             // ✅ CRITICAL FIX: Check X/Y/Z values directly (not just computed property) to handle cases where values are saved but property returns zero
-            bool hasWallCenterline = (zone.WallCenterlinePointX != 0.0 || zone.WallCenterlinePointY != 0.0 || zone.WallCenterlinePointZ != 0.0);
+            bool hasSleevePlacementPoint = (zone.SleevePlacementPointX != 0.0 || zone.SleevePlacementPointY != 0.0 || zone.SleevePlacementPointZ != 0.0);
             
-            // ✅ DIAGNOSTIC: Log wall centerline values for debugging "half in and out" issue
+            // ✅ DIAGNOSTIC: Log sleeve placement point values
             if (!DeploymentConfiguration.DeploymentMode)
             {
                 SafeFileLogger.SafeAppendText("placement_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] 🔍 WALL CENTERLINE CHECK: Zone {zone.Id}, " +
-                    $"HasWallCenterline={hasWallCenterline}, " +
-                    $"WallCenterlinePointX={zone.WallCenterlinePointX:F6}ft ({zone.WallCenterlinePointX * 304.8:F1}mm), " +
-                    $"WallCenterlinePointY={zone.WallCenterlinePointY:F6}ft ({zone.WallCenterlinePointY * 304.8:F1}mm), " +
-                    $"WallCenterlinePointZ={zone.WallCenterlinePointZ:F6}ft ({zone.WallCenterlinePointZ * 304.8:F1}mm), " +
-                    $"PlacementPoint (Centroid)=({placementPoint.X:F6}ft, {placementPoint.Y:F6}ft, {placementPoint.Z:F6}ft)\n");
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] 🔍 SLEEVE PLACEMENT POINT CHECK: Zone {zone.Id}, " +
+                    $"HasSleevePlacementPoint={hasSleevePlacementPoint}, " +
+                    $"SleevePlacementPointX={zone.SleevePlacementPointX:F6}ft ({zone.SleevePlacementPointX * 304.8:F1}mm), " +
+                    $"SleevePlacementPointY={zone.SleevePlacementPointY:F6}ft ({zone.SleevePlacementPointY * 304.8:F1}mm), " +
+                    $"SleevePlacementPointZ={zone.SleevePlacementPointZ:F6}ft ({zone.SleevePlacementPointZ * 304.8:F1}mm), " +
+                    $"PlacementPoint (Input)=({placementPoint.X:F6}ft, {placementPoint.Y:F6}ft, {placementPoint.Z:F6}ft)\n");
             }
             
-            if (hasWallCenterline)
+            if (hasSleevePlacementPoint)
             {
-                // ✅ USE SAVED WALL CENTERLINE POINT: Pre-calculated during refresh (no Revit API calls needed)
+                // ✅ USE SAVED SLEEVE PLACEMENT POINT: Pre-calculated during refresh using bbox method (no Revit API calls needed)
                 // This enables multi-threading because it's just data access, not Revit API calls
                 // ✅ CRITICAL: Construct XYZ from saved X/Y/Z values (more reliable than computed property)
-                XYZ savedCenterlinePoint = new XYZ(zone.WallCenterlinePointX, zone.WallCenterlinePointY, zone.WallCenterlinePointZ);
+                // This is the final placement point at wall centerline, calculated during refresh when wall element was available
+                XYZ savedPlacementPoint = new XYZ(zone.SleevePlacementPointX, zone.SleevePlacementPointY, zone.SleevePlacementPointZ);
                 
-                // ✅ CALCULATE OFFSET: If placement point is offset from wall centerline, use saved centerline
+                // ✅ CRITICAL: Always use saved sleeve placement point if available (same as damper logic)
+                // The saved placement point was calculated during refresh using bbox method
+                // This ensures correct placement at wall centerline for pipes, ducts, and cable trays
                 // ✅ NOTE: This is for NON-DAMPER elements only - dampers are handled by DamperPlacementPointService
-                // ✅ CRITICAL FIX: Only adjust if placement point is SIGNIFICANTLY offset (not just > 1e-6)
-                // This prevents moving sleeves that are already at wall centerline to the wrong position
-                // Threshold: 1mm (0.00328 feet) - only adjust if offset is more than 1mm
-                const double MIN_ADJUSTMENT_THRESHOLD = 0.00328; // 1mm in feet
-                double distance = placementPoint.DistanceTo(savedCenterlinePoint);
-                
-                // ✅ DIAGNOSTIC: Always log the distance calculation for debugging
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    XYZ difference = savedCenterlinePoint - placementPoint;
+                    XYZ difference = savedPlacementPoint - placementPoint;
+                    double distance = placementPoint.DistanceTo(savedPlacementPoint);
                     SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] 📏 DISTANCE CALCULATION: Zone {zone.Id}, " +
-                        $"PlacementPoint=({placementPoint.X:F6}ft, {placementPoint.Y:F6}ft, {placementPoint.Z:F6}ft), " +
-                        $"WallCenterline=({savedCenterlinePoint.X:F6}ft, {savedCenterlinePoint.Y:F6}ft, {savedCenterlinePoint.Z:F6}ft), " +
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ✅ USING SAVED SLEEVE PLACEMENT POINT: Zone {zone.Id}, " +
+                        $"InputPoint=({placementPoint.X:F6}ft, {placementPoint.Y:F6}ft, {placementPoint.Z:F6}ft), " +
+                        $"SavedPlacementPoint=({savedPlacementPoint.X:F6}ft, {savedPlacementPoint.Y:F6}ft, {savedPlacementPoint.Z:F6}ft), " +
                         $"Difference=({difference.X:F6}ft, {difference.Y:F6}ft, {difference.Z:F6}ft), " +
-                        $"Distance={distance:F6}ft ({distance * 304.8:F2}mm), " +
-                        $"Threshold={MIN_ADJUSTMENT_THRESHOLD:F6}ft (1.0mm)\n");
+                        $"Distance={distance * 304.8:F1}mm - USING DIRECTLY (no adjustment needed)\n");
                 }
-                
-                // ✅ CRITICAL FIX: Only adjust if distance is significant (> 1mm)
-                // This prevents moving sleeves that are already at wall centerline
-                if (distance > MIN_ADJUSTMENT_THRESHOLD)
+                return savedPlacementPoint; // Always use pre-calculated sleeve placement point
+            }
+            
+            // ✅ BACKWARD COMPATIBILITY: Check for WallCenterlinePoint (old data format)
+            bool hasWallCenterline = (zone.WallCenterlinePointX != 0.0 || zone.WallCenterlinePointY != 0.0 || zone.WallCenterlinePointZ != 0.0);
+            if (hasWallCenterline)
+            {
+                // Use WallCenterlinePoint for backward compatibility with old data
+                XYZ savedCenterlinePoint = new XYZ(zone.WallCenterlinePointX, zone.WallCenterlinePointY, zone.WallCenterlinePointZ);
+                if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ✅ USING SAVED WALL CENTERLINE: Zone {zone.Id}, " +
-                            $"Centroid=({placementPoint.X:F3}, {placementPoint.Y:F3}, {placementPoint.Z:F3}), " +
-                            $"WallCenterline=({savedCenterlinePoint.X:F3}, {savedCenterlinePoint.Y:F3}, {savedCenterlinePoint.Z:F3}), " +
-                            $"Distance={distance * 304.8:F1}mm > 1mm threshold - ADJUSTING TO WALL CENTERLINE\n");
-                    }
-                    return savedCenterlinePoint; // Use pre-calculated wall centerline point
+                    SafeFileLogger.SafeAppendText("placement_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ⚠️ USING WALL CENTERLINE (BACKWARD COMPATIBILITY): Zone {zone.Id}, " +
+                        $"Using WallCenterlinePoint (old format) - consider refreshing to update to SleevePlacementPoint\n");
                 }
-                else
-                {
-                    // Centroid is already at wall centerline (or very close, < 1mm), no adjustment needed
-                    // ✅ CRITICAL: Don't move sleeves that are already centered (prevents "half in and out" issue)
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ✅ CENTROID ALREADY AT WALL CENTERLINE: Zone {zone.Id}, " +
-                            $"No adjustment needed (distance={distance * 304.8:F1}mm < 1mm threshold) - KEEPING ORIGINAL PLACEMENT POINT\n");
-                    }
-                    return placementPoint;
-                }
+                return savedCenterlinePoint;
             }
             else if (!DeploymentConfiguration.DeploymentMode)
             {

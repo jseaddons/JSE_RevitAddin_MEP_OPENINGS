@@ -138,87 +138,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             // 🔴 CRITICAL OPTIMIZATION: Collector-level multi-filter optimization
             // Apply ALL 5 filters at FilteredElementCollector level BEFORE loading elements
             // This reduces memory footprint by 60-80% (see CONSOLIDATED_PENDING_OPTIMIZATIONS.md #7)
+            
+            // ✅ IMPORTANT: Duct Accessories (Dampers) are handled separately by DamperProcessingService
+            // This intersection processor does NOT process duct accessories to avoid duplicate code
+            // Duct accessories are processed in refresh_service_refactored.cs via DamperProcessingService
+            // Do NOT include OST_DuctAccessory in MEP category filters here
             var newClashZones = RunDetectionWithCollectorLevelFilters();
 
-            // ✅ ALTERNATIVE APPROACH: Process dampers separately (outside MepIntersectionService)
-            // This ensures dampers are always processed, even if MepIntersectionService doesn't handle them
-            var damperClashZones = ProcessDampersSeparately();
-            _logger($"[INTERSECTION-PROCESSOR] ✅ Damper processing: {damperClashZones.Count} ClashZones created from dampers");
-
-            // ✅ MERGE: Combine normal intersections with damper ClashZones
-            var allNewClashZones = new List<ClashZone>();
-            allNewClashZones.AddRange(newClashZones ?? new List<ClashZone>());
-            allNewClashZones.AddRange(damperClashZones);
-
-            _context.NewClashZones = allNewClashZones;
+            _context.NewClashZones = newClashZones ?? new List<ClashZone>();
             _context.AllClashZones = CombineExistingAndNew(_context.ExistingClashZones, _context.NewClashZones);
 
-            _logger($"[INTERSECTION-PROCESSOR] Detection complete: {_context.NewClashZones.Count} new zones ({newClashZones?.Count ?? 0} from intersections + {damperClashZones.Count} from dampers), {_context.AllClashZones.Count} total");
+            _logger($"[INTERSECTION-PROCESSOR] Detection complete: {_context.NewClashZones.Count} new zones, {_context.AllClashZones.Count} total (duct accessories handled separately)");
 
             return _context.AllClashZones;
         }
 
-        /// <summary>
-        /// ✅ ALTERNATIVE APPROACH: Process dampers separately outside MepIntersectionService.
-        /// This ensures dampers are always processed, even if MepIntersectionService doesn't handle them.
-        /// SOLID: Single Responsibility - damper processing is isolated in DamperProcessingService.
-        /// </summary>
-        private List<ClashZone> ProcessDampersSeparately()
-        {
-            try
-            {
-                // Get section box from view
-                var view3D = _context.Document.ActiveView as View3D;
-                if (view3D == null)
-                {
-                    view3D = new FilteredElementCollector(_context.Document)
-                        .OfClass(typeof(View3D))
-                        .Cast<View3D>()
-                        .FirstOrDefault(v => !v.IsTemplate);
-                }
-
-                BoundingBoxXYZ? sectionBox = null;
-                if (view3D != null)
-                {
-                    var sectionBoxOutline = GetSectionBoxOutline(view3D);
-                    if (sectionBoxOutline != null)
-                    {
-                        sectionBox = new BoundingBoxXYZ
-                        {
-                            Min = sectionBoxOutline.MinimumPoint,
-                            Max = sectionBoxOutline.MaximumPoint
-                        };
-                    }
-                }
-
-                // Get ClashZoneStorage from context (or create new one)
-                var clashZoneStorage = _context.XmlCache?.FilterXml?.Values?.FirstOrDefault() ?? new ClashZoneStorage();
-
-                // Create damper processing service (pass PerformanceMonitor for performance tracking)
-                var damperService = new DamperProcessingService(
-                    _context.Document,
-                    _logger,
-                    clashZoneStorage,
-                    null, // Use default damper type detector
-                    null, // Use default connector detector
-                    null, // Use default parameter snapshot service
-                    _performanceMonitor); // Pass performance monitor for tracking
-
-                // Process dampers (pass selected reference files to respect UI selection)
-                var damperClashZones = damperService.ProcessDampers(
-                    _context.SelectedMepCategories,
-                    _context.SelectedHostTypes,
-                    _context.SelectedReferenceFiles,
-                    sectionBox);
-
-                return damperClashZones ?? new List<ClashZone>();
-            }
-            catch (Exception ex)
-            {
-                _logger($"[INTERSECTION-PROCESSOR] ⚠️ Error in ProcessDampersSeparately: {ex.Message}");
-                return new List<ClashZone>();
-            }
-        }
+        // ✅ REMOVED: ProcessDampersSeparately() method
+        // Duct Accessories (Dampers) are now handled separately by DamperProcessingService
+        // This avoids duplicate code and ensures single responsibility
+        // Damper processing is called from refresh_service_refactored.cs, not from intersection_processor
 
         /// <summary>
         /// Phase 3: Post-process results and update context caches.
@@ -286,6 +224,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             Outline sectionBoxOutline = GetSectionBoxOutline(view3D);
 
             // ✅ STEP 2: Build category filters
+            // ✅ IMPORTANT: Duct Accessories are excluded here - they are handled separately by DamperProcessingService
+            // BuildMepCategoryFilters will skip "Duct Accessories" category to avoid duplicate processing
             var mepCategoryFilters = BuildMepCategoryFilters(_context.SelectedMepCategories);
             var hostCategoryFilters = BuildHostCategoryFilters(_context.SelectedHostTypes);
 
@@ -923,6 +863,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             {
                 if (string.IsNullOrWhiteSpace(category))
                     continue;
+                
+                // ✅ IMPORTANT: Exclude Duct Accessories - they are handled separately by DamperProcessingService
+                // Do NOT process duct accessories here to avoid duplicate code and wasted processing time
+                if (string.Equals(category, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger($"[INTERSECTION-PROCESSOR] ⏭️ Skipping Duct Accessories category - handled separately by DamperProcessingService");
+                    continue;
+                }
                     
                 BuiltInCategory builtInCategory = GetBuiltInCategoryForMep(category);
                 if (builtInCategory != BuiltInCategory.INVALID)
@@ -1003,6 +951,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             var settings = ApplicationProfileService.Instance.GetCurrentSettings();
             double minWallThicknessMm = settings?.MinWallThickness ?? 0;
             bool ignoreArchitecturalFloors = settings?.IgnoreArchitecturalFloors ?? false;
+            
+            // ✅ DIAGNOSTIC: Log wall thickness setting to verify it's loaded correctly
+            if (!DeploymentConfiguration.DeploymentMode && minWallThicknessMm > 0)
+            {
+                _logger($"[PROPERTY-FILTER] MinWallThickness setting loaded: {minWallThicknessMm}mm (will filter walls thinner than this)");
+            }
 
             var filtered = elements.AsEnumerable();
 
@@ -1175,11 +1129,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             // ✅ HANDLE ANY FILTER NAME: Case-insensitive matching with common variations
             var normalized = category.Trim().ToLowerInvariant();
             
+            // ✅ IMPORTANT: Duct Accessories are handled separately by DamperProcessingService
+            // Do NOT return OST_DuctAccessory here - it will be filtered out in BuildMepCategoryFilters
+            // This avoids duplicate processing and ensures single responsibility
+            
             return normalized switch
             {
                 "pipes" or "pipe" => BuiltInCategory.OST_PipeCurves,
                 "ducts" or "duct" => BuiltInCategory.OST_DuctCurves,
-                "duct accessories" or "ductaccessories" or "duct accessory" => BuiltInCategory.OST_DuctAccessory,
+                "duct accessories" or "ductaccessories" or "duct accessory" => BuiltInCategory.INVALID, // ✅ EXCLUDED: Handled separately
                 "cable trays" or "cabletrays" or "cable tray" => BuiltInCategory.OST_CableTray,
                 _ => BuiltInCategory.INVALID
             };

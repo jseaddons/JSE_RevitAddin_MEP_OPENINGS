@@ -371,6 +371,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             foreach (var (mepElement, structuralElement, boundingBox, intersectionPoint) in prioritizedIntersections)
             {
+                // ✅ WALL CENTERLINE POINT: Calculate final placement point using bbox method (same as dampers)
+                // This is passed to CreateClashZone to save directly to SleevePlacementPoint - avoids adjustment during placement
+                // For dampers, this is calculated in DamperProcessingService using bbox method
+                // ✅ PERFORMANCE: Bbox method is much cheaper than ray-trace (no ReferenceIntersector, no 3D view lookup)
+                XYZ? calculatedWallCenterline = null;
+                string mepCategoryName = GetElementCategoryName(mepElement);
+                if (structuralElement is Wall wall)
+                {
+                    // ✅ BBOX METHOD: For ducts, pipes, and cable trays, use bbox method (same as dampers)
+                    // This calculates the final placement point at wall centerline, saving directly to SleevePlacementPoint
+                    // Eliminates need for WallCenterlinePoint columns and adjustment logic during placement
+                    calculatedWallCenterline = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetWallCenterlinePointFromBbox(
+                        wall, intersectionPoint, document);
+                    
+                    // ✅ DIAGNOSTIC: Log wall centerline calculation for non-damper categories
+                    if (!DeploymentConfiguration.DeploymentMode && !string.Equals(mepCategoryName, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
+                    {
+                        SafeFileLogger.SafeAppendText("wall_centerline_calc.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CALC] Zone (MEP={mepElement.Id}, Host={wall.Id}, Category={mepCategoryName}): " +
+                            $"Calculated PlacementPoint=({calculatedWallCenterline?.X:F6}ft, {calculatedWallCenterline?.Y:F6}ft, {calculatedWallCenterline?.Z:F6}ft), " +
+                            $"Intersection=({intersectionPoint.X:F6}ft, {intersectionPoint.Y:F6}ft, {intersectionPoint.Z:F6}ft)\n");
+                    }
+                }
+                else if (structuralElement is FamilyInstance framingInstance && 
+                         framingInstance.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+                {
+                    // For framing, use the element centerline method
+                    calculatedWallCenterline = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetElementCenterlinePoint(
+                        structuralElement, intersectionPoint, document);
+                    
+                    // ✅ DIAGNOSTIC: Log framing centerline calculation
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("wall_centerline_calc.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CALC] Zone (MEP={mepElement.Id}, Host={framingInstance.Id}, Category={mepCategoryName}, Type=Framing): " +
+                            $"Calculated Centerline=({calculatedWallCenterline?.X:F6}ft, {calculatedWallCenterline?.Y:F6}ft, {calculatedWallCenterline?.Z:F6}ft), " +
+                            $"Intersection=({intersectionPoint.X:F6}ft, {intersectionPoint.Y:F6}ft, {intersectionPoint.Z:F6}ft)\n");
+                    }
+                }
+                // For floors or other structural elements, calculatedWallCenterline remains null (will fallback to intersectionPoint)
+                
                 processedCount++;
                 
                 // ⚠️ CRITICAL: Check memory/timeout every N intersections to prevent crashes on large files
@@ -754,7 +795,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             sleeveIdsForCategoryInvalid = sleeveDataInvalid.SleeveIds;
                         }
                         
-                        var newClashZone = CreateClashZone(mepElement, structuralElement, intersectionPoint, boundingBox, document, clearanceSettings, spatialIndexForCategoryInvalid, sleeveIdsForCategoryInvalid);
+                        // ✅ WALL CENTERLINE POINT: Calculate once using WallCenterlineHelper (for ducts, pipes, cable trays)
+                        // This is passed to CreateClashZone to save in DB - avoids duplication
+                        // For dampers, this is calculated in DamperProcessingService using bbox method
+                        XYZ? calculatedWallCenterlineInvalid = null;
+                        if (structuralElement is Wall wallInvalid)
+                        {
+                            // ✅ RAY-TRACE METHOD: For ducts, pipes, and cable trays, use ray-trace to find 2 wall faces and calculate midpoint
+                            calculatedWallCenterlineInvalid = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetWallCenterlinePointFromBbox(
+                                wallInvalid, intersectionPoint, document);
+                            
+                            // ✅ DIAGNOSTIC: Log wall centerline calculation for invalid category path
+                            if (!DeploymentConfiguration.DeploymentMode && !string.Equals(mepCategoryForLookupInvalid, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
+                            {
+                                SafeFileLogger.SafeAppendText("wall_centerline_calc.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CALC-INVALID] Zone (MEP={mepElement.Id}, Host={wallInvalid.Id}, Category={mepCategoryForLookupInvalid}): " +
+                                    $"Calculated WallCenterline=({calculatedWallCenterlineInvalid?.X:F6}ft, {calculatedWallCenterlineInvalid?.Y:F6}ft, {calculatedWallCenterlineInvalid?.Z:F6}ft), " +
+                                    $"Intersection=({intersectionPoint.X:F6}ft, {intersectionPoint.Y:F6}ft, {intersectionPoint.Z:F6}ft)\n");
+                            }
+                        }
+                        else if (structuralElement is FamilyInstance framingInstanceInvalid && 
+                                 framingInstanceInvalid.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+                        {
+                            // For framing, use the element centerline method
+                            calculatedWallCenterlineInvalid = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetElementCenterlinePoint(
+                                structuralElement, intersectionPoint, document);
+                            
+                            // ✅ DIAGNOSTIC: Log framing centerline calculation for invalid category path
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("wall_centerline_calc.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CALC-INVALID] Zone (MEP={mepElement.Id}, Host={framingInstanceInvalid.Id}, Category={mepCategoryForLookupInvalid}, Type=Framing): " +
+                                    $"Calculated Centerline=({calculatedWallCenterlineInvalid?.X:F6}ft, {calculatedWallCenterlineInvalid?.Y:F6}ft, {calculatedWallCenterlineInvalid?.Z:F6}ft), " +
+                                    $"Intersection=({intersectionPoint.X:F6}ft, {intersectionPoint.Y:F6}ft, {intersectionPoint.Z:F6}ft)\n");
+                            }
+                        }
+                        // For floors or other structural elements, calculatedWallCenterlineInvalid remains null (will fallback to intersectionPoint)
+                        
+                        var newClashZone = CreateClashZone(mepElement, structuralElement, intersectionPoint, boundingBox, document, clearanceSettings, spatialIndexForCategoryInvalid, sleeveIdsForCategoryInvalid, calculatedWallCenterlineInvalid);
                         
                         // ✅ CRITICAL: Set HasDamperNearby flag if duct-damper combo was detected
                         if (ductHasDamperNearby)
@@ -811,7 +889,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             sleeveIdsForCategory = sleeveData.SleeveIds;
                         }
                         
-                        var newClashZone = CreateClashZone(mepElement, structuralElement, intersectionPoint, boundingBox, document, clearanceSettings, spatialIndexForCategory, sleeveIdsForCategory);
+                        var newClashZone = CreateClashZone(mepElement, structuralElement, intersectionPoint, boundingBox, document, clearanceSettings, spatialIndexForCategory, sleeveIdsForCategory, calculatedWallCenterline);
                         
                         // ✅ CRITICAL: Set HasDamperNearby flag if duct-damper combo was detected
                         if (ductHasDamperNearby)
@@ -1077,7 +1155,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Create new clash zone using streamlined creation (minimal validation)
                     try
                     {
-                        var newClashZone = CreateClashZone(mepElement, structuralElement, intersectionPoint, boundingBox, document, clearanceSettings, null, null);
+                        // ✅ WALL CENTERLINE POINT: Calculate once using WallCenterlineHelper (for streamlined path)
+                        // This is passed to CreateClashZone to save in DB - avoids duplication
+                        // For dampers, this is calculated in DamperProcessingService using bbox method
+                        XYZ? calculatedWallCenterlineStreamlined = null;
+                        string mepCategoryStreamlined = GetElementCategoryName(mepElement);
+                        if (structuralElement is Wall wallStreamlined)
+                        {
+                            // ✅ RAY-TRACE METHOD: For ducts, pipes, and cable trays, use ray-trace to find 2 wall faces and calculate midpoint
+                            calculatedWallCenterlineStreamlined = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetWallCenterlinePointFromBbox(
+                                wallStreamlined, intersectionPoint, document);
+                            
+                            // ✅ DIAGNOSTIC: Log wall centerline calculation for streamlined path
+                            if (!DeploymentConfiguration.DeploymentMode && !string.Equals(mepCategoryStreamlined, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
+                            {
+                                SafeFileLogger.SafeAppendText("wall_centerline_calc.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CALC-STREAMLINED] Zone (MEP={mepElement.Id}, Host={wallStreamlined.Id}, Category={mepCategoryStreamlined}): " +
+                                    $"Calculated WallCenterline=({calculatedWallCenterlineStreamlined?.X:F6}ft, {calculatedWallCenterlineStreamlined?.Y:F6}ft, {calculatedWallCenterlineStreamlined?.Z:F6}ft), " +
+                                    $"Intersection=({intersectionPoint.X:F6}ft, {intersectionPoint.Y:F6}ft, {intersectionPoint.Z:F6}ft)\n");
+                            }
+                        }
+                        else if (structuralElement is FamilyInstance framingInstanceStreamlined && 
+                                 framingInstanceStreamlined.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+                        {
+                            // For framing, use the element centerline method
+                            calculatedWallCenterlineStreamlined = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetElementCenterlinePoint(
+                                structuralElement, intersectionPoint, document);
+                            
+                            // ✅ DIAGNOSTIC: Log framing centerline calculation for streamlined path
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("wall_centerline_calc.log",
+                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CALC-STREAMLINED] Zone (MEP={mepElement.Id}, Host={framingInstanceStreamlined.Id}, Category={mepCategoryStreamlined}, Type=Framing): " +
+                                    $"Calculated Centerline=({calculatedWallCenterlineStreamlined?.X:F6}ft, {calculatedWallCenterlineStreamlined?.Y:F6}ft, {calculatedWallCenterlineStreamlined?.Z:F6}ft), " +
+                                    $"Intersection=({intersectionPoint.X:F6}ft, {intersectionPoint.Y:F6}ft, {intersectionPoint.Z:F6}ft)\n");
+                            }
+                        }
+                        // For floors or other structural elements, calculatedWallCenterlineStreamlined remains null (will fallback to intersectionPoint)
+                        var newClashZone = CreateClashZone(mepElement, structuralElement, intersectionPoint, boundingBox, document, clearanceSettings, null, null, calculatedWallCenterlineStreamlined);
                         
                         if (newClashZone != null)
                         {
@@ -2052,7 +2167,64 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
         
-        private ClashZone CreateClashZone(Element mepElement, Element structuralElement, XYZ intersectionPoint, BoundingBoxXYZ boundingBox, Document document, Dictionary<string, double>? clearanceSettings = null, Dictionary<(double X, double Y, double Z), int>? spatialIndex = null, HashSet<int>? sleeveIds = null)
+        /// <summary>
+        /// ✅ HELPER: Calculate wall centerline point once before CreateClashZone (for ducts, pipes, cable trays)
+        /// This avoids duplication - calculation happens here, passed to CreateClashZone to save in DB
+        /// For dampers, this is calculated in DamperProcessingService using bbox method
+        /// </summary>
+        private XYZ? CalculateWallCenterlinePoint(Element structuralElement, XYZ intersectionPoint, Document document, string mepCategory)
+        {
+            try
+            {
+                // Only calculate for walls and framing (floors don't need centerline adjustment)
+                if (structuralElement is Wall || 
+                    (structuralElement is FamilyInstance framingInstance && 
+                     framingInstance.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming))
+                {
+                    if (structuralElement is Wall hostWallForCenterline)
+                    {
+                        // ✅ LEGACY RAY-TRACE METHOD: For ducts, pipes, and cable trays, use ray-trace to find 2 wall faces and calculate midpoint
+                        // This gives "half in and half out" positioning (legacy behavior)
+                        var wallCenterlinePoint = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetWallCenterlinePointFromBbox(
+                            hostWallForCenterline, 
+                            intersectionPoint, 
+                            document);
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            _log($"[ClashZoneService] ✅ Calculated Wall Centerline Point: ({wallCenterlinePoint.X:F3}, {wallCenterlinePoint.Y:F3}, {wallCenterlinePoint.Z:F3}) for {mepCategory}, wall {structuralElement.Id}");
+                        }
+                        return wallCenterlinePoint;
+                    }
+                    else
+                    {
+                        // For framing, use the element centerline method
+                        var wallCenterlinePoint = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetElementCenterlinePoint(
+                            structuralElement, 
+                            intersectionPoint, 
+                            document);
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            _log($"[ClashZoneService] ✅ Calculated Framing Centerline Point: ({wallCenterlinePoint.X:F3}, {wallCenterlinePoint.Y:F3}, {wallCenterlinePoint.Z:F3}) for {mepCategory}, framing {structuralElement.Id}");
+                        }
+                        return wallCenterlinePoint;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    _log($"[ClashZoneService] ⚠️ Error calculating wall centerline point: {ex.Message}, will use intersection point as fallback");
+                }
+            }
+            
+            // Return null if calculation fails or not applicable - CreateClashZone will use intersection point as fallback
+            return null;
+        }
+        
+        private ClashZone CreateClashZone(Element mepElement, Element structuralElement, XYZ intersectionPoint, BoundingBoxXYZ boundingBox, Document document, Dictionary<string, double>? clearanceSettings = null, Dictionary<(double X, double Y, double Z), int>? spatialIndex = null, HashSet<int>? sleeveIds = null, XYZ? wallCenterlinePoint = null)
         {
             // IMPORTANT: The intersection point is already at the wall center (mid-plane)
             // The MepIntersectionService finds intersections with wall faces and CreateBoundingBox()
@@ -2313,6 +2485,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             XYZ placementPoint = intersectionPoint;
 
+            // ✅ FINAL PLACEMENT POINT: Use pre-calculated value passed from caller (calculated once before CreateClashZone using bbox method)
+            // This is the final placement point at wall centerline, saved directly to SleevePlacementPoint
+            // If not provided, fallback to intersection point (for backward compatibility or when calculation fails)
+            XYZ finalPlacementPoint = wallCenterlinePoint ?? intersectionPoint;
+            
+            // ✅ DIAGNOSTIC: Log final placement point being set on ClashZone object
+            if (!DeploymentConfiguration.DeploymentMode && wallCenterlinePoint != null)
+            {
+                bool isZero = (finalPlacementPoint.X == 0.0 && finalPlacementPoint.Y == 0.0 && finalPlacementPoint.Z == 0.0);
+                string zeroWarning = isZero ? " ⚠️⚠️⚠️ ZERO VALUE!" : "";
+                SafeFileLogger.SafeAppendText("wall_centerline_set.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SET] Zone (MEP={mepElement?.Id}, Category={mepCategory}): " +
+                    $"Setting SleevePlacementPoint=({finalPlacementPoint.X:F6}ft, {finalPlacementPoint.Y:F6}ft, {finalPlacementPoint.Z:F6}ft), " +
+                    $"Intersection=({intersectionPoint.X:F6}ft, {intersectionPoint.Y:F6}ft, {intersectionPoint.Z:F6}ft), " +
+                    $"Source={(wallCenterlinePoint != null ? "Bbox Method" : "Fallback to Intersection")}{zeroWarning}\n");
+            }
+
             // ✅ CRITICAL DEBUG: Verify intersection point is NOT zero before creating ClashZone
             bool isInputZero = Math.Abs(intersectionPoint.X) < 1e-9 && Math.Abs(intersectionPoint.Y) < 1e-9 && Math.Abs(intersectionPoint.Z) < 1e-9;
             if (isInputZero)
@@ -2370,15 +2559,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 MepElementId = mepElement.Id,
                 StructuralElementId = structuralElement.Id,
                 IntersectionPoint = intersectionPoint,
-                SleevePlacementPoint = intersectionPoint, // ✅ CRITICAL: Initialize with intersection point for distance calculation
+                SleevePlacementPoint = finalPlacementPoint, // ✅ CRITICAL: Use final placement point (calculated using bbox method) - this is the actual sleeve placement location
                 IntersectionPointX = intersectionPoint.X, // ✅ CRITICAL FIX: Explicitly set for XML serialization
                 IntersectionPointY = intersectionPoint.Y, // ✅ CRITICAL FIX: Explicitly set for XML serialization
                 IntersectionPointZ = intersectionPoint.Z, // ✅ CRITICAL FIX: Explicitly set for XML serialization
                 // Log first few zones to placement_debug to verify creation
                 // (moved after object creation for safety)
-                SleevePlacementPointX = intersectionPoint.X, // XML serializable
-                SleevePlacementPointY = intersectionPoint.Y, // XML serializable  
-                SleevePlacementPointZ = intersectionPoint.Z, // XML serializable
+                SleevePlacementPointX = finalPlacementPoint.X, // XML serializable - final placement point at wall centerline
+                SleevePlacementPointY = finalPlacementPoint.Y, // XML serializable - final placement point at wall centerline
+                SleevePlacementPointZ = finalPlacementPoint.Z, // XML serializable - final placement point at wall centerline
                 ClashBoundingBox = boundingBox,
                 MepElementSize = 0.0, // Legacy field, not used
                 RequiredClearance = 0.0, // Clearance will be calculated during placement
@@ -2432,6 +2621,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 MepElementSizeParameterValue = sizeParameterValue, // ✅ SIZE PARAMETER VALUE: Raw Size parameter as string (e.g., "20 mmø", "200 mm dia symbol") for snapshot table and parameter transfer
                 MepElementSystemAbbreviation = systemAbbreviation, // Pre-calculated system abbreviation (e.g., "SA", "RA")
                 
+                // ✅ WALL CENTERLINE POINT: Pre-calculated during refresh (passed from caller, calculated once before CreateClashZone using bbox method)
+                // For ducts, pipes, cable trays: uses bbox method (same as dampers) - cheaper and more reliable than ray-trace
+                // For dampers: calculated in DamperProcessingService using bbox method
+                // ✅ NOTE: SleevePlacementPoint is now the primary placement point (calculated above), WallCenterlinePoint kept for backward compatibility
+                WallCenterlinePoint = finalPlacementPoint,
+                WallCenterlinePointX = finalPlacementPoint.X,
+                WallCenterlinePointY = finalPlacementPoint.Y,
+                WallCenterlinePointZ = finalPlacementPoint.Z,
+                
+                // ✅ DIAGNOSTIC: Verify wall centerline values are set correctly on ClashZone object
+                // This will be saved to DB by Repository.AddClashZoneParameters
+                
                 // ✅ STAGE 1 (REFRESH): Store captured parameter snapshots for later transfer to sleeves (Stage 2)
                 // These parameters are captured from MEP and Host elements during refresh and stored in XML
                 // During sleeve placement, ParameterTransferService will transfer these to physical sleeve elements
@@ -2479,19 +2680,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             
             // ✅ CRITICAL: Set deterministic GUID for stable identification across detection runs
-            // This ensures the same intersection (MEP+Host+Point) always gets the same GUID
+            // This ensures the same intersection (MEP+Host+IntersectionPoint) always gets the same GUID
             // Even if Global XML is deleted/recreated, the GUID will remain stable
+            // ✅ CRITICAL: Use IntersectionPoint (actual MEP/host intersection) for GUID generation
+            // IntersectionPoint is stable - only changes if MEP or host element moves
+            // This is better than SleevePlacementPoint which might change if calculation method changes
+            // ✅ CRITICAL FIX: Use GetOrCreateDeterministicGuidDatabaseFirst to check database first (like dampers)
+            // This can reuse existing GUIDs from database, preventing duplicates
             if (_guidManager != null)
             {
                 int mepId = clashZone.MepElementId?.IntegerValue ?? clashZone.MepElementIdValue;
                 int hostId = clashZone.StructuralElementId?.IntegerValue ?? clashZone.StructuralElementIdValue;
                 
+                // ✅ Use IntersectionPoint (actual MEP/host intersection) for deterministic GUID
+                // This is stable - only changes if elements move, perfect for GUID generation
                 if (mepId > 0 && hostId > 0 && 
                     Math.Abs(clashZone.IntersectionPointX) > 1e-9 &&
                     Math.Abs(clashZone.IntersectionPointY) > 1e-9 &&
                     Math.Abs(clashZone.IntersectionPointZ) > 1e-9)
                 {
-                    clashZone.Id = _guidManager.GenerateDeterministicGuid(
+                    // ✅ CRITICAL: Use database-first approach (like dampers) to check for existing GUID
+                    // This prevents duplicate GUIDs when the same intersection is detected again
+                    Guid oldGuid = clashZone.Id; // Store original random GUID for comparison
+                    clashZone.Id = _guidManager.GetOrCreateDeterministicGuidDatabaseFirst(
                         mepId,
                         hostId,
                         clashZone.IntersectionPointX,
@@ -2499,9 +2710,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         clashZone.IntersectionPointZ,
                         tolerance: 0.1); // 0.1ft = ~30mm tolerance (matches GlobalIndexService.FindByMepHostAndPoint)
                     
-                    if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
+                    if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        _log($"[DETERMINISTIC-GUID] Set deterministic GUID {clashZone.Id} for MEP={mepId}, Host={hostId}, Point=({clashZone.IntersectionPointX:F3},{clashZone.IntersectionPointY:F3},{clashZone.IntersectionPointZ:F3})");
+                        string guidSource = (oldGuid == clashZone.Id) ? "EXISTING (reused)" : "NEW (generated)";
+                        _log($"[DETERMINISTIC-GUID] {guidSource} GUID {clashZone.Id} for MEP={mepId}, Host={hostId}, Category={clashZone.MepElementCategory}, IntersectionPoint=({clashZone.IntersectionPointX:F6},{clashZone.IntersectionPointY:F6},{clashZone.IntersectionPointZ:F6})");
                     }
                 }
                 else
@@ -2509,7 +2721,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Invalid data - keep random GUID from default initialization
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        _log($"[DETERMINISTIC-GUID] Warning: Invalid data for deterministic GUID (MEP={mepId}, Host={hostId}, Point=({clashZone.IntersectionPointX},{clashZone.IntersectionPointY},{clashZone.IntersectionPointZ})) - using random GUID {clashZone.Id}");
+                        _log($"[DETERMINISTIC-GUID] ⚠️ WARNING: Invalid data for deterministic GUID - MEP={mepId}, Host={hostId}, Category={clashZone.MepElementCategory}, IntersectionPointX={clashZone.IntersectionPointX:F6}, IntersectionPointY={clashZone.IntersectionPointY:F6}, IntersectionPointZ={clashZone.IntersectionPointZ:F6} - using random GUID {clashZone.Id}");
                     }
                 }
             }
@@ -2530,7 +2742,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 _log($"[WARN]   IntersectionPoint is zero/invalid at save time. BBox null? {boundingBox == null}");
             }
-            _log($"[DEBUG]   SleevePlacementPoint: {intersectionPoint} (same as intersection point)");
+            _log($"[DEBUG]   SleevePlacementPoint: {finalPlacementPoint} (calculated using bbox method at wall centerline)");
             _log($"[DEBUG]   MepElementWidth: {finalWidth}, MepElementHeight: {finalHeight}");
             _log($"[DEBUG]   MepElementOrientation: {mepOrientation}");
             _log($"[DEBUG]   PipeOpeningType: {pipeOpeningType}");

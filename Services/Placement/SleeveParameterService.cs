@@ -154,10 +154,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             // Get the correct thickness based on host type
             double thickness = GetThickness(zone, isWallHost, isFramingHost);
             
+            // ✅ DIAGNOSTIC: Log thickness values from ClashZone before fallback
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                SafeFileLogger.SafeAppendText("depth_parameter_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [SetDepthParameter] Zone={zone.Id}, " +
+                    $"HostType='{zone.StructuralElementType}', " +
+                    $"IsWallHost={isWallHost}, IsFramingHost={isFramingHost}, " +
+                    $"WallThickness={zone.WallThickness * 304.8:F1}mm, " +
+                    $"FramingThickness={zone.FramingThickness * 304.8:F1}mm, " +
+                    $"StructuralElementThickness={zone.StructuralElementThickness * 304.8:F1}mm, " +
+                    $"CalculatedThickness={thickness * 304.8:F1}mm\n");
+            }
+            
             // ✅ CRITICAL FIX: For PATH 3 (Non-Fresh), if thickness is 0, retrieve from linked file
             if (!_isReplayPath && thickness <= 0.0 && zone.StructuralElementIdValue > 0)
             {
+                double oldThickness = thickness;
                 thickness = RetrieveThicknessFromLinkedFile(zone, thickness);
+                if (!DeploymentConfiguration.DeploymentMode && thickness != oldThickness)
+                {
+                    SafeFileLogger.SafeAppendText("depth_parameter_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetDepthParameter] Zone={zone.Id}, " +
+                        $"Retrieved from linked file: {oldThickness * 304.8:F1}mm -> {thickness * 304.8:F1}mm\n");
+                }
             }
             
             // Set Depth or Wall Width parameter
@@ -168,6 +188,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 if (depthSetSuccess && !DeploymentConfiguration.DeploymentMode)
                 {
                     DebugLogger.Info($"[SleeveParameterService] [DEPTH-SET] Zone={zone.Id}, Sleeve={instance.Id}: Set Wall Width={thickness * 304.8:F1}mm");
+                    SafeFileLogger.SafeAppendText("depth_parameter_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetDepthParameter] ✅ Zone={zone.Id}, Sleeve={instance.Id}: Set Wall Width={thickness * 304.8:F1}mm\n");
                 }
             }
             
@@ -177,12 +199,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 if (depthSetSuccess && !DeploymentConfiguration.DeploymentMode)
                 {
                     DebugLogger.Info($"[SleeveParameterService] [DEPTH-SET] Zone={zone.Id}, Sleeve={instance.Id}: Set Depth={thickness * 304.8:F1}mm");
+                    SafeFileLogger.SafeAppendText("depth_parameter_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetDepthParameter] ✅ Zone={zone.Id}, Sleeve={instance.Id}: Set Depth={thickness * 304.8:F1}mm\n");
                 }
             }
             
             if (!depthSetSuccess && !DeploymentConfiguration.DeploymentMode)
             {
                 DebugLogger.Warning($"[SleeveParameterService] [DEPTH-SET] ❌ Zone={zone.Id}, Sleeve={instance.Id}: Could not set Depth or Wall Width parameter");
+                SafeFileLogger.SafeAppendText("depth_parameter_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [SetDepthParameter] ❌ Zone={zone.Id}, Sleeve={instance.Id}: Could not set Depth or Wall Width parameter (thickness={thickness * 304.8:F1}mm)\n");
             }
         }
 
@@ -244,6 +270,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                                     param.Set(sVal);
                                 else if (paramKvp.Value is int iVal)
                                     param.Set(iVal);
+                                else if (paramKvp.Value is ElementId elementIdVal)
+                                {
+                                    // ✅ CRITICAL FIX: Handle ElementId values (e.g., Schedule Level parameter)
+                                    if (param.StorageType == StorageType.ElementId)
+                                    {
+                                        param.Set(elementIdVal);
+                                        
+                                        // ✅ DIAGNOSTIC: Log Schedule Level setting for debugging
+                                        if (!DeploymentConfiguration.DeploymentMode && paramKvp.Key.Contains("Schedule", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            var level = _doc.GetElement(elementIdVal) as Level;
+                                            SafeFileLogger.SafeAppendText("placement_debug.log",
+                                                $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BATCH-PARAMS] [SCHEDULE-LEVEL] ✅ Set '{paramKvp.Key}' to ElementId {elementIdVal.IntegerValue} (Level: {level?.Name ?? "Unknown"}) on sleeve {sleeveId.IntegerValue}\n");
+                                        }
+                                    }
+                                    else if (param.StorageType == StorageType.Integer)
+                                    {
+                                        param.Set(elementIdVal.IntegerValue);
+                                    }
+                                    else if (param.StorageType == StorageType.String)
+                                    {
+                                        // ✅ CRITICAL FIX: Try to get level name from ElementId
+                                        var level = _doc.GetElement(elementIdVal) as Level;
+                                        if (level != null)
+                                        {
+                                            param.Set(level.Name);
+                                            
+                                            // ✅ DIAGNOSTIC: Log Schedule Level setting for debugging
+                                            if (!DeploymentConfiguration.DeploymentMode && paramKvp.Key.Contains("Schedule", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                SafeFileLogger.SafeAppendText("placement_debug.log",
+                                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BATCH-PARAMS] [SCHEDULE-LEVEL] ✅ Set '{paramKvp.Key}' to '{level.Name}' (from ElementId {elementIdVal.IntegerValue}) on sleeve {sleeveId.IntegerValue}\n");
+                                            }
+                                        }
+                                        else
+                                        {
+                                            // Fallback: use ElementId integer value as string (shouldn't happen, but safe fallback)
+                                            param.Set(elementIdVal.IntegerValue.ToString());
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                            {
+                                                SafeFileLogger.SafeAppendText("parameter_batching_errors.log",
+                                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BATCH-PARAMS] ⚠️ Could not resolve ElementId {elementIdVal.IntegerValue} to Level for parameter '{paramKvp.Key}' on sleeve {sleeveId.IntegerValue} - using ID as string fallback\n");
+                                            }
+                                        }
+                                    }
+                                }
                                 
                                 successCount++;
                             }

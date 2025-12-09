@@ -41,17 +41,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         public SettingsModel GetCurrentSettings()
         {
+            // ✅ FIX: Always load settings from XML file, even if profile is null
+            // SettingsService.GetSettings() ignores the profile parameter and loads from XML anyway
+            // This ensures MinWallThickness and other settings are respected during refresh
             if (CurrentProfile == null)
-                return new SettingsModel();
+            {
+                // Load from XML file directly (SettingsService.LoadSettings() doesn't require a profile)
+                return _settingsService.LoadSettings();
+            }
 
             return _settingsService.GetSettings(CurrentProfile);
         }
 
         public void SaveCurrentSettings(SettingsModel settings)
         {
+            // ✅ FIX: Always save settings to XML file, even if profile is null
+            // SettingsService.SaveSettings() ignores the profile parameter and saves to XML anyway
+            // This ensures settings persist even when no profile is set
             if (CurrentProfile != null)
             {
                 _settingsService.SaveSettings(CurrentProfile, settings);
+            }
+            else
+            {
+                // Save directly to XML file when no profile is set
+                _settingsService.SaveSettings(settings);
             }
         }
 

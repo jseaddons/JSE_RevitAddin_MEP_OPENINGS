@@ -115,10 +115,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ CRITICAL: Log start of refresh with build timestamp
             DebugLogger.Info("[REFRESH-REFACTORED] ===== STARTING REFRESH =====");
             DebugLogger.Info($"[REFRESH-REFACTORED] 🔨 BUILD TIMESTAMP: {buildTimestamp} | Assembly: {System.IO.Path.GetFileName(assemblyPath)}");
-            DebugLogger.Info($"[REFRESH-REFACTORED] Filters: {string.Join(", ", selectedFilterItems ?? new List<string>())}");
-            DebugLogger.Info($"[REFRESH-REFACTORED] Categories: {string.Join(", ", selectedMepCategories ?? new List<string>())}");
-            DebugLogger.Info($"[REFRESH-REFACTORED] Reference Files: {string.Join(", ", selectedReferenceFiles ?? new List<string>())}");
-            DebugLogger.Info($"[REFRESH-REFACTORED] Host Files: {string.Join(", ", selectedHostFiles ?? new List<string>())}");
+            DebugLogger.Info($"[REFRESH-REFACTORED] Filters ({selectedFilterItems?.Count ?? 0}): {string.Join(", ", selectedFilterItems ?? new List<string>())}");
+            DebugLogger.Info($"[REFRESH-REFACTORED] MEP Categories ({selectedMepCategories?.Count ?? 0}): {string.Join(", ", selectedMepCategories ?? new List<string>())}");
+            DebugLogger.Info($"[REFRESH-REFACTORED] Reference Files ({selectedReferenceFiles?.Count ?? 0}): {string.Join(", ", selectedReferenceFiles ?? new List<string>())}");
+            DebugLogger.Info($"[REFRESH-REFACTORED] Host Files ({selectedHostFiles?.Count ?? 0}): {string.Join(", ", selectedHostFiles ?? new List<string>())}");
             
             try
             {
@@ -150,9 +150,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         SafeFileLogger.SafeAppendText(context.RefreshLogName,
                             $"[{DateTime.Now}] 🔨 BUILD TIMESTAMP: {buildTimestamp} | Assembly: {System.IO.Path.GetFileName(assemblyPath)}\n");
                         SafeFileLogger.SafeAppendText(context.RefreshLogName,
-                            $"[{DateTime.Now}] Filters: {string.Join(", ", selectedFilterItems ?? new List<string>())}\n");
+                            $"[{DateTime.Now}] Filters ({selectedFilterItems?.Count ?? 0}): {string.Join(", ", selectedFilterItems ?? new List<string>())}\n");
                         SafeFileLogger.SafeAppendText(context.RefreshLogName,
-                            $"[{DateTime.Now}] Categories: {string.Join(", ", selectedMepCategories ?? new List<string>())}\n");
+                            $"[{DateTime.Now}] MEP Categories ({selectedMepCategories?.Count ?? 0}): {string.Join(", ", selectedMepCategories ?? new List<string>())}\n");
+                        SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                            $"[{DateTime.Now}] Reference Files ({selectedReferenceFiles?.Count ?? 0}): {string.Join(", ", selectedReferenceFiles ?? new List<string>())}\n");
+                        SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                            $"[{DateTime.Now}] Host Files ({selectedHostFiles?.Count ?? 0}): {string.Join(", ", selectedHostFiles ?? new List<string>())}\n");
                         SafeFileLogger.SafeAppendText(context.RefreshLogName,
                             $"[{DateTime.Now}] ============================================\n\n");
                     }
@@ -199,11 +203,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         private Result ExecuteRefreshInternal(RefreshContext context)
         {
+            // ✅ CRITICAL DIAGNOSTIC: Log refresh start (even before validation)
+            if (!context.IsDeploymentMode)
+            {
+                DebugLogger.Info($"[REFRESH-REFACTORED] ===== ExecuteRefreshInternal STARTED =====");
+                DebugLogger.Info($"[REFRESH-REFACTORED] RefreshLogName: {context.RefreshLogName}");
+                SafeFileLogger.SafeAppendText(context.RefreshLogName, 
+                    $"[{DateTime.Now}] ===== ExecuteRefreshInternal STARTED =====\n");
+            }
+            
             // PHASE 1: Validate UI selections
             using (context.PerformanceMonitor.TrackOperation("1. UI Validation"))
             {
                 if (!ValidateUISelections(context))
+                {
+                    // ✅ CRITICAL DIAGNOSTIC: Log validation failure
+                    if (!context.IsDeploymentMode)
+                    {
+                        DebugLogger.Warning("[REFRESH-REFACTORED] ❌ Validation failed - returning Cancelled");
+                        SafeFileLogger.SafeAppendText(context.RefreshLogName, 
+                            $"[{DateTime.Now}] ❌ Validation failed - refresh cancelled\n");
+                    }
                     return Result.Cancelled;
+                }
             }
             
             // PHASE 2 & 3: Load Data
@@ -367,7 +389,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             else
             {
-                DebugLogger.Info($"[REFRESH-REFACTORED] Selected reference files: {string.Join(", ", context.SelectedReferenceFiles)}");
+                DebugLogger.Info($"[REFRESH-REFACTORED] Selected reference files ({context.SelectedReferenceFiles.Count}): {string.Join(", ", context.SelectedReferenceFiles)}");
             }
             
             if (context.SelectedHostFiles == null || context.SelectedHostFiles.Count == 0)
@@ -377,7 +399,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             else
             {
-                DebugLogger.Info($"[REFRESH-REFACTORED] Selected host files: {string.Join(", ", context.SelectedHostFiles)}");
+                DebugLogger.Info($"[REFRESH-REFACTORED] Selected host files ({context.SelectedHostFiles.Count}): {string.Join(", ", context.SelectedHostFiles)}");
             }
             
             if (errors.Count > 0)
@@ -570,6 +592,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 }
                             }
 
+                            // ✅ CRITICAL FIX: FIRST verify sleeves exist in Revit and set ReadyForPlacementFlag=0 for zones with existing sleeves
+                            // This prevents marking zones that already have sleeves placed
+                            if (!context.IsDeploymentMode)
+                            {
+                                try
+                                {
+                                    DebugLogger.Info($"[REFRESH-REFACTORED] [SLEEVE-VERIFY] Verifying existing sleeves in Revit before setting ReadyForPlacementFlag...");
+                                    SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                        $"[{DateTime.Now}] [REFRESH-REFACTORED] [SLEEVE-VERIFY] Verifying existing sleeves in Revit before setting ReadyForPlacementFlag...\n");
+                                }
+                                catch { }
+                            }
+
+                            int verifiedCount = repository.VerifyExistingSleevesAndResetFlags(
+                                _document,
+                                context.SelectedFilterNames,
+                                context.SelectedMepCategories);
+
+                            if (!context.IsDeploymentMode)
+                            {
+                                try
+                                {
+                                    DebugLogger.Info($"[REFRESH-REFACTORED] [SLEEVE-VERIFY] ✅ Verified {verifiedCount} zones with existing sleeves → Set ReadyForPlacementFlag=0 (will skip placement)");
+                                    SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                        $"[{DateTime.Now}] [REFRESH-REFACTORED] [SLEEVE-VERIFY] ✅ Verified {verifiedCount} zones with existing sleeves → Set ReadyForPlacementFlag=0\n");
+                                }
+                                catch { }
+                            }
+
                             // ✅ DIAGNOSTIC: Log call site before method call (direct DebugLogger + SafeFileLogger to ensure it appears)
                             if (!context.IsDeploymentMode)
                             {
@@ -585,6 +636,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // ✅ CRITICAL FIX: After SaveClashZones, newly saved zones may not be in R-tree index yet
                             // Force B-tree query by temporarily disabling R-tree, OR ensure fallback works
                             // Set ReadyForPlacementFlag=1 for ALL unresolved zones (existing + new) within section box
+                            // NOTE: Zones with existing sleeves already have ReadyForPlacementFlag=0 from VerifyExistingSleevesAndResetFlags
                             int markedCount = repository.SetReadyForPlacementForUnresolvedZonesInSectionBox(
                                 context.SelectedFilterNames,
                                 context.SelectedMepCategories,
@@ -1287,6 +1339,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         DebugLogger.Info($"[REFRESH-REFACTORED][SQLite] {msg}");
                                 });
 
+                                // ✅ CRITICAL FIX: Verify sleeves exist in Revit BEFORE setting ReadyForPlacementFlag
+                                // This ensures zones with existing sleeves get ReadyForPlacementFlag=0 before marking unresolved zones
+                                if (!context.IsDeploymentMode)
+                                {
+                                    try
+                                    {
+                                        DebugLogger.Info($"[REFRESH-REFACTORED] [SLEEVE-VERIFY] Verifying existing sleeves in Revit before setting ReadyForPlacementFlag...");
+                                        SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                            $"[{DateTime.Now}] [REFRESH-REFACTORED] [SLEEVE-VERIFY] Verifying existing sleeves in Revit before setting ReadyForPlacementFlag...\n");
+                                    }
+                                    catch { }
+                                }
+
+                                int verifiedCount = repository.VerifyExistingSleevesAndResetFlags(
+                                    _document,
+                                    context.SelectedFilterNames ?? new List<string>(),
+                                    context.SelectedMepCategories ?? new List<string>());
+
+                                if (!context.IsDeploymentMode)
+                                {
+                                    try
+                                    {
+                                        DebugLogger.Info($"[REFRESH-REFACTORED] [SLEEVE-VERIFY] ✅ Verified {verifiedCount} zones with existing sleeves → Set ReadyForPlacementFlag=0 (will skip placement)");
+                                        SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                            $"[{DateTime.Now}] [REFRESH-REFACTORED] [SLEEVE-VERIFY] ✅ Verified {verifiedCount} zones with existing sleeves → Set ReadyForPlacementFlag=0\n");
+                                    }
+                                    catch { }
+                                }
+
                                 if (!context.IsDeploymentMode)
                                 {
                                     try
@@ -1298,6 +1379,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     catch { }
                                 }
 
+                                // ✅ CRITICAL: After verifying existing sleeves, set ReadyForPlacementFlag=1 for unresolved zones
+                                // NOTE: Zones with existing sleeves already have ReadyForPlacementFlag=0 from VerifyExistingSleevesAndResetFlags
                                 int markedCount = repository.SetReadyForPlacementForUnresolvedZonesInSectionBox(
                                     context.SelectedFilterNames ?? new List<string>(),
                                     context.SelectedMepCategories ?? new List<string>(),
@@ -1379,6 +1462,77 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     };
                 }
                 
+                // ✅ ROUTING LOGIC: Check if "Duct Accessories" is selected
+                // If selected, process dampers separately; all other categories go to intersection processor
+                bool hasDuctAccessories = context.SelectedMepCategories != null && 
+                    context.SelectedMepCategories.Any(c => string.Equals(c, "Duct Accessories", StringComparison.OrdinalIgnoreCase));
+                
+                List<ClashZone> damperClashZones = new List<ClashZone>();
+                
+                if (hasDuctAccessories)
+                {
+                    // ✅ ROUTE TO DAMPER PROCESSING: Process Duct Accessories separately
+                    if (!context.IsDeploymentMode)
+                    {
+                        DebugLogger.Info("[REFRESH-REFACTORED] ✅ Duct Accessories category selected → Routing to DamperProcessingService");
+                        SafeFileLogger.SafeAppendText(context.RefreshLogName, 
+                            $"[{DateTime.Now}] [REFRESH-REFACTORED] ✅ Duct Accessories category selected → Routing to DamperProcessingService\n");
+                    }
+                    
+                    try
+                    {
+                        // Get section box from view
+                        BoundingBoxXYZ? sectionBox = null;
+                        if (_document.ActiveView is View3D view3D && view3D.IsSectionBoxActive)
+                        {
+                            sectionBox = Helpers.SectionBoxHelper.GetSectionBoxBounds(view3D);
+                        }
+                        
+                        // Get ClashZoneStorage from context (or create new one)
+                        var clashZoneStorage = context.XmlCache?.FilterXml?.Values?.FirstOrDefault() ?? new ClashZoneStorage();
+                        
+                        // Create damper processing service
+                        var damperService = new DamperProcessingService(
+                            _document,
+                            logger,
+                            clashZoneStorage,
+                            null, // Use default damper type detector
+                            null, // Use default connector detector
+                            null, // Use default parameter snapshot service
+                            context.PerformanceMonitor); // Pass performance monitor for tracking
+                        
+                        // Process dampers (pass selected reference files to respect UI selection)
+                        // ✅ CRITICAL FIX: Pass existing zones to prevent duplicate GUID creation
+                        damperClashZones = damperService.ProcessDampers(
+                            context.SelectedMepCategories,
+                            context.SelectedHostTypes,
+                            context.SelectedReferenceFiles,
+                            sectionBox,
+                            context.ExistingClashZones) ?? new List<ClashZone>();
+                        
+                        if (!context.IsDeploymentMode)
+                        {
+                            DebugLogger.Info($"[REFRESH-REFACTORED] ✅ Damper processing complete: {damperClashZones.Count} ClashZones created");
+                            SafeFileLogger.SafeAppendText(context.RefreshLogName, 
+                                $"[{DateTime.Now}] [REFRESH-REFACTORED] ✅ Damper processing complete: {damperClashZones.Count} ClashZones created\n");
+                        }
+                    }
+                    catch (Exception damperEx)
+                    {
+                        DebugLogger.Warning($"[REFRESH-REFACTORED] ⚠️ Error in damper processing: {damperEx.Message}");
+                        SafeFileLogger.SafeAppendText(context.RefreshLogName, 
+                            $"[{DateTime.Now}] [REFRESH-REFACTORED] ⚠️ Error in damper processing: {damperEx.Message}\n");
+                    }
+                }
+                else
+                {
+                    if (!context.IsDeploymentMode)
+                    {
+                        DebugLogger.Info("[REFRESH-REFACTORED] ✅ No Duct Accessories category selected → Skipping damper processing");
+                    }
+                }
+                
+                // ✅ ROUTE TO INTERSECTION PROCESSOR: Process all other categories (Duct Accessories excluded)
                 var processor = new IntersectionProcessor(
                     context,
                     xmlManager,
@@ -1389,11 +1543,62 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     progressCallback);
                 
                 var decision = processor.PrepareExistingZones();
-                var allClashZones = processor.RunDetectionIfNeeded(decision);
+                var intersectionClashZones = processor.RunDetectionIfNeeded(decision);
                 
+                // ✅ MERGE RESULTS: Combine intersection processor results with damper processing results
+                var allClashZones = intersectionClashZones?.ToList() ?? new List<ClashZone>();
+                if (damperClashZones.Count > 0)
+                {
+                    var existingIds = new HashSet<Guid>(allClashZones.Select(z => z.Id));
+                    foreach (var damperZone in damperClashZones)
+                    {
+                        if (!existingIds.Contains(damperZone.Id))
+                        {
+                            allClashZones.Add(damperZone);
+                        }
+                    }
+                    
+                    if (!context.IsDeploymentMode)
+                    {
+                        DebugLogger.Info($"[REFRESH-REFACTORED] ✅ Merged results: {intersectionClashZones?.Count ?? 0} from intersections + {damperClashZones.Count} from dampers = {allClashZones.Count} total");
+                        SafeFileLogger.SafeAppendText(context.RefreshLogName, 
+                            $"[{DateTime.Now}] [REFRESH-REFACTORED] ✅ Merged results: {intersectionClashZones?.Count ?? 0} from intersections + {damperClashZones.Count} from dampers = {allClashZones.Count} total\n");
+                    }
+                }
+                
+                // Update context with merged results
                 if (context.AllClashZones == null)
                 {
                     context.AllClashZones = allClashZones;
+                }
+                else
+                {
+                    // Merge with existing zones
+                    var existingIds = new HashSet<Guid>(context.AllClashZones.Select(z => z.Id));
+                    foreach (var zone in allClashZones)
+                    {
+                        if (!existingIds.Contains(zone.Id))
+                        {
+                            context.AllClashZones.Add(zone);
+                        }
+                    }
+                }
+                
+                // Add damper zones to NewClashZones if they're new
+                if (damperClashZones.Count > 0)
+                {
+                    if (context.NewClashZones == null)
+                    {
+                        context.NewClashZones = new List<ClashZone>();
+                    }
+                    var newDamperIds = new HashSet<Guid>(context.NewClashZones.Select(z => z.Id));
+                    foreach (var damperZone in damperClashZones)
+                    {
+                        if (!newDamperIds.Contains(damperZone.Id))
+                        {
+                            context.NewClashZones.Add(damperZone);
+                        }
+                    }
                 }
                 
                 processor.PostProcess(decision);

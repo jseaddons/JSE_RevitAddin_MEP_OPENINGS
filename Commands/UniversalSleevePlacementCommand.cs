@@ -325,7 +325,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         // ✅ WIRED: Use refactored command services when flag enabled
                         var sleeveRepository = new Services.Repositories.SleeveRepository();
                         var zoneFilterService = new ZoneFilterService();
-                        var flagManager = new FlagManager(_doc);
                         
                         // ✅ SOLID REFACTORED: Inject refactored services if flag enabled
                         IConditionsLoader? conditionsLoader = null;
@@ -350,6 +349,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             crashSafeExecutor = new CrashSafeExecutor();
                         }
                         
+                        // ✅ FIX: Create FlagManagerAdapter to enable flag updates after placement
+                        // FlagManagerAdapter wraps legacy FlagManager and implements IFlagManager interface
+                        Services.Interfaces.Refactor.IFlagManager? flagManagerAdapter = null;
+                        try
+                        {
+                            flagManagerAdapter = new Services.FlagManagement.FlagManagerAdapter(_doc);
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[UniversalSleevePlacementCommand] ✅ Created FlagManagerAdapter for flag updates");
+                            }
+                        }
+                        catch (Exception flagEx)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Warning($"[UniversalSleevePlacementCommand] ⚠️ Failed to create FlagManagerAdapter: {flagEx.Message}. Flags will not be updated.");
+                            }
+                        }
+                        
                         var newPlacerService = new JSE_RevitAddin_MEP_OPENINGS.Services.NewSleevePlacerService(
                             _doc,
                             _conditions,
@@ -358,7 +376,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             sleeveRepository,
                             zoneFilterService,
                             null, // familyManager (not yet implemented)
-                            null, // flagManager - refactored IFlagManager not yet ready (legacy FlagManager cannot be used here)
+                            flagManagerAdapter, // ✅ FIX: Pass FlagManagerAdapter for flag updates
                             isReplayPath,
                             _filterName,
                             null, // sizingService (will use default)

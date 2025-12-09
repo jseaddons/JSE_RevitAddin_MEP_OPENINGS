@@ -255,10 +255,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         // Helper methods for R2024 implementation
         private static Line GetElementLine(Element element)
         {
+            // ✅ CRITICAL FIX: Match main implementation - try LocationCurve first
             if (element.Location is LocationCurve lc && lc.Curve is Line line)
             {
                 return line;
             }
+            
+            // ✅ CRITICAL FIX: Fallback to connectors for MEPCurve elements (ducts, pipes, etc.)
+            // This handles ducts that don't have LocationCurve but have connectors
+            if (element is MEPCurve mepCurve)
+            {
+                try
+                {
+                    var connectors = mepCurve.ConnectorManager?.Connectors?.Cast<Connector>().Where(c => c != null).ToList();
+                    if (connectors != null && connectors.Count >= 2)
+                    {
+                        // Find the two connectors that are farthest apart
+                        var endpoints = connectors
+                            .SelectMany((c, idx) => connectors
+                                .Skip(idx + 1)
+                                .Select(other => new { First = c, Second = other, Distance = c.Origin.DistanceTo(other.Origin) }))
+                            .OrderByDescending(x => x.Distance)
+                            .FirstOrDefault();
+
+                        if (endpoints != null && endpoints.Distance > 0)
+                        {
+                            return Line.CreateBound(endpoints.First.Origin, endpoints.Second.Origin);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Silently continue - log only if needed
+                }
+            }
+            
             return null;
         }
 
