@@ -35,10 +35,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                 SafeFileLogger.SafeAppendText("cluster_debug.log", 
                     $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Starting cleanup with {placedClusters.Count} placed clusters\n");
 
-                // Build protection set of cluster sleeve IDs
-                var clusterSleeveIds = new HashSet<int>(placedClusters.Where(c => c != null).Select(c => c.Id.IntegerValue));
+                // ✅ CRITICAL PROTECTION: Build protection set from FRESH elements, not stale references
+                // Refresh each cluster element to ensure it still exists before adding to protection set
+                var clusterSleeveIds = new HashSet<int>();
+                foreach (var cluster in placedClusters)
+                {
+                    if (cluster == null) continue;
+                    int clusterId = cluster.Id.IntegerValue;
+                    
+                    // ✅ CRITICAL: Refresh element to ensure it still exists
+                    var freshCluster = doc.GetElement(cluster.Id) as FamilyInstance;
+                    if (freshCluster != null && freshCluster.IsValidObject)
+                    {
+                        clusterSleeveIds.Add(clusterId);
+                    }
+                    else
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ CLEANUP: Cluster sleeve {clusterId} from placedClusters list is NULL or INVALID - NOT adding to protection set (may have been deleted!)\n");
+                    }
+                }
                 SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Protection set contains {clusterSleeveIds.Count} cluster sleeve IDs: {string.Join(", ", clusterSleeveIds)}\n");
+                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Protection set contains {clusterSleeveIds.Count} VALID cluster sleeve IDs: {string.Join(", ", clusterSleeveIds)}\n");
 
                 // Collect all potential sleeve family instances
                 var allSleeves = new FilteredElementCollector(doc)

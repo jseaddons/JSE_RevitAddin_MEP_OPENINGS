@@ -7032,15 +7032,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                                                 var allZones = repository.GetClashZonesByFilter(selectedFilterName, category, unresolvedOnly: false);
                                                 if (allZones != null && allZones.Count > 0)
                                                 {
-                                                    // A clash zone is unresolved if BOTH IsResolved=false AND IsClusterResolved=false
-                                                    int categoryUnresolved = allZones.Count(z => !z.IsResolved && !z.IsClusterResolved);
+                                                    // ✅ CRITICAL FIX: A zone needs placement if:
+                                                    // 1. BOTH IsResolved=false AND IsClusterResolved=false (no sleeve at all), OR
+                                                    // 2. ReadyForPlacementFlag=true (sleeve was deleted, ready to place again)
+                                                    int categoryUnresolved = allZones.Count(z => 
+                                                        (!z.IsResolved && !z.IsClusterResolved) || 
+                                                        z.ReadyForPlacement == true);
                                                     unresolvedCount += categoryUnresolved;
                                                     usedDatabase = true;
                                                     
                                                     if (categoryUnresolved > 0)
                                                     {
-                                                        DebugLogger.Info($"[OK_BUTTON_DEBUG] Database Filter='{selectedFilterName}', Category='{category}': {categoryUnresolved} unresolved out of {allZones.Count} total zones");
-                                                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Database Filter='{selectedFilterName}', Category='{category}': {categoryUnresolved}/{allZones.Count} unresolved\n");
+                                                        int noSleeveCount = allZones.Count(z => !z.IsResolved && !z.IsClusterResolved);
+                                                        int readyForPlacementCount = allZones.Count(z => z.ReadyForPlacement == true);
+                                                        DebugLogger.Info($"[OK_BUTTON_DEBUG] Database Filter='{selectedFilterName}', Category='{category}': {categoryUnresolved} unresolved out of {allZones.Count} total zones (NoSleeve={noSleeveCount}, ReadyForPlacement={readyForPlacementCount})");
+                                                        JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Database Filter='{selectedFilterName}', Category='{category}': {categoryUnresolved}/{allZones.Count} unresolved (NoSleeve={noSleeveCount}, ReadyForPlacement={readyForPlacementCount})\n");
                                                     }
                                                 }
                                             }

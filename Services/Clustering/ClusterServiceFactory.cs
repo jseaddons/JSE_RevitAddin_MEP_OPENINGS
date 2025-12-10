@@ -9,6 +9,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Timeout;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Placement; // ✅ SOLID: For SleeveParameterService dependency injection
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using System;
@@ -170,13 +171,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             var timeoutService = new ClusterTimeoutService(timeoutLimitMs);
             
             // Phase 5: Placement Service - null delegates (RefactoredClusterService wires them internally)
+            // ✅ SOLID: Create SleeveParameterService for dependency injection
+            var parameterService = new SleeveParameterService(doc);
             var placementService = new ClusterPlacementService(
                 getClashZoneBySleeveInstanceId: null,
                 determineRotationAngle: null,
                 getClusterBoundingBox: null,
                 markClusterResolved: null,
                 getFilterNameForCategory: null,
-                boundingBoxCalculator: null
+                boundingBoxCalculator: null,
+                parameterService: parameterService // ✅ SOLID: Inject SleeveParameterService dependency
             );
             
             // Phase 4: Strategy Factory
@@ -261,7 +265,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             // For now, create with null delegates - RefactoredClusterService will provide them via method calls
             // Note: PlacementService is actually called indirectly via PlaceClusterForGroup method
             // So we can create a minimal wrapper that will be replaced by proper wiring
-            var placementService = CreatePlacementService(dataService, rotationService, flagManager, null);
+            var placementService = CreatePlacementService(doc, dataService, rotationService, flagManager, null); // ✅ SOLID: Pass doc for SleeveParameterService
 
             // ✅ Create RefactoredClusterService with all services wired
             return new RefactoredClusterService(
@@ -282,6 +286,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         /// Helper method to create PlacementService with all required function delegates.
         /// </summary>
         private static IClusterPlacementService CreatePlacementService(
+            Document doc, // ✅ SOLID: Required for SleeveParameterService dependency injection
             IClusterDataService dataService,
             IClusterRotationService rotationService,
             FlagManager? flagManager,
@@ -314,13 +319,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
             getFilterNameForCategory ??= (category) => null; // Default to null if not provided
 
+            // ✅ SOLID: Create SleeveParameterService for dependency injection
+            var parameterService = new SleeveParameterService(doc);
+
             return new ClusterPlacementService(
                 getClashZoneBySleeveInstanceId: getClashZoneBySleeveInstanceId,
                 determineRotationAngle: determineRotationAngle,
                 getClusterBoundingBox: getClusterBoundingBox,
                 markClusterResolved: markClusterResolved,
                 getFilterNameForCategory: getFilterNameForCategory,
-                boundingBoxCalculator: null // Optional - wired via rotation service
+                boundingBoxCalculator: null, // Optional - wired via rotation service
+                parameterService: parameterService // ✅ SOLID: Inject SleeveParameterService dependency
             );
         }
     }

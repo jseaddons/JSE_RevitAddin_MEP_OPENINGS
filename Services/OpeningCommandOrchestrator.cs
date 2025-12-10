@@ -1372,9 +1372,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // This ensures placement uses DB zones correctly, filtering by actual flag state
                     // ✅ CRITICAL FIX: Also check ClusterSleeveInstanceId to prevent processing cluster-resolved zones
                     // Even if IsClusterResolvedFlag is stale (false) in DB, if ClusterSleeveInstanceId > 0, zone is part of a cluster
+                    // ✅ CRITICAL FIX: If ReadyForPlacementFlag=1, trust it (sleeve was deleted, flags were reset)
                     var eligibleZones = zones
-                        .Where(cz => cz != null && !cz.IsResolved && !cz.IsClusterResolved && cz.ClusterSleeveInstanceId <= 0)
+                        .Where(cz => cz != null && 
+                            (cz.ReadyForPlacement == true || (!cz.IsResolved && !cz.IsClusterResolved && cz.ClusterSleeveInstanceId <= 0)))
                         .ToList();
+                    
+                    // ✅ DIAGNOSTIC: Log why zones are being filtered out
+                    if (!DeploymentConfiguration.DeploymentMode && zones.Count > 0 && eligibleZones.Count == 0)
+                    {
+                        var filteredOut = zones.Where(cz => cz != null && 
+                            !(cz.ReadyForPlacement == true || (!cz.IsResolved && !cz.IsClusterResolved && cz.ClusterSleeveInstanceId <= 0))).ToList();
+                        var placementLogPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                        try
+                        {
+                            File.AppendAllText(placementLogPath, $"[{DateTime.Now:HH:mm:ss}] [FILTER-DIAGNOSTIC] ⚠️ All {zones.Count} zones filtered out. Reasons:\n");
+                            foreach (var cz in filteredOut.Take(5))
+                            {
+                                var reasons = new List<string>();
+                                if (cz.IsResolved) reasons.Add($"IsResolved=true");
+                                if (cz.IsClusterResolved) reasons.Add($"IsClusterResolved=true");
+                                if (cz.ClusterSleeveInstanceId > 0) reasons.Add($"ClusterSleeveInstanceId={cz.ClusterSleeveInstanceId}");
+                                if (cz.SleeveInstanceId > 0) reasons.Add($"SleeveInstanceId={cz.SleeveInstanceId}");
+                                if (!cz.ReadyForPlacement) reasons.Add($"ReadyForPlacement=false");
+                                File.AppendAllText(placementLogPath, $"[{DateTime.Now:HH:mm:ss}] [FILTER-DIAGNOSTIC]   Zone {cz.Id}: {string.Join(", ", reasons)}\n");
+                            }
+                        }
+                        catch { }
+                    }
                     
                     if (!DeploymentConfiguration.DeploymentMode)
                     {

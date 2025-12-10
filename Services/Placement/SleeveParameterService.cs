@@ -1207,6 +1207,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         /// <summary>
         /// ✅ NEW: Set Schedule Level and Elevation from Level for cluster sleeves.
         /// Uses the first ClashZone in the cluster to get MEP element level information.
+        /// 
+        /// ✅ CRITICAL: For cluster sleeves, parameters are set directly (not deferred) to ensure they are applied.
+        /// This is safe because cluster sleeves are placed in their own transaction context.
         /// </summary>
         public void SetScheduleLevelAndElevationForCluster(
             FamilyInstance clusterSleeve,
@@ -1215,11 +1218,63 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         {
             if (clusterSleeve == null || firstClashZone == null) return;
 
-            // Set Schedule Level from first ClashZone's MEP element level
-            SetScheduleLevelFromMepReferenceLevel(clusterSleeve, firstClashZone, currentSleeveId);
+            // ✅ CRITICAL: Set Schedule Level only - "Elevation from Level" is a built-in parameter
+            // that automatically calculates from Schedule Level, so we don't need to set it manually.
+            // Setting it manually was causing the sleeve to move incorrectly.
             
-            // Set Elevation from Level
-            SetElevationFromLevelParameter(clusterSleeve, firstClashZone, currentSleeveId);
+            // Set Schedule Level directly
+            try
+            {
+                Level? mepLevel = null;
+                if (!string.IsNullOrWhiteSpace(firstClashZone.MepElementLevelName))
+                {
+                    mepLevel = new FilteredElementCollector(_doc)
+                        .OfClass(typeof(Level))
+                        .Cast<Level>()
+                        .FirstOrDefault(l => string.Equals(l.Name, firstClashZone.MepElementLevelName, StringComparison.OrdinalIgnoreCase));
+                }
+
+                if (mepLevel != null)
+                {
+                    var scheduleLevelParam = clusterSleeve.LookupParameter("Schedule of Level")
+                                         ?? clusterSleeve.LookupParameter("Schedule Level")
+                                         ?? clusterSleeve.LookupParameter("ScheduleLevel")
+                                         ?? clusterSleeve.Symbol?.LookupParameter("Schedule of Level")
+                                         ?? clusterSleeve.Symbol?.LookupParameter("Schedule Level")
+                                         ?? clusterSleeve.Symbol?.LookupParameter("ScheduleLevel");
+                    
+                    if (scheduleLevelParam != null && !scheduleLevelParam.IsReadOnly)
+                    {
+                        if (scheduleLevelParam.StorageType == StorageType.ElementId)
+                        {
+                            scheduleLevelParam.Set(mepLevel.Id);
+                        }
+                        else if (scheduleLevelParam.StorageType == StorageType.String)
+                        {
+                            scheduleLevelParam.Set(mepLevel.Name);
+                        }
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("placement_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [CLUSTER-SCHEDULE-LEVEL] ✅ Set Schedule Level to '{mepLevel.Name}' on cluster sleeve {currentSleeveId.IntegerValue}. " +
+                                $"Elevation from Level will be automatically calculated by Revit.\n");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("placement_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [CLUSTER-SCHEDULE-LEVEL] ❌ Error: {ex.Message}\n");
+                }
+            }
+            
+            // ✅ REMOVED: "Elevation from Level" is a built-in parameter that automatically calculates
+            // from Schedule Level. We should NOT set it manually as it was causing incorrect placement.
+            // Revit will calculate it automatically after Schedule Level is set.
         }
 
         /// <summary>

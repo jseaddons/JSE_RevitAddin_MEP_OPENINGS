@@ -3553,11 +3553,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             int sleevesVerified = 0;
             int sleevesNotFound = 0;
             int flagsReset = 0;
-            var zonesToReset = new List<Guid>();
+            var zonesToReset = new List<Guid>(); // Zones with existing sleeves → Set ReadyForPlacementFlag=0
+            var zonesToResetFlags = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterInstanceId)>(); // Zones with deleted sleeves → Reset flags
 
             if (!DeploymentConfiguration.DeploymentMode)
             {
                 _logger($"[SQLite] [SLEEVE-VERIFY] Starting verification: filters={filterNames.Count}, categories={categories.Count}");
+                SafeFileLogger.SafeAppendText("flag_state_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [SLEEVE-VERIFY] === STARTING VERIFICATION === filters={filterNames.Count}, categories={categories.Count}\n");
             }
 
             try
@@ -3574,6 +3577,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             _logger($"[SQLite] [SLEEVE-VERIFY] Filter='{filterName}', Category='{category}': Found {zonesWithSleeveIds.Count} zones with SleeveInstanceId or ClusterInstanceId");
+                            SafeFileLogger.SafeAppendText("flag_state_debug.log", 
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [SLEEVE-VERIFY] Filter='{filterName}', Category='{category}': Found {zonesWithSleeveIds.Count} zones to verify\n");
                         }
 
                         foreach (var zone in zonesWithSleeveIds)
@@ -3582,31 +3587,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             bool sleeveExists = false;
                             string sleeveType = "";
                             int sleeveId = 0;
+                            bool isIndividualSleeve = false;
+                            bool isClusterSleeve = false;
 
                             // Check individual sleeve first
                             if (zone.SleeveInstanceId > 0)
                             {
                                 sleeveId = zone.SleeveInstanceId;
                                 sleeveType = "Individual";
+                                isIndividualSleeve = true;
                                 try
                                 {
                                     var element = document.GetElement(new ElementId(zone.SleeveInstanceId));
-                                    if (element != null && element is FamilyInstance)
+                                    // ✅ CRITICAL FIX: Check IsValidObject to detect deleted elements
+                                    // Revit's GetElement() can return non-null elements even if deleted (until regeneration)
+                                    // IsValidObject=false means the element was deleted and is no longer in the document
+                                    if (element != null && element is FamilyInstance fi && fi.IsValidObject)
                                     {
                                         sleeveExists = true;
                                         sleevesVerified++;
                                         
                                         if (!DeploymentConfiguration.DeploymentMode)
                                         {
-                                            _logger($"[SQLite] [SLEEVE-VERIFY] ✅ Zone {zone.Id}: Individual sleeve {zone.SleeveInstanceId} EXISTS in Revit");
+                                            _logger($"[SQLite] [SLEEVE-VERIFY] ✅ Zone {zone.Id}: Individual sleeve {zone.SleeveInstanceId} EXISTS in Revit (IsValidObject=true)");
+                                            SafeFileLogger.SafeAppendText("flag_state_debug.log", 
+                                                $"[{DateTime.Now:HH:mm:ss.fff}] [SLEEVE-VERIFY] ✅ Zone {zone.Id}: Individual sleeve {zone.SleeveInstanceId} EXISTS (IsResolved={zone.IsResolved}, IsClusterResolved={zone.IsClusterResolved})\n");
                                         }
                                     }
                                     else
                                     {
                                         sleevesNotFound++;
+                                        string reason = element == null ? "NULL" : (element is FamilyInstance ? "INVALID (deleted)" : "NOT FamilyInstance");
                                         if (!DeploymentConfiguration.DeploymentMode)
                                         {
-                                            _logger($"[SQLite] [SLEEVE-VERIFY] ❌ Zone {zone.Id}: Individual sleeve {zone.SleeveInstanceId} NOT FOUND in Revit (will reset flags)");
+                                            _logger($"[SQLite] [SLEEVE-VERIFY] ❌ Zone {zone.Id}: Individual sleeve {zone.SleeveInstanceId} NOT FOUND in Revit ({reason}) - will reset flags");
+                                            SafeFileLogger.SafeAppendText("flag_state_debug.log", 
+                                                $"[{DateTime.Now:HH:mm:ss.fff}] [SLEEVE-VERIFY] ❌ Zone {zone.Id}: Individual sleeve {zone.SleeveInstanceId} NOT FOUND ({reason}) → Will reset IsResolved=0, SleeveInstanceId=0, ReadyForPlacementFlag=1\n");
                                         }
                                     }
                                 }
@@ -3616,6 +3632,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     if (!DeploymentConfiguration.DeploymentMode)
                                     {
                                         _logger($"[SQLite] [SLEEVE-VERIFY] ⚠️ Zone {zone.Id}: Error checking individual sleeve {zone.SleeveInstanceId}: {ex.Message}");
+                                        SafeFileLogger.SafeAppendText("flag_state_debug.log", 
+                                            $"[{DateTime.Now:HH:mm:ss.fff}] [SLEEVE-VERIFY] ⚠️ Zone {zone.Id}: Error checking individual sleeve {zone.SleeveInstanceId}: {ex.Message}\n");
                                     }
                                 }
                             }
@@ -3625,25 +3643,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             {
                                 sleeveId = zone.ClusterSleeveInstanceId;
                                 sleeveType = "Cluster";
+                                isClusterSleeve = true;
                                 try
                                 {
                                     var element = document.GetElement(new ElementId(zone.ClusterSleeveInstanceId));
-                                    if (element != null && element is FamilyInstance)
+                                    // ✅ CRITICAL FIX: Check IsValidObject to detect deleted elements
+                                    // Revit's GetElement() can return non-null elements even if deleted (until regeneration)
+                                    // IsValidObject=false means the element was deleted and is no longer in the document
+                                    if (element != null && element is FamilyInstance fi && fi.IsValidObject)
                                     {
                                         sleeveExists = true;
                                         sleevesVerified++;
                                         
                                         if (!DeploymentConfiguration.DeploymentMode)
                                         {
-                                            _logger($"[SQLite] [SLEEVE-VERIFY] ✅ Zone {zone.Id}: Cluster sleeve {zone.ClusterSleeveInstanceId} EXISTS in Revit");
+                                            _logger($"[SQLite] [SLEEVE-VERIFY] ✅ Zone {zone.Id}: Cluster sleeve {zone.ClusterSleeveInstanceId} EXISTS in Revit (IsValidObject=true)");
+                                            SafeFileLogger.SafeAppendText("flag_state_debug.log", 
+                                                $"[{DateTime.Now:HH:mm:ss.fff}] [SLEEVE-VERIFY] ✅ Zone {zone.Id}: Cluster sleeve {zone.ClusterSleeveInstanceId} EXISTS (IsResolved={zone.IsResolved}, IsClusterResolved={zone.IsClusterResolved})\n");
                                         }
                                     }
                                     else
                                     {
                                         sleevesNotFound++;
+                                        string reason = element == null ? "NULL" : (element is FamilyInstance ? "INVALID (deleted)" : "NOT FamilyInstance");
                                         if (!DeploymentConfiguration.DeploymentMode)
                                         {
-                                            _logger($"[SQLite] [SLEEVE-VERIFY] ❌ Zone {zone.Id}: Cluster sleeve {zone.ClusterSleeveInstanceId} NOT FOUND in Revit (will reset flags)");
+                                            _logger($"[SQLite] [SLEEVE-VERIFY] ❌ Zone {zone.Id}: Cluster sleeve {zone.ClusterSleeveInstanceId} NOT FOUND in Revit ({reason}) - will reset flags");
+                                            SafeFileLogger.SafeAppendText("flag_state_debug.log", 
+                                                $"[{DateTime.Now:HH:mm:ss.fff}] [SLEEVE-VERIFY] ❌ Zone {zone.Id}: Cluster sleeve {zone.ClusterSleeveInstanceId} NOT FOUND ({reason}) → Will reset IsClusterResolved=0, ClusterSleeveInstanceId=0, ReadyForPlacementFlag=1\n");
                                         }
                                     }
                                 }
@@ -3653,19 +3680,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     if (!DeploymentConfiguration.DeploymentMode)
                                     {
                                         _logger($"[SQLite] [SLEEVE-VERIFY] ⚠️ Zone {zone.Id}: Error checking cluster sleeve {zone.ClusterSleeveInstanceId}: {ex.Message}");
+                                        SafeFileLogger.SafeAppendText("flag_state_debug.log", 
+                                            $"[{DateTime.Now:HH:mm:ss.fff}] [SLEEVE-VERIFY] ⚠️ Zone {zone.Id}: Error checking cluster sleeve {zone.ClusterSleeveInstanceId}: {ex.Message}\n");
                                     }
                                 }
                             }
 
-                            // If sleeve exists, set ReadyForPlacementFlag=0 to prevent placement
+                            // ✅ CRITICAL FIX: Handle both cases
                             if (sleeveExists)
                             {
+                                // Sleeve exists → Set ReadyForPlacementFlag=0 to prevent placement
                                 zonesToReset.Add(zone.Id);
                                 flagsReset++;
                                 
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
                                     _logger($"[SQLite] [SLEEVE-VERIFY] ⏭️ Zone {zone.Id}: {sleeveType} sleeve {sleeveId} exists → Setting ReadyForPlacementFlag=0 (skip placement)");
+                                }
+                            }
+                            else
+                            {
+                                // ✅ CRITICAL FIX: Sleeve NOT found → Reset flags and set ReadyForPlacementFlag=1
+                                // ✅ FIX: When cluster sleeve is deleted, reset BOTH IsResolved and IsClusterResolved to 0
+                                // When individual sleeve is deleted, reset IsResolved to 0 (IsClusterResolved stays as-is)
+                                bool resetIsResolved = isIndividualSleeve || isClusterSleeve; // Reset if either sleeve type was deleted
+                                bool resetIsClusterResolved = isClusterSleeve; // Reset if cluster sleeve was deleted
+                                int resetSleeveId = isIndividualSleeve ? 0 : zone.SleeveInstanceId;
+                                int resetClusterId = isClusterSleeve ? 0 : zone.ClusterSleeveInstanceId;
+                                
+                                zonesToResetFlags.Add((
+                                    zone.Id,
+                                    resetIsResolved ? false : zone.IsResolved, // Reset to 0 if individual OR cluster sleeve was deleted
+                                    resetIsClusterResolved ? false : zone.IsClusterResolved, // Reset to 0 if cluster sleeve was deleted
+                                    resetSleeveId,
+                                    resetClusterId
+                                ));
+                                flagsReset++;
+                                
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    _logger($"[SQLite] [SLEEVE-VERIFY] 🔄 Zone {zone.Id}: {sleeveType} sleeve {sleeveId} NOT FOUND → Resetting flags (IsResolved={(resetIsResolved ? "false" : zone.IsResolved.ToString())}, IsClusterResolved={(resetIsClusterResolved ? "false" : zone.IsClusterResolved.ToString())}, SleeveId={resetSleeveId}, ClusterId={resetClusterId}) and setting ReadyForPlacementFlag=1");
+                                    SafeFileLogger.SafeAppendText("flag_state_debug.log", 
+                                        $"[{DateTime.Now:HH:mm:ss.fff}] [SLEEVE-VERIFY] 🔄 Zone {zone.Id}: {sleeveType} sleeve {sleeveId} NOT FOUND → Resetting: IsResolved={(resetIsResolved ? "false" : zone.IsResolved.ToString())}, IsClusterResolved={(resetIsClusterResolved ? "false" : zone.IsClusterResolved.ToString())}, SleeveId={resetSleeveId}, ClusterId={resetClusterId}, ReadyForPlacementFlag=1\n");
                                 }
                             }
                         }
@@ -3680,8 +3736,70 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         _logger($"[SQLite] [SLEEVE-VERIFY] ✅ Reset ReadyForPlacementFlag=0 for {zonesToReset.Count} zones with existing sleeves");
-                        _logger($"[SQLite] [SLEEVE-VERIFY] Summary: ZonesWithSleeves={zonesWithSleeves}, SleevesVerified={sleevesVerified}, SleevesNotFound={sleevesNotFound}, FlagsReset={flagsReset}");
                     }
+                }
+
+                // ✅ CRITICAL FIX: Batch update flags for zones with deleted sleeves
+                if (zonesToResetFlags.Count > 0)
+                {
+                    // ✅ DATA CONSISTENCY FIX: If IsClusterResolved = 0, then IsResolved must also be 0 (clean up stale data)
+                    var correctedFlags = zonesToResetFlags.Select(z => (
+                        z.ClashZoneId,
+                        z.IsClusterResolved ? z.IsResolved : false, // If cluster resolved = false, then individual resolved = false
+                        z.IsClusterResolved,
+                        z.SleeveInstanceId,
+                        z.ClusterInstanceId,
+                        0, // MepElementId (not needed for flag reset)
+                        0, // StructuralElementId (not needed for flag reset)
+                        0.0, // IntersectionPointX (not needed for flag reset)
+                        0.0, // IntersectionPointY (not needed for flag reset)
+                        0.0, // IntersectionPointZ (not needed for flag reset)
+                        z.SleeveInstanceId, // OldSleeveInstanceId (preserve for logging)
+                        z.ClusterInstanceId, // OldClusterInstanceId (preserve for logging)
+                        (bool?)null, // MarkedForClusterProcess (not needed)
+                        0, // AfterClusterSleeveId (not needed)
+                        (bool?)null // IsClusteredFlag (not needed)
+                    ));
+                    
+                    BatchUpdateFlags(correctedFlags);
+                    
+                    // Also set ReadyForPlacementFlag=1 for these zones
+                    BulkSetReadyForPlacementFlags(zonesToResetFlags.Select(z => z.ClashZoneId), true);
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        _logger($"[SQLite] [SLEEVE-VERIFY] ✅ Reset flags for {zonesToResetFlags.Count} zones with deleted sleeves (IsResolved/IsClusterResolved=0, SleeveId/ClusterId=0, ReadyForPlacementFlag=1)");
+                        SafeFileLogger.SafeAppendText("flag_state_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SLEEVE-VERIFY] ✅ Reset flags for {zonesToResetFlags.Count} zones with deleted sleeves\n");
+                    }
+                }
+                
+                // ✅ DATA CONSISTENCY CLEANUP: Fix stale data where IsClusterResolved=0 but IsResolved=1
+                // This cleans up any existing inconsistent data from previous bugs
+                // ⚠️ CRITICAL: Only clean up zones that don't have ClusterSleeveInstanceId > 0 (to avoid affecting cluster sleeves)
+                using (var cleanupCmd = _context.Connection.CreateCommand())
+                {
+                    cleanupCmd.CommandText = @"
+                        UPDATE ClashZones 
+                        SET IsResolvedFlag = 0, UpdatedAt = CURRENT_TIMESTAMP
+                        WHERE IsClusterResolvedFlag = 0 
+                          AND IsResolvedFlag = 1
+                          AND (ClusterInstanceId IS NULL OR ClusterInstanceId <= 0)
+                          AND (SleeveInstanceId IS NULL OR SleeveInstanceId <= 0)";
+                    int staleDataFixed = cleanupCmd.ExecuteNonQuery();
+                    if (staleDataFixed > 0 && !DeploymentConfiguration.DeploymentMode)
+                    {
+                        _logger($"[SQLite] [SLEEVE-VERIFY] ✅ Cleaned up {staleDataFixed} zones with stale data (IsClusterResolved=0 but IsResolved=1, no ClusterInstanceId)");
+                        SafeFileLogger.SafeAppendText("flag_state_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SLEEVE-VERIFY] ✅ Cleaned up {staleDataFixed} zones with stale data (no ClusterInstanceId)\n");
+                    }
+                }
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] [SLEEVE-VERIFY] Summary: ZonesWithSleeves={zonesWithSleeves}, SleevesVerified={sleevesVerified}, SleevesNotFound={sleevesNotFound}, FlagsReset={flagsReset}");
+                    SafeFileLogger.SafeAppendText("flag_state_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SLEEVE-VERIFY] === SUMMARY === ZonesWithSleeves={zonesWithSleeves}, SleevesVerified={sleevesVerified}, SleevesNotFound={sleevesNotFound}, FlagsReset={flagsReset}\n");
                 }
             }
             catch (Exception ex)
