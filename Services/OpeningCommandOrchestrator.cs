@@ -1631,7 +1631,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     _ => new DuctPlacementStrategy()
                                 };
                                 
-                                var invalidatedService = new Path3InvalidatedPlacementService(_document);
+                                var invalidatedService = new Path3InvalidatedPlacementService(_document, null, _forceDetectionMode);
                                 var invalidatedResult = invalidatedService.ExecutePlacement(
                                     invalidatedZones,
                                     combinedFilterName,

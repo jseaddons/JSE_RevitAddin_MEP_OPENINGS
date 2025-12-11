@@ -20,11 +20,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     {
         private readonly Document _document;
         private readonly FlagManager _flagManager;
+        private readonly bool _isForceDetectionMode;
         
-        public Path3InvalidatedPlacementService(Document document, FlagManager flagManager = null)
+        public Path3InvalidatedPlacementService(Document document, FlagManager flagManager = null, bool isForceDetectionMode = false)
         {
             _document = document ?? throw new ArgumentNullException(nameof(document));
             _flagManager = flagManager ?? new FlagManager(document);
+            _isForceDetectionMode = isForceDetectionMode;
         }
         
         /// <summary>
@@ -272,7 +274,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             null, // familyManager - can be null
                             flagManagerAdapter, // ✅ Use FlagManagerAdapter to convert FlagManager to IFlagManager
                             isReplayPath: false, // ✅ PATH 2 logic: Full calculation
-                            filterName ?? "Unknown");
+                            filterName ?? "Unknown",
+                            isForceDetectionMode: _isForceDetectionMode); // ✅ PASS FORCE DETECTION FLAG
                         
                         // Calculate size (this will update zone.SleeveWidth, SleeveHeight, SleeveDepth)
                         // Note: This is a simplified approach - in production, you might want to call

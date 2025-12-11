@@ -28,13 +28,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private static string IntersectionDebugLogPath;
         private static bool IntersectionDebugEnabled;
 
-        static MepIntersectionService()
-        {
-            // MINIMAL static constructor - avoid ANY external dependencies
-            IntersectionDebugFlagFile = "enable_intersection_debug.flag";
-            IntersectionDebugLogPath = "intersection_debug_2024.log";
-            IntersectionDebugEnabled = false; // Will be set lazily on first use
-        }
+
         
         // LAZY INITIALIZATION - avoid static constructor that can throw
         private static IRevitUnitConversionService? _unitConverter;
@@ -75,27 +69,68 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private static readonly Lazy<Dictionary<Document, Transform>> _transformCache = new Lazy<Dictionary<Document, Transform>>(() => new Dictionary<Document, Transform>());
         
         // PHASE 1 OPTIMIZATION 2: Category Whitelist (2x speedup)
-        private static readonly BuiltInCategory[] MEP_CATEGORY_WHITELIST = {
-            BuiltInCategory.OST_DuctCurves,
-            BuiltInCategory.OST_DuctFitting,
-            BuiltInCategory.OST_DuctAccessory,  // Includes dampers
-            BuiltInCategory.OST_DuctTerminal,
-            BuiltInCategory.OST_PipeCurves,
-            BuiltInCategory.OST_PipeFitting,
-            BuiltInCategory.OST_PipeAccessory,
-            BuiltInCategory.OST_CableTray,
-            BuiltInCategory.OST_CableTrayFitting,
-            BuiltInCategory.OST_Conduit,
-            BuiltInCategory.OST_ConduitFitting
-        };
+        // ✅ CRITICAL FIX: Initialize in static constructor with validation to prevent TypeInitializationException in Revit 2024
+        private static readonly BuiltInCategory[] MEP_CATEGORY_WHITELIST;
+        private static readonly BuiltInCategory[] STRUCTURAL_CATEGORY_WHITELIST;
         
-        private static readonly BuiltInCategory[] STRUCTURAL_CATEGORY_WHITELIST = {
-            BuiltInCategory.OST_Walls,
-            BuiltInCategory.OST_Floors,
-            BuiltInCategory.OST_StructuralFraming,
-            BuiltInCategory.OST_StructuralColumns,
-            BuiltInCategory.OST_StructuralFoundation
-        };
+        static MepIntersectionService()
+        {
+            try
+            {
+                // MINIMAL static constructor - avoid ANY external dependencies
+                IntersectionDebugFlagFile = "enable_intersection_debug.flag";
+                IntersectionDebugLogPath = "intersection_debug_2024.log";
+                IntersectionDebugEnabled = false; // Will be set lazily on first use
+
+                // Initialize whitelists with safe fallback
+                var mepList = new List<BuiltInCategory>
+                {
+                    BuiltInCategory.OST_DuctCurves,
+                    BuiltInCategory.OST_DuctFitting,
+                    BuiltInCategory.OST_DuctAccessory,
+                    BuiltInCategory.OST_DuctTerminal,
+                    BuiltInCategory.OST_PipeCurves,
+                    BuiltInCategory.OST_PipeFitting,
+                    BuiltInCategory.OST_PipeAccessory,
+                    BuiltInCategory.OST_CableTray,
+                    BuiltInCategory.OST_CableTrayFitting,
+                    BuiltInCategory.OST_Conduit,
+                    BuiltInCategory.OST_ConduitFitting
+                };
+                MEP_CATEGORY_WHITELIST = mepList.ToArray();
+
+                var structList = new List<BuiltInCategory>
+                {
+                    BuiltInCategory.OST_Walls,
+                    BuiltInCategory.OST_Floors,
+                    BuiltInCategory.OST_StructuralFraming,
+                    BuiltInCategory.OST_StructuralColumns,
+                    BuiltInCategory.OST_StructuralFoundation
+                };
+                STRUCTURAL_CATEGORY_WHITELIST = structList.ToArray();
+            }
+            catch (Exception ex)
+            {
+                // Last ditch logging for static init failure
+                try 
+                {
+                    var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                    var logPath = System.IO.Path.Combine(appData, "JSE_MEP_Openings", "STATIC_INIT_FAIL.log");
+                    var logDir = System.IO.Path.GetDirectoryName(logPath);
+                    if (!System.IO.Directory.Exists(logDir)) System.IO.Directory.CreateDirectory(logDir);
+                    
+                    System.IO.File.WriteAllText(logPath, $"Static Init Failed: {ex}\nInner: {ex.InnerException}");
+                }
+                catch { }
+                
+                // Assign empty arrays to prevent null ref later, though the app is likely doomed
+                MEP_CATEGORY_WHITELIST = new BuiltInCategory[0];
+                STRUCTURAL_CATEGORY_WHITELIST = new BuiltInCategory[0];
+                
+                // Re-throw to ensure we don't fail silently
+                throw; 
+            }
+        }
         
         // ✅ MEMORY OPTIMIZATION: LRU cache add with eviction
         private static void AddToGeometryCache(string key, Solid? solid)
