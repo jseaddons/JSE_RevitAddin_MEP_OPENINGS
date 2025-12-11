@@ -97,6 +97,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         
         // ✅ INTEGRATED SETTINGS: Settings controls in right panel (below Clearance)
         private WinForms.CheckBox _enableThreePointValidationCheckBox = null!;
+        private WinForms.CheckBox _forceDetectionModeCheckBox = null!;
         private WinForms.TextBox _ignoreOpeningsSmallerThanTextBox = null!;
         private WinForms.TextBox _roundOpeningsRectangularTextBox = null!;
         private WinForms.TextBox _joinOpeningsDistanceTextBox = null!;
@@ -2146,7 +2147,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Text = "Settings",
                 Location = new System.Drawing.Point(10, settingsStartY),
-                Size = new System.Drawing.Size(_rightPanel.Width - 20, 280), // Height for all settings
+                Size = new System.Drawing.Size(_rightPanel.Width - 20, 310), // Increased height for Force Full Detection checkbox
                 BackColor = System.Drawing.Color.FromArgb(248, 249, 250),
                 // ✅ NOTE: GroupBox doesn't have BorderStyle property - it has a border by default
                 Anchor = WinForms.AnchorStyles.Top | WinForms.AnchorStyles.Left | WinForms.AnchorStyles.Right
@@ -2173,6 +2174,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Checked = true // Default enabled
             };
             settingsGroupBox.Controls.Add(_enableThreePointValidationCheckBox);
+            yPos += 30;
+            
+            // ✅ NEW: Force Full Detection Mode checkbox
+            var forceDetectionLabel = new WinForms.Label
+            {
+                Text = "Force Full Detection Mode:",
+                Location = new System.Drawing.Point(15, yPos),
+                Size = new System.Drawing.Size(350, 20),
+                Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular)
+            };
+            settingsGroupBox.Controls.Add(forceDetectionLabel);
+            
+            _forceDetectionModeCheckBox = new WinForms.CheckBox
+            {
+                Text = "",
+                Location = new System.Drawing.Point(370, yPos),
+                Size = new System.Drawing.Size(20, 20),
+                Checked = false // Default disabled
+            };
+            settingsGroupBox.Controls.Add(_forceDetectionModeCheckBox);
             yPos += 30;
             
             // ✅ ALL LIMITS SETTINGS VISIBLE:
@@ -2323,6 +2344,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _roundAlwaysUpCheckBox.CheckedChanged += (s, e) => SaveSettingsFromRightPanel();
             _minWallThicknessTextBox.TextChanged += (s, e) => SaveSettingsFromRightPanel();
             _ignoreArchitecturalFloorsCheckBox.CheckedChanged += (s, e) => SaveSettingsFromRightPanel();
+            _forceDetectionModeCheckBox.CheckedChanged += (s, e) => SaveSettingsFromRightPanel();
         }
         
         /// <summary>
@@ -2337,6 +2359,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 
                 if (_enableThreePointValidationCheckBox != null)
                     _enableThreePointValidationCheckBox.Checked = settings.EnableThreePointValidation;
+                if (_forceDetectionModeCheckBox != null)
+                    _forceDetectionModeCheckBox.Checked = settings.ForceDetectionMode;
                 if (_ignoreOpeningsSmallerThanTextBox != null)
                     _ignoreOpeningsSmallerThanTextBox.Text = settings.IgnoreOpeningsSmallerThan.ToString();
                 if (_roundOpeningsRectangularTextBox != null)
@@ -2370,6 +2394,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 
                 if (_enableThreePointValidationCheckBox != null)
                     settings.EnableThreePointValidation = _enableThreePointValidationCheckBox.Checked;
+                if (_forceDetectionModeCheckBox != null)
+                    settings.ForceDetectionMode = _forceDetectionModeCheckBox.Checked;
                 if (_ignoreOpeningsSmallerThanTextBox != null && double.TryParse(_ignoreOpeningsSmallerThanTextBox.Text, out double ignoreSmall))
                     settings.IgnoreOpeningsSmallerThan = ignoreSmall;
                 if (_roundOpeningsRectangularTextBox != null && double.TryParse(_roundOpeningsRectangularTextBox.Text, out double roundRect))

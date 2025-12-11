@@ -385,6 +385,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                             if (filterId <= 0)
                             {
                                 // Filter doesn't exist = not processed
+                                // ✅ CRITICAL LOGGING: Always log (even in deployment mode) so user can diagnose why fast path is not taken
+                                System.Diagnostics.Debug.WriteLine($"[DB-COMBO-CHECK] ⚠️ Filter not found: Filter='{filterName}', Category='{category}' → not processed");
                                 Log($"[DB-COMBO-CHECK] Filter not found: Filter='{filterName}', Category='{category}' → not processed");
                                 return false;
                             }
@@ -410,6 +412,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                                     if (result == null || result == DBNull.Value)
                                     {
                                         // File combo doesn't exist = not processed
+                                        // ✅ CRITICAL LOGGING: Always log (even in deployment mode) so user can diagnose why fast path is not taken
+                                        System.Diagnostics.Debug.WriteLine($"[DB-COMBO-CHECK] ⚠️ Combo not found: Filter='{filterName}', Category='{category}', Linked='{combo.LinkedFileKey}', Host='{combo.HostFileKey}' → not processed");
                                         Log($"[DB-COMBO-CHECK] Combo not found: Filter='{filterName}', Category='{category}', Linked='{combo.LinkedFileKey}', Host='{combo.HostFileKey}' → not processed");
                                         return false;
                                     }
@@ -418,6 +422,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                                     if (isNew != 0)
                                     {
                                         // IsFilterComboNew = 1 means not processed yet
+                                        // ✅ CRITICAL LOGGING: Always log (even in deployment mode) so user can diagnose why fast path is not taken
+                                        System.Diagnostics.Debug.WriteLine($"[DB-COMBO-CHECK] ⚠️ Combo not processed: Filter='{filterName}', Category='{category}', Linked='{combo.LinkedFileKey}', Host='{combo.HostFileKey}' → IsFilterComboNew={isNew}");
                                         Log($"[DB-COMBO-CHECK] Combo not processed: Filter='{filterName}', Category='{category}', Linked='{combo.LinkedFileKey}', Host='{combo.HostFileKey}' → IsFilterComboNew={isNew}");
                                         return false;
                                     }
@@ -426,6 +432,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                         }
                     }
                     
+                    // ✅ CRITICAL LOGGING: Always log (even in deployment mode) so user can verify fast path conditions are met
+                    System.Diagnostics.Debug.WriteLine($"[DB-COMBO-CHECK] ✅✅✅ All file combos are processed (IsFilterComboNew=0) for all filter+category combinations - FAST PATH ELIGIBLE");
                     Log($"[DB-COMBO-CHECK] ✅ All file combos are processed (IsFilterComboNew=0) for all filter+category combinations");
                     return true;
                 }

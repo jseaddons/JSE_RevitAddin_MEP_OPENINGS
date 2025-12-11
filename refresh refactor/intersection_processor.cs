@@ -113,6 +113,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         {
             if (!decision.ShouldRunDetection)
             {
+                // ✅ CRITICAL LOGGING: Always log fast path activation (even in deployment mode) so user can verify performance improvement
+                System.Diagnostics.Debug.WriteLine($"[INTERSECTION-PROCESSOR] ⚡⚡⚡ FAST PATH EXECUTED: Skipping detection - {decision.Reason}");
+                System.Diagnostics.Debug.WriteLine($"[INTERSECTION-PROCESSOR] ⚡⚡⚡ FAST PATH: Using {_context.ExistingClashZones?.Count ?? 0} existing zones from database (NO DETECTION, NO DAMPER PROCESSING)");
                 _logger($"[INTERSECTION-PROCESSOR] ⚡ SUPERFAST PATH: Skipping detection - {decision.Reason}");
                 
                 // ✅ SUPERFAST PATH: For validated zones (when DeploymentMode ON and Adopt OFF)
@@ -121,13 +124,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 _context.NewClashZones = new List<ClashZone>();
                 _context.AllClashZones = _context.ExistingClashZones ?? new List<ClashZone>();
                 
-                if (!_context.IsDeploymentMode)
-                {
-                    _logger($"[INTERSECTION-PROCESSOR] ✅ SUPERFAST PATH: Using {_context.AllClashZones.Count} existing zones from database (no detection, no damper processing)");
-                }
+                _logger($"[INTERSECTION-PROCESSOR] ✅ SUPERFAST PATH: Using {_context.AllClashZones.Count} existing zones from database (no detection, no damper processing)");
                 
                 return _context.AllClashZones;
             }
+            
+            // ✅ CRITICAL LOGGING: Always log when detection is running (even in deployment mode) so user can see why fast path was not taken
+            System.Diagnostics.Debug.WriteLine($"[INTERSECTION-PROCESSOR] ⚠️⚠️⚠️ DETECTION RUNNING: ShouldRunDetection=true, Mode={decision.Mode}, Reason='{decision.Reason}'");
 
             // ✅ REMOVED DUPLICATE TRACKER: Outer "6. Intersection Processing" already tracks this
             _logger($"[INTERSECTION-PROCESSOR] Phase 2: Running detection (Mode={decision.Mode})...");
@@ -144,6 +147,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             // Duct accessories are processed in refresh_service_refactored.cs via DamperProcessingService
             // Do NOT include OST_DuctAccessory in MEP category filters here
             var newClashZones = RunDetectionWithCollectorLevelFilters();
+
+            // ✅ CRITICAL FIX: Ensure IsCurrentClash is set to true for all new zones
+            if (newClashZones != null)
+            {
+                foreach (var zone in newClashZones)
+                {
+                    zone.IsCurrentClash = true;
+                }
+            }
 
             _context.NewClashZones = newClashZones ?? new List<ClashZone>();
             _context.AllClashZones = CombineExistingAndNew(_context.ExistingClashZones, _context.NewClashZones);
@@ -675,13 +687,75 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     if (linkDoc == null) continue;
 
                     _logger($"[INTERSECTION-PROCESSOR] Collecting MEP elements from linked document: {linkDoc.Title}");
-                    var linkCollector = new FilteredElementCollector(linkDoc)
-                        .WherePasses(compoundFilter)
-                        .WhereElementIsNotElementType();
+                // ✅ CRITICAL FIX: Transform Section Box Filter for Linked File
+                ElementFilter linkSpecificCompoundFilter = compoundFilter; // Default to host filter if no transform needed
+                
+                if (sectionBoxFilter != null && sectionBoxOutline != null)
+                {
+                    try 
+                    {
+                        var transform = linkInstance.GetTotalTransform();
+                        if (!transform.IsIdentity)
+                        {
+                            var inverseTransform = transform.Inverse;
+                            
+                            // Transform the 8 corners of the section box
+                            var min = sectionBoxOutline.MinimumPoint;
+                            var max = sectionBoxOutline.MaximumPoint;
+                            
+                            var corners = new List<XYZ>
+                            {
+                                new XYZ(min.X, min.Y, min.Z),
+                                new XYZ(max.X, min.Y, min.Z),
+                                new XYZ(min.X, max.Y, min.Z),
+                                new XYZ(max.X, max.Y, min.Z),
+                                new XYZ(min.X, min.Y, max.Z),
+                                new XYZ(max.X, min.Y, max.Z),
+                                new XYZ(min.X, max.Y, max.Z),
+                                new XYZ(max.X, max.Y, max.Z)
+                            };
+                            
+                            var transformedCorners = corners.Select(c => inverseTransform.OfPoint(c)).ToList();
+                            
+                            var newMinX = transformedCorners.Min(c => c.X);
+                            var newMinY = transformedCorners.Min(c => c.Y);
+                            var newMinZ = transformedCorners.Min(c => c.Z);
+                            
+                            var newMaxX = transformedCorners.Max(c => c.X);
+                            var newMaxY = transformedCorners.Max(c => c.Y);
+                            var newMaxZ = transformedCorners.Max(c => c.Z);
+                            
+                            var transformedOutline = new Outline(new XYZ(newMinX, newMinY, newMinZ), new XYZ(newMaxX, newMaxY, newMaxZ));
+                            var transformedSectionBoxFilter = new BoundingBoxIntersectsFilter(transformedOutline);
+                            
+                            // Rebuild compound filter with transformed section box
+                            var newFilters = new List<ElementFilter>();
+                            newFilters.Add(transformedSectionBoxFilter);
+                            newFilters.Add(mepCategoryFilter);
+                            linkSpecificCompoundFilter = new LogicalAndFilter(newFilters);
+                            
+                            _logger($"[LINK-TRANSFORM] ✅ Transformed section box for link '{linkDoc.Title}': Host Min({min.X:F1},{min.Y:F1},{min.Z:F1}) -> Link Min({newMinX:F1},{newMinY:F1},{newMinZ:F1})");
+                        }
+                    }
+                    catch (Exception transEx)
+                    {
+                         _logger($"[LINK-TRANSFORM] ⚠️ Failed to transform section box for link '{linkDoc.Title}': {transEx.Message}. Using host filter (may be inaccurate).");
+                    }
+                }
 
-                    var linkElements = linkCollector.ToElements().ToList();
-                    allMepElements.AddRange(linkElements);
-                    _logger($"[INTERSECTION-PROCESSOR] ✅ Collected {linkElements.Count} MEP elements from linked document: {linkDoc.Title} (pre-filtered by Filters 1+3 at collector level)");
+                var linkCollector = new FilteredElementCollector(linkDoc)
+                    .WherePasses(linkSpecificCompoundFilter)
+                    .WhereElementIsNotElementType();
+                
+                // ✅ PRIORITY 1 OPTIMIZATION: Use view-independent collector if view visibility not needed
+                if (Services.OptimizationFlags.UseViewIndependentCollector)
+                {
+                    linkCollector = linkCollector.WhereElementIsViewIndependent();
+                }
+
+                var linkElements = linkCollector.ToElements().ToList();
+                allMepElements.AddRange(linkElements);
+                _logger($"[INTERSECTION-PROCESSOR] ✅ Collected {linkElements.Count} MEP elements from linked document: {linkDoc.Title} (collector-level filters applied)");
                 }
             }
             else
@@ -818,8 +892,68 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     if (linkDoc == null) continue;
 
                     _logger($"[INTERSECTION-PROCESSOR] Collecting host elements from linked document: {linkDoc.Title}");
+                    
+                    // ✅ CRITICAL FIX: Transform Section Box Filter for Linked File
+                    // Host Section Box is in Host Coordinates. Linked elements are in Link Coordinates.
+                    // We must Inverse Transform the Section Box into the Link's coordinate system.
+                    
+                    ElementFilter linkSpecificCompoundFilter = compoundFilter; // Default to host filter if no transform needed
+                    
+                    if (sectionBoxFilter != null && sectionBoxOutline != null)
+                    {
+                        try 
+                        {
+                            var transform = linkInstance.GetTotalTransform();
+                            if (!transform.IsIdentity)
+                            {
+                                var inverseTransform = transform.Inverse;
+                                
+                                // Transform the 8 corners of the section box
+                                var min = sectionBoxOutline.MinimumPoint;
+                                var max = sectionBoxOutline.MaximumPoint;
+                                
+                                var corners = new List<XYZ>
+                                {
+                                    new XYZ(min.X, min.Y, min.Z),
+                                    new XYZ(max.X, min.Y, min.Z),
+                                    new XYZ(min.X, max.Y, min.Z),
+                                    new XYZ(max.X, max.Y, min.Z),
+                                    new XYZ(min.X, min.Y, max.Z),
+                                    new XYZ(max.X, min.Y, max.Z),
+                                    new XYZ(min.X, max.Y, max.Z),
+                                    new XYZ(max.X, max.Y, max.Z)
+                                };
+                                
+                                var transformedCorners = corners.Select(c => inverseTransform.OfPoint(c)).ToList();
+                                
+                                var newMinX = transformedCorners.Min(c => c.X);
+                                var newMinY = transformedCorners.Min(c => c.Y);
+                                var newMinZ = transformedCorners.Min(c => c.Z);
+                                
+                                var newMaxX = transformedCorners.Max(c => c.X);
+                                var newMaxY = transformedCorners.Max(c => c.Y);
+                                var newMaxZ = transformedCorners.Max(c => c.Z);
+                                
+                                var transformedOutline = new Outline(new XYZ(newMinX, newMinY, newMinZ), new XYZ(newMaxX, newMaxY, newMaxZ));
+                                var transformedSectionBoxFilter = new BoundingBoxIntersectsFilter(transformedOutline);
+                                
+                                // Rebuild compound filter with transformed section box
+                                var newFilters = new List<ElementFilter>();
+                                newFilters.Add(transformedSectionBoxFilter);
+                                newFilters.Add(hostCategoryFilter);
+                                linkSpecificCompoundFilter = new LogicalAndFilter(newFilters);
+                                
+                                _logger($"[LINK-TRANSFORM] ✅ Transformed section box for link '{linkDoc.Title}': Host Min({min.X:F1},{min.Y:F1},{min.Z:F1}) -> Link Min({newMinX:F1},{newMinY:F1},{newMinZ:F1})");
+                            }
+                        }
+                        catch (Exception transEx)
+                        {
+                             _logger($"[LINK-TRANSFORM] ⚠️ Failed to transform section box for link '{linkDoc.Title}': {transEx.Message}. Using host filter (may be inaccurate).");
+                        }
+                    }
+
                     var linkCollector = new FilteredElementCollector(linkDoc)
-                        .WherePasses(compoundFilter)
+                        .WherePasses(linkSpecificCompoundFilter)
                         .WhereElementIsNotElementType();
 
                     var linkElementsBeforePropertyFilter = linkCollector.ToElements().ToList();
@@ -1017,10 +1151,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 decision.ShouldRunDetection = false;
                 decision.Reason = "Replace mode (SUPERFAST PATH): Adopt disabled, all combos processed (validated zones), DeploymentMode ON - skip detection, only update flags";
                 
-                if (!_context.IsDeploymentMode)
-                {
-                    _logger($"[INTERSECTION-PROCESSOR] ⚡ SUPERFAST PATH: Skipping detection for validated zones (DeploymentMode ON, Adopt OFF, all combos processed)");
-                }
+                // ✅ CRITICAL LOGGING: Always log fast path decision (even in deployment mode) so user can verify it's working
+                System.Diagnostics.Debug.WriteLine($"[INTERSECTION-PROCESSOR] ⚡⚡⚡ SUPERFAST PATH ACTIVATED: Skipping detection for validated zones (DeploymentMode={isDeploymentMode}, Adopt={_context.EnableThreePointValidation}, allCombosProcessed={allCombosProcessed})");
+                _logger($"[INTERSECTION-PROCESSOR] ⚡ SUPERFAST PATH: Skipping detection for validated zones (DeploymentMode ON, Adopt OFF, all combos processed)");
             }
             else if (hasUnresolvedZones && allCombosProcessed && !_context.EnableThreePointValidation && isDeploymentMode)
             {
@@ -1029,10 +1162,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 decision.ShouldRunDetection = false;
                 decision.Reason = "Replay mode (SUPERFAST PATH): Unresolved zones exist, combo processed (validated zones), DeploymentMode ON - use existing data, skip detection";
                 
-                if (!_context.IsDeploymentMode)
-                {
-                    _logger($"[INTERSECTION-PROCESSOR] ⚡ SUPERFAST PATH: Skipping detection for validated zones with unresolved sleeves (DeploymentMode ON, Adopt OFF, all combos processed)");
-                }
+                // ✅ CRITICAL LOGGING: Always log fast path decision (even in deployment mode) so user can verify it's working
+                System.Diagnostics.Debug.WriteLine($"[INTERSECTION-PROCESSOR] ⚡⚡⚡ SUPERFAST PATH ACTIVATED (REPLAY): Skipping detection for validated zones with unresolved sleeves (DeploymentMode={isDeploymentMode}, Adopt={_context.EnableThreePointValidation}, allCombosProcessed={allCombosProcessed}, hasUnresolvedZones={hasUnresolvedZones})");
+                _logger($"[INTERSECTION-PROCESSOR] ⚡ SUPERFAST PATH: Skipping detection for validated zones with unresolved sleeves (DeploymentMode ON, Adopt OFF, all combos processed)");
             }
             else
             {
@@ -1047,6 +1179,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 if (isDeploymentMode)
                 {
                     decision.Reason = $"FullDetection: DeploymentMode ON but conditions not met for superfast path - run detection (EnableThreePointValidation={_context.EnableThreePointValidation}, allCombosProcessed={allCombosProcessed})";
+                    // ✅ CRITICAL LOGGING: Always log why fast path was NOT taken (even in deployment mode) so user can diagnose
+                    System.Diagnostics.Debug.WriteLine($"[INTERSECTION-PROCESSOR] ⚠️⚠️⚠️ FAST PATH NOT TAKEN: DeploymentMode={isDeploymentMode}, EnableThreePointValidation={_context.EnableThreePointValidation}, allCombosProcessed={allCombosProcessed}, hasUnresolvedZones={hasUnresolvedZones}");
                 }
                 else
                 {
@@ -1097,8 +1231,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
 
             if (newZones != null)
             {
-                // Remove duplicates by ID
+                // Remove duplicates by ID but MARK existing as current if they are in newZones
                 var existingIds = new HashSet<string>(existing?.Select(z => z.Id.ToString()) ?? new List<string>());
+                
+                // ✅ CRITICAL FIX: Update existing zones to IsCurrentClash=true if they were re-detected
+                // Existing zones have IsCurrentClash=0 from the reset at start of refresh
+                if (existing != null)
+                {
+                    var newIds = new HashSet<string>(newZones.Select(z => z.Id.ToString()));
+                    foreach (var existZone in existing)
+                    {
+                        if (newIds.Contains(existZone.Id.ToString()))
+                        {
+                            existZone.IsCurrentClash = true;
+                        }
+                    }
+                }
+
                 var uniqueNew = newZones.Where(z => !existingIds.Contains(z.Id.ToString())).ToList();
                 combined.AddRange(uniqueNew);
             }

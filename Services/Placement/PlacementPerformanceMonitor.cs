@@ -25,8 +25,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             _operations = new Dictionary<string, OperationMetrics>();
             _startMemoryBytes = GC.GetTotalMemory(false);
             
-            // ✅ INITIALIZE LOG: Log start time
-            SafeFileLogger.SafeAppendText($"performance_{_logFileName}", 
+            // ✅ INITIALIZE LOG: Log start time (ALWAYS log, even in deployment mode)
+            SafeFileLogger.SafeAppendTextAlways($"performance_{_logFileName}", 
                 $"=== PLACEMENT PERFORMANCE MONITOR STARTED ===\n" +
                 $"Timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n" +
                 $"Log File: {_logFileName}\n" +
@@ -133,8 +133,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             report.AppendLine();
             report.AppendLine($"=== END OF REPORT ===");
             
-            // Write report using SafeFileLogger
-            SafeFileLogger.SafeAppendText($"performance_{_logFileName}", report.ToString());
+            // ✅ CRITICAL: Write report using SafeAppendTextAlways (ALWAYS log, even in deployment mode)
+            SafeFileLogger.SafeAppendTextAlways($"performance_{_logFileName}", report.ToString());
             
             if (!DeploymentConfiguration.DeploymentMode)
             {
@@ -214,15 +214,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 
                 _monitor.RecordOperation(_operationName, _timer.ElapsedMilliseconds, memoryDelta, _itemCount);
                 
-                // ✅ LOG OPERATION COMPLETION: Log each operation completion
-                SafeFileLogger.SafeAppendText($"performance_{_monitor._logFileName}",
+                // ✅ LOG OPERATION COMPLETION: Log each operation completion (ALWAYS log, even in deployment mode)
+                SafeFileLogger.SafeAppendTextAlways($"performance_{_monitor._logFileName}",
                     $"[{DateTime.Now:HH:mm:ss.fff}] {_operationName}: {_timer.ElapsedMilliseconds}ms, Memory: {memoryDelta / 1024.0:F2} KB, Items: {_itemCount}\n");
                 
-                // Log sub-operations
+                // Log sub-operations (ALWAYS log, even in deployment mode)
                 foreach (var subOp in _subOperations.Values.OrderByDescending(o => o.TotalMilliseconds))
                 {
                     double avgMs = subOp.CallCount > 0 ? (double)subOp.TotalMilliseconds / subOp.CallCount : 0;
-                    SafeFileLogger.SafeAppendText($"performance_{_monitor._logFileName}",
+                    SafeFileLogger.SafeAppendTextAlways($"performance_{_monitor._logFileName}",
                         $"[{DateTime.Now:HH:mm:ss.fff}]   {subOp.Name}: {subOp.TotalMilliseconds}ms (avg: {avgMs:F1}ms, calls: {subOp.CallCount}, items: {subOp.TotalItemCount})\n");
                 }
             }

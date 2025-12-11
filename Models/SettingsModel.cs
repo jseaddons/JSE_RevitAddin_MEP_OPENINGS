@@ -53,6 +53,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// </summary>
         public bool UseRefactoredRefreshService { get; set; } = false;
 
+        /// <summary>
+        /// Force Detection Mode: Ignores all flags (IsResolved, IsClusterResolved) and forces PATH 2 (Fresh Mode).
+        /// Resets all flags to false but preserves GUIDs. Always runs full detection regardless of existing zones.
+        /// Default: false (normal path determination)
+        /// </summary>
+        public bool ForceDetectionMode { get; set; } = false;
+
         public SettingsModel()
         {
             // Default constructor with default values
@@ -88,7 +95,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
                 MinWallThickness = this.MinWallThickness,
                 IgnoreArchitecturalFloors = this.IgnoreArchitecturalFloors,
                 EnableThreePointValidation = this.EnableThreePointValidation,
-                UseRefactoredRefreshService = this.UseRefactoredRefreshService
+                UseRefactoredRefreshService = this.UseRefactoredRefreshService,
+                ForceDetectionMode = this.ForceDetectionMode
             };
         }
     }

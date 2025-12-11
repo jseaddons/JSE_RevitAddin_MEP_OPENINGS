@@ -215,6 +215,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             RefreshContext context,
             bool enableThreePointValidation)
         {
+            // ✅ FORCE DETECTION MODE: Check if force detection mode is enabled in global settings
+            // If enabled, force PATH 2 (Fresh Mode) regardless of other conditions
+            bool forceDetectionMode = false;
+            try
+            {
+                var settings = ApplicationProfileService.Instance?.GetCurrentSettings();
+                forceDetectionMode = settings?.ForceDetectionMode ?? false;
+            }
+            catch { }
+            
+            if (forceDetectionMode)
+            {
+                if (!context.IsDeploymentMode)
+                {
+                    DebugLogger.Info("[PATH-DETERMINER] ⚡ FORCE FULL DETECTION MODE: Forcing PATH 3 (Non-Fresh Mode) - running full detection with validation, flag reset, and flag sync");
+                }
+                // Force PATH 3: Non-Fresh mode - full detection with validation, flag reset, flag sync, GUID checking
+                return new Path3Strategy();
+            }
+            
             // ✅ STEP 1: Check FileCombo existence and update IsFilterComboNew flag BEFORE determining path
             // This ensures the flag is set correctly based on actual FileCombo data in database
             UpdateIsFilterComboNewFlagBasedOnFileCombos(context);

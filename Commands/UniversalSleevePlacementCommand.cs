@@ -212,10 +212,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         t.SetFailureHandlingOptions(options);
                         DebugLogger.Info($"{_logPrefix} Transaction started with UniversalWarningSwallower enabled");
                         
-                    // ✅ CRITICAL: Ensure diagnostics are ALWAYS enabled for this run (no silent failures)
-                    OptimizationFlags.UseDiagnosticMode = true;
-                    DeploymentConfiguration.DeploymentMode = false;
-                    DebugLogger.Info($"{_logPrefix} ✅ Diagnostic Mode: UseDiagnosticMode={OptimizationFlags.UseDiagnosticMode}, DeploymentMode={DeploymentConfiguration.DeploymentMode}");
+                    // ✅ RESPECT MASTER SWITCH: Do NOT override MasterSwitch.DiagnosticLogging setting
+                    // MasterSwitch.DiagnosticLogging is set in Application.cs and should be respected
+                    // Removed hardcoded overrides: OptimizationFlags.UseDiagnosticMode = true; DeploymentConfiguration.DeploymentMode = false;
+                    // Now respects: MasterSwitch.DiagnosticLogging = false → DeploymentMode = true (minimal logging)
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"{_logPrefix} ✅ Diagnostic Mode: UseDiagnosticMode={OptimizationFlags.UseDiagnosticMode}, DeploymentMode={DeploymentConfiguration.DeploymentMode}");
+                    }
 
                     // Place all sleeves in single transaction (zero linked file access!)
                         // 🛡️ ARCHITECTURE FIX: Apply comprehensive filtering before placement

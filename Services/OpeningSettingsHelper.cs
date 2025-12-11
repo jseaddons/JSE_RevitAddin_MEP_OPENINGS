@@ -117,6 +117,95 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
+        /// ✅ CLUSTER-SPECIFIC: Rounds dimension for clusters with special logic:
+        /// If RoundAlwaysUp is true and the difference to the next increment is less than 1mm, round down instead.
+        /// This prevents small rounding errors (e.g., 750.1mm) from jumping to the next increment (800mm).
+        /// </summary>
+        /// <param name="dimension">The dimension to round</param>
+        /// <returns>The rounded dimension</returns>
+        public static double RoundDimensionForCluster(double dimension)
+        {
+            try
+            {
+                var settings = ApplicationProfileService.Instance.GetCurrentSettings();
+                
+                // Get the rounding value from settings (default 5mm if 0)
+                double roundingValue = settings.RoundingValue;
+                if (roundingValue <= 0)
+                {
+                    // Rounding is disabled, return original
+                    return dimension;
+                }
+                
+                // Convert to millimeters
+                double mmDimension = UnitUtils.ConvertFromInternalUnits(dimension, UnitTypeId.Millimeters);
+                double roundedMm;
+                
+                if (settings.RoundAlwaysUp)
+                {
+                    // Calculate lower and upper increments
+                    double lowerIncrement = Math.Floor(mmDimension / roundingValue) * roundingValue;
+                    double upperIncrement = Math.Ceiling(mmDimension / roundingValue) * roundingValue;
+                    
+                    // Calculate difference from the lower increment
+                    double differenceFromLower = mmDimension - lowerIncrement;
+                    
+                    // ✅ CLUSTER-SPECIFIC: If the value is within 1mm of the lower increment, use lower instead of rounding up
+                    // Example: 750.1mm with 50mm increment → difference from 750mm is 0.1mm (< 1mm) → stay at 750mm instead of 800mm
+                    if (differenceFromLower < 1.0 && differenceFromLower > 0.0)
+                    {
+                        // Use the lower increment (don't round up)
+                        roundedMm = lowerIncrement;
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[OPENING_SETTINGS] [CLUSTER] Rounded down due to <1mm difference from lower increment: {mmDimension:F3}mm → {roundedMm:F1}mm (would have been {upperIncrement:F1}mm, diff={differenceFromLower:F3}mm)");
+                        }
+                    }
+                    else
+                    {
+                        // Normal round up behavior
+                        roundedMm = upperIncrement;
+                    }
+                }
+                else
+                {
+                    // Round to nearest: 453 → 450 (with rounding value 50)
+                    roundedMm = Math.Round(mmDimension / roundingValue) * roundingValue;
+                }
+                
+                // Convert back to internal units
+                double roundedDimension = UnitUtils.ConvertToInternalUnits(roundedMm, UnitTypeId.Millimeters);
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[OPENING_SETTINGS] [CLUSTER] Rounded dimension from {mmDimension:F3}mm to {roundedMm:F1}mm (rounding value: {roundingValue}, always up: {settings.RoundAlwaysUp})");
+                }
+                return roundedDimension;
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Error($"[OPENING_SETTINGS] [CLUSTER] Error rounding dimension: {ex.Message}");
+                }
+                // Return original dimension on error
+                return dimension;
+            }
+        }
+
+        /// <summary>
+        /// ✅ CLUSTER-SPECIFIC: Rounds both width and height dimensions for clusters with special logic
+        /// </summary>
+        /// <param name="width">The width dimension</param>
+        /// <param name="height">The height dimension</param>
+        /// <returns>A tuple containing the rounded dimensions</returns>
+        public static (double width, double height) RoundDimensionsForCluster(double width, double height)
+        {
+            return (RoundDimensionForCluster(width), RoundDimensionForCluster(height));
+        }
+
+        /// <summary>
         /// Rounds diameter dimension based on user-configured rounding value
         /// </summary>
         /// <param name="diameter">The diameter dimension</param>

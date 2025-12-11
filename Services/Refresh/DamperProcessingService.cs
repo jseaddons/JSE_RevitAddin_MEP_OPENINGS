@@ -439,12 +439,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 }
 
                 // ✅ STEP 2: Load elements and filter by damper type (Standard/Motorized, exclude VCD/VOLUME)
-                var ductAccessories = collector
-                    .Cast<FamilyInstance>()
+                var allDuctAccessories = collector.Cast<FamilyInstance>().ToList();
+                _logger($"[DamperProcessing] Found {allDuctAccessories.Count} total Duct Accessories in document: {document.Title} (before damper filter)");
+                
+                var ductAccessories = allDuctAccessories
                     .Where(fi => IsStandardOrMotorizedDamper(fi))
                     .ToList();
 
-                _logger($"[DamperProcessing] Found {ductAccessories.Count} Standard/Motorized dampers in document: {document.Title} (after section box filter)");
+                _logger($"[DamperProcessing] ✅ Filtered to {ductAccessories.Count} Standard/Motorized dampers in document: {document.Title} (after damper type filter)");
 
                 // ✅ STEP 3: Calculate placement points for each damper (section box already filtered)
                 foreach (var damper in ductAccessories)
@@ -536,6 +538,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             // All other duct accessory types (filters, coils, etc.) are excluded
             if (familyName.IndexOf("Damper", StringComparison.OrdinalIgnoreCase) < 0)
             {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[DamperProcessing] ⏭️ SKIP: Damper {damper.Id} - FamilyName='{familyName}' does not contain 'Damper'");
+                }
                 return false;
             }
 
@@ -545,13 +551,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 typeName.IndexOf("VCD", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 typeName.IndexOf("VOLUME", StringComparison.OrdinalIgnoreCase) >= 0)
             {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[DamperProcessing] ⏭️ SKIP: Damper {damper.Id} - FamilyName='{familyName}', TypeName='{typeName}' contains VCD/VOLUME");
+                }
                 return false;
             }
 
-            // Check if it's a damper type
-            string damperType = _damperTypeDetector.DetectDamperType(typeName);
-            return _damperTypeDetector.IsStandardDamper(damperType) || 
-                   damperType == "Motorized";
+            // ✅ REQUIREMENT: Process dampers with:
+            // 1. Type name contains "Standard" → Standard damper
+            // 2. Type name contains MSFD, MSD, or MD → Non-standard damper (check family name for Motorized/Motorised)
+            string typeNameUpper = typeName.Trim().ToUpperInvariant();
+            string familyNameUpper = familyName.Trim().ToUpperInvariant();
+            
+            bool isStandard = typeNameUpper.Contains("STANDARD");
+            bool isNonStandard = typeNameUpper.Contains("MSFD") || typeNameUpper.Contains("MSD") || typeNameUpper.Contains("MD");
+            
+            // Allow Standard dampers OR non-standard dampers (MSFD, MSD, MD)
+            bool shouldProcess = isStandard || isNonStandard;
+            
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                if (!shouldProcess)
+                {
+                    _logger($"[DamperProcessing] ⏭️ SKIP: Damper {damper.Id} - FamilyName='{familyName}', TypeName='{typeName}' (not Standard/MSFD/MSD/MD)");
+                }
+                else
+                {
+                    _logger($"[DamperProcessing] ✅ PROCESS: Damper {damper.Id} - FamilyName='{familyName}', TypeName='{typeName}' (IsStandard={isStandard}, IsNonStandard={isNonStandard})");
+                }
+            }
+            
+            return shouldProcess;
         }
 
         /// <summary>
@@ -1483,6 +1514,84 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     sleevePlacementPoint = intersectionPoint; // Fallback
                 }
                 
+                // ✅ CRITICAL: Extract type name and family name for storage in ClashZone (avoids linked file access during placement)
+                // These are used by DamperPlacementStrategy for branching logic (Standard vs non-standard with Motorized)
+                // ✅ CRITICAL: Always extract these FIRST, before connector detection, so they're always available
+                string damperTypeName = "";
+                string damperFamilyName = "";
+                
+                if (damperInstance != null)
+                {
+                    // Extract type name and family name (ALWAYS do this, regardless of connector detection)
+                    damperTypeName = damperInstance.Symbol?.Name ?? "";
+                    damperFamilyName = damperInstance.Symbol?.Family?.Name ?? "";
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        _logger($"[DamperProcessing] ✅ Extracted damper type/family: TypeName='{damperTypeName}', FamilyName='{damperFamilyName}' for damper {damper.Id}");
+                    }
+                }
+                else
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        _logger($"[DamperProcessing] ⚠️ WARNING: damperInstance is null for damper {damper.Id} - cannot extract TypeName/FamilyName");
+                    }
+                }
+                
+                // ✅ CRITICAL: Detect connector for non-standard dampers (MSFD, MSD, MD) with Motorized/Motorised family
+                // This is required for MEP connector side clearance logic in DamperPlacementStrategy
+                bool hasMepConnector = false;
+                string damperConnectorSide = string.Empty;
+                
+                if (damperInstance != null && !string.IsNullOrEmpty(damperTypeName) && !string.IsNullOrEmpty(damperFamilyName))
+                {
+                    try
+                    {
+                        string typeNameUpper = damperTypeName.Trim().ToUpperInvariant();
+                        string familyNameUpper = damperFamilyName.Trim().ToUpperInvariant();
+                        
+                        bool isNonStandard = typeNameUpper.Contains("MSFD") || typeNameUpper.Contains("MSD") || typeNameUpper.Contains("MD");
+                        bool familyHasMotorized = familyNameUpper.Contains("MOTORIZED") || familyNameUpper.Contains("MOTORISED");
+                        
+                        // Only detect connector for non-standard dampers with Motorized/Motorised in family name
+                        if (isNonStandard && familyHasMotorized)
+                        {
+                            // Use connector detector to find connector side (world coordinates for non-standard dampers)
+                            string connectorSide = _connectorDetector.DetectConnectorSide(
+                                damperInstance,
+                                useWorldCoordinates: true, // Non-standard dampers use world coordinates
+                                out Connector connector,
+                                wallOrientation: hostOrientation); // Pass wall orientation for proper mapping
+                            
+                            if (connector != null && !string.IsNullOrEmpty(connectorSide))
+                            {
+                                hasMepConnector = true;
+                                damperConnectorSide = connectorSide;
+                                
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    _logger($"[DamperProcessing] ✅ Detected connector for damper {damper.Id}: HasMepConnector=true, DamperConnectorSide='{connectorSide}' (Family='{damperFamilyName}', Type='{damperTypeName}')");
+                                }
+                            }
+                            else
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    _logger($"[DamperProcessing] ⚠️ Non-standard damper {damper.Id} (Family='{damperFamilyName}', Type='{damperTypeName}') has Motorized/Motorised but no connector detected - will use symmetric clearance");
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            _logger($"[DamperProcessing] ⚠️ Error detecting connector for damper {damper.Id}: {ex.Message}");
+                        }
+                    }
+                }
+                
                 // ✅ CRITICAL: Generate deterministic GUID using 3-point validation (MEP ID + Host ID + Placement Point)
                 // ✅ DAMPER-SPECIFIC: For dampers, use placementPoint (damper centroid) for GUID generation
                 // PlacementPoint is stable - only changes if damper moves, perfect for GUID generation
@@ -1540,6 +1649,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     // These are used by ParallelSleevePlacementPlanner to calculate sleeve size
                     MepElementWidth = damperWidth,  // Already in Revit internal units (feet)
                     MepElementHeight = damperHeight, // Already in Revit internal units (feet)
+                    // ✅ CRITICAL: Store type name and family name to avoid linked file access during placement
+                    // These are used by DamperPlacementStrategy for branching logic (Standard vs non-standard with Motorized)
+                    MepElementTypeName = damperTypeName,
+                    MepElementFamilyName = damperFamilyName,
                     // ✅ X-WALL/Y-WALL ROTATION: Set orientation properties for rotation logic (same as other MEP elements)
                     HostOrientation = hostOrientation, // "X" or "Y" for walls/framing, empty for floors
                     MepElementOrientation = mepElementOrientation, // Damper flow direction vector
@@ -1571,6 +1684,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     ClashBoundingBox = intersectionBbox,
                     IsResolved = false,
                     ReadyForPlacement = true,
+                    // ✅ CRITICAL: Set connector detection results for MEP connector side clearance logic
+                    // These are used by DamperPlacementStrategy to determine if asymmetric clearance should be applied
+                    HasMepConnector = hasMepConnector,
+                    DamperConnectorSide = damperConnectorSide,
                     // ✅ CRITICAL: Set document keys for validation (IsValidClashZone requires at least one non-empty key)
                     SourceDocKey = damperDoc?.Title ?? damperDoc?.PathName ?? string.Empty,
                     HostDocKey = wallDoc?.Title ?? wallDoc?.PathName ?? string.Empty,
@@ -1578,7 +1695,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     StructuralElementDocumentTitle = wallDoc?.Title ?? string.Empty
                 };
 
-                _logger($"[DamperProcessing] ✅ Created ClashZone {clashZone.Id} with {mepParameters?.Count ?? 0} MEP params and {hostParameters?.Count ?? 0} Host params, StructuralElementType='{clashZone.StructuralElementType}', MepElementWidth={clashZone.MepElementWidth * 304.8:F1}mm, MepElementHeight={clashZone.MepElementHeight * 304.8:F1}mm");
+                _logger($"[DamperProcessing] ✅ Created ClashZone {clashZone.Id} with {mepParameters?.Count ?? 0} MEP params and {hostParameters?.Count ?? 0} Host params, StructuralElementType='{clashZone.StructuralElementType}', MepElementWidth={clashZone.MepElementWidth * 304.8:F1}mm, MepElementHeight={clashZone.MepElementHeight * 304.8:F1}mm, TypeName='{clashZone.MepElementTypeName}', FamilyName='{clashZone.MepElementFamilyName}', HasMepConnector={clashZone.HasMepConnector}, DamperConnectorSide='{clashZone.DamperConnectorSide}'");
 
                 // ✅ CRITICAL DIAGNOSTIC: Verify StructuralElementType is set before returning
                 if (string.IsNullOrWhiteSpace(clashZone.StructuralElementType))

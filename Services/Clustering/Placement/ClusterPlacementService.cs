@@ -98,10 +98,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
             string? xmlFilePath,
             out FamilyInstance? placedClusterSleeve,
             out int? capturedClusterSleeveId,
+            out XYZ? actualPlacementPoint,
             Dictionary<ElementId, Dictionary<string, object>>? deferredParameters = null)
         {
             placedClusterSleeve = null;
             capturedClusterSleeveId = null;
+            actualPlacementPoint = null;
 
             // ✅ CRASH-SAFE: Validate inputs
             if (doc == null)
@@ -415,6 +417,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                     
                     // ✅ CRITICAL: Capture ID immediately while element is valid
                     capturedClusterSleeveId = inst.Id.IntegerValue;
+                    
+                    // ✅ CRITICAL: Return actual placement point via out parameter
+                    // This ensures database saves the correct calculated placement point instead of Revit bbox center
+                    actualPlacementPoint = placementPoint;
                     
                     try
                     {
@@ -881,7 +887,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 // This ensures the cluster sleeve is centered correctly on the calculated centroid, with only size adjusted per UI settings
                 double originalWidth = openingWidth;
                 double originalHeight = openingHeight;
-                (openingWidth, openingHeight) = OpeningSettingsHelper.RoundDimensionsToNearest5mm(openingWidth, openingHeight);
+                
+                // ✅ DIAGNOSTIC: Log exact values BEFORE rounding (with high precision) to diagnose rounding jumps
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    double originalWMm = RevitUnitConversionService.Instance.FromInternalMillimeters(originalWidth);
+                    double originalHMm = RevitUnitConversionService.Instance.FromInternalMillimeters(originalHeight);
+                    var settings = ApplicationProfileService.Instance.GetCurrentSettings();
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss}] 📐 PRE-ROUNDING: Cluster {clusterSleeve.Id.IntegerValue} - " +
+                        $"Width={originalWMm:F3}mm, Height={originalHMm:F3}mm, " +
+                        $"RoundingValue={settings.RoundingValue}mm, RoundAlwaysUp={settings.RoundAlwaysUp}\n");
+                }
+                
+                // ✅ CLUSTER-SPECIFIC: Use special rounding for clusters (prevents <1mm differences from jumping to next increment)
+                (openingWidth, openingHeight) = OpeningSettingsHelper.RoundDimensionsForCluster(openingWidth, openingHeight);
                 
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
@@ -894,8 +914,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                         double roundedHMm = RevitUnitConversionService.Instance.FromInternalMillimeters(openingHeight);
                         SafeFileLogger.SafeAppendText("cluster_debug.log",
                             $"[{DateTime.Now:HH:mm:ss}] 🔄 ROUNDING: Cluster {clusterSleeve.Id.IntegerValue} - " +
-                            $"Width {originalWMm:F1}mm → {roundedWMm:F1}mm, " +
-                            $"Height {originalHMm:F1}mm → {roundedHMm:F1}mm " +
+                            $"Width {originalWMm:F3}mm → {roundedWMm:F1}mm, " +
+                            $"Height {originalHMm:F3}mm → {roundedHMm:F1}mm " +
                             $"(Placement point/centroid UNCHANGED at calculated corner centroid)\n");
                     }
                 }
@@ -1996,24 +2016,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 double minZ = allCorners.Min(c => c.Z);
                 double maxZ = allCorners.Max(c => c.Z);
                 
-                // ✅ STEP 2: Check if coordinates have extremities (spread > threshold)
-                // If spread is too small (< 1mm), all sleeves have essentially the same value for that coordinate.
-                // In such cases, use individual sleeve placement point instead of calculating midpoint.
-                const double extremityThreshold = 0.00328084; // 1mm in feet (conversion: 1mm = 0.00328084 ft)
-                bool hasXExtremities = (maxX - minX) > extremityThreshold;
-                bool hasYExtremities = (maxY - minY) > extremityThreshold;
-                bool hasZExtremities = (maxZ - minZ) > extremityThreshold;
+                // ✅ STEP 1.5: Collect stored placement points (after damper offset) for Y coordinate calculation
+                // This ensures cluster placement point aligns with actual individual sleeve placement points
+                // (which are already adjusted for damper offset, unlike corner extremities which span full sleeve dimensions)
+                var placementPoints = new List<XYZ>();
+                foreach (var item in cluster)
+                {
+                    ClashZone? cz = null;
+                    if (item is ClashZone clashZone)
+                    {
+                        cz = clashZone;
+                    }
+                    else if (item?.ClashZone != null)
+                    {
+                        cz = item.ClashZone as ClashZone;
+                    }
+                    
+                    if (cz != null)
+                    {
+                        XYZ? pp = cz.SleevePlacementPoint;
+                        if (pp == null && (cz.SleevePlacementPointX != 0.0 || cz.SleevePlacementPointY != 0.0 || cz.SleevePlacementPointZ != 0.0))
+                        {
+                            pp = new XYZ(cz.SleevePlacementPointX, cz.SleevePlacementPointY, cz.SleevePlacementPointZ);
+                        }
+                        if (pp != null && !pp.IsZeroLength())
+                        {
+                            placementPoints.Add(pp);
+                        }
+                    }
+                }
                 
+                // ✅ STEP 2: For WALL/FRAMING, use stored placement points for Y coordinate (after damper offset)
+                // This ensures cluster placement point aligns with actual individual sleeve placement points
+                // For non-wall/framing, use centroid of all corners
                 XYZ midpoint;
                 if (isYWall && isWallOrFraming)
                 {
-                    // ✅ Y-WALL/FRAMING: 
-                    // X = individual sleeve placement point (through wall - no extremities expected)
-                    // Y = cluster width midpoint IF has extremities, else individual sleeve placement point
-                    // Z = cluster height midpoint IF has extremities, else individual sleeve placement point
-                    double finalX = placementX; // Always use individual sleeve for X (through wall)
-                    double finalY = hasYExtremities ? (minY + maxY) / 2.0 : placementY;
-                    double finalZ = hasZExtremities ? (minZ + maxZ) / 2.0 : placementZ;
+                    // ✅ Y-WALL/FRAMING (wall runs along Y-axis):
+                    // X = FIXED at wall centerline (perpendicular to wall) - use wall centerline from first ClashZone
+                    // Y = varies (width of cluster along wall) - use (minY + maxY) / 2
+                    // Z = varies (height of cluster) - use (minZ + maxZ) / 2
+                    double finalX = placementX; // Use wall centerline X from first individual sleeve (perpendicular to wall)
+                    double finalY = (minY + maxY) / 2.0; // Use midpoint of Y extremities (along wall)
+                    double finalZ = (minZ + maxZ) / 2.0; // Use midpoint of Z extremities (height)
                     
                     midpoint = new XYZ(finalX, finalY, finalZ);
                     
@@ -2021,22 +2066,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                     {
                         string hostType = firstClashZone?.StructuralElementType ?? "Unknown";
                         string calcMsg = $"[{DateTime.Now:HH:mm:ss.fff}] [ComputeCornerBasedClusterMidpoint] ✅ Y-WALL/FRAMING PLACEMENT POINT (Host: {hostType}):\n";
-                        calcMsg += $"  X (from individual sleeve): {finalX:F6}\n";
-                        calcMsg += $"  Y: {(hasYExtremities ? $"cluster width midpoint {finalY:F6} (minY={minY:F6}, maxY={maxY:F6})" : $"individual sleeve {finalY:F6} (no extremities)")}\n";
-                        calcMsg += $"  Z: {(hasZExtremities ? $"cluster height midpoint {finalZ:F6} (minZ={minZ:F6}, maxZ={maxZ:F6})" : $"individual sleeve {finalZ:F6} (no extremities)")}\n";
+                        calcMsg += $"  X (wall centerline, perpendicular to wall): {finalX:F6}\n";
+                        calcMsg += $"  Y (cluster width midpoint along wall): {finalY:F6} (from corner extremities: minY={minY:F6}, maxY={maxY:F6})\n";
+                        calcMsg += $"  Z (cluster height midpoint): {finalZ:F6} (from corner extremities: minZ={minZ:F6}, maxZ={maxZ:F6})\n";
                         calcMsg += $"  Final PlacementPoint: ({midpoint.X:F6}, {midpoint.Y:F6}, {midpoint.Z:F6})\n";
                         SafeFileLogger.SafeAppendText("cluster_debug.log", calcMsg);
                     }
                 }
                 else if (isXWall && isWallOrFraming)
                 {
-                    // ✅ X-WALL/FRAMING:
-                    // X = cluster midpoint IF has extremities, else individual sleeve placement point
-                    // Y = individual sleeve placement point (along wall - no extremities expected)
-                    // Z = cluster height midpoint IF has extremities, else individual sleeve placement point
-                    double finalX = hasXExtremities ? (minX + maxX) / 2.0 : placementX;
-                    double finalY = placementY; // Always use individual sleeve for Y (along wall)
-                    double finalZ = hasZExtremities ? (minZ + maxZ) / 2.0 : placementZ;
+                    // ✅ X-WALL/FRAMING (wall runs along X-axis):
+                    // X = varies (width of cluster along wall) - use (minX + maxX) / 2
+                    // Y = FIXED at wall centerline (perpendicular to wall) - use wall centerline from first ClashZone
+                    // Z = varies (height of cluster) - use (minZ + maxZ) / 2
+                    double finalX = (minX + maxX) / 2.0; // Use midpoint of X extremities (along wall)
+                    double finalY = placementY; // Use wall centerline Y from first individual sleeve (perpendicular to wall)
+                    double finalZ = (minZ + maxZ) / 2.0; // Use midpoint of Z extremities (height)
                     
                     midpoint = new XYZ(finalX, finalY, finalZ);
                     
@@ -2044,9 +2089,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                     {
                         string hostType = firstClashZone?.StructuralElementType ?? "Unknown";
                         string calcMsg = $"[{DateTime.Now:HH:mm:ss.fff}] [ComputeCornerBasedClusterMidpoint] ✅ X-WALL/FRAMING PLACEMENT POINT (Host: {hostType}):\n";
-                        calcMsg += $"  X: {(hasXExtremities ? $"cluster midpoint {finalX:F6} (minX={minX:F6}, maxX={maxX:F6})" : $"individual sleeve {finalX:F6} (no extremities)")}\n";
-                        calcMsg += $"  Y (from individual sleeve): {finalY:F6}\n";
-                        calcMsg += $"  Z: {(hasZExtremities ? $"cluster height midpoint {finalZ:F6} (minZ={minZ:F6}, maxZ={maxZ:F6})" : $"individual sleeve {finalZ:F6} (no extremities)")}\n";
+                        calcMsg += $"  X (cluster width midpoint along wall): {finalX:F6} (from corner extremities: minX={minX:F6}, maxX={maxX:F6})\n";
+                        calcMsg += $"  Y (wall centerline, perpendicular to wall): {finalY:F6}\n";
+                        calcMsg += $"  Z (cluster height midpoint): {finalZ:F6} (from corner extremities: minZ={minZ:F6}, maxZ={maxZ:F6})\n";
                         calcMsg += $"  Final PlacementPoint: ({midpoint.X:F6}, {midpoint.Y:F6}, {midpoint.Z:F6})\n";
                         SafeFileLogger.SafeAppendText("cluster_debug.log", calcMsg);
                     }

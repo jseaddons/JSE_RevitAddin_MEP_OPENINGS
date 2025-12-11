@@ -702,78 +702,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // ✅ TWO-TIER SPATIAL INDEX: TIER 2 - R-tree precise filtering (if enabled)
                     List<(Element element, Transform? transform, BoundingBoxXYZ bbox, string cacheKey)> preciseCandidates;
                     
-                    if (OptimizationFlags.UseRTreeFilter && nearbyElements.Count > 0)
-                    {
-                        // Create Outline for R-tree filter
-                        var mepOutline = new Outline(expandedMin, expandedMax);
-                        
-                        // Group nearby elements by document for efficient R-tree filtering
-                        var elementsByDocument = nearbyElements
-                            .GroupBy(ne => ne.element.Document)
-                            .ToList();
-                        
-                        var rtreeFilteredElements = new List<(Element element, Transform? transform, BoundingBoxXYZ bbox, string cacheKey)>();
-                        
-                        foreach (var docGroup in elementsByDocument)
-                        {
-                            var doc = docGroup.Key;
-                            var docElements = docGroup.ToList();
-                            
-                            // Use Revit's built-in R-tree filter (BoundingBoxIntersectsFilter)
-                            try
-                            {
-                                var rtreeFilter = new BoundingBoxIntersectsFilter(mepOutline);
-                                var filteredIds = new FilteredElementCollector(doc)
-                                    .WherePasses(rtreeFilter)
-                                    .WhereElementIsNotElementType()
-                                    .ToElementIds()
-                                    .ToHashSet();
-                                
-                                // Match spatial grid results with R-tree filtered IDs and preserve cache keys
-                                var structuralDataMap = structuralData.ToDictionary(sd => sd.element.Id, sd => sd);
-                                foreach (var elementData in docElements)
-                                {
-                                    if (filteredIds.Contains(elementData.element.Id) && structuralDataMap.TryGetValue(elementData.element.Id, out var fullData))
-                                    {
-                                        rtreeFilteredElements.Add(fullData);
-                                    }
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                // Fallback: If R-tree filter fails, use all elements from spatial grid
-                                if (OptimizationFlags.UseDiagnosticMode)
-                                    log($"[TwoTier] R-tree filter failed for document {doc.Title}: {ex.Message}, falling back to spatial grid results");
-                                // Match spatial grid results with structural data and preserve cache keys
-                                var structuralDataMap = structuralData.ToDictionary(sd => sd.element.Id, sd => sd);
-                                foreach (var elementData in docElements)
-                                {
-                                    if (structuralDataMap.TryGetValue(elementData.element.Id, out var fullData))
-                                    {
-                                        rtreeFilteredElements.Add(fullData);
-                                    }
-                                }
-                            }
-                        }
-                        
-                        preciseCandidates = rtreeFilteredElements;
-                        rtreeFiltered = nearbyElements.Count - preciseCandidates.Count;
-                        
-                        if (OptimizationFlags.UseDiagnosticMode)
-                            log($"[TwoTier] TIER 2 (R-tree): MEP {mepElement.Id}: {preciseCandidates.Count}/{nearbyElements.Count} precise candidates after R-tree filtering (rejected {rtreeFiltered})");
-                    }
-                    else
-                    {
-                        // R-tree filtering disabled or no nearby elements, use spatial grid results directly
-                        // Match spatial grid results with structural data and preserve cache keys
-                        var structuralDataMap = structuralData.ToDictionary(sd => sd.element.Id, sd => sd);
-                        preciseCandidates = nearbyElements
-                            .Where(ne => structuralDataMap.ContainsKey(ne.element.Id))
-                            .Select(ne => structuralDataMap[ne.element.Id])
-                            .ToList();
-                        if (OptimizationFlags.UseDiagnosticMode && !OptimizationFlags.UseRTreeFilter)
-                            log($"[TwoTier] R-tree filtering disabled, using spatial grid results directly");
-                    }
+                    // ⚠️ DISABLED R-tree filtering for linked documents due to coordinate system mismatch
+                    // R-tree outline is in host coords (MEP already transformed) but linked doc elements are in link coords
+                    // This causes 0% candidate match. Spatial grid is sufficient for performance.
+                    var structuralDataMap = structuralData.ToDictionary(sd => sd.element.Id, sd => sd);
+                    preciseCandidates = nearbyElements
+                        .Where(ne => structuralDataMap.ContainsKey(ne.element.Id))
+                        .Select(ne => structuralDataMap[ne.element.Id])
+                        .ToList();
+                    rtreeFiltered = nearbyElements.Count - preciseCandidates.Count;
+                    
+                    if (OptimizationFlags.UseDiagnosticMode)
+                        log($"[TwoTier] TIER 2 (R-tree): SKIPPED (linked docs coordinate mismatch) - using all {preciseCandidates.Count} spatial grid candidates");
 
                     candidatesToProcess = preciseCandidates;
                 }
@@ -787,9 +727,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 int geometrySkippedForKnownPairs = 0;
                 
                 // ✅ Z-PROXIMITY OPTIMIZATION: Quick vertical separation filter
-                // Most MEP clashes occur in ceiling zone (false ceiling to slab soffit) - typically 3-5 ft vertical range
+                // Most MEP clashes occur in ceiling zone (false ceiling to slab soffit) - typically 10+ ft vertical range
                 // Skip structural elements that are too far away vertically (different floors/levels)
-                const double MAX_VERTICAL_SEPARATION = 5.0; // 5 ft max vertical distance for potential clashes
+                // Note: Increased from 5.0 to 20.0 ft to avoid false rejections in complex buildings with multiple levels
+                const double MAX_VERTICAL_SEPARATION = 20.0; // 20 ft max vertical distance for potential clashes
                 double mepCenterZ = (mepBBox.Min.Z + mepBBox.Max.Z) / 2.0;
                 
                 foreach (var (structElement, structTransform, structBBox, cacheKey) in candidatesToProcess)

@@ -27,15 +27,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
     public class PlacementPointAdjustmentService
     {
         private readonly Document _doc;
+        private readonly bool _isForceDetectionMode;
         private readonly PlacementPerformanceMonitor? _performanceMonitor;
 
         /// <summary>
         /// ✅ DIP COMPLIANCE: Constructor accepts optional performance monitor for dependency injection.
         /// </summary>
-        public PlacementPointAdjustmentService(Document doc, PlacementPerformanceMonitor? performanceMonitor = null)
+        public PlacementPointAdjustmentService(Document doc, PlacementPerformanceMonitor? performanceMonitor = null, bool isForceDetectionMode = false)
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _performanceMonitor = performanceMonitor;
+            _isForceDetectionMode = isForceDetectionMode;
         }
 
         /// <summary>
@@ -141,6 +143,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             
             if (hasSleevePlacementPoint)
             {
+                // ✅ FORCE DETECTION MODE: If active, ignore saved placement point and force recalculation
+                if (_isForceDetectionMode)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] 🔄 FORCE DETECTION MODE: Ignoring saved sleeve placement point for Zone {zone.Id}, recalculating from geometry.\n");
+                    }
+                    // Fall through to calculation logic
+                }
+                else
+                {
                 // ✅ USE SAVED SLEEVE PLACEMENT POINT: Pre-calculated during refresh using bbox method (no Revit API calls needed)
                 // This enables multi-threading because it's just data access, not Revit API calls
                 // ✅ CRITICAL: Construct XYZ from saved X/Y/Z values (more reliable than computed property)
@@ -163,6 +177,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                         $"Distance={distance * 304.8:F1}mm - USING DIRECTLY (no adjustment needed)\n");
                 }
                 return savedPlacementPoint; // Always use pre-calculated sleeve placement point
+                }
             }
             
             // ✅ BACKWARD COMPATIBILITY: Check for WallCenterlinePoint (old data format)

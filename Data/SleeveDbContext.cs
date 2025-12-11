@@ -587,6 +587,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                         _logger("[SQLite] ✅ Added MepElementOuterDiameter column to ClashZones (pipe outer diameter in feet)");
                     if (AddColumnIfMissing("ClashZones", "MepElementNominalDiameter", "REAL DEFAULT 0.0", transaction))
                         _logger("[SQLite] ✅ Added MepElementNominalDiameter column to ClashZones (pipe nominal diameter in feet)");
+                    // ✅ DAMPER TYPE/FAMILY: Add columns for damper type name and family name (stored during refresh to avoid linked file access)
+                    if (AddColumnIfMissing("ClashZones", "MepElementTypeName", "TEXT", transaction))
+                        _logger("[SQLite] ✅ Added MepElementTypeName column to ClashZones (damper type name: MSD, MSFD, Standard, etc.)");
+                    if (AddColumnIfMissing("ClashZones", "MepElementFamilyName", "TEXT", transaction))
+                        _logger("[SQLite] ✅ Added MepElementFamilyName column to ClashZones (damper family name: Motorised Smoke Damper, etc.)");
+                    
                     // ✅ SIZE PARAMETER VALUE: Add string column for Size parameter value (e.g., "20 mmø", "200 mm dia symbol")
                     // This is the exact text from the Size parameter, stored for transfer to sleeve MEP_Size parameter
                     if (AddColumnIfMissing("ClashZones", "MepElementSizeParameterValue", "TEXT DEFAULT ''", transaction))

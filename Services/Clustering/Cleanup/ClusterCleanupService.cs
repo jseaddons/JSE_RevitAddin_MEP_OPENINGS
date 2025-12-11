@@ -67,7 +67,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                         string fam = s.Symbol?.FamilyName ?? string.Empty;
                         bool keyword = fam.Contains("Sleeve", StringComparison.OrdinalIgnoreCase) || fam.Contains("Opening", StringComparison.OrdinalIgnoreCase);
                         bool known = fam.Contains("CircularOpening", StringComparison.OrdinalIgnoreCase) || fam.Contains("RectangularOpening", StringComparison.OrdinalIgnoreCase);
-                        return (s.Category?.Name == "Generic Models" || s.Category?.Name == "Structural Connections") && (keyword || known);
+                        return (s.Category?.Name == "Generic Models" || 
+                                s.Category?.Name == "Structural Connections" ||
+                                s.Category?.Name == "Duct Accessories" ||
+                                s.Category?.Name == "Pipe Accessories" ||
+                                s.Category?.Name == "Mechanical Equipment") && (keyword || known);
                     })
                     .ToList();
 

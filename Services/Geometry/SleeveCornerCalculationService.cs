@@ -60,24 +60,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Geometry
                         // Rotate around Z-axis
                         double rotatedX = local.X * cos - local.Y * sin;
                         double rotatedY = local.X * sin + local.Y * cos;
-                        // Translate to world coordinates (use placementPoint.Z for all corners - 2D opening)
+                        // ✅ FIX: Set Z based on corner height (bottom vs top)
+                        // Corners 0,1 are bottom (Y < 0), Corners 2,3 are top (Y > 0)
+                        double cornerZ = placementPoint.Z + local.Y; // Y represents height offset in local space
+                        // Translate to world coordinates
                         worldCorners[i] = new XYZ(
                             placementPoint.X + rotatedX,
                             placementPoint.Y + rotatedY,
-                            placementPoint.Z
+                            cornerZ
                         );
                     }
                 }
                 else
                 {
-                    // No rotation - just translate to world coordinates (use placementPoint.Z for all corners - 2D opening)
+                    // No rotation - just translate to world coordinates
                     for (int i = 0; i < 4; i++)
                     {
                         var local = localCorners[i];
+                        // ✅ FIX: Set Z based on corner height (bottom vs top)
+                        // Corners 0,1 are bottom (Y < 0), Corners 2,3 are top (Y > 0)
+                        double cornerZ = placementPoint.Z + local.Y; // Y represents height offset in local space
                         worldCorners[i] = new XYZ(
                             placementPoint.X + local.X,
                             placementPoint.Y + local.Y,
-                            placementPoint.Z
+                            cornerZ
                         );
                     }
                 }

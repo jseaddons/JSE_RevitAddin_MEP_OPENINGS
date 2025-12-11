@@ -242,15 +242,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Get clearance using provider (supports UI overrides)
                 double baseClearance = ClearanceManager.Instance.GetClearance(accessory);
                 
-                // Determine damper type (MSFD, MSD, MOTORIZED, MD, or Standard)
+                // Determine damper type (MSFD, MSD, MS, MOTORIZED/MOTORISED, MD, or Standard)
                 string typeNameUpper = familyTypeName?.Trim().ToUpperInvariant() ?? "";
                 bool isMSFD = typeNameUpper.Contains("MSFD");
                 bool isMSD = typeNameUpper.Contains("MSD");
-                bool isMotorized = typeNameUpper.Contains("MOTORIZED");
+                // ✅ FIX: Check for standalone "MS" (not MSD or MSFD)
+                bool isMS = typeNameUpper.Contains("MS") && !typeNameUpper.Contains("MSD") && !typeNameUpper.Contains("MSFD");
+                // ✅ FIX: Check for both "MOTORIZED" (US spelling) and "MOTORISED" (British spelling)
+                bool isMotorized = typeNameUpper.Contains("MOTORIZED") || typeNameUpper.Contains("MOTORISED");
                 bool isMD = typeNameUpper.Contains("MD");
-                // Families that need MEP side clearance: MSFD, MSD, MOTORIZED, MD
-                bool needsMepSideClearance = isMSFD || isMSD || isMotorized || isMD;
-                Log($"Damper type name: '{familyTypeName}', isMSFD: {isMSFD}, isMSD: {isMSD}, isMotorized: {isMotorized}, isMD: {isMD}, needsMepSideClearance: {needsMepSideClearance}");
+                // Families that need MEP side clearance: MSFD, MSD, MS, MOTORIZED/MOTORISED, MD
+                bool needsMepSideClearance = isMSFD || isMSD || isMS || isMotorized || isMD;
+                Log($"Damper type name: '{familyTypeName}', isMSFD: {isMSFD}, isMSD: {isMSD}, isMS: {isMS}, isMotorized: {isMotorized}, isMD: {isMD}, needsMepSideClearance: {needsMepSideClearance}");
 
                 // Get connector side based on damper type
                 Connector? conn;

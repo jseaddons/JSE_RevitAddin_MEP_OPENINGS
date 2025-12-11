@@ -25,7 +25,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly Document _document;
         private readonly UIDocument _uiDocument;
         private readonly Dictionary<string, double> _uiClearances;
+
         private readonly MarkPrefixSettings _markPrefixes;
+        private readonly bool _forceDetectionMode;
         
         // ⚠️ CRITICAL: Crash-safe executor for timeout protection (5-minute limit per category)
         private readonly CrashSafeExecutor _crashSafeExecutor;
@@ -34,12 +36,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly Dictionary<string, (bool isValidated, bool isInvalidated, bool isNew)> _path3Flags = 
             new Dictionary<string, (bool, bool, bool)>();
 
-        public OpeningCommandOrchestrator(Document document, UIDocument uiDocument, Dictionary<string, double> uiClearances = null, MarkPrefixSettings markPrefixes = null)
+
+
+        public OpeningCommandOrchestrator(Document document, UIDocument uiDocument, Dictionary<string, double> uiClearances = null, MarkPrefixSettings markPrefixes = null, bool forceDetectionMode = false)
         {
             _document = document ?? throw new ArgumentNullException(nameof(document));
             _uiDocument = uiDocument ?? throw new ArgumentNullException(nameof(uiDocument));
             _uiClearances = uiClearances ?? new Dictionary<string, double>();
             _markPrefixes = markPrefixes ?? new MarkPrefixSettings();
+            _forceDetectionMode = forceDetectionMode;
             
             // ⚠️ CRITICAL: Initialize crash-safe executor for timeout protection
             _crashSafeExecutor = new CrashSafeExecutor();
@@ -1368,14 +1373,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         catch { }
                     }
 
-                    // ✅ FILTER IN MEMORY: Only return zones that need placement (not resolved, not cluster resolved)
-                    // This ensures placement uses DB zones correctly, filtering by actual flag state
-                    // ✅ CRITICAL FIX: Also check ClusterSleeveInstanceId to prevent processing cluster-resolved zones
-                    // Even if IsClusterResolvedFlag is stale (false) in DB, if ClusterSleeveInstanceId > 0, zone is part of a cluster
-                    // ✅ CRITICAL FIX: If ReadyForPlacementFlag=1, trust it (sleeve was deleted, flags were reset)
+                    // ✅ FILTER IN MEMORY: Only return zones that have ReadyForPlacementFlag=1
+                    // This ensures placement respects section box filtering from refresh
+                    // CRITICAL: Trust ONLY the ReadyForPlacementFlag - don't add OR conditions that bypass it
                     var eligibleZones = zones
-                        .Where(cz => cz != null && 
-                            (cz.ReadyForPlacement == true || (!cz.IsResolved && !cz.IsClusterResolved && cz.ClusterSleeveInstanceId <= 0)))
+                        .Where(cz => cz != null && cz.ReadyForPlacement == true)
                         .ToList();
                     
                     // ✅ DIAGNOSTIC: Log why zones are being filtered out

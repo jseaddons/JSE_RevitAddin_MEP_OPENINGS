@@ -57,6 +57,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
             string? xmlFilePath,
             out FamilyInstance? placedClusterSleeve,
             out int? capturedClusterSleeveId,
+            out XYZ? actualPlacementPoint,
             Dictionary<ElementId, Dictionary<string, object>>? deferredParameters = null);
 
         /// <summary>

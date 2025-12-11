@@ -46,9 +46,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         /// <summary>
         /// Enable R-tree spatial filtering
-        /// Default: true (already implemented)
+        /// Default: false (disabled - caused missing linked-host clashes due to coordinate mismatch)
+        /// Note: R-tree in link coordinates rejected valid clashes in host coordinates
+        /// When disabled: Falls back to spatial grid results which correctly handles transforms
         /// </summary>
-        public static bool UseRTreeFilter { get; set; } = true;
+        public static bool UseRTreeFilter { get; set; } = false;
         
         /// <summary>
         /// Enable parallel processing for intersection testing
@@ -763,7 +765,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             UseCacheInvalidation = true;
             
             // Phase 2: Conservative defaults
-            UseRTreeFilter = true;
+            UseRTreeFilter = false; // ✅ DISABLED: Coordinate mismatch with linked docs (fallback to spatial grid)
             UseParallelProcessing = false;
             UseSpatialGrid = false;
             UseRTreeDatabaseIndex = false; // ✅ SAFETY: Disable R-tree by default in safe mode (fallback to B-tree)
@@ -803,7 +805,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static void EnablePhase2Optimizations()
         {
-            UseRTreeFilter = true;
+            UseRTreeFilter = false; // ✅ DISABLED: Coordinate mismatch with linked docs (keep spatial grid)
             UseParallelProcessing = true;
             UseSpatialGrid = true;
             UseRTreeDatabaseIndex = true;

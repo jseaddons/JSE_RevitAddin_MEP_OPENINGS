@@ -18,6 +18,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.ClearanceProviders;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Persistence;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Configuration;
+using JSE_RevitAddin_MEP_OPENINGS.Services; // For OpeningSettingsHelper
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -76,15 +77,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         // ✅ DAMPER CLEARANCE VALUES: Stores clearance values for damper parameter setting
         // Key: ClashZone ID (Guid - for matching zone to its calculated clearances)
-        // Value: (finalWidth, finalHeight, clearanceLeft, clearanceRight, clearanceTop, clearanceBottom)
-        // ✅ NOTE: offsetVector is NO LONGER stored - damper placement point adjustment is handled by DamperPlacementPointService ONLY
-        private Dictionary<Guid, (double finalWidth, double finalHeight, double clearanceLeft, double clearanceRight, double clearanceTop, double clearanceBottom)> _damperPlacementAdjustments = 
-            new Dictionary<Guid, (double, double, double, double, double, double)>();
+        // Value: (finalWidth, finalHeight, clearanceLeft, clearanceRight, clearanceTop, clearanceBottom, offsetVector)
+        // ✅ CRITICAL FIX: offsetVector is now stored to apply connector-side offset during placement
+        private Dictionary<Guid, (double finalWidth, double finalHeight, double clearanceLeft, double clearanceRight, double clearanceTop, double clearanceBottom, XYZ offsetVector)> _damperPlacementAdjustments = 
+            new Dictionary<Guid, (double, double, double, double, double, double, XYZ)>();
         
         // ✅ PARALLEL PLANNING: Optional planner for parallel pre-computation (OOP, DI-ready)
         // When enabled via DeploymentConfiguration.EnableParallelPlanning, pre-computes dimensions, clearance, and risk in parallel
         // Includes dampers (Duct Accessories) - ParallelSleevePlacementPlanner handles all categories
         private readonly ISleevePlacementPlanner? _planner;
+        
+        // ✅ FORCE DETECTION MODE: Flag to force recalculation of placement points
+        private readonly bool _isForceDetectionMode;
 
         public NewSleevePlacerService(
             Document doc,
@@ -104,7 +108,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ CRASH-SAFE: Optional crash-safe executor (created if not provided when flag enabled)
             CrashSafeExecutor? crashSafeExecutor = null,
             // ✅ PARALLEL PLANNING: Optional planner for parallel pre-computation (enabled via safety flag)
-            ISleevePlacementPlanner? planner = null)
+            ISleevePlacementPlanner? planner = null,
+            // ✅ FORCE DETECTION MODE
+            bool isForceDetectionMode = false)
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _conditions = conditions ?? new OpeningConditions();
@@ -134,6 +140,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _flagManager = flagManager; // Passed as IFlagManager? (can be null)
             _isReplayPath = isReplayPath;
             _filterName = filterName;
+            _isForceDetectionMode = isForceDetectionMode;
             
             // ✅ OOP METHOD: Initialize sizing service (create if not provided - Dependency Injection)
             _sizingService = sizingService ?? new InsulationAwareSizingService();
@@ -154,7 +161,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             // ✅ SRP COMPLIANCE: Initialize placement point adjustment service
             // Note: Performance monitor will be set later in PlaceAllSleevesInTransaction, so we pass null here
-            _placementPointAdjustmentService = new PlacementPointAdjustmentService(doc, null);
+            _placementPointAdjustmentService = new PlacementPointAdjustmentService(doc, null, _isForceDetectionMode);
             
             // ✅ SOLID REFACTORED: Initialize refactored services (create if not provided when flag enabled)
             if (OptimizationFlags.UseRefactoredCommandServices)
@@ -217,10 +224,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 string performanceLogName = $"NewSleevePlacer_{timestamp}.log";
                 _performanceMonitor = new Services.Placement.PlacementPerformanceMonitor(performanceLogName);
                 
-                // ✅ 28 FEATURES COMPLIANCE: Update services with performance monitor
                 // Recreate services with performance monitor for proper tracking
                 _parameterService = new SleeveParameterService(_doc, _isReplayPath, _performanceMonitor);
-                _placementPointAdjustmentService = new PlacementPointAdjustmentService(_doc, _performanceMonitor);
+                _placementPointAdjustmentService = new PlacementPointAdjustmentService(_doc, _performanceMonitor, _isForceDetectionMode);
             }
             
             // ✅ PARAMETER BATCHING: Reset flags at start of each placement run
@@ -305,6 +311,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // haven't been flushed yet. We need to calculate bounding boxes from the stored dimensions instead.
             var placedSleeveData = new List<(FamilyInstance sleeve, ClashZone zone, double width, double height, double depth)>();
             var processedZoneGuids = new List<Guid>();
+            
+            // ✅ DEDUPLICATION: Track placed locations to prevent duplicates
+            var placedLocationKeys = new HashSet<string>();
 
             // ✅ Use injected ZoneFilterService if available to pre-filter zones
             List<ClashZone> filteredZones = clashZones;
@@ -446,6 +455,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         SafeFileLogger.SafeAppendText("placement_debug.log",
                             $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ⏭️ SKIP Zone {clashZone.Id}: {skipReason}\n");
+                        skipped++;
+                        continue;
+                    }
+
+                    // ✅ DEDUPLICATION: Check if we've already processed a zone at this location
+                    // This prevents placing multiple sleeves at the exact same point (e.g. duplicate clashes or pre-clustered zones)
+                    // Key includes: Category, HostID, and Rounded Coordinates (to 1mm approx)
+                    string locationKey = $"{clashZone.MepElementCategory}_{clashZone.StructuralElementId}_" +
+                                         $"{clashZone.IntersectionPointX:F4}_{clashZone.IntersectionPointY:F4}_{clashZone.IntersectionPointZ:F4}";
+                                         
+                    if (placedLocationKeys.Contains(locationKey))
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("placement_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ⏭️ SKIP DUPLICATE: Zone {clashZone.Id} at same location as previous zone ({locationKey})\n");
+                        }
                         skipped++;
                         continue;
                     }
@@ -641,6 +667,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         placedSleeveData.Add((placedSleeve, clashZone, storedWidth, storedHeight, storedDepth));
                         processedZoneGuids.Add(clashZone.Id);
+                        
+                        // ✅ DEDUPLICATION: Add location to tracker
+                        placedLocationKeys.Add(locationKey);
                         
                         // ✅ NOTE: Database persistence is now handled in batch after bounding boxes are calculated
                         // This ensures all data (instance ID, placement, bounding boxes, corners, snapshots) is saved together
@@ -897,13 +926,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             if (instance != null)
             {
-                _parameterService.SetSleeveParameters(instance, width, height, diameter, isCircular, zone);
+                // ✅ CRITICAL FIX: Round dimensions ONCE here (for all categories including dampers)
+                // This ensures both the Revit parameters AND the saved zone dimensions are rounded (consistent with cluster sleeves)
+                // Rounding is applied to ALL categories (dampers, pipes, ducts, cable trays, etc.)
+                var (roundedWidth, roundedHeight) = OpeningSettingsHelper.RoundDimensionsToNearest5mm(width, height);
+                double roundedDiameter = OpeningSettingsHelper.RoundDiameterToNearest5mm(diameter);
                 
-                // ✅ CRITICAL FIX: Update zone with calculated dimensions for bounding box calculation
-                // This ensures dimensions are available when batching is enabled
-                zone.SleeveWidth = width;
-                zone.SleeveHeight = height;
-                zone.SleeveDiameter = diameter;
+                // ✅ CRITICAL FIX: Pass ROUNDED dimensions to SetSleeveParameters (no rounding inside SetSleeveParameters to prevent double rounding)
+                // This ensures Revit parameters are set with rounded values
+                _parameterService.SetSleeveParameters(instance, roundedWidth, roundedHeight, roundedDiameter, isCircular, zone);
+                
+                // ✅ CRITICAL FIX: Update zone with ROUNDED dimensions for bounding box calculation and database saving
+                // This ensures dimensions are available when batching is enabled AND replay mode uses rounded dimensions
+                zone.SleeveWidth = roundedWidth;
+                zone.SleeveHeight = roundedHeight;
+                zone.SleeveDiameter = roundedDiameter;
                 zone.SleevePlacementPoint = placementPoint;
                 zone.SleevePlacementPointX = placementPoint.X;
                 zone.SleevePlacementPointY = placementPoint.Y;
@@ -962,10 +999,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             // ✅ EXTRACT CLEARANCE VALUES: Store individual clearance values in zone for later parameter setting
             // This is done BEFORE placement point adjustment so values are available for parameter setting
-            // ✅ NOTE: offsetVector is NO LONGER used - damper placement point is handled by DamperPlacementPointService ONLY
+            XYZ damperOffsetVector = XYZ.Zero;
             if (_damperPlacementAdjustments.ContainsKey(zone.Id))
             {
-                var (finalWidth, finalHeight, clearanceLeft, clearanceRight, clearanceTop, clearanceBottom) = 
+                var (finalWidth, finalHeight, clearanceLeft, clearanceRight, clearanceTop, clearanceBottom, offsetVector) = 
                     _damperPlacementAdjustments[zone.Id];
                 
                 // ✅ SOLID ISP: Store individual clearance values in zone for later parameter setting
@@ -974,15 +1011,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 zone.ClearanceRight = clearanceRight;
                 zone.ClearanceTop = clearanceTop;
                 zone.ClearanceBottom = clearanceBottom;
+                
+                // ✅ CRITICAL FIX: Store offset vector for later application
+                damperOffsetVector = offsetVector;
             }
             
             // ✅ DELEGATE TO SERVICE: PlacementPointAdjustmentService delegates to DamperPlacementPointService for dampers
             // This maintains SRP - one class handles damper placement, another handles other MEP elements
             placementPoint = _placementPointAdjustmentService.AdjustPlacementPoint(zone, placementPoint, null);
             
-            // ✅ DIAGNOSTIC: Log placement point
-            SafeFileLogger.SafeAppendText("placement_debug.log",
-                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] 📍 PLACEMENT POINT: Zone {zone.Id}, Point=({placementPoint.X:F3}, {placementPoint.Y:F3}, {placementPoint.Z:F3})\n");
+            // ✅ CRITICAL FIX: Apply connector-side offset for dampers with MEP connector
+            // The offset shifts the sleeve toward the connector side to achieve:
+            // - 100mm clearance on connector side (MEP clearance)
+            // - 50mm clearance on other side (Other clearance)
+            // Without offset, sleeve would be centered, giving 75mm/75mm (average)
+            // The offset is calculated as (mepClearance - otherClearance) / 2 = (100mm - 50mm) / 2 = 25mm
+            if (string.Equals(zone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase) &&
+                damperOffsetVector.GetLength() > 0.0001) // Only apply if offset is significant (> 0.1mm)
+            {
+                placementPoint = placementPoint + damperOffsetVector;
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("placement_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ✅ APPLIED DAMPER OFFSET: Zone {zone.Id}, " +
+                        $"Offset=({damperOffsetVector.X*304.8:F1}, {damperOffsetVector.Y*304.8:F1}, {damperOffsetVector.Z*304.8:F1})mm, " +
+                        $"AfterOffset=({placementPoint.X:F3}, {placementPoint.Y:F3}, {placementPoint.Z:F3})\n");
+                }
+            }
+                    
+                    // ✅ DIAGNOSTIC: Log placement point
+                    SafeFileLogger.SafeAppendText("placement_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] 📍 PLACEMENT POINT: Zone {zone.Id}, Point=({placementPoint.X:F3}, {placementPoint.Y:F3}, {placementPoint.Z:F3})\n");
             
             // ✅ SRP: Use rotation service to determine correct rotation for host type
             double rotation = _rotationService.DetermineRotation(zone);
@@ -1002,12 +1062,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             if (instance != null)
             {
-                _parameterService.SetSleeveParameters(instance, width, height, diameter, isCircular, zone);
+                // ✅ CRITICAL FIX: Round dimensions ONCE here (for all categories including dampers)
+                // This ensures both the Revit parameters AND the saved zone dimensions are rounded (consistent with cluster sleeves)
+                // Rounding is applied to ALL categories (dampers, pipes, ducts, cable trays, etc.)
+                var (roundedWidth, roundedHeight) = OpeningSettingsHelper.RoundDimensionsToNearest5mm(width, height);
+                double roundedDiameter = OpeningSettingsHelper.RoundDiameterToNearest5mm(diameter);
                 
-                // Update zone with calculated dimensions for saving
-                zone.SleeveWidth = width;
-                zone.SleeveHeight = height;
-                zone.SleeveDiameter = diameter;
+                // ✅ CRITICAL FIX: Pass ROUNDED dimensions to SetSleeveParameters (it will round again, but rounding already-rounded values is idempotent)
+                // This ensures Revit parameters are set with rounded values
+                _parameterService.SetSleeveParameters(instance, roundedWidth, roundedHeight, roundedDiameter, isCircular, zone);
+                
+                // ✅ CRITICAL FIX: Update zone with ROUNDED dimensions for saving to database
+                // This ensures replay mode uses rounded dimensions (consistent with cluster sleeves)
+                zone.SleeveWidth = roundedWidth;
+                zone.SleeveHeight = roundedHeight;
+                zone.SleeveDiameter = roundedDiameter;
                 zone.SleevePlacementPoint = placementPoint;
                 zone.SleevePlacementPointX = placementPoint.X;
                 zone.SleevePlacementPointY = placementPoint.Y;
@@ -1107,15 +1176,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     double clearanceBottom = damperAdj.finalHeight > 0 ? damperAdj.finalWidth : zone.ClearanceBottom;
                     
                     // ✅ CRITICAL: Store damper clearance values for later parameter setting
-                    // Key: zone.Id (Guid) for matching, Value: final dimensions + individual clearances
-                    // ✅ NOTE: offsetVector is NO LONGER stored - damper placement point adjustment is handled by DamperPlacementPointService ONLY
+                    // Key: zone.Id (Guid) for matching, Value: final dimensions + individual clearances + offsetVector
+                    // ✅ CRITICAL FIX: offsetVector is now stored to apply connector-side offset during placement
+                    // The offset shifts sleeve toward connector side to achieve 100mm/50mm clearance (not 75mm/75mm)
                     _damperPlacementAdjustments[zone.Id] = (
                         damperAdj.finalWidth,
                         damperAdj.finalHeight,
                         clearanceLeft,
                         clearanceRight,
                         clearanceTop,
-                        clearanceBottom
+                        clearanceBottom,
+                        damperAdj.offsetVector // ✅ Store offset for later application
                     );
                     
                     if (!DeploymentConfiguration.DeploymentMode)

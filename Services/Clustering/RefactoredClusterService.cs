@@ -102,6 +102,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         // Key: ElementId of cluster sleeve instance
         // Value: Dictionary of parameter name → value (double or string)
         private Dictionary<ElementId, Dictionary<string, object>> _deferredClusterParameters = new Dictionary<ElementId, Dictionary<string, object>>();
+        
+        // ✅ SOLID: Actual placement points for cluster sleeves (for database save)
+        // Stores the actual calculated placement point used when placing each cluster sleeve
+        // Key: Cluster instance ID (int)
+        // Value: Actual placement point (XYZ)
+        private Dictionary<int, XYZ> _actualPlacementPoints = new Dictionary<int, XYZ>();
 
         /// <summary>
         /// Constructor with dependency injection for all Phase 1-10 services.
@@ -1433,7 +1439,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     xmlFilePath,
                     out FamilyInstance? placedClusterSleeve,
                     out int? capturedClusterSleeveId,
+                    out XYZ? actualPlacementPoint, // ✅ SOLID: Capture actual placement point via out parameter
                     _deferredClusterParameters); // ✅ Pass deferred parameters for batching
+                
+                // ✅ SOLID: Store actual placement point for database save (if available)
+                // This ensures database saves the correct calculated placement point instead of Revit bbox center
+                if (capturedClusterSleeveId.HasValue && actualPlacementPoint != null)
+                {
+                    if (!_actualPlacementPoints.ContainsKey(capturedClusterSleeveId.Value))
+                    {
+                        _actualPlacementPoints[capturedClusterSleeveId.Value] = actualPlacementPoint;
+                    }
+                }
                 
                 // 🔥 CRITICAL: Direct IO logging after placement
                 try
@@ -2303,15 +2320,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             string hostType = GetHostTypeFromSleeve(clusterSleeve);
                             string hostOrientation = GetOrientationFromSleeve(clusterSleeve);
                             
-                            // Get placement point
-                            var placementPoint = (bboxMin + bboxMax) / 2.0;
+                            // ✅ SOLID: Get actual placement point from instance dictionary
+                            // This is the placement point that was actually used to place the sleeve
+                            // Fallback to bbox center only if actual placement point is not available
+                            _actualPlacementPoints.TryGetValue(clusterInstanceId, out var actualPlacementPoint);
+                            var placementPoint = actualPlacementPoint ?? (bboxMin + bboxMax) / 2.0;
                             
                             // ✅ DIAGNOSTIC: Log bounding box values before saving
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
                                 $"[{DateTime.Now:HH:mm:ss}] 📦 PREPARE SAVE: Cluster {clusterInstanceId} - " +
                                 $"BBoxMin=({bboxMin.X:F6}, {bboxMin.Y:F6}, {bboxMin.Z:F6}), " +
                                 $"BBoxMax=({bboxMax.X:F6}, {bboxMax.Y:F6}, {bboxMax.Z:F6}), " +
-                                $"Placement=({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6})\n");
+                                $"Placement=({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6})" +
+                                (actualPlacementPoint != null ? " [ACTUAL]" : " [BBOX_CENTER]") + "\n");
                             
                             // Add to batch
                             clustersToSave.Add(new ClusterSaveData
@@ -2543,8 +2564,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             string hostType = GetHostTypeFromSleeve(clusterSleeve);
                             string hostOrientation = GetOrientationFromSleeve(clusterSleeve);
                             
-                            // Get placement point (center of bounding box)
-                            var placementPoint = (bboxMin + bboxMax) / 2.0;
+                            // ✅ SOLID: Get actual placement point from instance dictionary
+                            // This is the placement point that was actually used to place the sleeve
+                            // Fallback to bbox center only if actual placement point is not available
+                            _actualPlacementPoints.TryGetValue(clusterInstanceId, out var actualPlacementPoint);
+                            var placementPoint = actualPlacementPoint ?? (bboxMin + bboxMax) / 2.0;
                             
                             // Save to database
                             clusterRepository.SaveClusterSleeve(

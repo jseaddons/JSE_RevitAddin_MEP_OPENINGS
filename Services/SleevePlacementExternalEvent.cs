@@ -265,6 +265,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info("[SleevePlacementExternalEvent] Creating OpeningCommandOrchestrator for proper architecture compliance");
                 
+                // ✅ FORCE DETECTION MODE: Load from SettingsModel
+                // This setting is controlled by the checkbox in EmergencyMainDialog
+                var settingsService = new SettingsService();
+                var settingsModel = settingsService.LoadSettings();
+                bool forceDetectionMode = settingsModel.ForceDetectionMode;
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[SleevePlacementExternalEvent] ForceDetectionMode: {forceDetectionMode}");
+                }
+                
                 var clearanceSettings = GetClearanceSettingsFromUI();
                 try
                 {
@@ -277,7 +288,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 catch { }
                 
-                var orchestrator = new OpeningCommandOrchestrator(_document, _uiDocument, clearanceSettings, _markPrefixes);
+                var orchestrator = new OpeningCommandOrchestrator(_document, _uiDocument, clearanceSettings, _markPrefixes, forceDetectionMode);
                 
                                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 11: Orchestrator created successfully with clearances and mark prefixes\n");

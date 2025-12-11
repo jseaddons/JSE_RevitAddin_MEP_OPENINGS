@@ -176,6 +176,8 @@
     <Compile Remove="Services\Backup2\**\*.cs" />
     <!-- ✅ PHASE 2: Legacy RefreshService excluded - only refactored service is used -->
     <Compile Remove="Services\RefreshService.cs" />
+    <!-- ✅ DEPRECATED: FireDamperSleevePlacerService moved to backup - no longer used -->
+    <Compile Remove="Services\FireDamperSleevePlacerService.cs" />
     <Compile Remove="Commands\ClusterMergeCommand.cs" />
     <Compile Remove="Commands\CleanCableTraySleevesCommand.cs" />
     <Compile Remove="Commands\IndividualDuctSleeveCommand.cs" />

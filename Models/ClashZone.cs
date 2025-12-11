@@ -524,6 +524,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public string MepElementCategory { get; set; } = string.Empty;
         
         /// <summary>
+        /// ✅ DAMPER TYPE/FAMILY: Pre-calculated MEP element type name (e.g., "MSD", "MSFD", "Standard")
+        /// Stored during refresh to avoid linked file access during placement
+        /// Used by DamperPlacementStrategy for branching logic (Standard vs non-standard with Motorized)
+        /// </summary>
+        public string MepElementTypeName { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// ✅ DAMPER TYPE/FAMILY: Pre-calculated MEP element family name (e.g., "Motorised Smoke Damper")
+        /// Stored during refresh to avoid linked file access during placement
+        /// Used by DamperPlacementStrategy to check for "Motorized/Motorised" in family name
+        /// </summary>
+        public string MepElementFamilyName { get; set; } = string.Empty;
+        
+        /// <summary>
         /// ⚠️ CRITICAL PROPERTY - DO NOT REMOVE ⚠️
         /// The shape of the duct (e.g., "Round", "Rectangular") - extracted from duct family name
         /// Only applicable for Ducts category

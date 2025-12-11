@@ -79,6 +79,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Batch update IsResolvedFlag, IsClusterResolvedFlag, SleeveInstanceId, and ClusterInstanceId for placed sleeves.
         /// </summary>
         void BatchUpdateFlags(List<(System.Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterInstanceId)> updates);
+
+        /// <summary>
+        /// Force Detection Mode: Reset all flags (IsResolved, IsClusterResolved) to false and clear sleeve IDs
+        /// for all zones in the specified filters and categories, while preserving GUIDs.
+        /// Used when ForceDetectionMode is enabled in global settings.
+        /// </summary>
+        int ResetAllFlagsForForceDetectionMode(List<string> filterNames, List<string> categories);
+
+        /// <summary>
+        /// Verify if sleeves marked as resolved in the DB still exist in the current Revit model.
+        /// If not found, reset their flags to false and IDs to -1.
+        /// </summary>
+        int VerifyExistingSleevesAndResetFlags(Autodesk.Revit.DB.Document doc, List<string> filterNames, List<string> categories);
+
+        /// <summary>
+        /// Reset IsCurrentClashFlag to false for all zones in the specified filters/categories.
+        /// This is called at the start of a refresh cycle to mark all existing zones as "stale" until re-detected.
+        /// </summary>
+        int ResetIsCurrentClashFlag(List<string> filterNames, List<string> categories);
     }
 }
 

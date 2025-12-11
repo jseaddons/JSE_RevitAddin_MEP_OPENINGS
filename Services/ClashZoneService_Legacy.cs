@@ -957,6 +957,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 else
                 {
+                    // ✅ CRITICAL FIX: Verify sleeve actually exists before preserving resolved zone
+                    // If IsResolved=true but sleeve doesn't exist (deleted or invalid), reset flag and allow update
+                    bool sleeveActuallyExists = false;
+                    if (existingClashZone.SleeveInstanceId > 0)
+                    {
+                        try
+                        {
+                            var sleeveElement = document.GetElement(new ElementId(existingClashZone.SleeveInstanceId));
+                            if (sleeveElement != null && sleeveElement is FamilyInstance fi && fi.IsValidObject)
+                            {
+                                sleeveActuallyExists = true;
+                            }
+                        }
+                        catch { }
+                    }
+                    if (existingClashZone.ClusterSleeveInstanceId > 0 && !sleeveActuallyExists)
+                    {
+                        try
+                        {
+                            var clusterElement = document.GetElement(new ElementId(existingClashZone.ClusterSleeveInstanceId));
+                            if (clusterElement != null && clusterElement is FamilyInstance fi && fi.IsValidObject)
+                            {
+                                sleeveActuallyExists = true;
+                            }
+                        }
+                        catch { }
+                    }
+                    
+                    // If sleeve doesn't exist, reset flag and allow zone to be updated
+                    if (!sleeveActuallyExists)
+                    {
+                        _log($"[CRITICAL-FIX] Zone {existingClashZone.Id} marked as IsResolved=true but sleeve doesn't exist (SleeveId={existingClashZone.SleeveInstanceId}, ClusterId={existingClashZone.ClusterSleeveInstanceId}) - resetting flag and allowing update");
+                        existingClashZone.IsResolved = false;
+                        existingClashZone.IsClusterResolved = false;
+                        if (existingClashZone.SleeveInstanceId > 0 && !sleeveActuallyExists)
+                            existingClashZone.SleeveInstanceId = 0;
+                        if (existingClashZone.ClusterSleeveInstanceId > 0 && !sleeveActuallyExists)
+                            existingClashZone.ClusterSleeveInstanceId = 0;
+                        // Now allow update (fall through to UpdateExistingClashZone)
+                        UpdateExistingClashZone(existingClashZone, mepElement, structuralElement, intersectionPoint, boundingBox, document);
+                        _log($"Updated existing clash zone after resetting invalid resolved flag: {existingClashZone.Id}");
+                        continue; // Skip the rest of the resolved zone handling
+                    }
+                    
                     // ✅ CRITICAL FIX: Update MepElementOrientation for resolved zones with (0,0,0) orientation
                     // This fixes old XML data that doesn't have MepElementOrientation calculated
                     if (existingClashZone.MepElementOrientation == null || existingClashZone.MepElementOrientation == XYZ.Zero)
@@ -1212,6 +1256,51 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     // Only update existing clash zone if it's NOT resolved
                     UpdateExistingClashZone(existingClashZone, mepElement, structuralElement, intersectionPoint, boundingBox, document);
+                }
+                else
+                {
+                    // ✅ CRITICAL FIX: Verify sleeve actually exists before preserving resolved zone (streamlined path)
+                    // If IsResolved=true but sleeve doesn't exist (deleted or invalid), reset flag and allow update
+                    bool sleeveActuallyExists = false;
+                    if (existingClashZone.SleeveInstanceId > 0)
+                    {
+                        try
+                        {
+                            var sleeveElement = document.GetElement(new ElementId(existingClashZone.SleeveInstanceId));
+                            if (sleeveElement != null && sleeveElement is FamilyInstance fi && fi.IsValidObject)
+                            {
+                                sleeveActuallyExists = true;
+                            }
+                        }
+                        catch { }
+                    }
+                    if (existingClashZone.ClusterSleeveInstanceId > 0 && !sleeveActuallyExists)
+                    {
+                        try
+                        {
+                            var clusterElement = document.GetElement(new ElementId(existingClashZone.ClusterSleeveInstanceId));
+                            if (clusterElement != null && clusterElement is FamilyInstance fi && fi.IsValidObject)
+                            {
+                                sleeveActuallyExists = true;
+                            }
+                        }
+                        catch { }
+                    }
+                    
+                    // If sleeve doesn't exist, reset flag and allow zone to be updated
+                    if (!sleeveActuallyExists)
+                    {
+                        _log($"[CRITICAL-FIX-STREAMLINED] Zone {existingClashZone.Id} marked as IsResolved=true but sleeve doesn't exist (SleeveId={existingClashZone.SleeveInstanceId}, ClusterId={existingClashZone.ClusterSleeveInstanceId}) - resetting flag and allowing update");
+                        existingClashZone.IsResolved = false;
+                        existingClashZone.IsClusterResolved = false;
+                        if (existingClashZone.SleeveInstanceId > 0 && !sleeveActuallyExists)
+                            existingClashZone.SleeveInstanceId = 0;
+                        if (existingClashZone.ClusterSleeveInstanceId > 0 && !sleeveActuallyExists)
+                            existingClashZone.ClusterSleeveInstanceId = 0;
+                        // Now allow update
+                        UpdateExistingClashZone(existingClashZone, mepElement, structuralElement, intersectionPoint, boundingBox, document);
+                        _log($"Updated existing clash zone after resetting invalid resolved flag (streamlined): {existingClashZone.Id}");
+                    }
                 }
             }
             

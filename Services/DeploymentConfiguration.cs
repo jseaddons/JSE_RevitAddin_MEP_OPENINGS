@@ -20,8 +20,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// - All DebugLogger calls are skipped (no file writes)
         /// - All BatchedLogger calls are skipped (no string allocations)
         /// - Memory savings: Only ~13% (not worth losing debug capabilities)
+        /// 
+        /// ✅ CRITICAL: UseDiagnosticMode OVERRIDES this setting.
+        /// If OptimizationFlags.UseDiagnosticMode = true, logging is enabled regardless of DeploymentMode.
         /// </summary>
-        public static bool DeploymentMode { get; set; } = false; // ✅ DIAGNOSTIC: Deployment mode OFF - enable full logging to debug batching issue
+        public static bool DeploymentMode 
+        { 
+            get 
+            {
+                // ✅ FIX: Diagnostic mode overrides deployment mode
+                // If diagnostic mode is enabled, always allow logging (DeploymentMode = false)
+                if (OptimizationFlags.UseDiagnosticMode)
+                    return false;
+                return _deploymentMode;
+            }
+            set => _deploymentMode = value;
+        }
+        
+        private static bool _deploymentMode = true; // ✅ DEFAULT: Deployment mode ON (minimal logging) - Set OptimizationFlags.UseDiagnosticMode = true to enable full logging
 
         /// <summary>
         /// Feature flag for Phase B Global XML dedupe. Defaults to false so the existing
