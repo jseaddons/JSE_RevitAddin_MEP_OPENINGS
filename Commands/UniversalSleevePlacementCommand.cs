@@ -372,6 +372,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             }
                         }
                         
+                        // ✅ FORCE DETECTION: Get flag from user settings
+                        var profileService = Services.ApplicationProfileService.Instance;
+                        var settings = profileService.GetCurrentSettings();
+                        bool isForceDetectionMode = settings.ForceDetectionMode;
+                        
+                        if (isForceDetectionMode && !DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("placement_debug.log", 
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [COMMAND] ⚠️ FORCE DETECTION MODE ACTIVE: Will ignore saved data and recalculate all points\n");
+                        }
+                        
                         var newPlacerService = new JSE_RevitAddin_MEP_OPENINGS.Services.NewSleevePlacerService(
                             _doc,
                             _conditions,
@@ -386,7 +397,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             null, // sizingService (will use default)
                             fileNameNormalizer,  // ✅ WIRED: Pass refactored services
                             sectionBoxChecker,   // ✅ WIRED: Pass refactored services
-                            crashSafeExecutor);  // ✅ CRASH-SAFE: Pass crash-safe executor
+                            crashSafeExecutor,   // ✅ CRASH-SAFE: Pass crash-safe executor
+                            null,                // planner (optional)
+                            isForceDetectionMode); // ✅ FORCE DETECTION: Pass flag to service
                         
                         (placed, skipped, errors) = newPlacerService.PlaceAllSleevesInTransaction(filteredClashZones);
                         

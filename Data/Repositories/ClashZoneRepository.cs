@@ -5365,13 +5365,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     "BoundingBoxMaxZ = @BoundingBoxMaxZ"
                 };
 
-                // ✅ Add placement point if provided
+                // ✅ USER REQUEST: Do NOT overwrite individual sleeve placement points with cluster placement point
+                // This preserves the individual wall centerline logic for potential fallback/dissolving
+                // See "Prevention of Cluster Point Overwrite" task
+                /*
                 if (placementX.HasValue && placementY.HasValue && placementZ.HasValue)
                 {
                     updateFields.Add("SleevePlacementX = @SleevePlacementX");
                     updateFields.Add("SleevePlacementY = @SleevePlacementY");
                     updateFields.Add("SleevePlacementZ = @SleevePlacementZ");
                 }
+                */
 
                 // ✅ Add rotated bounding boxes if provided
                 if (rotatedMinX.HasValue && rotatedMinY.HasValue && rotatedMinZ.HasValue &&
@@ -5412,12 +5416,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 cmd.Parameters.AddWithValue("@BoundingBoxMaxZ", maxZ);
 
                 // ✅ Add optional parameters
+                /*
                 if (placementX.HasValue && placementY.HasValue && placementZ.HasValue)
                 {
                     cmd.Parameters.AddWithValue("@SleevePlacementX", placementX.Value);
                     cmd.Parameters.AddWithValue("@SleevePlacementY", placementY.Value);
                     cmd.Parameters.AddWithValue("@SleevePlacementZ", placementZ.Value);
                 }
+                */
 
                 if (rotatedMinX.HasValue && rotatedMinY.HasValue && rotatedMinZ.HasValue &&
                     rotatedMaxX.HasValue && rotatedMaxY.HasValue && rotatedMaxZ.HasValue)

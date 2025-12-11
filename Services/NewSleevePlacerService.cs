@@ -745,16 +745,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // ✅ SRP COMPLIANCE: Delegate RCS transformation to specialized service
                             _rcsBoundingBoxService.ProcessBoundingBox(zone, actualBbox);
 
-                            // Update placement point from bounding box center
-                            zone.SleevePlacementPoint = new XYZ(
-                                (actualBbox.Min.X + actualBbox.Max.X) / 2,
-                                (actualBbox.Min.Y + actualBbox.Max.Y) / 2,
-                                (actualBbox.Min.Z + actualBbox.Max.Z) / 2
-                            );
+                            // ✅ CRITICAL FIX: ONLY update placement point for INDIVIDUAL sleeves, NOT cluster sleeves
+                            // Cluster sleeves cover multiple zones - their bounding box center is NOT the individual placement point
+                            if (zone.ClusterSleeveInstanceId <= 0)
+                            {
+                                // Update placement point from bounding box center (only for individual sleeves)
+                                zone.SleevePlacementPoint = new XYZ(
+                                    (actualBbox.Min.X + actualBbox.Max.X) / 2,
+                                    (actualBbox.Min.Y + actualBbox.Max.Y) / 2,
+                                    (actualBbox.Min.Z + actualBbox.Max.Z) / 2
+                                );
 
-                            zone.SleevePlacementPointX = zone.SleevePlacementPoint.X;
-                            zone.SleevePlacementPointY = zone.SleevePlacementPoint.Y;
-                            zone.SleevePlacementPointZ = zone.SleevePlacementPoint.Z;
+                                zone.SleevePlacementPointX = zone.SleevePlacementPoint.X;
+                                zone.SleevePlacementPointY = zone.SleevePlacementPoint.Y;
+                                zone.SleevePlacementPointZ = zone.SleevePlacementPoint.Z;
+                            }
+                            else if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                // Cluster sleeve: keep individual placement point unchanged
+                                SafeFileLogger.SafeAppendText("placement_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] [CLUSTER-BBOX] Zone {zone.Id}: SKIPPED placement point update (cluster sleeve), keeping individual placement point\n");
+                            }
 
                             bboxCount++;
                         }
@@ -941,10 +952,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 zone.SleeveWidth = roundedWidth;
                 zone.SleeveHeight = roundedHeight;
                 zone.SleeveDiameter = roundedDiameter;
-                zone.SleevePlacementPoint = placementPoint;
-                zone.SleevePlacementPointX = placementPoint.X;
-                zone.SleevePlacementPointY = placementPoint.Y;
-                zone.SleevePlacementPointZ = placementPoint.Z;
+
+                // ✅ CRITICAL FIX: Only update placement point for individual sleeves, not cluster sleeves
+                if (zone.ClusterSleeveInstanceId <= 0)
+                {
+                    zone.SleevePlacementPoint = placementPoint;
+                    zone.SleevePlacementPointX = placementPoint.X;
+                    zone.SleevePlacementPointY = placementPoint.Y;
+                    zone.SleevePlacementPointZ = placementPoint.Z;
+                }
+                else if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("placement_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [PlaceSleeveNormal] [CLUSTER] Zone {zone.Id}: SKIPPED placement point update (cluster sleeve {zone.ClusterSleeveInstanceId}), keeping wall centerline\n");
+                }
             }
             
             return instance;

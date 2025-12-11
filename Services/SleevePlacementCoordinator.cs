@@ -37,7 +37,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             SleevePlacementPath requestedPath,
             FlagManager flagManager = null,
             string uiOverridesFingerprint = null,
-            string globalConfigurationFingerprint = null)
+            string globalConfigurationFingerprint = null,
+            bool isForceDetectionMode = false)
         {
             Document = document ?? throw new ArgumentNullException(nameof(document));
             ClashZones = (clashZones ?? Enumerable.Empty<ClashZone>()).ToList();
@@ -52,6 +53,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             FlagManager = flagManager;
             UiOverridesFingerprint = uiOverridesFingerprint;
             GlobalConfigurationFingerprint = globalConfigurationFingerprint;
+            IsForceDetectionMode = isForceDetectionMode;
         }
 
         public Document Document { get; }
@@ -65,6 +67,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public FlagManager FlagManager { get; }
         public string UiOverridesFingerprint { get; }
         public string GlobalConfigurationFingerprint { get; }
+        public bool IsForceDetectionMode { get; }
 
         public SleevePlacementRequest WithPath(SleevePlacementPath path)
         {
@@ -83,7 +86,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 path,
                 FlagManager,
                 UiOverridesFingerprint,
-                GlobalConfigurationFingerprint);
+                GlobalConfigurationFingerprint,
+                IsForceDetectionMode);
         }
     }
 
@@ -252,7 +256,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 null, // familyManager - can be null
                 flagManagerAdapter, // ✅ Use FlagManagerAdapter to convert FlagManager to IFlagManager
                 isReplayPath: false, // ✅ PATH 2: Full calculation, not replay
-                request.FilterName);
+                request.FilterName,
+                null,
+                null,
+                null,
+                null,
+                null,
+                request.IsForceDetectionMode); // ✅ CRITICAL FIX: Pass force detection mode from request
 
             var placementOutcome = placerService.PlaceAllSleevesInTransaction(
                 request.ClashZones?.ToList() ?? new List<ClashZone>());

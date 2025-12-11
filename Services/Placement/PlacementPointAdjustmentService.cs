@@ -149,14 +149,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] 🔄🔄🔄 FORCE DETECTION MODE ACTIVE: Zone {zone.Id}, " +
-                        $"Using INTERSECTION POINT DIRECTLY (ignoring all saved SleevePlacementPoint data) - will calculate fresh centerline from geometry.\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] 🔄🔄🔄 FORCE DETECTION MODE ACTIVE: Zone {zone.Id}\n" +
+                        $"  Saved SleevePlacementPoint (IGNORED): ({zone.SleevePlacementPointX:F6}ft, {zone.SleevePlacementPointY:F6}ft, {zone.SleevePlacementPointZ:F6}ft)\n" +
+                        $"  Fresh IntersectionPoint (WILL USE): ({placementPoint.X:F6}ft, {placementPoint.Y:F6}ft, {placementPoint.Z:F6}ft)\n" +
+                        $"  Will calculate fresh centerline from geometry and structural element geometry.\n");
                 }
                 // Use intersection point and calculate centerline fresh - do NOT return saved point
                 // Continue to fallback calculation below
             }
             else if (hasSleevePlacementPoint)
             {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("placement_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] 📦 USING SAVED PLACEMENT POINT (FORCE DETECTION OFF): Zone {zone.Id}\n" +
+                        $"  Saved SleevePlacementPoint: ({zone.SleevePlacementPointX:F6}ft, {zone.SleevePlacementPointY:F6}ft, {zone.SleevePlacementPointZ:F6}ft) [{zone.SleevePlacementPointX * 304.8:F1}mm, {zone.SleevePlacementPointY * 304.8:F1}mm, {zone.SleevePlacementPointZ * 304.8:F1}mm]\n");
+                }
                 // ✅ USE SAVED SLEEVE PLACEMENT POINT: Pre-calculated during refresh using bbox method (no Revit API calls needed)
                 // This enables multi-threading because it's just data access, not Revit API calls
                 // ✅ CRITICAL: Construct XYZ from saved X/Y/Z values (more reliable than computed property)
@@ -291,8 +299,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
+                        double deltaX = Math.Abs(centerlinePoint.X - placementPoint.X);
+                        double deltaY = Math.Abs(centerlinePoint.Y - placementPoint.Y);
+                        double deltaZ = Math.Abs(centerlinePoint.Z - placementPoint.Z);
                         SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ✅ HOST CENTERLINE ADJUSTED: Zone {zone.Id}, HostType={zone.StructuralElementType}, HostId={zone.StructuralElementId.IntegerValue}, Original=({placementPoint.X:F3}, {placementPoint.Y:F3}, {placementPoint.Z:F3}), Adjusted=({centerlinePoint.X:F3}, {centerlinePoint.Y:F3}, {centerlinePoint.Z:F3})\n");
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ✅ HOST CENTERLINE ADJUSTED: Zone {zone.Id}, HostType={zone.StructuralElementType}, HostId={zone.StructuralElementId.IntegerValue}\n" +
+                            $"  Input (Intersection): ({placementPoint.X:F6}ft, {placementPoint.Y:F6}ft, {placementPoint.Z:F6}ft)\n" +
+                            $"  Output (Centerline):  ({centerlinePoint.X:F6}ft, {centerlinePoint.Y:F6}ft, {centerlinePoint.Z:F6}ft)\n" +
+                            $"  Delta: ΔX={deltaX * 304.8:F1}mm, ΔY={deltaY * 304.8:F1}mm, ΔZ={deltaZ * 304.8:F1}mm\n");
                     }
                     return centerlinePoint;
                 }
