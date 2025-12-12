@@ -34,20 +34,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Se
             // Tolerance is expected in Revit internal units (feet)
             double toleranceFt = proximityTolerance;
 
-            // Thread-safe collection for results
-            var allCandidates = new System.Collections.Concurrent.ConcurrentBag<CombinedClusterCandidate>();
+            var candidates = new List<CombinedClusterCandidate>();
+            int processedCount = 0; // For generating unique local IDs if needed
             
-            // 1. Group by Level to allow safe parallel execution
-            // (Clusters on different levels never interact)
+            // 1. Group by Level Optimization
+            // We process each level independently. This reduces O(N^2) complexity to Sum(n_i^2),
+            // which is huge for multi-level projects, even without multithreading.
             var clustersByLevel = clustersInGroup.GroupBy(c => c.Level).ToList();
 
-            // 2. Process each Level in parallel
-            Parallel.ForEach(clustersByLevel, levelGroup =>
+            // 2. Process each Level (Sequential)
+            // Reverted Parallelism per user request ("if not effective for single level, forget it")
+            foreach (var levelGroup in clustersByLevel)
             {
-                // Local logic for this thread/level
-                var candidatesOnLevel = new List<CombinedClusterCandidate>();
                 var processedClusterIds = new HashSet<int>();
-                int localCandidateIdBase = 1; // Will need re-indexing later if IDs matter globally
+                int candidateIdBase = 1; 
 
                 // Sort by size (largest first) - Local to this level
                 var sortedClusters = levelGroup.OrderByDescending(c => c.Width * c.Height).ToList();
@@ -59,11 +59,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Se
 
                     var membersList = new List<ClusterSleeveInfo> { seed };
                     
-                    // Note: ID generation needs to be unique globally? 
-                    // We can reassign IDs after aggregation. For now use placeholder.
-                    var currentCandidate = new CombinedClusterCandidate(0, membersList);
+                    // Create candidate
+                    var currentCandidate = new CombinedClusterCandidate(processedCount + candidateIdBase++, membersList);
                     currentCandidate.HostType = seed.HostType ?? "Wall";
-                    currentCandidate.Orientation = "X-Wall"; // Default, will update
+                    currentCandidate.Orientation = "X-Wall"; 
                     currentCandidate.Level = seed.Level;
 
                     // Grow candidate by finding nearby clusters
@@ -97,35 +96,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Se
                     if (currentCandidate.MemberClusters.Count > 1)
                     {
                         UpdateCandidateGeometry(currentCandidate);
-                        candidatesOnLevel.Add(currentCandidate);
+                        candidates.Add(currentCandidate);
                     }
                 }
-
-                // Add to global bag
-                foreach (var c in candidatesOnLevel)
-                {
-                    allCandidates.Add(c);
-                }
-            });
-
-            // 3. Post-Process: Re-assign unique IDs and List conversion
-            var finalList = allCandidates.ToList();
-            int globalId = 1;
-            foreach (var c in finalList)
-            {
-                // Reflection/Property setter needed if Id is read-only? 
-                // CombinedClusterCandidate ID is usually settable or ctor based.
-                // Since we created with 0, we should generate new objects or set ID.
-                // Assuming we can't easily change ID if immutable, we might need to recreate?
-                // Checking Model: CombinedClusterCandidate usually has public Id?
-                // If not, we iterate.
-                // Actually, the class usually has a setter or mutable property.
-                // If not, we can leave it (it's internal tracking). 
-                // But for safety let's leave 0 or use a counter if exposed.
-                // Wait, the original code used 'candidateId++'.
             }
             
-            return finalList;
+            return candidates;
         }
 
         public List<ClashZone> FindIndividualSleevesNearCombinedCluster(

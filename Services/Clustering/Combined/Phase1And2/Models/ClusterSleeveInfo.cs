@@ -25,6 +25,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Mo
         public double SleeveWidth { get; }
         public double SleeveHeight { get; }
         public double SleeveDiameter { get; }
+        
+        // Level information for host plane
+        public double Level { get; set; } = 0.0;
 
         // Compatibility aliases for Phase3And4
         public double Width => SleeveWidth;

@@ -509,13 +509,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                                         // Specific handling for Floor/Slab if stored? 
                                         // Fallback to Host Logic below.
                                         DebugLogger.Info($"[ManualJoin] Stored Orientation '{masterZone.MepElementOrientationDirection}' not X/Y. Falling back to Host check.");
-                                        DetermineOrientationFromHost(masterId, masterTransform.BasisX, masterTransform.BasisY, doc, ref useXSpan);
+                                        CombinedSleeveViewModelHelper.DetermineOrientationFromHost(masterId, masterTransform.BasisX, masterTransform.BasisY, doc, ref useXSpan);
                                     }
                                 }
                                 else
                                 {
                                     // Priority 2: Live Host Check (Fallback)
-                                    DetermineOrientationFromHost(masterId, masterTransform.BasisX, masterTransform.BasisY, doc, ref useXSpan);
+                                    CombinedSleeveViewModelHelper.DetermineOrientationFromHost(masterId, masterTransform.BasisX, masterTransform.BasisY, doc, ref useXSpan);
                                 }
 
                                 if (useXSpan)
@@ -548,7 +548,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                                 XYZ normalVector = masterTransform.BasisY; // Default fallback (Thickness axis)
                                 
                                 // Retrieve host element from document
-                                Element hostElement = doc.GetElement(masterSleeve.HostId);
+                                Element hostElement = masterSleeve.Host;
                                 if (hostElement is Wall w)
                                 {
                                     normalVector = w.Orientation;
@@ -821,16 +821,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
         public event EventHandler CanExecuteChanged { add { CommandManager.RequerySuggested += value; } remove { CommandManager.RequerySuggested -= value; } }
         public bool CanExecute(object parameter) => _canExecute == null || _canExecute();
         public void Execute(object parameter) => _execute();
-        private void DetermineOrientationFromHost(ElementId masterId, XYZ basisX, XYZ basisY, Document doc, ref bool useXSpan)
+    }
+}
+
+namespace JSE_RevitAddin_MEP_OPENINGS.UI
+{
+    // Helper extension for DetermineOrientationFromHost
+    public static class CombinedSleeveViewModelHelper
+    {
+        public static void DetermineOrientationFromHost(ElementId masterId, XYZ basisX, XYZ basisY, Document doc, ref bool useXSpan)
         {
             var masterElement = doc.GetElement(masterId);
             Element host = (masterElement as FamilyInstance)?.Host;
-            
+
             if (host is Wall w)
             {
                 // Wall Orientation is the Normal vector.
                 XYZ normal = w.Orientation;
-                
+
                 if (Math.Abs(normal.Y) > Math.Abs(normal.X))
                 {
                     useXSpan = true; // Wall runs X
