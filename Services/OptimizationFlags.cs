@@ -340,7 +340,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Enable diagnostic mode for performance monitoring
         /// Default: false (disabled for deployment)
         /// </summary>
-        public static bool UseDiagnosticMode { get; set; } = true; // ✅ DIAGNOSTIC: Diagnostic mode ON - full logging for debugging
+        public static bool UseDiagnosticMode { get; set; } = false; // ✅ DEPLOYMENT: Diagnostic mode OFF - minimal logging for production
         
         #endregion
         
