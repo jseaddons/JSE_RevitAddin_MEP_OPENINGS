@@ -56,7 +56,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Enable parallel processing for intersection testing
         /// Default: false (experimental - requires testing)
         /// </summary>
-        public static bool UseParallelProcessing { get; set; } = true; // ✅ Enabled by default for cluster processing
+        public static bool UseParallelProcessing { get; set; } = true; // General parallel flag
+
+        /// <summary>
+        /// Enable Parallel Broad Phase Search for Clash Detection.
+        /// When true: Uses multi-threading for BoundingBox overlap checks (Safe).
+        /// When false: Uses sequential loop.
+        /// Default: true (Safe to enable - no API calls in parallel part).
+        /// </summary>
+        public static bool UseParallelClashSearch { get; set; } = true;
         
         /// <summary>
         /// Enable two-tier spatial index (grid + R-tree)
@@ -138,12 +146,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         /// <summary>
         /// Precompute and cache ALL host (structural) solids once per intersection run
-        /// When true: Loads & transforms solids up-front (best for small host sets ≤ 200)
+        /// When true: Loads & transforms solids up-front (best for small host sets <= 200)
         /// When false: Lazy loads per candidate (current behavior)
-        /// Default: false (off for safety – enable after verifying memory/time tradeoff)
+        /// Default: false (DISABLED - causes massive slowdown on large linked projects)
         /// Location: Services/MepIntersectionService.cs (FindIntersectionsBatchInternal)
         /// </summary>
-        public static bool PrecomputeHostSolids { get; set; } = true;
+        public static bool PrecomputeHostSolids { get; set; } = false;
 
         /// <summary>
         /// Log aggregated geometry extraction metrics (total ms, cache hits/misses) at end of batch

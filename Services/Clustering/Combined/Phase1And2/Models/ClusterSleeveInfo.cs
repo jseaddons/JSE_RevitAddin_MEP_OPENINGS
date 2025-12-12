@@ -28,6 +28,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Mo
         
         // Level information for host plane
         public double Level { get; set; } = 0.0;
+        
+        // Host type (Wall, Floor, etc.)
+        public string HostType { get; set; } = "Wall";
 
         // Compatibility aliases for Phase3And4
         public double Width => SleeveWidth;
