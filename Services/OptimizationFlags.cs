@@ -630,6 +630,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static int ClusterPreCalculationMaxThreads { get; set; } = 0; // 0 = auto-detect, -1 = all cores, >0 = manual limit
 
+        #region Combined Cluster Rollout (Phase 1-2)
+
+        /// <summary>
+        /// Master toggle for multi-category combined clustering rollout.
+        /// When false: All combined clustering phases are bypassed.
+        /// Default: false (opt-in while feature stabilizes).
+        /// </summary>
+        public static bool UseCombinedClustering { get; set; } = true;
+
+        /// <summary>
+        /// Enable Phase 1-2 (discovery and grouping) for combined clustering (DB/CPU-only).
+        /// Default: false (isolated rollout without impacting placement).
+        /// </summary>
+        public static bool UseCombinedClusteringPhase1And2 { get; set; } = true;
+
+        /// <summary>
+        /// Placeholder toggle for Phase 3-4 (creation and persistence) of combined clustering.
+        /// Default: false (kept off until downstream implementation is ready).
+        /// </summary>
+        public static bool UseCombinedClusteringPhase3And4 { get; set; } = true;
+
+        /// <summary>
+        /// Proximity tolerance (Revit internal units) used to merge cluster sleeves into combined candidates.
+        /// Default: 0.5 (adjust per project scale; applied symmetrically to all axes).
+        /// </summary>
+        public static double CombinedClusterProximityTolerance { get; set; } = 0.5;
+
+        /// <summary>
+        /// Max degree of parallelism for combined clustering discovery/grouping.
+        /// 0 = auto-detect (Environment.ProcessorCount - 1), -1 = all cores, >0 = explicit.
+        /// </summary>
+        public static int CombinedClusterMaxDegreeOfParallelism { get; set; } = 0;
+
+        #endregion
+
         #endregion
         
         #region SOLID Refactoring Flags (NEW - Safe Rollback Strategy)

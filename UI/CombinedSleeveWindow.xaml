@@ -1,0 +1,56 @@
+<Window x:Class="JSE_RevitAddin_MEP_OPENINGS.UI.CombinedSleeveWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Combined Sleeve Manager" Height="450" Width="400"
+        WindowStartupLocation="CenterScreen" ResizeMode="NoResize" Topmost="True">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Mode Selection -->
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,10">
+            <RadioButton Content="Automatic Mode" IsChecked="{Binding IsAutoMode}" Margin="0,0,20,0" GroupName="ModeGroup"/>
+            <RadioButton Content="Manual Mode" IsChecked="{Binding IsManualMode}" GroupName="ModeGroup"/>
+        </StackPanel>
+
+        <!-- Content Area -->
+        <Border Grid.Row="1" BorderBrush="Gray" BorderThickness="1" Padding="10">
+            <Grid>
+                <!-- AUTO MODE UI -->
+                <StackPanel Visibility="{Binding IsAutoModeVisibility}">
+                    <TextBlock Text="Select Categories to Combine:" FontWeight="Bold" Margin="0,0,0,10"/>
+                    <CheckBox Content="Ducts" IsChecked="{Binding IncludeDucts}" Margin="0,5"/>
+                    <CheckBox Content="Pipes" IsChecked="{Binding IncludePipes}" Margin="0,5"/>
+                    <CheckBox Content="Cable Trays" IsChecked="{Binding IncludeCableTrays}" Margin="0,5"/>
+                    <CheckBox Content="Conduits" IsChecked="{Binding IncludeConduits}" Margin="0,5"/>
+                    <Separator Margin="0,15"/>
+                    <Button Content="Run Auto-Combine" Command="{Binding RunAutoCommand}" Height="30" FontWeight="Bold"/>
+                </StackPanel>
+
+                <!-- MANUAL MODE UI -->
+                <StackPanel Visibility="{Binding IsManualModeVisibility}">
+                    <TextBlock Text="Manual Selection:" FontWeight="Bold" Margin="0,0,0,10"/>
+                    
+                    <Button Content="Select by Crossing" Command="{Binding SelectByCrossingCommand}" Height="25" Margin="0,0,0,5"/>
+                    <Button Content="Select Individually" Command="{Binding SelectIndividuallyCommand}" Height="25" Margin="0,0,0,10"/>
+                    
+                    <TextBlock Text="Selected Sleeves:" Margin="0,5,0,0"/>
+                    <ListBox ItemsSource="{Binding SelectedSleevesList}" Height="100" Margin="0,0,0,10"/>
+                    
+                    <Button Content="Join Selected Sleeves" Command="{Binding JoinSelectedCommand}" Height="30" FontWeight="Bold" 
+                            IsEnabled="{Binding CanJoin}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Footer / Status -->
+        <StatusBar Grid.Row="2" Margin="0,10,0,0">
+            <StatusBarItem>
+                <TextBlock Text="{Binding StatusMessage}"/>
+            </StatusBarItem>
+        </StatusBar>
+    </Grid>
+</Window>

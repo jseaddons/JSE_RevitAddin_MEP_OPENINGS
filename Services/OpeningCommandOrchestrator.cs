@@ -11,6 +11,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 
@@ -102,6 +103,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     ExecuteDisciplineWithMemoryManagement(discipline.Key, discipline.Value, showProgress);
                 }
+
+                // Feature: Combined Sleeves (Refactored to dedicated Manager)
+                // We use the new manager to keep this orchestrator clean (SRP)
+                var combinedManager = new CombinedSleeveManager(_document);
+                combinedManager.Execute(showProgress);
 
                 // ⚠️ DISABLED: Marking phase removed from OK click as it's handled by separate UI
                 //                 if (!DeploymentConfiguration.DeploymentMode)

@@ -346,6 +346,72 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public double ClusterSleeveBoundingBoxMaxZ { get; set; } = 0.0;
 
         /// <summary>
+        /// ✅ NEW: Combined Cluster Tracking (Phase 1 addition)
+        /// Instance ID of combined cluster sleeve this zone belongs to.
+        /// -1 if not part of combined cluster, 0 if cluster itself exists but not combined yet.
+        /// </summary>
+        public int CombinedClusterSleeveInstanceId { get; set; } = -1;
+
+        /// <summary>
+        /// Categories involved in this combined cluster (e.g., "Ducts,Pipes,CableTray").
+        /// Empty if not combined.
+        /// </summary>
+        public string CategoriesInCombinedCluster { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Bounding box of combined cluster sleeve (for cleanup detection).
+        /// Used to identify which zones contributed to which combined sleeve.
+        /// </summary>
+        public double CombinedClusterSleeveBoundingBoxMinX { get; set; } = 0.0;
+        public double CombinedClusterSleeveBoundingBoxMinY { get; set; } = 0.0;
+        public double CombinedClusterSleeveBoundingBoxMinZ { get; set; } = 0.0;
+        public double CombinedClusterSleeveBoundingBoxMaxX { get; set; } = 0.0;
+        public double CombinedClusterSleeveBoundingBoxMaxY { get; set; } = 0.0;
+        public double CombinedClusterSleeveBoundingBoxMaxZ { get; set; } = 0.0;
+
+        /// <summary>
+        /// Whether this zone's individual sleeve was absorbed into combined cluster.
+        /// Used to track which individual sleeves became part of combined cluster.
+        /// </summary>
+        public bool IsIncorporatedInCombinedCluster { get; set; } = false;
+
+        /// <summary>
+        /// JSON-serialized parameter snapshot aggregated from all contributing sleeves.
+        /// Format: { "Ducts": [...params...], "Pipes": [...params...], ... }
+        /// </summary>
+        public string CombinedClusterParameterSnapshot { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Combined cluster metadata populated during Phase 1-2 discovery (DB/CPU only).
+        /// </summary>
+        public int CombinedClusterInstanceId { get; set; } = -1;
+
+        /// <summary>
+        /// All categories represented in the combined cluster (comma-separated for serialization).
+        /// </summary>
+        public string CombinedClusterCategories { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Combined cluster bounding box (pre-creation, for downstream persistence).
+        /// </summary>
+        public double CombinedClusterBoundingBoxMinX { get; set; } = 0.0;
+        public double CombinedClusterBoundingBoxMinY { get; set; } = 0.0;
+        public double CombinedClusterBoundingBoxMinZ { get; set; } = 0.0;
+        public double CombinedClusterBoundingBoxMaxX { get; set; } = 0.0;
+        public double CombinedClusterBoundingBoxMaxY { get; set; } = 0.0;
+        public double CombinedClusterBoundingBoxMaxZ { get; set; } = 0.0;
+
+        /// <summary>
+        /// Indicates this clash zone has already been incorporated into a combined cluster candidate.
+        /// </summary>
+        public bool CombinedClusterIncorporated { get; set; } = false;
+
+        /// <summary>
+        /// Serialized parameter snapshot captured during combined cluster formation.
+        /// </summary>
+        public string CombinedClusterParameterSnapshotJson { get; set; } = string.Empty;
+
+        /// <summary>
         /// The placed sleeve instance ID (integer value for serialization and tracking)
         /// </summary>
         public int SleeveInstanceId { get; set; } = -1;
