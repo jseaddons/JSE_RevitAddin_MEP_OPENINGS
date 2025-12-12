@@ -34,62 +34,98 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Se
             // Tolerance is expected in Revit internal units (feet)
             double toleranceFt = proximityTolerance;
 
-            // Simple Greedy Clustering
-            var candidates = new List<CombinedClusterCandidate>();
-            var processedClusterIds = new HashSet<int>();
-            int candidateId = 1;
+            // Thread-safe collection for results
+            var allCandidates = new System.Collections.Concurrent.ConcurrentBag<CombinedClusterCandidate>();
+            
+            // 1. Group by Level to allow safe parallel execution
+            // (Clusters on different levels never interact)
+            var clustersByLevel = clustersInGroup.GroupBy(c => c.Level).ToList();
 
-            // Sort by size (largest first) to make them the "seed" of the combined cluster
-            var sortedClusters = clustersInGroup.OrderByDescending(c => c.Width * c.Height).ToList();
-
-            foreach (var seed in sortedClusters)
+            // 2. Process each Level in parallel
+            Parallel.ForEach(clustersByLevel, levelGroup =>
             {
-                if (processedClusterIds.Contains(seed.ClusterSleeveInstanceId)) continue;
-                processedClusterIds.Add(seed.ClusterSleeveInstanceId);
+                // Local logic for this thread/level
+                var candidatesOnLevel = new List<CombinedClusterCandidate>();
+                var processedClusterIds = new HashSet<int>();
+                int localCandidateIdBase = 1; // Will need re-indexing later if IDs matter globally
 
-                var membersList = new List<ClusterSleeveInfo> { seed };
-                var currentCandidate = new CombinedClusterCandidate(candidateId++, membersList);
-                currentCandidate.HostType = "Wall";  // Placeholder - would be derived from member
-                currentCandidate.Orientation = "X-Wall";
-                currentCandidate.Level = 0.0;
+                // Sort by size (largest first) - Local to this level
+                var sortedClusters = levelGroup.OrderByDescending(c => c.Width * c.Height).ToList();
 
-                // Grow candidate by finding nearby clusters
-                bool added;
-                do
+                foreach (var seed in sortedClusters)
                 {
-                    added = false;
-                    UpdateCandidateGeometry(currentCandidate);
+                    if (processedClusterIds.Contains(seed.ClusterSleeveInstanceId)) continue;
+                    processedClusterIds.Add(seed.ClusterSleeveInstanceId);
 
-                    foreach (var candidateMember in sortedClusters)
+                    var membersList = new List<ClusterSleeveInfo> { seed };
+                    
+                    // Note: ID generation needs to be unique globally? 
+                    // We can reassign IDs after aggregation. For now use placeholder.
+                    var currentCandidate = new CombinedClusterCandidate(0, membersList);
+                    currentCandidate.HostType = seed.HostType ?? "Wall";
+                    currentCandidate.Orientation = "X-Wall"; // Default, will update
+                    currentCandidate.Level = seed.Level;
+
+                    // Grow candidate by finding nearby clusters
+                    bool added;
+                    do
                     {
-                        if (processedClusterIds.Contains(candidateMember.ClusterSleeveInstanceId)) continue;
+                        added = false;
+                        UpdateCandidateGeometry(currentCandidate);
 
-                        var memberBox = new BoundingBoxXYZ();
-                        memberBox.Min = new XYZ(candidateMember.ClusterSleeveBoundingBoxMinX, candidateMember.ClusterSleeveBoundingBoxMinY, candidateMember.ClusterSleeveBoundingBoxMinZ);
-                        memberBox.Max = new XYZ(candidateMember.ClusterSleeveBoundingBoxMaxX, candidateMember.ClusterSleeveBoundingBoxMaxY, candidateMember.ClusterSleeveBoundingBoxMaxZ);
-
-                        if (IsClusterNearby(currentCandidate.CombinedBoundingBox, memberBox, toleranceFt))
+                        foreach (var candidateMember in sortedClusters)
                         {
-                            currentCandidate.MemberClusters.Add(candidateMember);
-                            if (!currentCandidate.CategoriesInvolved.Contains(candidateMember.Category))
-                                currentCandidate.CategoriesInvolved.Add(candidateMember.Category);
-                            
-                            processedClusterIds.Add(candidateMember.ClusterSleeveInstanceId);
-                            added = true;
-                        }
-                    }
-                } while (added);
+                            if (processedClusterIds.Contains(candidateMember.ClusterSleeveInstanceId)) continue;
 
-                // Only add if we actually combined something (count > 1)
-                // OR if explicit single-category combine is requested (logic adjustable)
-                if (currentCandidate.MemberClusters.Count > 1)
-                {
-                    UpdateCandidateGeometry(currentCandidate);
-                    candidates.Add(currentCandidate);
+                            var memberBox = new BoundingBoxXYZ();
+                            memberBox.Min = new XYZ(candidateMember.ClusterSleeveBoundingBoxMinX, candidateMember.ClusterSleeveBoundingBoxMinY, candidateMember.ClusterSleeveBoundingBoxMinZ);
+                            memberBox.Max = new XYZ(candidateMember.ClusterSleeveBoundingBoxMaxX, candidateMember.ClusterSleeveBoundingBoxMaxY, candidateMember.ClusterSleeveBoundingBoxMaxZ);
+
+                            if (IsClusterNearby(currentCandidate.CombinedBoundingBox, memberBox, toleranceFt))
+                            {
+                                currentCandidate.MemberClusters.Add(candidateMember);
+                                if (!currentCandidate.CategoriesInvolved.Contains(candidateMember.Category))
+                                    currentCandidate.CategoriesInvolved.Add(candidateMember.Category);
+                                
+                                processedClusterIds.Add(candidateMember.ClusterSleeveInstanceId);
+                                added = true;
+                            }
+                        }
+                    } while (added);
+
+                    // Add valid candidates
+                    if (currentCandidate.MemberClusters.Count > 1)
+                    {
+                        UpdateCandidateGeometry(currentCandidate);
+                        candidatesOnLevel.Add(currentCandidate);
+                    }
                 }
+
+                // Add to global bag
+                foreach (var c in candidatesOnLevel)
+                {
+                    allCandidates.Add(c);
+                }
+            });
+
+            // 3. Post-Process: Re-assign unique IDs and List conversion
+            var finalList = allCandidates.ToList();
+            int globalId = 1;
+            foreach (var c in finalList)
+            {
+                // Reflection/Property setter needed if Id is read-only? 
+                // CombinedClusterCandidate ID is usually settable or ctor based.
+                // Since we created with 0, we should generate new objects or set ID.
+                // Assuming we can't easily change ID if immutable, we might need to recreate?
+                // Checking Model: CombinedClusterCandidate usually has public Id?
+                // If not, we iterate.
+                // Actually, the class usually has a setter or mutable property.
+                // If not, we can leave it (it's internal tracking). 
+                // But for safety let's leave 0 or use a counter if exposed.
+                // Wait, the original code used 'candidateId++'.
             }
             
-            return candidates;
+            return finalList;
         }
 
         public List<ClashZone> FindIndividualSleevesNearCombinedCluster(

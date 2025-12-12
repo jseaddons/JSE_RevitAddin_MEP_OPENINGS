@@ -98,6 +98,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// This is called at the start of a refresh cycle to mark all existing zones as "stale" until re-detected.
         /// </summary>
         int ResetIsCurrentClashFlag(List<string> filterNames, List<string> categories);
+
+        /// <summary>
+        /// Retrieve ClashZone objects associated with the given Revit Sleeve Instance IDs.
+        /// This checks both individual SleeveInstanceId and ClusterSleeveInstanceId.
+        /// </summary>
+        List<ClashZone> GetClashZonesBySleeveIds(IEnumerable<int> sleeveInstanceIds);
     }
 }
 

@@ -6483,6 +6483,62 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         }
 
 
+        /// <summary>
+        /// Retrieve ClashZone objects associated with the given Revit Sleeve Instance IDs.
+        /// This checks both individual SleeveInstanceId and ClusterSleeveInstanceId.
+        /// </summary>
+        public List<ClashZone> GetClashZonesBySleeveIds(IEnumerable<int> sleeveInstanceIds)
+        {
+            var ids = sleeveInstanceIds?.Where(id => id > 0).Distinct().ToList();
+            if (ids == null || ids.Count == 0) return new List<ClashZone>();
+
+            var zones = new List<ClashZone>();
+            
+            try
+            {
+                var idString = string.Join(",", ids);
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    // Query for both Individual IDs and Cluster IDs (ClusterSleeveInstanceId stores the ID of the cluster family instance)
+                    // Also check 'AfterClusterSleevePlacedSleeveInstanceId' which is used for single-zone clusters
+                    cmd.CommandText = $@"
+                        SELECT * 
+                        FROM ClashZones 
+                        WHERE SleeveInstanceId IN ({idString}) 
+                           OR ClusterSleeveInstanceId IN ({idString})
+                           OR AfterClusterSleeveId IN ({idString})";
+                    
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            var zone = MapClashZone(reader);
+                            if (zone != null)
+                            {
+                                zones.Add(zone);
+                            }
+                        }
+                    }
+                }
+                
+                // IMPORTANT: Populate parameters if needed? 
+                // Currently CombinedClusterFormationService works on geometry fields (ClusterSleeveBoundingBoxMinX etc)
+                // which MapClashZone should populate.
+                // We do NOT need full Parameter Maps for the geometry calculation, 
+                // but might need them if we want to preserve parameters?
+                // For now, let's assume geometry is the priority.
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] Error querying by sleeve IDs: {ex.Message}");
+                }
+            }
+
+            return zones;
+        }
+
     }
 }
 

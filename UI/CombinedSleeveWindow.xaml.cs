@@ -9,6 +9,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
         {
             InitializeComponent();
             DataContext = viewModel;
+            
+            // Wire up visibility actions
+            viewModel.HideRequest = () => this.Hide();
+            viewModel.ShowRequest = () => this.Show();
         }
     }
 }
