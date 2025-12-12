@@ -35,7 +35,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Se
 
             paramsToSet["Comments"] = $"Combined Cluster: {cats} ({count} items)";
             paramsToSet["MEP_Category"] = "Multi-Service"; 
-            paramsToSet["MEP_System_Abbreviation"] = "CMB";
+            // Discipline prefix is fixed to MEP for combined sleeves
+            paramsToSet["MEP_System_Abbreviation"] = "MEP";
             
             // Serialize aggregated parameters (optional, if JSON is available)
             // var snapshot = combinedCluster.ParameterSnapshots.FlattenDistinct();
