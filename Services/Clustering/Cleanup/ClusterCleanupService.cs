@@ -20,7 +20,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
         /// ✅ CRITICAL FIX: Accept deferred parameters dictionary to read correct dimensions when batching is enabled.
         /// This prevents cleanup from using stale parameter values from Revit before flush/regeneration.
         /// </summary>
-        public int CleanupSleevesWithinClusters(Document doc, List<FamilyInstance> placedClusters, Dictionary<ElementId, Dictionary<string, object>> deferredParameters = null)
+        public int CleanupSleevesWithinClusters(Document doc, List<FamilyInstance> placedClusters, Dictionary<ElementId, Dictionary<string, object>> deferredParameters = null, string targetCategory = null)
         {
             int deletedCount = 0;
             try
@@ -33,33 +33,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                 }
 
                 SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Starting cleanup with {placedClusters.Count} placed clusters\n");
+                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Starting cleanup with {placedClusters.Count} placed clusters (TargetCategory={targetCategory ?? "NONE"})\n");
 
-                // ✅ CRITICAL PROTECTION: Build protection set from FRESH elements, not stale references
-                // Refresh each cluster element to ensure it still exists before adding to protection set
+                // ✅ CRITICAL PROTECTION: Build protection set from FRESH elements
                 var clusterSleeveIds = new HashSet<int>();
                 foreach (var cluster in placedClusters)
                 {
                     if (cluster == null) continue;
                     int clusterId = cluster.Id.IntegerValue;
                     
-                    // ✅ CRITICAL: Refresh element to ensure it still exists
                     var freshCluster = doc.GetElement(cluster.Id) as FamilyInstance;
                     if (freshCluster != null && freshCluster.IsValidObject)
                     {
                         clusterSleeveIds.Add(clusterId);
                     }
-                    else
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ CLEANUP: Cluster sleeve {clusterId} from placedClusters list is NULL or INVALID - NOT adding to protection set (may have been deleted!)\n");
-                    }
                 }
-                SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Protection set contains {clusterSleeveIds.Count} VALID cluster sleeve IDs: {string.Join(", ", clusterSleeveIds)}\n");
 
-                // Collect all potential sleeve family instances
-                var allSleeves = new FilteredElementCollector(doc)
+                // Collect all potential sleeve family instances first (coarse filter)
+                var potentialSleeves = new FilteredElementCollector(doc)
                     .OfClass(typeof(FamilyInstance))
                     .Cast<FamilyInstance>()
                     .Where(s =>
@@ -67,46 +58,123 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                         string fam = s.Symbol?.FamilyName ?? string.Empty;
                         bool keyword = fam.Contains("Sleeve", StringComparison.OrdinalIgnoreCase) || fam.Contains("Opening", StringComparison.OrdinalIgnoreCase);
                         bool known = fam.Contains("CircularOpening", StringComparison.OrdinalIgnoreCase) || fam.Contains("RectangularOpening", StringComparison.OrdinalIgnoreCase);
-                        return (s.Category?.Name == "Generic Models" || 
-                                s.Category?.Name == "Structural Connections" ||
-                                s.Category?.Name == "Duct Accessories" ||
-                                s.Category?.Name == "Pipe Accessories" ||
-                                s.Category?.Name == "Mechanical Equipment") && (keyword || known);
+                        
+                        string catName = s.Category?.Name ?? "";
+                        bool validCategory = catName == "Generic Models" || 
+                                             catName == "Structural Connections" || 
+                                             catName == "Duct Accessories" ||
+                                             catName == "Pipe Accessories" ||
+                                             catName == "Mechanical Equipment";
+                                             
+                        return validCategory && (keyword || known);
                     })
                     .ToList();
+                    
+                // ✅ DB LOOKUP: Get MEP Categories using "dump once, use many times" principle
+                // Querying DB for all potential sleeves to get their source-of-truth category
+                var sleeveCategories = new Dictionary<int, string>();
+                try
+                {
+                    using (var context = new SleeveDbContext(doc))
+                    {
+                        var repo = new ClashZoneRepository(context, msg => SafeFileLogger.SafeAppendText("cluster_debug.log", $"[Repo] {msg}\n"));
+                        var ids = potentialSleeves.Select(s => s.Id.IntegerValue).ToList();
+                        sleeveCategories = repo.GetMepCategoriesForSleeveIds(ids);
+                        
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Retrieved {sleeveCategories.Count} category records from DB for {ids.Count} potential sleeves\n");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ CLEANUP: Failed to read categories from DB: {ex.Message} - Falling back to element parameters\n");
+                }
+
+                // Filter sleeves using DB category (primary) or element parameter (fallback)
+                var allSleeves = potentialSleeves.Where(s =>
+                {
+                    // ✅ CATEGORY SPECIFIC FILTERING TO PREVENT CROSS-CATEGORY DELETION
+                    bool isCrossCategory = false;
+                    string catName = s.Category?.Name ?? "";
+                    string fam = s.Symbol?.FamilyName ?? "";
+                    
+                    // 1. Check "MEP Category" - Priority: DB -> Parameter -> Empty
+                    string mepCatValue = "";
+                    
+                    if (sleeveCategories.ContainsKey(s.Id.IntegerValue))
+                    {
+                        mepCatValue = sleeveCategories[s.Id.IntegerValue];
+                    }
+                    else
+                    {
+                        // Fallback to parameter if not in DB
+                        var mepCatParam = s.LookupParameter("MEP Category");
+                        mepCatValue = mepCatParam?.AsString() ?? "";
+                    }
+
+                    if (!string.IsNullOrEmpty(targetCategory))
+                    {
+                        // If sleeve has explicit MEP Category, check compatibility directly
+                        if (!string.IsNullOrEmpty(mepCatValue))
+                        {
+                            // If I am placing "Pipes" and sleeve says "Ducts" -> Cross Category (Protect)
+                            if (targetCategory.Contains("Pipe") && mepCatValue.Contains("Duct")) isCrossCategory = true;
+                            if (targetCategory.Contains("Duct") && mepCatValue.Contains("Pipe")) isCrossCategory = true;
+                            if (targetCategory.Contains("Tray") && !mepCatValue.Contains("Tray")) isCrossCategory = true;
+                        }
+                        else 
+                        {
+                            // Fallback: Check Revit Category & Family Name
+                            if (targetCategory.Contains("Pipe"))
+                            {
+                                if (catName.Contains("Duct") || fam.Contains("Damper", StringComparison.OrdinalIgnoreCase)) isCrossCategory = true;
+                            }
+                            else if (targetCategory.Contains("Duct"))
+                            {
+                                if (catName.Contains("Pipe") || fam.Contains("Round", StringComparison.OrdinalIgnoreCase)) 
+                                { 
+                                    if (catName.Contains("Pipe")) isCrossCategory = true;
+                                }
+                            }
+                        }
+                    }
+
+                    bool matched = !isCrossCategory;
+
+                    if (matched)
+                    {
+                         // Log matched candidates temporarily
+                         SafeFileLogger.SafeAppendText("cluster_debug_verbose.log", 
+                             $"[{DateTime.Now:HH:mm:ss}] 🗑 CANDIDATE: ID={s.Id}, Cat={catName}, Fam={fam}, MepCat='{mepCatValue}' (Source={(sleeveCategories.ContainsKey(s.Id.IntegerValue) ? "DB" : "Param")}), Target={targetCategory ?? "NULL"}\n");
+                    }
+                    else if (isCrossCategory)
+                    {
+                         SafeFileLogger.SafeAppendText("cluster_debug_verbose.log", 
+                             $"[{DateTime.Now:HH:mm:ss}] 🛡 PROTECTED: ID={s.Id}, Cat={catName}, Fam={fam}, MepCat='{mepCatValue}' (Source={(sleeveCategories.ContainsKey(s.Id.IntegerValue) ? "DB" : "Param")}) (Cross-Category with {targetCategory})\n");
+                    }
+
+                    return matched;
+                })
+                .ToList();
 
                 SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Found {allSleeves.Count} total sleeves in document\n");
+                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Found {allSleeves.Count} potential sleeves (Filtered for Category Compatibility)\n");
 
                 var individualSleeves = new List<FamilyInstance>();
                 foreach (var s in allSleeves)
                 {
                     int id = s.Id.IntegerValue;
-                    if (clusterSleeveIds.Contains(id))
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Sleeve {id} is in protection set (cluster sleeve) - SKIPPING\n");
-                        continue; // protected
-                    }
+                    if (clusterSleeveIds.Contains(id)) continue; 
+                    
                     var clusterParam = s.LookupParameter("Cluster Sleeve Instance ID");
                     var sleeveInstanceParam = s.LookupParameter("Sleeve Instance ID");
                     int clusterValue = clusterParam?.AsInteger() ?? -1;
                     int sleeveInstanceValue = sleeveInstanceParam?.AsInteger() ?? -999;
-                    bool isClusterSleeve = (sleeveInstanceValue == -1) || (clusterValue > 0 && clusterValue == id);
-                    if (isClusterSleeve)
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Sleeve {id} is identified as cluster sleeve (ClusterParam={clusterValue}, SleeveInstanceId={sleeveInstanceValue}) - SKIPPING\n");
-                        continue;
-                    }
-                    // ✅ DIAGNOSTIC: Log individual sleeve parameters for debugging
-                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Individual sleeve {id} added to check list - ClusterParam={clusterValue}, SleeveInstanceId={sleeveInstanceValue}\n");
+                    if ((sleeveInstanceValue == -1) || (clusterValue > 0 && clusterValue == id)) continue;
+
                     individualSleeves.Add(s);
                 }
-
-                SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Found {individualSleeves.Count} individual sleeves to check (IDs: {string.Join(", ", individualSleeves.Select(s => s.Id.IntegerValue))})\n");
 
                 if (individualSleeves.Count == 0) return 0;
 

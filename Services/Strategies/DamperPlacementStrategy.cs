@@ -246,78 +246,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                     SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-CLEARANCE] Zone {clashZone.Id}: MEP={mepClearanceMm}mm, Other={otherClearanceMm}mm\n");
                 }
                 
-                // ✅ REQUIREMENT: Branch based on type name and family name
-                // 1. Type name contains "Standard" → same clearance all sides (always)
-                // 2. Type name contains MSFD, MSD, or MD (non-standard) → check FAMILY name for "Motorized/Motorised" (case-insensitive, both spellings)
-                //    - If family name has Motorized/Motorised → MEP connector side logic
-                //    - If family name does NOT have Motorized/Motorised → symmetric clearance
-                // ✅ CRITICAL FIX: Use pre-stored type name and family name from ClashZone (avoids linked file access)
-                // These are stored during damper processing, so we don't need to retrieve the element again
-                string damperTypeName = clashZone.MepElementTypeName ?? "";
-                string damperFamilyName = clashZone.MepElementFamilyName ?? "";
-                string typeNameUpper = damperTypeName.Trim().ToUpperInvariant();
-                string familyNameUpper = damperFamilyName.Trim().ToUpperInvariant();
-                
-                // ✅ FALLBACK: If TypeName is empty but HasMepConnector is true, assume non-standard with Motorized
-                // This handles cases where old ClashZones don't have TypeName/FamilyName stored yet
-                // If connector was detected and saved, it means the damper is non-standard with Motorized
-                bool hasConnectorData = clashZone.HasMepConnector && !string.IsNullOrEmpty(clashZone.DamperConnectorSide);
-                bool useFallbackLogic = string.IsNullOrEmpty(damperTypeName) && hasConnectorData;
-                
-                // Check type name for "Standard"
-                bool isStandard = typeNameUpper.Contains("STANDARD");
-                
-                // Check type name for non-standard types (MSFD, MSD, MD)
-                // ✅ FALLBACK: If TypeName is empty but connector exists, assume non-standard
-                bool isNonStandard = typeNameUpper.Contains("MSFD") || typeNameUpper.Contains("MSD") || typeNameUpper.Contains("MD") || useFallbackLogic;
-                
-                // ✅ For non-standard: check FAMILY name for Motorized/Motorised (case-insensitive, handles both Z and S spellings)
-                // ✅ FALLBACK: If FamilyName is empty but connector exists, assume Motorized
-                bool familyHasMotorized = false;
-                if (isNonStandard)
-                {
-                    // Case-insensitive check for both spellings (Z and S)
-                    familyHasMotorized = familyNameUpper.Contains("MOTORIZED") || familyNameUpper.Contains("MOTORISED") || useFallbackLogic;
-                }
-                
-                // ✅ ALWAYS LOG: Log branching decision for diagnostics (not just when EnableDebugLogging is true)
+                // ✅ SIMPLIFIED LOGIC: Check if damper has MEP connector
+                // If HasMepConnector = true → use asymmetric clearance based on DamperConnectorSide
+                // If HasMepConnector = false → use symmetric clearance
+
+                // Always log branching decision for diagnostics
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    DebugLogger.Info($"[DamperStrategy] Zone {clashZone.Id}: TypeName='{damperTypeName}', FamilyName='{damperFamilyName}', IsStandard={isStandard}, IsNonStandard={isNonStandard}, FamilyHasMotorized={familyHasMotorized}");
-                    SafeFileLogger.SafeAppendText("damper_placement_trace.log", 
+                    DebugLogger.Info($"[DamperStrategy] Zone {clashZone.Id}: HasMepConnector={clashZone.HasMepConnector}, DamperConnectorSide='{clashZone.DamperConnectorSide}'");
+                    SafeFileLogger.SafeAppendText("damper_placement_trace.log",
                         $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-BRANCHING] Zone {clashZone.Id}: " +
-                        $"TypeName='{damperTypeName}', FamilyName='{damperFamilyName}', " +
-                        $"IsStandard={isStandard}, IsNonStandard={isNonStandard}, FamilyHasMotorized={familyHasMotorized}, " +
                         $"HasMepConnector={clashZone.HasMepConnector}, DamperConnectorSide='{clashZone.DamperConnectorSide}'\n");
                 }
-                
-                // ✅ REQUIREMENT: 
-                // "Standard" (type name) → same clearance all sides (always, even if connector exists)
-                // Non-standard (MSFD/MSD/MD in type name) + Motorized/Motorised in FAMILY name → MEP connector side logic
-                // Only apply MEP connector side logic if non-standard AND family has Motorized/Motorised AND connector exists
-                
-                // ✅ ALWAYS LOG: Log branching decision for diagnostics
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    bool willUseMepPath = isNonStandard && familyHasMotorized && clashZone.HasMepConnector && !string.IsNullOrEmpty(clashZone.DamperConnectorSide);
-                    string branchReason = willUseMepPath ? "MEP CONNECTOR PATH" : 
-                        (isStandard ? "STANDARD PATH (type name contains Standard)" :
-                        (!isNonStandard ? "SYMMETRIC PATH (not MSFD/MSD/MD)" :
-                        (!familyHasMotorized ? "SYMMETRIC PATH (family name does not contain Motorized/Motorised)" :
-                        (!clashZone.HasMepConnector ? "SYMMETRIC PATH (HasMepConnector=false)" :
-                        (string.IsNullOrEmpty(clashZone.DamperConnectorSide) ? "SYMMETRIC PATH (DamperConnectorSide is empty)" : "SYMMETRIC PATH (unknown reason)")))));
-                    
-                    DebugLogger.Info($"[DamperStrategy] Zone {clashZone.Id}: BRANCHING DECISION → {branchReason}");
-                    SafeFileLogger.SafeAppendText("damper_placement_trace.log", 
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-BRANCH-DECISION] Zone {clashZone.Id}: " +
-                        $"Branch={branchReason}, " +
-                        $"IsStandard={isStandard}, IsNonStandard={isNonStandard}, " +
-                        $"FamilyHasMotorized={familyHasMotorized}, " +
-                        $"HasMepConnector={clashZone.HasMepConnector}, " +
-                        $"DamperConnectorSide='{clashZone.DamperConnectorSide}'\n");
-                }
-                
-                if (isNonStandard && familyHasMotorized && clashZone.HasMepConnector && !string.IsNullOrEmpty(clashZone.DamperConnectorSide))
+
+                string branchReason = clashZone.HasMepConnector && !string.IsNullOrEmpty(clashZone.DamperConnectorSide)
+                    ? "MEP CONNECTOR PATH (asymmetric clearance)"
+                    : "SYMMETRIC PATH (no MEP connector)";
+
+                DebugLogger.Info($"[DamperStrategy] Zone {clashZone.Id}: BRANCHING DECISION → {branchReason}");
+                SafeFileLogger.SafeAppendText("damper_placement_trace.log",
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-BRANCH-DECISION] Zone {clashZone.Id}: " +
+                    $"Branch={branchReason}, HasMepConnector={clashZone.HasMepConnector}, " +
+                    $"DamperConnectorSide='{clashZone.DamperConnectorSide}'\n");
+
+                if (clashZone.HasMepConnector && !string.IsNullOrEmpty(clashZone.DamperConnectorSide))
                 {
                     // MSFD Damper: Asymmetric clearance
                     double mepSideClearance = mepClearance;
@@ -664,15 +616,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                     double finalWidth = finalW;
                     double finalHeight = finalH;
                     
-                    // ✅ COMPREHENSIVE LOGGING: Always log clearance breakdown for Standard or no-connector case
+                    // ✅ COMPREHENSIVE LOGGING: Always log clearance breakdown for symmetric clearance case
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        string reason = isStandard ? "Standard damper (always symmetric)" : 
-                                       (isNonStandard && familyHasMotorized ? "Non-standard with Motorized but no connector (fallback)" :
-                                       (isNonStandard ? "Non-standard without Motorized in family name" : "No connector detected"));
                         SafeFileLogger.SafeAppendText("clearance_calculation_trace.log",
                             $"[{DateTime.Now:HH:mm:ss.fff}] [DAMPER-CLEARANCE-BREAKDOWN] Zone {clashZone.Id}, " +
-                            $"TypeName='{damperTypeName}', Reason={reason}, " +
                             $"HasConnector=False, " +
                             $"SymmetricClearance={otherClearance * 304.8:F1}mm (all sides), " +
                             $"WidthTotal={((otherClearance * 2) * 304.8):F1}mm, HeightTotal={((otherClearance * 2) * 304.8):F1}mm, " +

@@ -1,4 +1,24 @@
 # TRANSACTION MANAGEMENT IMPLEMENTATION PLAN
+
+## WPF/Revit Transaction Safety Checklist
+
+When implementing transaction management and UI interactions in Revit add-ins, always follow these best practices to ensure stability and prevent crashes:
+
+- [ ] **Use ExternalEvent for all Revit API calls from WPF**
+    - Never call the Revit API directly from WPF event handlers or background threads.
+- [ ] **Close or hide all modal dialogs before calling ExternalEvent.Raise()**
+    - Modal dialogs block the Revit UI thread and can cause deadlocks or crashes if you raise an external event while they are open.
+- [ ] **Use Dispatcher.BeginInvoke to defer ExternalEvent.Raise()**
+    - This ensures the UI is fully closed before the event is raised, preventing re-entrancy issues.
+- [ ] **Never use async/await for Revit API calls unless you fully marshal back to the Revit context**
+    - Async code can easily break Revit’s single-threaded model.
+- [ ] **Wrap all transaction code in try/catch and always call Transaction.Commit() or Transaction.RollBack()**
+    - Uncommitted or abandoned transactions can leave Revit in an unstable state.
+- [ ] **Avoid long-running operations in the UI thread**
+    - Use background threads for heavy computation, but marshal results back to the UI and then to the Revit API context via ExternalEvent.
+
+**Summary:**
+Your implementation should always close/hide modal dialogs before raising external events, marshal all Revit API calls through ExternalEvent, and ensure all transaction code is exception-safe and properly committed or rolled back.
 ## Step-by-Step Code Changes for Our Project
 
 This document outlines **exact code changes** needed to implement the bulletproof transaction management pattern.

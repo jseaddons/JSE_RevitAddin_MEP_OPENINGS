@@ -2,93 +2,102 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
-using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Interfaces;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Services
 {
-    /// <summary>
-    /// Service responsible for persisting updates for combined clusters.
-    /// Phase 4 Implementation.
-    /// </summary>
-    public class CombinedClusterPersistenceService
+    public class CombinedClusterPersistenceService : ICombinedClusterPersistence
     {
-        private readonly IClashZoneRepository _clashZoneRepository;
+        private readonly IClashZoneRepository _repository;
 
-        public CombinedClusterPersistenceService(IClashZoneRepository clashZoneRepository)
+        public CombinedClusterPersistenceService(IClashZoneRepository repository)
         {
-            _clashZoneRepository = clashZoneRepository ?? throw new ArgumentNullException(nameof(clashZoneRepository));
+            _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         }
 
-        public void PersistCombinedCluster(
-            CombinedClusterCandidate combinedCluster, 
-            int combinedSleeveInstanceId)
+        public List<ClashZone> QueueDatabaseUpdates(CombinedClusterCandidate combinedCluster, int combinedSleeveInstanceId)
         {
-            if (combinedCluster == null || combinedCluster.MemberClusters.Count == 0) return;
+            if (combinedCluster == null || combinedCluster.MemberClusters.Count == 0)
+                return new List<ClashZone>();
 
-            string categories = string.Join(",", combinedCluster.CategoriesInvolved.OrderBy(c => c));
-            string jsonParams = "{}"; // Serialize logic if needed
+            var allZoneGuids = combinedCluster.MemberClusters
+                .SelectMany(c => c.ClashZoneIds)
+                .Distinct()
+                .ToList();
 
-            // Collect all ClashZone IDs involved in this combined cluster
-            // Note: Use SourceSleeveInstanceId (which is likely the original SleeveInstanceId or MepElementId depending on mapping)
-            // Or use ClashZoneId (GUID) if the repo supports it.
-            // Based on ClusterSleeveInfo, we have: ClashZoneId (GUID).
+            if (allZoneGuids.Count == 0)
+                return new List<ClashZone>();
 
-            var clashZoneGuids = combinedCluster.MemberClusters.Select(m => m.ClashZoneId).ToList();
-
-            // We need to fetch these zones to update them.
-            // Assumption: IClashZoneRepository has a method to get by GUIDs or we iterate.
-            // If not, we rely on ClusterSleeveInfo properties which mirror ClashZone
-            // and we might need to craft an update strictly by ID.
-            
-            // To be safe and performant, we'll try to update using basic properties if repository allows batching
-            // Otherwise we accept the limitation of one-by-one or fetch-all.
-            
-            // Workaround since we don't know exact Repo API for Guids:
-            // Group by category to match typical repository usage if needed, or simply loop.
-            
-            // Loading all potential zones first is safer to ensure we are updating latest state
-            // But efficiently we might not be able to load by GUID list easily.
-            // Let's assume we can fetch by Filter/Category for the broad set, OR use the fact that we just processed them.
-            
-            // SIMPLIFIED PERSISTENCE FOR HARMONY:
-            // Since we can't easily fetch by GUID list without likely API change, 
-            // we will simulate the update by creating ClashZone objects with just the ID and the changed fields,
-            // relying on the Repo to "Update" based on ID.
-            
+            var existingZones = _repository.GetClashZonesByGuids(allZoneGuids);
+            var zoneMap = existingZones.ToDictionary(z => z.Id, z => z);
             var zonesToUpdate = new List<ClashZone>();
 
-            foreach (var member in combinedCluster.MemberClusters)
+            foreach (var clusterSleeveInfo in combinedCluster.MemberClusters)
             {
-                var zone = new ClashZone
+                foreach (var guid in clusterSleeveInfo.ClashZoneIds)
                 {
-                    Id = member.ClashZoneId,
-                    SleeveInstanceId = member.SourceSleeveInstanceId, 
-                    MepElementCategory = member.Category,
-                    
-                    // Update New Fields
-                    CombinedClusterSleeveInstanceId = combinedSleeveInstanceId,
-                    CategoriesInCombinedCluster = categories,
-                    IsIncorporatedInCombinedCluster = true,
-                    CombinedClusterParameterSnapshot = jsonParams,
-                    
-                    CombinedClusterSleeveBoundingBoxMinX = combinedCluster.CombinedBoundingBoxMinX,
-                    CombinedClusterSleeveBoundingBoxMinY = combinedCluster.CombinedBoundingBoxMinY,
-                    CombinedClusterSleeveBoundingBoxMinZ = combinedCluster.CombinedBoundingBoxMinZ,
-                    CombinedClusterSleeveBoundingBoxMaxX = combinedCluster.CombinedBoundingBoxMaxX,
-                    CombinedClusterSleeveBoundingBoxMaxY = combinedCluster.CombinedBoundingBoxMaxY,
-                    CombinedClusterSleeveBoundingBoxMaxZ = combinedCluster.CombinedBoundingBoxMaxZ
-                };
-                
-                zonesToUpdate.Add(zone);
+                    if (zoneMap.TryGetValue(guid, out var clashZone))
+                    {
+                        clashZone.IsClusterResolved = true;
+                        clashZone.ClusterSleeveInstanceId = combinedSleeveInstanceId;
+                        zonesToUpdate.Add(clashZone);
+                    }
+                }
             }
 
-            // Batch update via repository
-            // Group by category as typically Repositories are sharded or optimized by category
-            foreach (var group in zonesToUpdate.GroupBy(z => z.MepElementCategory))
+            return zonesToUpdate;
+        }
+
+        public void UpdateXmlWithCombinedClusterInfo(CombinedClusterCandidate combinedCluster, int combinedSleeveInstanceId)
+        {
+            // Stub: Implement XML update logic as needed for your application
+            // This is a placeholder to satisfy the interface
+        }
+
+        public void PersistCombinedCluster(CombinedClusterCandidate combinedCluster, int combinedSleeveInstanceId)
+        {
+            if (combinedCluster == null) return;
+            if (combinedCluster.MemberClusters.Count == 0) return;
+
+            // ✅ CRITICAL FIX: To prevent overwriting existing critical data (MepParameterValuesJson, etc.),
+            // first retrieve the full existing ClashZone objects from the database.
+            // 1. Collect GUIDs
+            var allZoneGuids = combinedCluster.MemberClusters
+                .SelectMany(c => c.ClashZoneIds)
+                .Distinct()
+                .ToList();
+
+            if (allZoneGuids.Count == 0) return;
+
+            // 2. Fetch full objects
+            var existingZones = _repository.GetClashZonesByGuids(allZoneGuids);
+            // IClashZoneRepository now has GetClashZonesByGuids
+            var zoneMap = existingZones.ToDictionary(z => z.Id, z => z);
+
+            // 3. Prepare updates
+            var zonesToUpdate = new List<ClashZone>();
+
+            foreach (var clusterSleeveInfo in combinedCluster.MemberClusters)
             {
-                // Passing empty filter name if not tracked here, or pass "Combined"
-                _clashZoneRepository.InsertOrUpdateClashZones(group.ToList(), "CombinedUpdate", group.Key);
+                foreach (var guid in clusterSleeveInfo.ClashZoneIds)
+                {
+                    if (zoneMap.TryGetValue(guid, out var clashZone))
+                    {
+                        // Update relevant fields
+                        clashZone.IsClusterResolved = true;
+                        clashZone.ClusterSleeveInstanceId = combinedSleeveInstanceId;
+                        zonesToUpdate.Add(clashZone);
+                    }
+                }
+            }
+
+            // 4. Batch Persist
+            if (zonesToUpdate.Count > 0)
+            {
+                var category = combinedCluster.CategoriesInvolved.FirstOrDefault() ?? "Unknown";
+                _repository.InsertOrUpdateClashZones(zonesToUpdate, "Combined", category);
             }
         }
     }

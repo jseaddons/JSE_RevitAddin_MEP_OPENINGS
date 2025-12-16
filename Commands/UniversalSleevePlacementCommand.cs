@@ -104,6 +104,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         {
             try
             {
+                // ✅ CRITICAL FIX: Reset Logger Context to prevent bleeding into 'combinesleeveplacer.log'
+                // If CombinedSleeveViewModel ran previously, the static logger might still point to its log file.
+                DebugLogger.SetServiceContext($"UniversalSleeve_{_category}");
+                
+                // Explicitly set the log file based on category
+                if (_category.Contains("Duct") && !_category.Contains("Accessory"))
+                {
+                    DebugLogger.SetDuctLogFile(); 
+                }
+                else if (_category.Contains("Cable"))
+                {
+                    DebugLogger.SetCableTrayLogFile();
+                }
+                else if (_category.Contains("Accessory") || _category.Contains("Damper"))
+                {
+                    DebugLogger.SetDamperLogFile();
+                }
+                else
+                {
+                    // For Pipes and others, use a standardized name
+                    string normCat = MepCategoryConstants.Normalize(_category);
+                    DebugLogger.InitLogFile($"{normCat}sleeveplacer");
+                }
+
                 // 🚨 DEBUG: Direct file logging to bypass DebugLogger issues
                 DebugLogger.Info($"[{DateTime.Now}] 🚨 UniversalSleevePlacementCommand.Execute STARTED for category '{_category}' with {_clashZones.Count} clash zones\n");
                 

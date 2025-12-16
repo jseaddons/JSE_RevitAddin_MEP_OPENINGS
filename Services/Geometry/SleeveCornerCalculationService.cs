@@ -5,11 +5,20 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Geometry
 {
     /// <summary>
+    /// ✅ SOLID COMPLIANCE (SRP): Interface for sleeve corner calculation service.
+    /// </summary>
+    public interface ISleeveCornerCalculationService
+    {
+        (XYZ corner1, XYZ corner2, XYZ corner3, XYZ corner4)? CalculateCorners(XYZ placementPoint, double width, double height, double rotationAngleRad);
+        (XYZ corner1, XYZ corner2, XYZ corner3, XYZ corner4)? CalculateCornersFromZone(ClashZone zone, double width, double height);
+    }
+
+    /// <summary>
     /// ✅ SOLID COMPLIANCE (SRP): Service responsible for calculating sleeve corner coordinates.
     /// Pure mathematical operations - no database or Revit API dependencies.
     /// Can be called in parallel safely.
     /// </summary>
-    public class SleeveCornerCalculationService
+    public class SleeveCornerCalculationService : ISleeveCornerCalculationService
     {
         /// <summary>
         /// ✅ SRP: Calculates 4 corner coordinates in WORLD space from placement point, dimensions, and rotation.

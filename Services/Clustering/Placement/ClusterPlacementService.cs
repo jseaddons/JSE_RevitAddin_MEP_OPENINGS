@@ -547,7 +547,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                         // Individual sleeves use MepElementRotationAngle directly for cable trays (no 90° offset)
                         // Individual sleeves use MepElementRotationAngle directly for ducts (no 90° offset)
                         // Both cable trays and ducts should skip the 90° offset to match individual sleeve behavior
-                        bool skipOffset = isCableTrayCategory || isDuctCategory; // Cable trays and ducts: no offset (matches individual sleeves)
+                                                bool skipOffset = isCableTrayCategory || isDuctCategory || string.Equals(targetCategory, "Pipes", StringComparison.OrdinalIgnoreCase); // Cable trays and ducts: no offset (matches individual sleeves)
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             string categoryBehavior = skipOffset ? $"{targetCategory.ToUpper()} (matches individual: no offset)" : "PIPE (cluster: +90° offset)";

@@ -71,7 +71,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Re
             // Candidates: Placed (Resolved) but NOT Clustered (IsClusterResolved = false)
             // We search across all relevant categories.
             
-            var categories = new[] { "Ducts", "Pipes", "Cable Trays", "Conduits" };
+            var categories = new[] { "Ducts", "Pipes", "Cable Trays", "Conduits", "Duct Accessories" };
             var allCandidates = new List<ClashZone>();
 
             foreach (var cat in categories)

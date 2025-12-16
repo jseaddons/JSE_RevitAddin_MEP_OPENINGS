@@ -319,6 +319,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                                 zone.SleevePlacementPointActiveDocumentZ,
                                 zone.MepElementRotationAngle);
 
+                            // ✅ CRITICAL: Sync MEP Category to DB (Dump once, use many times)
+                            // This ensures the category used for filtering is persisted
+                            if (!string.IsNullOrEmpty(zone.MepElementCategory))
+                            {
+                                repository.UpdateMepCategory(zone.Id, zone.MepElementCategory);
+                            }
+
                             // ✅ STEP 2: Save bounding boxes if available
                             if (!IsBoundingBoxEmpty(zone))
                             {

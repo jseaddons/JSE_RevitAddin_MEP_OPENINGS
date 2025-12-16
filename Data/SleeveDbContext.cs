@@ -966,6 +966,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     MepSizes            TEXT,
                     MepSystemNames      TEXT,
                     MepElementIds       TEXT,
+                    Corner1X            REAL DEFAULT 0.0,
+                    Corner1Y            REAL DEFAULT 0.0,
+                    Corner1Z            REAL DEFAULT 0.0,
+                    Corner2X            REAL DEFAULT 0.0,
+                    Corner2Y            REAL DEFAULT 0.0,
+                    Corner2Z            REAL DEFAULT 0.0,
+                    Corner3X            REAL DEFAULT 0.0,
+                    Corner3Y            REAL DEFAULT 0.0,
+                    Corner3Z            REAL DEFAULT 0.0,
+                    Corner4X            REAL DEFAULT 0.0,
+                    Corner4Y            REAL DEFAULT 0.0,
+                    Corner4Z            REAL DEFAULT 0.0,
                     CreatedAt           DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
                     UpdatedAt           DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
                     FOREIGN KEY(ComboId) REFERENCES FileCombos(ComboId) ON DELETE CASCADE,
@@ -980,49 +992,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
             ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_clustersleeves_combo_category ON ClusterSleeves(ComboId, Category)", transaction);
             
             // ✅ MIGRATION: Add comma-separated value columns if they don't exist
-            try
-            {
-                ExecuteCommand(@"
-                    ALTER TABLE ClusterSleeves ADD COLUMN ClashZoneGuids TEXT;
-                ", transaction);
-            }
-            catch
-            {
-                // Column already exists, ignore
-            }
+            AddColumnIfMissing("ClusterSleeves", "ClashZoneGuids", "TEXT", transaction);
+            AddColumnIfMissing("ClusterSleeves", "MepSizes", "TEXT", transaction);
+            AddColumnIfMissing("ClusterSleeves", "MepSystemNames", "TEXT", transaction);
+            AddColumnIfMissing("ClusterSleeves", "MepElementIds", "TEXT", transaction);
             
-            try
-            {
-                ExecuteCommand(@"
-                    ALTER TABLE ClusterSleeves ADD COLUMN MepSizes TEXT;
-                ", transaction);
-            }
-            catch
-            {
-                // Column already exists, ignore
-            }
-            
-            try
-            {
-                ExecuteCommand(@"
-                    ALTER TABLE ClusterSleeves ADD COLUMN MepSystemNames TEXT;
-                ", transaction);
-            }
-            catch
-            {
-                // Column already exists, ignore
-            }
-            
-            try
-            {
-                ExecuteCommand(@"
-                    ALTER TABLE ClusterSleeves ADD COLUMN MepElementIds TEXT;
-                ", transaction);
-            }
-            catch
-            {
-                // Column already exists, ignore
-            }
+            // ✅ MIGRATION: Add Corner columns if they don't exist (Phase 3 Persistence)
+            AddColumnIfMissing("ClusterSleeves", "Corner1X", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves", "Corner1Y", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves", "Corner1Z", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves", "Corner2X", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves", "Corner2Y", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves", "Corner2Z", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves", "Corner3X", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves", "Corner3Y", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves", "Corner3Z", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves", "Corner4X", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves", "Corner4Y", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves", "Corner4Z", "REAL DEFAULT 0.0", transaction);
         }
 
         /// <summary>

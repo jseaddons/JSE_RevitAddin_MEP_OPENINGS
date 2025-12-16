@@ -55,5 +55,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data
         /// Get current cache count.
         /// </summary>
         int CacheCount { get; }
+
+        /// <summary>
+        /// Update pre-calculated 4 corner coordinates for Cluster Sleeves (Phase 3 Persistence).
+        /// </summary>
+        void UpdateClusterSleeveCorners(int clusterInstanceId,
+            double corner1X, double corner1Y, double corner1Z,
+            double corner2X, double corner2Y, double corner2Z,
+            double corner3X, double corner3Y, double corner3Z,
+            double corner4X, double corner4Y, double corner4Z);
     }
 }

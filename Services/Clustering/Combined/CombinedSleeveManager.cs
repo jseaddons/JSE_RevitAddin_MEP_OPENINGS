@@ -41,7 +41,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined
                     DebugLogger.Info("[CombinedSleeveManager] 🔥 Starting Combined Clustering Workflow 🔥");
                 }
 
-                var defaultCategories = new List<string> { "Ducts", "Pipes", "CableTrays", "Conduit" };
+                // Include duct accessories/damper so they can be clustered as well
+                var defaultCategories = new List<string> { "Ducts", "Pipes", "CableTrays", "Conduit", "Duct Accessories" };
                 var filterName = "Combined"; // placeholder until UI toggle is wired
 
                 using (var dbContext = new SleeveDbContext(_document))
@@ -105,6 +106,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined
                                 var paramSet = paramAggregator.CreateCombinedSleeveParameterSet(candidate, bbox);
 
                                 // B. Determine Family Name
+                                // Always place opening families here; dampers are handled by dedicated placement services
                                 string familyName = "RectangularOpeningOnWall";
                                 // Future: Use logic to determine "RectangularOpeningOnFloor" if host is floor.
                                 

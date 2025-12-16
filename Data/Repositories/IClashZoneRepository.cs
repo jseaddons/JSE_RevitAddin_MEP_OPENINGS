@@ -62,6 +62,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             double corner4X, double corner4Y, double corner4Z);
 
         /// <summary>
+        /// Update the MEP Category for a clash zone (dump once, use many times)
+        /// </summary>
+        void UpdateMepCategory(System.Guid clashZoneGuid, string category);
+
+        /// <summary>
+        /// Get MEP Categories for a list of sleeve instance IDs
+        /// Returns dictionary of SleeveInstanceId -> MepCategory
+        /// </summary>
+        System.Collections.Generic.Dictionary<int, string> GetMepCategoriesForSleeveIds(System.Collections.Generic.IEnumerable<int> sleeveInstanceIds);
+
+        /// <summary>
+        /// Updates the 4 corner coordinates for a cluster sleeve in the database.
+        /// </summary>
+        void UpdateClusterSleeveCorners(int clusterInstanceId,
+            double corner1X, double corner1Y, double corner1Z,
+            double corner2X, double corner2Y, double corner2Z,
+            double corner3X, double corner3Y, double corner3Z,
+            double corner4X, double corner4Y, double corner4Z);
+
+        /// <summary>
         /// Log sleeve event
         /// </summary>
         void LogSleeveEvent(int clashZoneId, string eventType, string? payload = null);
@@ -104,6 +124,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// This checks both individual SleeveInstanceId and ClusterSleeveInstanceId.
         /// </summary>
         List<ClashZone> GetClashZonesBySleeveIds(IEnumerable<int> sleeveInstanceIds);
+
+        /// <summary>
+        /// Retrieves a list of ClashZones by their Guids.
+        /// </summary>
+        List<ClashZone> GetClashZonesByGuids(IEnumerable<System.Guid> guids);
     }
 }
-

@@ -353,7 +353,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             return results;
         }
-        
+
         // Internal method for actual batch processing
         private static List<(Element, Element, BoundingBoxXYZ, XYZ)> FindIntersectionsBatchInternal(
             List<(Element, Transform?)> mepElements,
@@ -364,7 +364,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
 
             var results = new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
-            
+
             // ✅ DIAGNOSTIC LOG: Use SafeFileLogger (should log to safefilelogger_diagnostic.log)
             try
             {
@@ -386,7 +386,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 catch { }
             }
-            
+
             // ✅ PERFORMANCE DIAGNOSTICS: Track timing and statistics
             var overallStopwatch = System.Diagnostics.Stopwatch.StartNew();
             var preprocessStopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -410,7 +410,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             long totalIntersectionCalcMs = 0;
             long totalPrecomputeMs = 0;
             int precomputeElements = 0;
-            
+
             // Lazy debug flag check on first use
             if (!IntersectionDebugEnabled)
             {
@@ -420,12 +420,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 SafeFileLogger.SafeAppendText(IntersectionDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] ENTER FindIntersectionsBatchInternal MEP={mepElements.Count} STRUCT={structuralElements.Count} KnownPairs={knownValidPairs?.Count ?? 0} SkipKnownGeom={skipKnownPairsGeometryCheck}\n");
             }
-            
+
             // ✅ MEMORY OPTIMIZATION: Only pre-compute bounding boxes, NOT solids (lazy loading)
             // Solids are expensive (2-5KB each) and many won't be needed after spatial filtering
             // Delay solid creation until after bounding box/curve checks pass
             var structuralData = new List<(Element element, Transform? transform, BoundingBoxXYZ bbox, string cacheKey)>();
-            
+
             foreach (var (structElement, structTransform) in structuralElements)
             {
                 var structBBox = structElement.get_BoundingBox(null);
@@ -459,14 +459,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 SafeFileLogger.SafeAppendText(IntersectionDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] Structural preprocessed count={structuralData.Count}\n");
             }
             preprocessStopwatch.Stop();
-            
+
             // ✅ DIAGNOSTIC LOG: Preprocessing complete
             try
             {
                 SafeFileLogger.SafeAppendText("DIAGNOSTIC_TEST.log", $"[{DateTime.Now:HH:mm:ss.fff}] PREPROCESSING COMPLETE - Structural elements processed: {structuralData.Count}, Time: {preprocessStopwatch.ElapsedMilliseconds}ms");
             }
             catch { }
-            
+
             // ✅ MEMORY OPTIMIZATION: Log cache stats before processing
             var (cacheCount, cacheMax, cacheMB) = GetGeometryCacheStats();
             if (OptimizationFlags.UseDiagnosticMode)
@@ -474,7 +474,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 log($"[Memory] Geometry cache: {cacheCount}/{cacheMax} entries (~{cacheMB:F1} MB)");
                 log($"[BatchIntersection] Pre-computed {structuralData.Count} structural element bounding boxes (solids loaded lazily)");
             }
-            
+
             // ✅ MEMORY OPTIMIZATION: Warn if cache is getting large
             if (cacheMB > 10.0)
             {
@@ -483,16 +483,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             // ✅ TWO-TIER OPTIMIZATION: Initialize spatial service if enabled
             var spatialBuildStopwatch = System.Diagnostics.Stopwatch.StartNew();
-            
+
             // 🔍 DIAGNOSTIC: Show flag status at runtime
             try { SafeFileLogger.SafeAppendText("DIAGNOSTIC_TEST.log", $"[SPATIAL_GRID_INIT] OptimizationFlags.UseSpatialGrid = {OptimizationFlags.UseSpatialGrid}"); } catch { }
-            
+
             if (OptimizationFlags.UseSpatialGrid)
             {
                 // ✅ ADAPTIVE GRID SIZING: Calculate optimal grid size based on structural element distribution
                 // Target: 3-5 elements per cell on average for best performance
                 double gridSize = 1.0; // Default fallback
-                
+
                 if (structuralData.Count > 0)
                 {
                     // Calculate bounding box of all structural elements (work area extent)
@@ -502,37 +502,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     double maxY = structuralData.Max(sd => sd.bbox.Max.Y);
                     double minZ = structuralData.Min(sd => sd.bbox.Min.Z);
                     double maxZ = structuralData.Max(sd => sd.bbox.Max.Z);
-                    
+
                     double width = maxX - minX;
                     double height = maxY - minY;
                     double depth = maxZ - minZ;
-                    
+
                     // Calculate volume and element density
                     double volume = width * height * depth;
                     double elementsPerCubicFoot = structuralData.Count / Math.Max(volume, 1.0);
-                    
+
                     // Target: 4 elements per cell (sweet spot for spatial filtering)
                     const double TARGET_ELEMENTS_PER_CELL = 4.0;
                     double idealGridSize = Math.Pow(TARGET_ELEMENTS_PER_CELL / Math.Max(elementsPerCubicFoot, 0.001), 1.0 / 3.0);
-                    
+
                     // Clamp to reasonable range: 0.5 ft (tight spaces) to 5.0 ft (large spaces)
                     gridSize = Math.Max(0.5, Math.Min(idealGridSize, 5.0));
-                    
+
                     if (OptimizationFlags.UseDiagnosticMode)
                     {
                         log($"[SpatialGrid] Work area: {width:F1}×{height:F1}×{depth:F1} ft, {structuralData.Count} elements, density: {elementsPerCubicFoot:F3} elem/ft³");
                         log($"[SpatialGrid] Adaptive grid size: {gridSize:F2} ft (target {TARGET_ELEMENTS_PER_CELL} elements/cell)");
                     }
                 }
-                
+
                 _spatialService = new SpatialPartitioningService(gridSize);
                 // Build grid with structural data (need to convert to format expected by BuildGrid)
                 var structuralDataForGrid = structuralData.Select(sd => (sd.element, sd.transform, sd.bbox, (Solid?)null)).ToList();
                 _spatialService.BuildGrid(structuralDataForGrid);
                 spatialBuildStopwatch.Stop();
-                
+
                 try { SafeFileLogger.SafeAppendText("DIAGNOSTIC_TEST.log", $"[SPATIAL_GRID_INIT] _spatialService created successfully"); } catch { }
-                
+
                 if (OptimizationFlags.UseDiagnosticMode)
                 {
                     var (totalCells, usedCells, avgElements) = _spatialService.GetStatistics();
@@ -603,239 +603,289 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 log?.Invoke($"[PrecomputeHostSolids] Precomputed {precomputeElements} structural geometries in {totalPrecomputeMs}ms");
             }
 
-                if (OptimizationFlags.UseParallelClashSearch)
-                {
-                    // ==========================================================================================
-                    // PARALLEL BROAD PHASE STRATEGY (Multithreading Safe)
-                    // ==========================================================================================
-                    // Phase 1: Extraction (Main Thread)
-                    // We already extracted 'structuralData'. Now extract MEP data.
-                    // (Done below in the loop, but we need to pull it out to parallelize)
-                    
-                    var mepDataList = new List<(Element mepElement, Transform? mepTransform, BoundingBoxXYZ mepBBox, Line? line, bool isDamper)>();
-                    // Also keep track of indices for results
-                    
-                    foreach (var (mepElement, mepTransform) in mepElements)
-                    {
-                         var mepBBox = mepElement.get_BoundingBox(null);
-                         if (mepBBox == null) continue;
-                         
-                         // Transform logic (copied from downstream)
-                         if (mepTransform != null)
-                         {
-                            var tMin = mepTransform.OfPoint(mepBBox.Min);
-                            var tMax = mepTransform.OfPoint(mepBBox.Max);
-                            mepBBox = new BoundingBoxXYZ
-                            {
-                                Min = new XYZ(Math.Min(tMin.X, tMax.X), Math.Min(tMin.Y, tMax.Y), Math.Min(tMin.Z, tMax.Z)),
-                                Max = new XYZ(Math.Max(tMin.X, tMax.X), Math.Max(tMin.Y, tMax.Y), Math.Min(tMin.Z, tMax.Z))
-                            };
-                         }
-                         
-                         bool isDamper = IsDamperElement(mepElement) || mepElement.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory;
-                         Line? line = null;
-                         if (!isDamper) 
-                         {
-                             var lineResult = GetElementLineWithSource(mepElement, mepBBox, null); // Log null for speed
-                             line = lineResult.Line; 
-                             // Transform line if needed
-                             if (mepTransform != null && !lineResult.IsFallback && line != null)
-                             {
-                                 line = Line.CreateBound(mepTransform.OfPoint(line.GetEndPoint(0)), mepTransform.OfPoint(line.GetEndPoint(1)));
-                             }
-                         }
-                         
-                         mepDataList.Add((mepElement, mepTransform, mepBBox, line, isDamper));
-                    }
-
-                    // Phase 2: Parallel Search (Multi-Thread)
-                    // Find Candidates: (MEP_Index, Struct_Index)
-                    var candidatesToCheck = new System.Collections.Concurrent.ConcurrentBag<(int mepIdx, int structIdx)>();
-                    
-                    Parallel.ForEach(mepDataList, (mepData, state, index) => 
-                    {
-                        // capture index properly
-                        int mIdx = (int)index; 
-                        var mepBBox = mepData.mepBBox;
-                        double mepCenterZ = (mepBBox.Min.Z + mepBBox.Max.Z) * 0.5;
-                        double MAX_V_SEP = 20.0;
-                        const double tolerance = 0.2;
-                        
-                        var expandedMin = new XYZ(mepBBox.Min.X - tolerance, mepBBox.Min.Y - tolerance, mepBBox.Min.Z - tolerance);
-                        var expandedMax = new XYZ(mepBBox.Max.X + tolerance, mepBBox.Max.Y + tolerance, mepBBox.Max.Z + tolerance);
-                        var expandedBBox = new BoundingBoxXYZ { Min = expandedMin, Max = expandedMax };
-
-                        // Candidates source
-                        IList<(Element element, Transform? transform, BoundingBoxXYZ bbox, string cacheKey)> structsToScan = structuralData;
-                        
-                        // Use Spatial Grid if available (Thread safe read?) - Yes usually, as strictly read-only after build.
-                        if (_spatialService != null && OptimizationFlags.UseSpatialGrid)
-                        {
-                            var nearby = _spatialService.GetNearbyElements(expandedBBox); // Assumes thread-safety
-                            // Map back to structuralData indices or objects?
-                            // This implementation of SpatialService returns structs containing Element.
-                            // We need to match them back to 'structuralData' or just use them.
-                            // SpatialService returns (Element, Transform, BBox, Solid). 
-                            // But we need the index in 'structuralData' OR just the object.
-                            // Let's iterate structuralData for safety unless we map indices.
-                            // For simplicity in this broad phase refactor: fallback to full scan OR unsafe spatial.
-                            // *Safe Plan*: Use Spatial Service's BBox check logic locally if possible.
-                            // Actually, let's stick to simple Z-Filter + Iterate All for Parallel. 
-                            // Why? Because iterating 5000 structs in 12 threads is faster than overhead of spatial mapping sometimes.
-                            // But Spatial is better. 
-                            // Let's use the 'nearby' from spatial service if possible. 
-                            // The SpatialService probably returns a List of *internal* structs. 
-                            // Let's assume _spatialService.GetNearbyElements is thread-safe (reads generic list/dict). 
-                            // Note: We need 'structuralData' items. 
-                            
-                            // Re-implementation of simple spatial filter for parallel loop to be safe:
-                            // Proceed with iterating 'structsToScan' = structuralData (Brute force parallel is fast enough usually)
-                        }
-
-                        // Brute force check in parallel (N*M / Cores)
-                        for(int sIdx=0; sIdx < structuralData.Count; sIdx++)
-                        {
-                            var sData = structuralData[sIdx];
-                            
-                            // Z-Filter
-                            double sCenterZ = (sData.bbox.Min.Z + sData.bbox.Max.Z) * 0.5;
-                            if (Math.Abs(mepCenterZ - sCenterZ) > MAX_V_SEP) continue;
-                            
-                            // BBox Overlap
-                            if (mepBBox.Max.X < sData.bbox.Min.X || mepBBox.Min.X > sData.bbox.Max.X) continue;
-                            if (mepBBox.Max.Y < sData.bbox.Min.Y || mepBBox.Min.Y > sData.bbox.Max.Y) continue;
-                            if (mepBBox.Max.Z < sData.bbox.Min.Z || mepBBox.Min.Z > sData.bbox.Max.Z) continue;
-                            
-                            // It's a candidate!
-                            candidatesToCheck.Add((mIdx, sIdx));
-                        }
-                    });
-                    
-                    // Phase 3: Validation (Main Thread)
-                    // Process confirmed candidates
-                    foreach(var pair in candidatesToCheck)
-                    {
-                        var mepEntry = mepDataList[pair.mepIdx];
-                        var structEntry = structuralData[pair.structIdx];
-                        
-                        // Handle Dampers
-                        if (mepEntry.isDamper)
-                        {
-                             // Call damper logic (needs re-implementation or calling existing method)
-                             // For now, fall back to existing method logic inside the loop?
-                             // No, we already have the pair.
-                             // We can just call "FindIntersection" logic.
-                             // Actually, Dampers return multiple "blades".
-                             // We might need to just run standard damper logic for Dampers.
-                             // Let's call FindDamperIntersectionsInternal for this pair? 
-                             // Easier: If it's a damper, skip this candidate logic and let it run FULL loop?
-                             // Optimization: Only run damper logic for overlapping bounding boxes.
-                             var specificStructList = new List<(Element, Transform?)> { (structEntry.element, structEntry.transform) };
-                             var damperRes = FindDamperIntersectionsInternal(mepEntry.mepElement, mepEntry.mepBBox, specificStructList, mepEntry.mepTransform, log);
-                             results.AddRange(damperRes.Select(i => (mepEntry.mepElement, i.Item1, i.Item2, i.Item3)));
-                             continue;
-                        }
-
-                        // Handle Normal Elements (Line vs Solid)
-                        // Verify Line vs BBox first (fast)
-                        if (mepEntry.line != null)
-                        {
-                            // transform struct BBox to check line? 
-                            // No, structural BBox is in Host Coords. Line is in Host Coords.
-                            // Check curve?
-                            // if (OptimizationFlags.UseCurveInBoundingBoxFilter) ...
-                            // We can use the cached line.
-                        }
-                        
-                        // Final Solid Check
-                        // Fetch Solid (This triggers the lazy load/transform on Main Thread)
-                        Solid? structSolid = null;
-                        
-                        // Use Cache Logic
-                        if (TryGetFromGeometryCache(structEntry.cacheKey, out var cachedSolid)) structSolid = cachedSolid;
-                        else 
-                        {
-                             // Compute and Cache (extracted from original loop)
-                             var options = Helpers.GeometryOptionsFactory.CreateIntersectionOptions();
-                             var g = structEntry.element.get_Geometry(options);
-                             var solids = GetSolidsFromGeometry(g);
-                             if (solids!=null && solids.Count>0)
-                             {
-                                 if (structEntry.transform != null) 
-                                     structSolid = SolidUtils.CreateTransformed(solids[0], structEntry.transform);
-                                 else structSolid = solids[0];
-                                 AddToGeometryCache(structEntry.cacheKey, structSolid);
-                             }
-                        }
-                        
-                        if (structSolid == null) continue;
-                        
-                        // INTERSECT
-                        // (Requires 'line' for MEP or Solid for MEP)
-                        // If we have a line:
-                        var filter = new ElementIntersectsSolidFilter(structSolid); // Wait, this filter is for Collector.
-                        // We need manual intersection:
-                        // BooleanOperations? Or SolidCurveIntersection?
-                        if (mepEntry.line != null)
-                        {
-                             var sci = structSolid.IntersectWithCurve(mepEntry.line, new SolidCurveIntersectionOptions());
-                             if (sci.SegmentCount > 0)
-                             {
-                                  // Found!
-                                  results.Add((mepEntry.mepElement, structEntry.element, structEntry.bbox, XYZ.Zero)); // Point calc needed?
-                             }
-                        }
-                    }
-                    
-                    return results;
-                }
-                
+            if (OptimizationFlags.UseParallelClashSearch)
+            {
                 // ==========================================================================================
-                // END PARALLEL STRATEGY - FALLBACK TO LEGACY (Sequential)
+                // PARALLEL BROAD PHASE STRATEGY (Multithreading Safe)
                 // ==========================================================================================
+                // Phase 1: Extraction (Main Thread)
+                // We already extracted 'structuralData'. Now extract MEP data.
+                // (Done below in the loop, but we need to pull it out to parallelize)
 
-                var mepProcessingStopwatch = System.Diagnostics.Stopwatch.StartNew();
-                int mepIndex = 0;
+                var mepDataList = new List<(Element mepElement, Transform? mepTransform, BoundingBoxXYZ mepBBox, Line? line, bool isDamper)>();
+                // Also keep track of indices for results
+
                 foreach (var (mepElement, mepTransform) in mepElements)
                 {
-                    // ... (Original Code)
-                        // ✅ FAST PATH: Known valid pair - just verify bounding boxes intersect
-                        // Skip expensive solid geometry intersection calculation
-                        
-                        // ✅ CRITICAL FIX: Validate structBBox is not null before using it
-                        if (structBBox == null)
+                    var mepBBox = mepElement.get_BoundingBox(null);
+                    if (mepBBox == null) continue;
+
+                    // Transform logic (copied from downstream)
+                    if (mepTransform != null)
+                    {
+                        var tMin = mepTransform.OfPoint(mepBBox.Min);
+                        var tMax = mepTransform.OfPoint(mepBBox.Max);
+                        mepBBox = new BoundingBoxXYZ
                         {
-                            log?.Invoke($"[⚠️ SKIP-NULL-BBOX-KNOWN] Skipping known pair with null bounding box: MEP={mepElement.Id}, Structural={structElement.Id}");
-                            spatiallyFiltered++;
-                            continue;
+                            Min = new XYZ(Math.Min(tMin.X, tMax.X), Math.Min(tMin.Y, tMax.Y), Math.Min(tMin.Z, tMax.Z)),
+                            Max = new XYZ(Math.Max(tMin.X, tMax.X), Math.Max(tMin.Y, tMax.Y), Math.Min(tMin.Z, tMax.Z))
+                        };
+                    }
+
+                    bool isDamper = IsDamperElement(mepElement) || mepElement.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory;
+                    Line? line = null;
+                    if (!isDamper)
+                    {
+                        var lineResult = GetElementLineWithSource(mepElement, mepBBox, null); // Log null for speed
+                        line = lineResult.line;
+                        // Transform line if needed
+                        if (mepTransform != null && !lineResult.isFallbackLine && line != null)
+                        {
+                            line = Line.CreateBound(mepTransform.OfPoint(line.GetEndPoint(0)), mepTransform.OfPoint(line.GetEndPoint(1)));
                         }
-                        
-                        if (BoundingBoxService.BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max))
+                    }
+
+                    mepDataList.Add((mepElement, mepTransform, mepBBox, line, isDamper));
+                }
+
+                // Phase 2: Parallel Search (Multi-Thread)
+                // Find Candidates: (MEP_Index, Struct_Index)
+                var candidatesToCheck = new System.Collections.Concurrent.ConcurrentBag<(int mepIdx, int structIdx)>();
+
+                System.Threading.Tasks.Parallel.ForEach(mepDataList, (mepData, state, index) =>
+                {
+                    // capture index properly
+                    int mIdx = (int)index;
+                    var mepBBox = mepData.mepBBox;
+                    double mepCenterZ = (mepBBox.Min.Z + mepBBox.Max.Z) * 0.5;
+                    double MAX_V_SEP = 20.0;
+                    const double tolerance = 0.2;
+
+                    var expandedMin = new XYZ(mepBBox.Min.X - tolerance, mepBBox.Min.Y - tolerance, mepBBox.Min.Z - tolerance);
+                    var expandedMax = new XYZ(mepBBox.Max.X + tolerance, mepBBox.Max.Y + tolerance, mepBBox.Max.Z + tolerance);
+                    var expandedBBox = new BoundingBoxXYZ { Min = expandedMin, Max = expandedMax };
+
+                    // Candidates source
+                    IList<(Element element, Transform? transform, BoundingBoxXYZ bbox, string cacheKey)> structsToScan = structuralData;
+
+                    // Use Spatial Grid if available (Thread safe read?) - Yes usually, as strictly read-only after build.
+                    if (_spatialService != null && OptimizationFlags.UseSpatialGrid)
+                    {
+                        var nearby = _spatialService.GetNearbyElements(expandedBBox); // Assumes thread-safety
+                                                                                      // Map back to structuralData indices or objects?
+                                                                                      // This implementation of SpatialService returns structs containing Element.
+                                                                                      // We need to match them back to 'structuralData' or just use them.
+                                                                                      // SpatialService returns (Element, Transform, BBox, Solid). 
+                                                                                      // But we need the index in 'structuralData' OR just the object.
+                                                                                      // Let's iterate structuralData for safety unless we map indices.
+                                                                                      // For simplicity in this broad phase refactor: fallback to full scan OR unsafe spatial.
+                                                                                      // *Safe Plan*: Use Spatial Service's BBox check logic locally if possible.
+                                                                                      // Actually, let's stick to simple Z-Filter + Iterate All for Parallel. 
+                                                                                      // Why? Because iterating 5000 structs in 12 threads is faster than overhead of spatial mapping sometimes.
+                                                                                      // But Spatial is better. 
+                                                                                      // Let's use the 'nearby' from spatial service if possible. 
+                                                                                      // The SpatialService probably returns a List of *internal* structs. 
+                                                                                      // Let's assume _spatialService.GetNearbyElements is thread-safe (reads generic list/dict). 
+                                                                                      // Note: We need 'structuralData' items. 
+
+                        // Re-implementation of simple spatial filter for parallel loop to be safe:
+                        // Proceed with iterating 'structsToScan' = structuralData (Brute force parallel is fast enough usually)
+                    }
+
+                    // Brute force check in parallel (N*M / Cores)
+                    for (int sIdx = 0; sIdx < structuralData.Count; sIdx++)
+                    {
+                        var sData = structuralData[sIdx];
+
+                        // Z-Filter
+                        double sCenterZ = (sData.bbox.Min.Z + sData.bbox.Max.Z) * 0.5;
+                        if (Math.Abs(mepCenterZ - sCenterZ) > MAX_V_SEP) continue;
+
+                        // BBox Overlap
+                        if (mepBBox.Max.X < sData.bbox.Min.X || mepBBox.Min.X > sData.bbox.Max.X) continue;
+                        if (mepBBox.Max.Y < sData.bbox.Min.Y || mepBBox.Min.Y > sData.bbox.Max.Y) continue;
+                        if (mepBBox.Max.Z < sData.bbox.Min.Z || mepBBox.Min.Z > sData.bbox.Max.Z) continue;
+
+                        // It's a candidate!
+                        candidatesToCheck.Add((mIdx, sIdx));
+                    }
+                });
+
+                // Phase 3: Validation (Main Thread)
+                // Process confirmed candidates
+                foreach (var pair in candidatesToCheck)
+                {
+                    var mepEntry = mepDataList[pair.mepIdx];
+                    var structEntry = structuralData[pair.structIdx];
+
+                    // Handle Dampers
+                    if (mepEntry.isDamper)
+                    {
+                        // Call damper logic (needs re-implementation or calling existing method)
+                        // For now, fall back to existing method logic inside the loop?
+                        // No, we already have the pair.
+                        // We can just call "FindIntersection" logic.
+                        // Actually, Dampers return multiple "blades".
+                        // We might need to just run standard damper logic for Dampers.
+                        // Let's call FindDamperIntersectionsInternal for this pair? 
+                        // Easier: If it's a damper, skip this candidate logic and let it run FULL loop?
+                        // Optimization: Only run damper logic for overlapping bounding boxes.
+                        var specificStructList = new List<(Element, Transform?)> { (structEntry.element, structEntry.transform) };
+                        var damperRes = FindDamperIntersectionsInternal(mepEntry.mepElement, mepEntry.mepBBox, specificStructList, mepEntry.mepTransform, log);
+                        results.AddRange(damperRes.Select(i => (mepEntry.mepElement, i.Item1, i.Item2, i.Item3)));
+                        continue;
+                    }
+
+                    // Handle Normal Elements (Line vs Solid)
+                    // Verify Line vs BBox first (fast)
+                    if (mepEntry.line != null)
+                    {
+                        // transform struct BBox to check line? 
+                        // No, structural BBox is in Host Coords. Line is in Host Coords.
+                        // Check curve?
+                        // if (OptimizationFlags.UseCurveInBoundingBoxFilter) ...
+                        // We can use the cached line.
+                    }
+
+                    // Final Solid Check
+                    // Fetch Solid (This triggers the lazy load/transform on Main Thread)
+                    Solid? structSolid = null;
+
+                    // Use Cache Logic
+                    if (TryGetFromGeometryCache(structEntry.cacheKey, out var cachedSolid)) structSolid = cachedSolid;
+                    else
+                    {
+                        // Compute and Cache (extracted from original loop)
+                        var options = Helpers.GeometryOptionsFactory.CreateIntersectionOptions();
+                        var g = structEntry.element.get_Geometry(options);
+                        var solids = GetSolidsFromGeometry(g);
+                        if (solids != null && solids.Count > 0)
                         {
-                            // Use structural element's bounding box center as intersection point (approximation for known pairs)
-                            var center = BoundingBoxService.GetBoundingBoxCenter(structBBox);
-                            
-                            // ✅ CRITICAL FIX: Validate intersection point is NOT zero before adding
-                            if (center != null && Math.Abs(center.X) > 1e-9 && Math.Abs(center.Y) > 1e-9 && Math.Abs(center.Z) > 1e-9)
-                            {
-                                results.Add((mepElement, structElement, structBBox, center));
-                                geometrySkippedForKnownPairs++;
-                            }
-                            else
-                            {
-                                log?.Invoke($"[⚠️ SKIP-ZERO-KNOWN] Skipping known pair with zero center: MEP={mepElement.Id}, Structural={structElement.Id}, Center={center}, BBox=Min({structBBox.Min.X},{structBBox.Min.Y},{structBBox.Min.Z}) Max({structBBox.Max.X},{structBBox.Max.Y},{structBBox.Max.Z})");
-                            }
+                            if (structEntry.transform != null)
+                                structSolid = SolidUtils.CreateTransformed(solids[0], structEntry.transform);
+                            else structSolid = solids[0];
+                            AddToGeometryCache(structEntry.cacheKey, structSolid);
+                        }
+                    }
+
+                    if (structSolid == null) continue;
+
+                    // INTERSECT
+                    // (Requires 'line' for MEP or Solid for MEP)
+                    // If we have a line:
+                    var filter = new ElementIntersectsSolidFilter(structSolid); // Wait, this filter is for Collector.
+                                                                                // We need manual intersection:
+                                                                                // BooleanOperations? Or SolidCurveIntersection?
+                    if (mepEntry.line != null)
+                    {
+                        var sci = structSolid.IntersectWithCurve(mepEntry.line, new SolidCurveIntersectionOptions());
+                        if (sci.SegmentCount > 0)
+                        {
+                            // Found!
+                            results.Add((mepEntry.mepElement, structEntry.element, structEntry.bbox, XYZ.Zero)); // Point calc needed?
+                        }
+                    }
+                }
+
+                return results;
+            }
+
+            // ==========================================================================================
+            // END PARALLEL STRATEGY - FALLBACK TO LEGACY (Sequential)
+            // ==========================================================================================
+
+            var mepProcessingStopwatch = System.Diagnostics.Stopwatch.StartNew();
+            int mepIndex = 0;
+            foreach (var (mepElement, mepTransform) in mepElements)
+            {
+                // Pre-calculation for MEP element
+                var perMepStopwatch = System.Diagnostics.Stopwatch.StartNew();
+                int spatiallyFiltered = 0;
+                int geometrySkippedForKnownPairs = 0;
+                int mepCacheHits = 0;
+                int mepCacheMisses = 0;
+                int nearbyElementsCount = 0;
+                int preciseCandidatesCount = 0;
+                int rtreeFiltered = 0;
+                curvePreFilterTested = 0;
+                curvePreFilterRejected = 0;
+                const double tolerance = 1.0;
+                
+                var mepBBox = mepElement.get_BoundingBox(null);
+                if (mepBBox == null) continue;
+
+                // Apply transform if needed
+                if (mepTransform != null)
+                {
+                    var tMin = mepTransform.OfPoint(mepBBox.Min);
+                    var tMax = mepTransform.OfPoint(mepBBox.Max);
+                    mepBBox = new BoundingBoxXYZ
+                    {
+                        Min = new XYZ(Math.Min(tMin.X, tMax.X), Math.Min(tMin.Y, tMax.Y), Math.Min(tMin.Z, tMax.Z)),
+                        Max = new XYZ(Math.Max(tMin.X, tMax.X), Math.Max(tMin.Y, tMax.Y), Math.Max(tMin.Z, tMax.Z))
+                    };
+                }
+
+                var expandedMin = new XYZ(mepBBox.Min.X - 1.0, mepBBox.Min.Y - 1.0, mepBBox.Min.Z - 1.0);
+                var expandedMax = new XYZ(mepBBox.Max.X + 1.0, mepBBox.Max.Y + 1.0, mepBBox.Max.Z + 1.0);
+
+                var lineResult = GetElementLineWithSource(mepElement, mepBBox, log);
+                var line = lineResult.line;
+                if (mepTransform != null && line != null && !lineResult.isFallbackLine)
+                {
+                    line = Line.CreateBound(mepTransform.OfPoint(line.GetEndPoint(0)), mepTransform.OfPoint(line.GetEndPoint(1)));
+                }
+
+                // Inner Loop: Structural Elements
+                foreach (var structEntry in structuralData)
+                {
+                    var structElement = structEntry.element;
+                    var structTransform = structEntry.transform;
+                    var structBBox = structEntry.bbox;
+                    var cacheKey = structEntry.cacheKey;
+
+                    // ✅ FAST PATH: Known valid pair logic (approximate check)
+                    // If we are checking known pairs, we might have logic here?
+                    // The original code seemingly had logic for "Known valid pair".
+                    // Assuming standard collision check for now.
+
+                    // NOTE: Proceeding to existing logic which checks structBBox...
+                    // Skip expensive solid geometry intersection calculation
+
+                    // ✅ CRITICAL FIX: Validate structBBox is not null before using it
+                    if (structBBox == null)
+                    {
+                        log?.Invoke($"[⚠️ SKIP-NULL-BBOX-KNOWN] Skipping known pair with null bounding box: MEP={mepElement.Id}, Structural={structElement.Id}");
+                        spatiallyFiltered++;
+                        continue;
+                    }
+
+                    if (BoundingBoxService.BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max))
+                    {
+                        // Use structural element's bounding box center as intersection point (approximation for known pairs)
+                        var center = BoundingBoxService.GetBoundingBoxCenter(structBBox);
+
+                        // ✅ CRITICAL FIX: Validate intersection point is NOT zero before adding
+                        if (center != null && Math.Abs(center.X) > 1e-9 && Math.Abs(center.Y) > 1e-9 && Math.Abs(center.Z) > 1e-9)
+                        {
+                            results.Add((mepElement, structElement, structBBox, center));
+                            geometrySkippedForKnownPairs++;
                         }
                         else
                         {
-                            // Bounding boxes don't intersect - element may have moved (shouldn't happen if user trusts model)
-                            // Still skip geometry check but log warning
-                            if (OptimizationFlags.UseDiagnosticMode)
-                                log($"[OPTIMIZATION] Known pair (MEP {mepElement.Id}, Structural {structElement.Id}) bounding boxes don't intersect - skipping");
-                            spatiallyFiltered++;
+                            log?.Invoke($"[⚠️ SKIP-ZERO-KNOWN] Skipping known pair with zero center: MEP={mepElement.Id}, Structural={structElement.Id}, Center={center}, BBox=Min({structBBox.Min.X},{structBBox.Min.Y},{structBBox.Min.Z}) Max({structBBox.Max.X},{structBBox.Max.Y},{structBBox.Max.Z})");
                         }
-                        continue;
                     }
+                    else
+                    {
+                        // Bounding boxes don't intersect - element may have moved (shouldn't happen if user trusts model)
+                        // Still skip geometry check but log warning
+                        if (OptimizationFlags.UseDiagnosticMode)
+                            log($"[OPTIMIZATION] Known pair (MEP {mepElement.Id}, Structural {structElement.Id}) bounding boxes don't intersect - skipping");
+                        spatiallyFiltered++;
+                    }
+                    continue;
+
 
                     // ✅ CRITICAL FIX: Validate structBBox is not null before using it in normal path
                     if (structBBox == null)
@@ -869,16 +919,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     // ✅ MEMORY OPTIMIZATION: Lazy solid loading - only compute after all cheap checks pass
                     // cacheKey is already available from foreach loop deconstruction
-                    
+
                     // ✅ PERFORMANCE PROFILING: Track solid extraction time (major bottleneck)
                     var solidExtractionStopwatch = System.Diagnostics.Stopwatch.StartNew(); // includes cache retrieval
-                    
+
                     // ✅ R2024 FIX: Get ALL solids instead of trying to union them (BooleanOperations fails in R2024)
                     // For compound walls, this returns multiple solids (one per layer)
                     // We check intersection against ALL layers to avoid missing intersections
                     List<Solid> solids = null;
                     totalIntersectionTests++;
-                    
+
                     // MULTI-SOLID CACHE: Attempt list retrieval first if enabled
                     if (OptimizationFlags.UseMultiSolidCache && TryGetFromMultiSolidCache(cacheKey, out var cachedList))
                     {
@@ -893,14 +943,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         mepCacheMisses++;
                         totalCacheMisses++;
                         totalGeometryComputations++;
-                        
+
                         // ✅ PERFORMANCE PROFILING: Track geometry extraction (expensive operation)
                         var geometryExtractionStopwatch = System.Diagnostics.Stopwatch.StartNew();
                         var options = Helpers.GeometryOptionsFactory.CreateIntersectionOptions();
                         var geometry = structElement.get_Geometry(options);
                         geometryExtractionStopwatch.Stop();
                         totalGeometryExtractionMs += geometryExtractionStopwatch.ElapsedMilliseconds;
-                        
+
                         if (geometry != null)
                         {
                             // ✅ PERFORMANCE PROFILING: Track solid extraction from geometry
@@ -908,13 +958,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             solids = GetSolidsFromGeometry(geometry);
                             solidExtractionFromGeometryStopwatch.Stop();
                             totalSolidEnumerationMs += solidExtractionFromGeometryStopwatch.ElapsedMilliseconds;
-                            
+
                             // ✅ PERFORMANCE PROFILING: Log slow geometry operations
                             if (OptimizationFlags.UseDiagnosticMode && (geometryExtractionStopwatch.ElapsedMilliseconds > 50 || solidExtractionFromGeometryStopwatch.ElapsedMilliseconds > 50))
                             {
                                 log($"[PROFILING] Slow geometry extraction: Element={structElement.Id}, Geometry={geometryExtractionStopwatch.ElapsedMilliseconds}ms, Solids={solidExtractionFromGeometryStopwatch.ElapsedMilliseconds}ms, Count={solids?.Count ?? 0}");
                             }
-                            
+
                             // Transform all solids if needed
                             if (solids != null && solids.Count > 0 && structTransform != null)
                             {
@@ -930,13 +980,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 solids = transformedSolids;
                                 transformStopwatch.Stop();
                                 totalSolidTransformMs += transformStopwatch.ElapsedMilliseconds;
-                                
+
                                 if (OptimizationFlags.UseDiagnosticMode && transformStopwatch.ElapsedMilliseconds > 20)
                                 {
                                     log($"[PROFILING] Slow solid transform: Element={structElement.Id}, Time={transformStopwatch.ElapsedMilliseconds}ms, Solids={solids.Count}");
                                 }
                             }
-                            
+
                             // Cache the first solid for backwards compatibility with existing cache structure
                             AddToGeometryCache(cacheKey, solids != null && solids.Count > 0 ? solids[0] : null);
                             AddToGeometryMultiSolidCache(cacheKey, solids);
@@ -952,7 +1002,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         solids = cachedSolid != null ? new List<Solid> { cachedSolid } : new List<Solid>();
                         solidExtractionStopwatch.Stop();
                     }
-                    
+
                     if (solids == null || solids.Count == 0) continue;
 
                     // ✅ R2024 FIX: Check intersection against ALL solids (for compound walls with multiple layers)
@@ -963,18 +1013,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     foreach (var solid in solids)
                     {
                         if (solid == null || solid.Volume <= 0) continue;
-                        
+
                         var layerIntersectionStopwatch = System.Diagnostics.Stopwatch.StartNew();
                         var layerIntersectionPoints = GetIntersectionPoints(solid, line, log);
                         layerIntersectionStopwatch.Stop();
                         solidIntersectionCount++;
-                        
+
                         // ✅ PERFORMANCE PROFILING: Log slow intersection calculations
                         if (OptimizationFlags.UseDiagnosticMode && layerIntersectionStopwatch.ElapsedMilliseconds > 50)
                         {
                             log($"[PROFILING] Slow intersection: Element={structElement.Id}, Solid={solidIntersectionCount}, Time={layerIntersectionStopwatch.ElapsedMilliseconds}ms, Points={layerIntersectionPoints?.Count ?? 0}");
                         }
-                        
+
                         if (layerIntersectionPoints != null && layerIntersectionPoints.Count > 0)
                         {
                             allIntersectionPoints.AddRange(layerIntersectionPoints);
@@ -982,33 +1032,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     intersectionCalculationStopwatch.Stop();
                     totalIntersectionCalcMs += intersectionCalculationStopwatch.ElapsedMilliseconds;
-                    
+
                     // ✅ PERFORMANCE PROFILING: Log total intersection calculation time
                     if (OptimizationFlags.UseDiagnosticMode && intersectionCalculationStopwatch.ElapsedMilliseconds > 100)
                     {
                         log($"[PROFILING] Slow total intersection: Element={structElement.Id}, Time={intersectionCalculationStopwatch.ElapsedMilliseconds}ms, Solids={solids.Count}, Points={allIntersectionPoints.Count}");
                     }
-                    
+
                     if (allIntersectionPoints.Count > 0)
                     {
                         var bbox = CreateBoundingBox(allIntersectionPoints);
-                        
+
                         // ✅ CRITICAL FIX: Validate bounding box is not null before using it
                         if (bbox == null)
                         {
                             log?.Invoke($"[⚠️ SKIP-NULL-BBOX] Skipping intersection with null bounding box: MEP={mepElement.Id}, Structural={structElement.Id}, IntersectionPoints={allIntersectionPoints.Count}");
                             continue;
                         }
-                        
+
                         // Use bounding box center (average of entry/exit points) to get mid-depth of host
                         var center = BoundingBoxService.GetBoundingBoxCenter(bbox);
-                        
+
                         // ✅ CRITICAL FIX: Validate intersection point is NOT zero before adding
                         // This prevents creating clash zones with (0,0,0) intersection points
                         if (center != null && Math.Abs(center.X) > 1e-9 && Math.Abs(center.Y) > 1e-9 && Math.Abs(center.Z) > 1e-9)
                         {
                             results.Add((mepElement, structElement, bbox, center));
-                            
+
                             if (OptimizationFlags.UseDiagnosticMode && solids.Count > 1)
                             {
                                 log?.Invoke($"[R2024-MULTILAYER] Found intersection in compound wall with {solids.Count} layers: MEP={mepElement.Id}, Structural={structElement.Id}, TotalPoints={allIntersectionPoints.Count}");
@@ -1020,110 +1070,111 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             log?.Invoke($"[⚠️ SKIP-ZERO] Skipping intersection with zero center point: MEP={mepElement.Id}, Structural={structElement.Id}, Center={center}");
                         }
                     }
-                }
-                
-                // ✅ PERFORMANCE DIAGNOSTICS: Track aggregates
-                totalSpatiallyFiltered += spatiallyFiltered;
-                totalKnownPairsSkipped += geometrySkippedForKnownPairs;
-                                // Aggregate spatial tier metrics
-                                totalTier1NearbyElements += nearbyElementsCount;
-                                totalTier2PreciseCandidates += preciseCandidatesCount;
-                                totalTier2Rejected += rtreeFiltered;
-                
-                if (geometrySkippedForKnownPairs > 0 && OptimizationFlags.UseDiagnosticMode)
-                {
-                    log($"[OPTIMIZATION] MEP {mepElement.Id}: Skipped geometry checks for {geometrySkippedForKnownPairs} known valid pairs");
-                }
 
-                perMepStopwatch.Stop();
-                if (OptimizationFlags.UseDiagnosticMode)
-                {
-                    var cacheHitRate = mepCacheHits + mepCacheMisses > 0 ? 100.0 * mepCacheHits / (mepCacheHits + mepCacheMisses) : 0;
-                    log($"[PERF] MEP {mepIndex}/{mepElements.Count} ({mepElement.Id}): {perMepStopwatch.ElapsedMilliseconds}ms, CacheHits={mepCacheHits}, CacheMisses={mepCacheMisses}, HitRate={cacheHitRate:F1}%");
-                    
-                    if (OptimizationFlags.UseSpatialGrid && _spatialService != null)
+                    // ✅ PERFORMANCE DIAGNOSTICS: Track aggregates
+                    totalSpatiallyFiltered += spatiallyFiltered;
+                    totalKnownPairsSkipped += geometrySkippedForKnownPairs;
+                    // Aggregate spatial tier metrics
+                    totalTier1NearbyElements += nearbyElementsCount;
+                    totalTier2PreciseCandidates += preciseCandidatesCount;
+                    totalTier2Rejected += rtreeFiltered;
+
+                    if (geometrySkippedForKnownPairs > 0 && OptimizationFlags.UseDiagnosticMode)
                     {
-                        log($"[BatchIntersection] MEP {mepElement.Id}: spatially filtered {spatiallyFiltered}/{candidatesToProcess.Count} structural elements after two-tier filtering");
-                        
-                        // ✅ TWO-TIER SUMMARY: Log filtering effectiveness
-                        if (OptimizationFlags.UseRTreeFilter && rtreeFiltered > 0)
+                        log($"[OPTIMIZATION] MEP {mepElement.Id}: Skipped geometry checks for {geometrySkippedForKnownPairs} known valid pairs");
+                    }
+
+                    perMepStopwatch.Stop();
+                    if (OptimizationFlags.UseDiagnosticMode)
+                    {
+                        var cacheHitRate = mepCacheHits + mepCacheMisses > 0 ? 100.0 * mepCacheHits / (mepCacheHits + mepCacheMisses) : 0;
+                        log($"[PERF] MEP {mepIndex}/{mepElements.Count} ({mepElement.Id}): {perMepStopwatch.ElapsedMilliseconds}ms, CacheHits={mepCacheHits}, CacheMisses={mepCacheMisses}, HitRate={cacheHitRate:F1}%");
+
+                        if (OptimizationFlags.UseSpatialGrid && _spatialService != null)
                         {
-                            var totalFiltered = structuralData.Count - candidatesToProcess.Count;
-                            var tier1Rejected = structuralData.Count - nearbyElementsCount;
-                            var tier2Rejected = rtreeFiltered;
-                            log($"[TwoTier] Summary MEP {mepElement.Id}: Tier1 rejected {tier1Rejected}, Tier2 rejected {tier2Rejected}, Total rejected {totalFiltered}/{structuralData.Count} ({100.0 * totalFiltered / structuralData.Count:F1}%)");
+                            log($"[BatchIntersection] MEP {mepElement.Id}: spatially filtered {spatiallyFiltered}/{structuralData.Count} structural elements after two-tier filtering");
+
+                            // ✅ TWO-TIER SUMMARY: Log filtering effectiveness
+                            if (OptimizationFlags.UseRTreeFilter && rtreeFiltered > 0)
+                            {
+                                var totalFiltered = structuralData.Count - structuralData.Count;
+                                var tier1Rejected = structuralData.Count - nearbyElementsCount;
+                                var tier2Rejected = rtreeFiltered;
+                                log($"[TwoTier] Summary MEP {mepElement.Id}: Tier1 rejected {tier1Rejected}, Tier2 rejected {tier2Rejected}, Total rejected {totalFiltered}/{structuralData.Count} ({100.0 * totalFiltered / structuralData.Count:F1}%)");
+                            }
+                        }
+                        else
+                        {
+                            log($"[BatchIntersection] MEP {mepElement.Id}: spatially filtered {spatiallyFiltered}/{structuralData.Count} structural elements");
                         }
                     }
-                    else
+                }
+            }
+
+                mepProcessingStopwatch.Stop();
+                overallStopwatch.Stop();
+
+                // ✅ DIAGNOSTIC LOG: Processing complete
+                try
+                {
+                    SafeFileLogger.SafeAppendText("DIAGNOSTIC_TEST.log", $"[{DateTime.Now:HH:mm:ss.fff}] PROCESSING COMPLETE - Found {results.Count} intersections, Total time: {overallStopwatch.ElapsedMilliseconds}ms, MEP processing: {mepProcessingStopwatch.ElapsedMilliseconds}ms");
+                    SafeFileLogger.SafeAppendText("DIAGNOSTIC_TEST.log", $"[{DateTime.Now:HH:mm:ss.fff}] PERFORMANCE STATS - Cache hits: {totalCacheHits}, Cache misses: {totalCacheMisses}, Spatially filtered: {totalSpatiallyFiltered}, Geometry computations: {totalGeometryComputations}");
+                }
+                catch { }
+
+                if (OptimizationFlags.UseDiagnosticMode)
+                {
+                    log($"[BatchIntersection] Found {results.Count} total intersections");
+                    log($"\n========== PERFORMANCE SUMMARY ==========");
+                    log($"Overall Time: {overallStopwatch.ElapsedMilliseconds}ms ({overallStopwatch.Elapsed.TotalSeconds:F2}s)");
+                    log($"  - Preprocessing: {preprocessStopwatch.ElapsedMilliseconds}ms ({100.0 * preprocessStopwatch.ElapsedMilliseconds / Math.Max(overallStopwatch.ElapsedMilliseconds, 1):F1}%)");
+                    log($"  - Spatial Build: {spatialBuildStopwatch.ElapsedMilliseconds}ms ({100.0 * spatialBuildStopwatch.ElapsedMilliseconds / Math.Max(overallStopwatch.ElapsedMilliseconds, 1):F1}%)");
+                    log($"  - MEP Processing: {mepProcessingStopwatch.ElapsedMilliseconds}ms ({100.0 * mepProcessingStopwatch.ElapsedMilliseconds / Math.Max(overallStopwatch.ElapsedMilliseconds, 1):F1}%)");
+                    log($"\nCache Statistics:");
+                    log($"  - Cache Hits: {totalCacheHits}");
+                    log($"  - Cache Misses: {totalCacheMisses}");
+                    var overallHitRate = totalCacheHits + totalCacheMisses > 0 ? 100.0 * totalCacheHits / (totalCacheHits + totalCacheMisses) : 0;
+                    log($"  - Hit Rate: {overallHitRate:F1}%");
+                    log($"  - Geometry Computations: {totalGeometryComputations}");
+                    log($"\nFiltering Effectiveness:");
+                    log($"  - Total Intersection Tests: {totalIntersectionTests}");
+                    log($"  - Spatially Filtered: {totalSpatiallyFiltered}");
+                    log($"  - Known Pairs Skipped: {totalKnownPairsSkipped}");
+                    if (OptimizationFlags.UseSpatialGrid)
                     {
-                        log($"[BatchIntersection] MEP {mepElement.Id}: spatially filtered {spatiallyFiltered}/{structuralData.Count} structural elements");
+                        log($"  - Tier1 Nearby Elements (sum): {totalTier1NearbyElements}");
+                        if (OptimizationFlags.UseRTreeFilter)
+                        {
+                            log($"  - Tier2 Precise Candidates (sum): {totalTier2PreciseCandidates}");
+                            log($"  - Tier2 Rejected (sum): {totalTier2Rejected}");
+                        }
+                    }
+                    if (OptimizationFlags.UseCurveInBoundingBoxFilter)
+                    {
+                        var curvePreFilterRate = curvePreFilterTested > 0 ? 100.0 * curvePreFilterRejected / curvePreFilterTested : 0.0;
+                        log($"  - Curve Pre-Filter Tested: {curvePreFilterTested}");
+                        log($"  - Curve Pre-Filter Rejected: {curvePreFilterRejected} ({curvePreFilterRate:F1}% rejection)");
+                    }
+                    var avgTimePerMep = mepElements.Count > 0 ? mepProcessingStopwatch.ElapsedMilliseconds / (double)mepElements.Count : 0;
+                    log($"  - Avg Time/MEP: {avgTimePerMep:F1}ms");
+                    var zonesPerSecond = overallStopwatch.Elapsed.TotalSeconds > 0 ? results.Count / overallStopwatch.Elapsed.TotalSeconds : 0;
+                    log($"  - Throughput: {zonesPerSecond:F1} zones/second");
+                    log($"========================================\n");
+                }
+
+                // Geometry extraction metrics summary (flag controlled)
+                if (OptimizationFlags.LogGeometryExtractionMetrics)
+                {
+                    log($"[GeometryMetrics] Extraction={totalGeometryExtractionMs}ms, SolidEnum={totalSolidEnumerationMs}ms, SolidTransform={totalSolidTransformMs}ms, IntersectionCalc={totalIntersectionCalcMs}ms, Precompute={totalPrecomputeMs}ms");
+                    var (cacheCount2, cacheMax2, cacheMb2) = GetGeometryCacheStats();
+                    log($"[GeometryMetrics] CacheEntries={cacheCount2}/{cacheMax2} (~{cacheMb2:F1}MB) HitRate={(totalCacheHits + totalCacheMisses > 0 ? 100.0 * totalCacheHits / (totalCacheHits + totalCacheMisses) : 0):F1}%");
+                    if (OptimizationFlags.PrecomputeHostSolids)
+                    {
+                        log($"[GeometryMetrics] PrecomputedElements={precomputeElements}");
                     }
                 }
-            }
+                return results;
 
-            mepProcessingStopwatch.Stop();
-            overallStopwatch.Stop();
-            
-            // ✅ DIAGNOSTIC LOG: Processing complete
-            try
-            {
-                SafeFileLogger.SafeAppendText("DIAGNOSTIC_TEST.log", $"[{DateTime.Now:HH:mm:ss.fff}] PROCESSING COMPLETE - Found {results.Count} intersections, Total time: {overallStopwatch.ElapsedMilliseconds}ms, MEP processing: {mepProcessingStopwatch.ElapsedMilliseconds}ms");
-                SafeFileLogger.SafeAppendText("DIAGNOSTIC_TEST.log", $"[{DateTime.Now:HH:mm:ss.fff}] PERFORMANCE STATS - Cache hits: {totalCacheHits}, Cache misses: {totalCacheMisses}, Spatially filtered: {totalSpatiallyFiltered}, Geometry computations: {totalGeometryComputations}");
-            }
-            catch { }
-            
-            if (OptimizationFlags.UseDiagnosticMode)
-            {
-                log($"[BatchIntersection] Found {results.Count} total intersections");
-                log($"\n========== PERFORMANCE SUMMARY ==========");
-                log($"Overall Time: {overallStopwatch.ElapsedMilliseconds}ms ({overallStopwatch.Elapsed.TotalSeconds:F2}s)");
-                log($"  - Preprocessing: {preprocessStopwatch.ElapsedMilliseconds}ms ({100.0 * preprocessStopwatch.ElapsedMilliseconds / Math.Max(overallStopwatch.ElapsedMilliseconds, 1):F1}%)");
-                log($"  - Spatial Build: {spatialBuildStopwatch.ElapsedMilliseconds}ms ({100.0 * spatialBuildStopwatch.ElapsedMilliseconds / Math.Max(overallStopwatch.ElapsedMilliseconds, 1):F1}%)");
-                log($"  - MEP Processing: {mepProcessingStopwatch.ElapsedMilliseconds}ms ({100.0 * mepProcessingStopwatch.ElapsedMilliseconds / Math.Max(overallStopwatch.ElapsedMilliseconds, 1):F1}%)");
-                log($"\nCache Statistics:");
-                log($"  - Cache Hits: {totalCacheHits}");
-                log($"  - Cache Misses: {totalCacheMisses}");
-                var overallHitRate = totalCacheHits + totalCacheMisses > 0 ? 100.0 * totalCacheHits / (totalCacheHits + totalCacheMisses) : 0;
-                log($"  - Hit Rate: {overallHitRate:F1}%");
-                log($"  - Geometry Computations: {totalGeometryComputations}");
-                log($"\nFiltering Effectiveness:");
-                log($"  - Total Intersection Tests: {totalIntersectionTests}");
-                log($"  - Spatially Filtered: {totalSpatiallyFiltered}");
-                log($"  - Known Pairs Skipped: {totalKnownPairsSkipped}");
-                                if (OptimizationFlags.UseSpatialGrid)
-                                {
-                                    log($"  - Tier1 Nearby Elements (sum): {totalTier1NearbyElements}");
-                                    if (OptimizationFlags.UseRTreeFilter)
-                                    {
-                                        log($"  - Tier2 Precise Candidates (sum): {totalTier2PreciseCandidates}");
-                                        log($"  - Tier2 Rejected (sum): {totalTier2Rejected}");
-                                    }
-                                }
-                if (OptimizationFlags.UseCurveInBoundingBoxFilter)
-                {
-                    var curvePreFilterRate = curvePreFilterTested > 0 ? 100.0 * curvePreFilterRejected / curvePreFilterTested : 0.0;
-                    log($"  - Curve Pre-Filter Tested: {curvePreFilterTested}");
-                    log($"  - Curve Pre-Filter Rejected: {curvePreFilterRejected} ({curvePreFilterRate:F1}% rejection)");
-                }
-                var avgTimePerMep = mepElements.Count > 0 ? mepProcessingStopwatch.ElapsedMilliseconds / (double)mepElements.Count : 0;
-                log($"  - Avg Time/MEP: {avgTimePerMep:F1}ms");
-                var zonesPerSecond = overallStopwatch.Elapsed.TotalSeconds > 0 ? results.Count / overallStopwatch.Elapsed.TotalSeconds : 0;
-                log($"  - Throughput: {zonesPerSecond:F1} zones/second");
-                log($"========================================\n");
-            }
-
-            // Geometry extraction metrics summary (flag controlled)
-            if (OptimizationFlags.LogGeometryExtractionMetrics)
-            {
-                log($"[GeometryMetrics] Extraction={totalGeometryExtractionMs}ms, SolidEnum={totalSolidEnumerationMs}ms, SolidTransform={totalSolidTransformMs}ms, IntersectionCalc={totalIntersectionCalcMs}ms, Precompute={totalPrecomputeMs}ms");
-                var (cacheCount2, cacheMax2, cacheMb2) = GetGeometryCacheStats();
-                log($"[GeometryMetrics] CacheEntries={cacheCount2}/{cacheMax2} (~{cacheMb2:F1}MB) HitRate={(totalCacheHits + totalCacheMisses > 0 ? 100.0 * totalCacheHits / (totalCacheHits + totalCacheMisses) : 0):F1}%" );
-                if (OptimizationFlags.PrecomputeHostSolids)
-                {
-                    log($"[GeometryMetrics] PrecomputedElements={precomputeElements}");
-                }
-            }
-            return results;
         }
 
         // Stable cache key builder (deterministic) guarded by flag

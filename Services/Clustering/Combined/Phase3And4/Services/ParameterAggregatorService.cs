@@ -34,9 +34,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Se
             int count = combinedCluster.MemberClusters.Count;
 
             paramsToSet["Comments"] = $"Combined Cluster: {cats} ({count} items)";
-            paramsToSet["MEP_Category"] = "Multi-Service"; 
-            // Discipline prefix is fixed to MEP for combined sleeves
-            paramsToSet["MEP_System_Abbreviation"] = "MEP";
+
+            // If damper involved, treat as STANDARD (non-MEP) route: skip MEP-specific fields
+            bool isDamper = combinedCluster.CategoriesInvolved.Any(c =>
+                c?.IndexOf("damper", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                c?.IndexOf("duct accessory", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                c?.IndexOf("duct accessories", StringComparison.OrdinalIgnoreCase) >= 0);
+
+            if (!isDamper)
+            {
+                paramsToSet["MEP_Category"] = "Multi-Service"; 
+                // Discipline prefix fixed to MEP for combined sleeves (non-damper)
+                paramsToSet["MEP_System_Abbreviation"] = "MEP";
+            }
             
             // Serialize aggregated parameters (optional, if JSON is available)
             // var snapshot = combinedCluster.ParameterSnapshots.FlattenDistinct();

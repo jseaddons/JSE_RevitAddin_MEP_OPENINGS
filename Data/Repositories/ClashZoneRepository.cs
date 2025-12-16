@@ -28,6 +28,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             _logger = logger ?? (msg => { });
         }
 
+        // Interface implementation for IClashZoneRepository
+        public List<ClashZone> GetClashZonesByGuids(IEnumerable<Guid> clashZoneGuids)
+        {
+            var result = new List<ClashZone>();
+            if (clashZoneGuids == null) return result;
+            
+            var guidList = clashZoneGuids.Distinct().ToList();
+            if (guidList.Count == 0) return result;
+
+            try
+            {
+                // Create comma-separated string of quoted GUIDs for IN clause
+                var guidString = string.Join(",", guidList.Select(g => $"'{g.ToString().ToUpperInvariant()}'"));
+                
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = $@"
+                        SELECT * 
+                        FROM ClashZones 
+                        WHERE UPPER(ClashZoneGuid) IN ({guidString})";
+                    
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            result.Add(MapClashZone(reader));
+                        }
+                    }
+                }
+                
+                if (!OptimizationFlags.DisableVerboseLogging)
+                {
+                    _logger($"[SQLite] Custom Fetch: Retrieved {result.Count} zones by {guidList.Count} GUIDs");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ❌ Error in GetClashZonesByGuids: {ex.Message}");
+            }
+            
+            return result;
+        }
+
+
         /// <summary>
         /// ✅ PERFORMANCE OPTIMIZED: Bulk INSERT/UPDATE for clash zones using batch SQL operations
         /// Reduces 9 zones from ~517ms to ~30ms (17x faster) by eliminating per-zone queries
@@ -1065,13 +1109,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             string mepCategory = clashZone.MepElementCategory ?? category;
                             
                             // ✅ CRITICAL: Get host categories from FilterUiStateProvider or fallback
-                            List<string> hostCategories = null;
+                            List<string>? hostCategories = null;
                             if (FilterUiStateProvider.GetSelectedHostCategories != null)
                             {
                                 hostCategories = FilterUiStateProvider.GetSelectedHostCategories.Invoke();
                             }
                             
-                        var comboId = GetOrCreateFileCombo(filterId, mepCategory, hostCategories, clashZone, transaction);
+                        var comboId = GetOrCreateFileCombo(filterId, mepCategory, hostCategories ?? new List<string>(), clashZone, transaction);
 
                             if (comboId <= 0)
                             {
@@ -2626,7 +2670,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 // ✅ DETERMINISTIC GUID: For individual sleeves, use the zone's Id (deterministic GUID)
                 // For clusters, use the first zone's GUID as the primary identifier
                 // ✅ CRITICAL FIX: Ensure GUID matches what's in ClashZones table by querying the database
-                string clashZoneGuidString = null;
+                string? clashZoneGuidString = null;
                 
                 if (isCluster && clusterInstanceId.HasValue && clusterInstanceId.Value > 0)
                 {
@@ -2701,7 +2745,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         HostParametersJson = SerializeDictionary(hostParams),
                         SourceDocKeysJson = SerializeList(sourceDocKeys),
                         HostDocKeysJson = SerializeList(hostDocKeys),
-                        ClashZoneGuid = clashZoneGuidString, // ✅ DETERMINISTIC: Save ClashZoneGuid from zone.Id
+                        ClashZoneGuid = clashZoneGuidString ?? string.Empty, // ✅ DETERMINISTIC: Save ClashZoneGuid from zone.Id
                         UpdatedAt = DateTime.UtcNow
                     });
             }
@@ -2760,20 +2804,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 cmd.Transaction = transaction;
 
                 // ✅ PRIORITY 1: Check by ClashZoneGuid (deterministic GUID) - most reliable
-                if (!string.IsNullOrWhiteSpace(clashZoneGuid))
-                {
-                    // ✅ CRITICAL FIX: Normalize GUID to uppercase for consistent comparison
-                    var normalizedGuid = clashZoneGuid.ToUpperInvariant().Trim();
-                    
-                    // ✅ FIXED: Use simpler comparison - SQLite UPPER() is sufficient, TRIM() may cause issues
-                    cmd.CommandText = @"
-                        SELECT SnapshotId FROM SleeveSnapshots 
-                        WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid) 
-                          AND ClashZoneGuid IS NOT NULL 
-                          AND ClashZoneGuid != ''
-                        LIMIT 1";
-                    cmd.Parameters.AddWithValue("@ClashZoneGuid", normalizedGuid);
-                    
+                                if (!string.IsNullOrWhiteSpace(clashZoneGuid))
+                                {
+                                        // ✅ CRITICAL FIX: Normalize GUID to uppercase for consistent comparison
+                                        var normalizedGuid = clashZoneGuid != null ? clashZoneGuid.ToUpperInvariant().Trim() : string.Empty;
+                                        // ✅ FIXED: Use simpler comparison - SQLite UPPER() is sufficient, TRIM() may cause issues
+                                        cmd.CommandText = @"
+                                                SELECT SnapshotId FROM SleeveSnapshots 
+                                                WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid) 
+                                                    AND ClashZoneGuid IS NOT NULL 
+                                                    AND ClashZoneGuid != ''
+                                                LIMIT 1";
+                                        cmd.Parameters.AddWithValue("@ClashZoneGuid", normalizedGuid);
+
                     var resultByGuid = cmd.ExecuteScalar();
                     if (resultByGuid != null && resultByGuid != DBNull.Value)
                     {
@@ -3090,11 +3133,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
         private void AddSnapshotParameters(SQLiteCommand cmd, SleeveSnapshot snapshot)
         {
-            cmd.Parameters.AddWithValue("@SleeveInstanceId", (object)snapshot.SleeveInstanceId ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@ClusterInstanceId", (object)snapshot.ClusterInstanceId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@SleeveInstanceId", snapshot.SleeveInstanceId != null ? (object)snapshot.SleeveInstanceId : DBNull.Value);
+            cmd.Parameters.AddWithValue("@ClusterInstanceId", snapshot.ClusterInstanceId != null ? (object)snapshot.ClusterInstanceId : DBNull.Value);
             cmd.Parameters.AddWithValue("@SourceType", snapshot.SourceType ?? "Individual");
-            cmd.Parameters.AddWithValue("@FilterId", (object)snapshot.FilterId ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@ComboId", (object)snapshot.ComboId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@FilterId", snapshot.FilterId != null ? (object)snapshot.FilterId : DBNull.Value);
+            cmd.Parameters.AddWithValue("@ComboId", snapshot.ComboId != null ? (object)snapshot.ComboId : DBNull.Value);
             cmd.Parameters.AddWithValue("@MepElementIdsJson", snapshot.MepElementIdsJson ?? "[]");
             cmd.Parameters.AddWithValue("@HostElementIdsJson", snapshot.HostElementIdsJson ?? "[]");
             cmd.Parameters.AddWithValue("@MepParametersJson", snapshot.MepParametersJson ?? "{}");
@@ -5673,6 +5716,89 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         }
 
         /// <summary>
+        /// ✅ CLUSTER SLEEVE CORNERS: Update pre-calculated 4 corner coordinates for Cluster Sleeves (Phase 3)
+        /// Calculated after cluster placement, stored for downstream processes.
+        /// </summary>
+        public void UpdateClusterSleeveCorners(int clusterInstanceId,
+            double corner1X, double corner1Y, double corner1Z,
+            double corner2X, double corner2Y, double corner2Z,
+            double corner3X, double corner3Y, double corner3Z,
+            double corner4X, double corner4Y, double corner4Z)
+        {
+            try
+            {
+                using (var transaction = _context.Connection.BeginTransaction())
+                {
+                    using (var cmd = _context.Connection.CreateCommand())
+                    {
+                        cmd.Transaction = transaction;
+                        cmd.CommandText = @"
+                            UPDATE ClusterSleeves SET
+                                Corner1X = @Corner1X,
+                                Corner1Y = @Corner1Y,
+                                Corner1Z = @Corner1Z,
+                                Corner2X = @Corner2X,
+                                Corner2Y = @Corner2Y,
+                                Corner2Z = @Corner2Z,
+                                Corner3X = @Corner3X,
+                                Corner3Y = @Corner3Y,
+                                Corner3Z = @Corner3Z,
+                                Corner4X = @Corner4X,
+                                Corner4Y = @Corner4Y,
+                                Corner4Z = @Corner4Z,
+                                UpdatedAt = CURRENT_TIMESTAMP
+                            WHERE ClusterInstanceId = @ClusterInstanceId";
+
+                        cmd.Parameters.AddWithValue("@ClusterInstanceId", clusterInstanceId);
+                        cmd.Parameters.AddWithValue("@Corner1X", corner1X);
+                        cmd.Parameters.AddWithValue("@Corner1Y", corner1Y);
+                        cmd.Parameters.AddWithValue("@Corner1Z", corner1Z);
+                        cmd.Parameters.AddWithValue("@Corner2X", corner2X);
+                        cmd.Parameters.AddWithValue("@Corner2Y", corner2Y);
+                        cmd.Parameters.AddWithValue("@Corner2Z", corner2Z);
+                        cmd.Parameters.AddWithValue("@Corner3X", corner3X);
+                        cmd.Parameters.AddWithValue("@Corner3Y", corner3Y);
+                        cmd.Parameters.AddWithValue("@Corner3Z", corner3Z);
+                        cmd.Parameters.AddWithValue("@Corner4X", corner4X);
+                        cmd.Parameters.AddWithValue("@Corner4Y", corner4Y);
+                        cmd.Parameters.AddWithValue("@Corner4Z", corner4Z);
+
+                        var rowsAffected = cmd.ExecuteNonQuery();
+                        
+                        // ✅ DIAGNOSTIC LOGGING (User Request)
+                        var logParams = new Dictionary<string, object>
+                        {
+                            { "ClusterInstanceId", clusterInstanceId },
+                            { "Corner1", $"({corner1X:F2},{corner1Y:F2},{corner1Z:F2})" },
+                            { "RowsAffected", rowsAffected }
+                        };
+                        
+                        if (rowsAffected == 0)
+                        {
+                            DatabaseOperationLogger.LogOperation("UPDATE", "ClusterSleeves", logParams, rowsAffected, 
+                                $"⚠️ Failed to update corners for Cluster {clusterInstanceId} (Row not found?)");
+                            _logger($"[SQLite] ⚠️ UpdateClusterSleeveCorners: No rows updated for ClusterInstanceId {clusterInstanceId}");
+                        }
+                        else
+                        {
+                            DatabaseOperationLogger.LogOperation("UPDATE", "ClusterSleeves", logParams, rowsAffected, 
+                                $"✅ Saved corners for Cluster {clusterInstanceId}");
+                             // Only log to file if not in strict deployment mode, or if crucial
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                _logger($"[SQLite] ✅ Saved 4 corners for ClusterInstanceId {clusterInstanceId}");
+                        }
+                    }
+                    transaction.Commit();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ❌ Error updating corners for ClusterSleeve {clusterInstanceId}: {ex.Message}");
+                DatabaseOperationLogger.LogOperation("UPDATE", "ClusterSleeves", null, 0, $"❌ Error: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Update SleeveInstanceId for a clash zone by GUID
         /// </summary>
         public void UpdateSleeveInstanceId(Guid clashZoneGuid, int sleeveInstanceId)
@@ -5767,7 +5893,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             }
         }
 
-        public void LogSleeveEvent(int clashZoneId, string eventType, string payload = null)
+        public void LogSleeveEvent(int clashZoneId, string eventType, string? payload = null)
                 {
                     using (var cmd = _context.Connection.CreateCommand())
                     {
@@ -6538,6 +6664,85 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
             return zones;
         }
+
+        public void UpdateMepCategory(Guid clashZoneGuid, string category)
+        {
+            try
+            {
+                using (var transaction = _context.Connection.BeginTransaction())
+                {
+                    using (var cmd = _context.Connection.CreateCommand())
+                    {
+                        cmd.Transaction = transaction;
+                        cmd.CommandText = @"
+                            UPDATE ClashZones 
+                            SET MepCategory = @category,
+                                UpdatedAt = CURRENT_TIMESTAMP
+                            WHERE ClashZoneGuid = @guid";
+                        
+                        cmd.Parameters.AddWithValue("@guid", clashZoneGuid.ToString());
+                        cmd.Parameters.AddWithValue("@category", category);
+
+                        cmd.ExecuteNonQuery();
+                    }
+                    transaction.Commit();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ❌ Error updating MEP Category for {clashZoneGuid}: {ex.Message}");
+            }
+        }
+
+        public Dictionary<int, string> GetMepCategoriesForSleeveIds(IEnumerable<int> sleeveInstanceIds)
+        {
+            var result = new Dictionary<int, string>();
+            if (sleeveInstanceIds == null || !sleeveInstanceIds.Any()) return result;
+
+            try
+            {
+                var uniqueIds = sleeveInstanceIds.Distinct().ToList();
+                const int batchSize = 500;
+
+                for (int i = 0; i < uniqueIds.Count; i += batchSize)
+                {
+                    var batch = uniqueIds.Skip(i).Take(batchSize);
+                    var idString = string.Join(",", batch);
+
+                    using (var cmd = _context.Connection.CreateCommand())
+                    {
+                        cmd.CommandText = $@"
+                            SELECT SleeveInstanceId, MepCategory 
+                            FROM ClashZones 
+                            WHERE SleeveInstanceId IN ({idString})
+                              AND MepCategory IS NOT NULL 
+                              AND MepCategory != ''";
+
+                        using (var reader = cmd.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                int id = Convert.ToInt32(reader["SleeveInstanceId"]);
+                                string category = reader["MepCategory"]?.ToString();
+                                
+                                if (!result.ContainsKey(id) && !string.IsNullOrEmpty(category))
+                                {
+                                    result[id] = category;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ❌ Error getting MEP Categories: {ex.Message}");
+            }
+
+            return result;
+        }
+
+
 
     }
 }

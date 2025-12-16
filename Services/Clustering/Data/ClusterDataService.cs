@@ -362,5 +362,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data
         {
             return filter?.ClashZoneStorage?.AllZones ?? new List<ClashZone>();
         }
+
+        /// <summary>
+        /// Update pre-calculated 4 corner coordinates for Cluster Sleeves (Phase 3 Persistence).
+        /// </summary>
+        public void UpdateClusterSleeveCorners(int clusterInstanceId,
+            double corner1X, double corner1Y, double corner1Z,
+            double corner2X, double corner2Y, double corner2Z,
+            double corner3X, double corner3Y, double corner3Z,
+            double corner4X, double corner4Y, double corner4Z)
+        {
+            // ✅ DATABASE-ONLY: Write directly to repository
+            try
+            {
+                using (var dbContext = new SleeveDbContext(_doc))
+                {
+                    var repository = new ClashZoneRepository(dbContext);
+                    repository.UpdateClusterSleeveCorners(clusterInstanceId,
+                        corner1X, corner1Y, corner1Z,
+                        corner2X, corner2Y, corner2Z,
+                        corner3X, corner3Y, corner3Z,
+                        corner4X, corner4Y, corner4Z);
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Error($"[ClusterDataService] Failed to update corners for cluster {clusterInstanceId}: {ex.Message}");
+                }
+            }
+        }
     }
 }

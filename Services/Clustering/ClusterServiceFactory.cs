@@ -9,6 +9,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Timeout;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Geometry; // ✅ SOLID: For SleeveCornerCalculationService
 using JSE_RevitAddin_MEP_OPENINGS.Services.Placement; // ✅ SOLID: For SleeveParameterService dependency injection
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
@@ -170,6 +171,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             // Phase 10: Timeout Service
             var timeoutService = new ClusterTimeoutService(timeoutLimitMs);
             
+            // ✅ Phase 1b: Corner Calculation Service
+            var cornerService = new SleeveCornerCalculationService();
+            
+
+            
             // Phase 5: Placement Service - null delegates (RefactoredClusterService wires them internally)
             // ✅ SOLID: Create SleeveParameterService for dependency injection
             var parameterService = new SleeveParameterService(doc);
@@ -198,6 +204,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 placementService: placementService,
                 cleanupService: cleanupService,
                 timeoutService: timeoutService,
+                cornerService: cornerService,
                 strategyFactory: strategyFactory,
                 flagManager: null,  // IFlagManager - refactored flag manager not yet ready
                 filterService: filterService
@@ -241,6 +248,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             // ✅ Phase 10: Timeout Service
             var timeoutService = new ClusterTimeoutService(timeoutLimitMs);
 
+            // ✅ Phase 1b: Corner Calculation Service
+            var cornerService = new SleeveCornerCalculationService();
+
             // ✅ Phase 8: Algorithm Service (stateless)
             var algorithmService = new ClusterAlgorithmService();
 
@@ -276,6 +286,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 placementService: placementService,
                 cleanupService: cleanupService,
                 timeoutService: timeoutService,
+                cornerService: cornerService,
                 strategyFactory: strategyFactory,
                 flagManager: null, // IFlagManager - refactored flag manager not yet ready
                 filterService: filterService

@@ -24,6 +24,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Safety;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.PreCalculation;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Existence;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Geometry;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 {
@@ -82,6 +83,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         private readonly IClusterDataService _dataService;
         private readonly IClusterTimeoutService _timeoutService;
         
+        // ✅ CORNER SERVICE: For calculating corners during batch save
+        private readonly Services.Geometry.ISleeveCornerCalculationService _cornerService;
+        
         // ✅ SOLID REFACTORING: Pre-calculation service (optional, used when flag enabled)
         private readonly IClusterPreCalculationService? _preCalculationService;
         
@@ -120,6 +124,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             IClusterPlacementService placementService,
             IClusterCleanupService cleanupService,
             IClusterTimeoutService timeoutService,
+            Services.Geometry.ISleeveCornerCalculationService cornerService,
             ClusteringStrategyFactory? strategyFactory = null,
             Services.Interfaces.Refactor.IFlagManager? flagManager = null,
             FilterManagementService? filterService = null,
@@ -132,6 +137,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             _placementService = placementService ?? throw new ArgumentNullException(nameof(placementService));
             _cleanupService = cleanupService ?? throw new ArgumentNullException(nameof(cleanupService));
             _timeoutService = timeoutService ?? throw new ArgumentNullException(nameof(timeoutService));
+            _cornerService = cornerService ?? throw new ArgumentNullException(nameof(cornerService));
             
             _strategyFactory = strategyFactory ?? new ClusteringStrategyFactory();
             _flagManager = flagManager ?? Services.FlagManagement.FlagManagerFactory.CreateAdapter(doc);
@@ -664,6 +670,53 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                         if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
                                         var logPath = Path.Combine(logDir, "cluster_debug.log");
                                         File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ AFTER ADD: _clusterToClashZoneIds.Count={_clusterToClashZoneIds.Count}\n");
+                                        
+                                        // ✅ PHASE 3 PERISTENCE: Calculate and save cluster corners
+                                        if (placementResult.placedClusterSleeve != null && placementResult.capturedClusterSleeveId.HasValue)
+                                        {
+                                            try
+                                            {
+                                                var cornerService = new SleeveCornerCalculationService();
+                                                // Extract parameters from placed element
+                                                var loc = placementResult.placedClusterSleeve.Location as LocationPoint;
+                                                var point = loc?.Point;
+                                                var rotation = loc?.Rotation ?? 0.0;
+                                                
+                                                // Get dimensions (prioritize RCS dimensions)
+                                                var widthParam = placementResult.placedClusterSleeve.LookupParameter("Element Width") ?? placementResult.placedClusterSleeve.LookupParameter("Width");
+                                                var heightParam = placementResult.placedClusterSleeve.LookupParameter("Element Height") ?? placementResult.placedClusterSleeve.LookupParameter("Height");
+                                                
+                                                // ⚠️ DEPRECATED: Old per-cluster corner save - now handled by BatchSaveClusterDataToDatabase
+                                                // This was causing 0.0 values because it ran before DB entry existed
+                                                /*
+                                                double width = widthParam?.AsDouble() ?? 1.0;
+                                                double height = heightParam?.AsDouble() ?? 1.0;
+
+                                                if (point != null)
+                                                {
+                                                    var cornersResult = cornerService.CalculateCorners(point, width, height, rotation);
+                                                    
+                                                    if (cornersResult.HasValue)
+                                                    {
+                                                        var c = cornersResult.Value;
+                                                        _dataService.UpdateClusterSleeveCorners(
+                                                            placementResult.capturedClusterSleeveId.Value,
+                                                            c.corner1.X, c.corner1.Y, c.corner1.Z,
+                                                            c.corner2.X, c.corner2.Y, c.corner2.Z,
+                                                            c.corner3.X, c.corner3.Y, c.corner3.Z,
+                                                            c.corner4.X, c.corner4.Y, c.corner4.Z
+                                                        );
+                                                    }
+                                                }
+                                                
+                                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ SAVED CORNERS for Cluster {placementResult.capturedClusterSleeveId.Value}\n");
+                                                */
+                                            }
+                                            catch (Exception cornerEx)
+                                            {
+                                                // File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ⚠️ FAILED to save corners for Cluster {placementResult.capturedClusterSleeveId.Value}: {cornerEx.Message}\n");
+                                            }
+                                        }
                                     }
                                     catch { }
                                 }
@@ -789,7 +842,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         // ✅ CRITICAL FIX: Pass deferred parameters dictionary to cleanup service so it can read correct dimensions when batching is enabled
                         // This prevents cleanup from using stale parameter values from Revit before flush/regeneration
                         // Note: Dictionary may be empty if already flushed, but cleanup will fallback to Revit element after regeneration
-                        deletedInCleanup = _cleanupService.CleanupSleevesWithinClusters(doc, validClusters, _deferredClusterParameters);
+                        // Updated to pass targetCategory to prevent cross-category deletion
+                        deletedInCleanup = _cleanupService.CleanupSleevesWithinClusters(doc, validClusters, _deferredClusterParameters, targetCategory);
                         deletedCount += deletedInCleanup;
                         cleanupTracker.SetItemCount(deletedInCleanup);
                     }
@@ -844,6 +898,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     placedClusterSleevesOut.AddRange(placedClusters);
                 }
 
+                // ✅✅✅ CRITICAL FIX: Regenerate ONCE after all placements, BEFORE collecting corners
+                // This ensures all geometry is finalized before we calculate corner coordinates
+                if (_clusterToClashZoneIds.Count > 0 && comboId.HasValue && filterId.HasValue)
+                {
+                    try
+                    {
+                        var versionTag = Helpers.VersionInfo.VersionTag;
+                        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                        var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                        var logPath = Path.Combine(logDir, "cluster_debug.log");
+                        
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔄 REGENERATING document before collecting corners for {_clusterToClashZoneIds.Count} clusters\n");
+                    }
+                    catch { }
+                    
+                    doc.Regenerate();
+                    
+                    try
+                    {
+                        var versionTag = Helpers.VersionInfo.VersionTag;
+                        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                        var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                        var logPath = Path.Combine(logDir, "cluster_debug.log");
+                        
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ REGENERATION COMPLETE - Now calling BatchSaveClusterDataToDatabase\n");
+                    }
+                    catch { }
+                    
+                    // 🚀 BATCH SAVE: Save all clusters with finalized geometry
+                    BatchSaveClusterDataToDatabase(doc, comboId.Value, filterId.Value, targetCategory, _clusterToClashZoneIds);
+                    
+                    try
+                    {
+                        var versionTag = Helpers.VersionInfo.VersionTag;
+                        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                        var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                        var logPath = Path.Combine(logDir, "cluster_debug.log");
+                        
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ BatchSaveClusterDataToDatabase COMPLETED\n");
+                    }
+                    catch { }
+                }
+
+
                 // ✅ PERFORMANCE: Track database save
                 using (var dbSaveTracker = performanceMonitor.TrackOperation("Save Cluster Data to Database"))
                 {
@@ -876,24 +974,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 }
                 catch { }
                 
-                SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 📊 DATABASE SAVE CHECK: comboId={comboId?.ToString() ?? "NULL"}, filterId={filterId?.ToString() ?? "NULL"}, _clusterToClashZoneIds.Count={_clusterToClashZoneIds.Count}\n");
+                // 🔥 CRITICAL: Use direct File.AppendAllText to bypass deployment mode suppression
+                try
+                {
+                    var versionTag = Helpers.VersionInfo.VersionTag;
+                    var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                    var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                    var logPath = Path.Combine(logDir, "cluster_debug.log");
+                    
+                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 IF CHECK: comboId.HasValue={comboId.HasValue}, filterId.HasValue={filterId.HasValue}, count>0={_clusterToClashZoneIds.Count > 0}, COMBINED={(comboId.HasValue && filterId.HasValue && _clusterToClashZoneIds.Count > 0)}\n");
+                }
+                catch { }
                 
                     if (comboId.HasValue && filterId.HasValue && _clusterToClashZoneIds.Count > 0)
                 {
-                    try
-                    {
-                        var versionTag = Helpers.VersionInfo.VersionTag;
-                        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                        var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
-                        if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
-                        var logPath = Path.Combine(logDir, "cluster_debug.log");
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅✅✅ CALLING SaveClusterDataToDatabase: {_clusterToClashZoneIds.Count} clusters\n");
-                    }
-                    catch { }
+                    // 🔥🔥🔥 CRITICAL DEBUG: First line inside if block
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🔥🔥🔥 ENTERED IF BLOCK - About to batch save\n");
                     
+                    // 🔥 DEBUG LOG: Confirm we're about to save
                     SafeFileLogger.SafeAppendText("cluster_debug.log", 
                         $"[{DateTime.Now:HH:mm:ss}] ✅ BATCH SAVING cluster data to database: {_clusterToClashZoneIds.Count} clusters\n");
+                    
+                    // ✅ USER REQUEST: "Regen one time only" before collecting corners
+                    // This ensures all geometry is valid before we read it for corner calculation
+                    doc.Regenerate();
                     
                     // 🚀 BATCH SAVE: Save all clusters in single transaction (113ms → ~10ms)
                     BatchSaveClusterDataToDatabase(doc, comboId.Value, filterId.Value, targetCategory, _clusterToClashZoneIds);
@@ -1996,7 +2101,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 {
                     // ✅ PATH 1a: Cleanup individual sleeves within placed clusters (should return 0 due to smart placement)
                     // Smart placement already skipped clusters with conflicting individual sleeves
-                    deletedCount = _cleanupService.CleanupSleevesWithinClusters(doc, placedClusters, null);
+                    // Updated to pass targetCategory to prevent cross-category deletion (e.g. Pipe clusters deleting Dampers)
+                    deletedCount = _cleanupService.CleanupSleevesWithinClusters(doc, placedClusters, null, targetCategory);
                     
                     if (deletedCount > 0)
                     {
@@ -2211,6 +2317,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             string targetCategory,
             Dictionary<int, List<Guid>> clusterToClashZoneIds)
         {
+            // 🔥 DEBUG: Confirm method entry
+            SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                $"[{DateTime.Now:HH:mm:ss}] 🔥🔥🔥 BatchSaveClusterDataToDatabase ENTERED: {clusterToClashZoneIds?.Count ?? 0} clusters\n");
+            
             if (doc == null) throw new ArgumentNullException(nameof(doc));
             if (comboId <= 0) throw new ArgumentException($"Invalid ComboId: {comboId}", nameof(comboId));
             if (filterId <= 0) throw new ArgumentException($"Invalid FilterId: {filterId}", nameof(filterId));
@@ -2228,6 +2338,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 using (var dbContext = new SleeveDbContext(doc))
                 {
                     var clusterRepository = new ClusterSleeveRepository(dbContext);
+                    var clashZoneRepository = new ClashZoneRepository(dbContext); // For UpdateClusterSleeveCorners
                     
                     // Prepare all cluster save data
                     var clustersToSave = new List<ClusterSaveData>();
@@ -2325,6 +2436,71 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             // Fallback to bbox center only if actual placement point is not available
                             _actualPlacementPoints.TryGetValue(clusterInstanceId, out var actualPlacementPoint);
                             var placementPoint = actualPlacementPoint ?? (bboxMin + bboxMax) / 2.0;
+
+                            // ✅ CORNER PERISISTENCE (User Request: "Regen -> Collect -> Batch Save")
+                            // Calculate corners from dimensions and rotation
+                            // This ensures the DB has the exact corners of the placed sleeve
+                            double c1x=0, c1y=0, c1z=0, c2x=0, c2y=0, c2z=0, c3x=0, c3y=0, c3z=0, c4x=0, c4y=0, c4z=0;
+                            
+                            try 
+                            {
+                                // We use the placement point (center) and dimensions to calculate corners
+                                // This matches the logic used in UpdateClusterSleeveCorners but does it here for batch save
+                                var cornersResult = _cornerService.CalculateCorners(placementPoint, width, height, rotationAngleDeg);
+                                if (cornersResult.HasValue)
+                                {
+                                    var c = cornersResult.Value;
+                                    c1x = c.corner1.X; c1y = c.corner1.Y; c1z = c.corner1.Z;
+                                    c2x = c.corner2.X; c2y = c.corner2.Y; c2z = c.corner2.Z;
+                                    c3x = c.corner3.X; c3y = c.corner3.Y; c3z = c.corner3.Z;
+                                    c4x = c.corner4.X; c4y = c.corner4.Y; c4z = c.corner4.Z;
+                                    
+                                    // ✅ DEBUG LOG: Verify corners are calculated (bypass deployment mode)
+                                    try
+                                    {
+                                        var versionTag = Helpers.VersionInfo.VersionTag;
+                                        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                                        var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                                        var logPath = Path.Combine(logDir, "cluster_debug.log");
+                                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔍 CORNER DEBUG: {clusterSleeve.Id} -> C1:({c1x:F2},{c1y:F2},{c1z:F2}), C2:({c2x:F2},{c2y:F2},{c2z:F2}), Rot:{rotationAngleDeg:F1}°\n");
+                                    }
+                                    catch { }
+                                    
+                                    // ✅ CRITICAL: Update corners in database (same pattern as individual sleeves)
+                                    clashZoneRepository.UpdateClusterSleeveCorners(
+                                        clusterInstanceId,
+                                        c1x, c1y, c1z,
+                                        c2x, c2y, c2z,
+                                        c3x, c3y, c3z,
+                                        c4x, c4y, c4z);
+                                }
+                                else
+                                {
+                                    try
+                                    {
+                                        var versionTag = Helpers.VersionInfo.VersionTag;
+                                        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                                        var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                                        var logPath = Path.Combine(logDir, "cluster_debug.log");
+                                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ⚠️ CORNER DEBUG: {clusterSleeve.Id} -> Calculation returned NULL\n");
+                                    }
+                                    catch { }
+                                }
+                            }
+                            catch (Exception cornerEx)
+                            {
+                                try
+                                {
+                                    var versionTag = Helpers.VersionInfo.VersionTag;
+                                    var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                                    var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                                    var logPath = Path.Combine(logDir, "cluster_debug.log");
+                                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ CORNER DEBUG: {clusterSleeve.Id} -> Error: {cornerEx.Message}\n");
+                                }
+                                catch { }
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Warning($"[RefactoredClusterService] Failed to calculate corners for cluster {clusterInstanceId}: {cornerEx.Message}");
+                            }
                             
                             // ✅ DIAGNOSTIC: Log bounding box values before saving
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
@@ -2357,7 +2533,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                 PlacementZ = placementPoint.Z,
                                 HostType = hostType,
                                 HostOrientation = hostOrientation ?? "Unknown",
-                                ClashZoneIds = clashZoneIds
+                                ClashZoneIds = clashZoneIds,
+                                // ✅ Corners
+                                Corner1X = c1x, Corner1Y = c1y, Corner1Z = c1z,
+                                Corner2X = c2x, Corner2Y = c2y, Corner2Z = c2z,
+                                Corner3X = c3x, Corner3Y = c3y, Corner3Z = c3z,
+                                Corner4X = c4x, Corner4Y = c4y, Corner4Z = c4z
                             });
                         }
                         catch (Exception prepEx)

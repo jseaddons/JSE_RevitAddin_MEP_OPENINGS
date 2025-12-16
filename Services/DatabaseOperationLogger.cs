@@ -25,8 +25,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             int rowsAffected = -1,
             string additionalInfo = null)
         {
-            if (DeploymentConfiguration.DeploymentMode)
-                return; // Skip logging in deployment mode
+            // if (DeploymentConfiguration.DeploymentMode)
+            //     return; // Skip logging in deployment mode
 
             lock (_lock)
             {

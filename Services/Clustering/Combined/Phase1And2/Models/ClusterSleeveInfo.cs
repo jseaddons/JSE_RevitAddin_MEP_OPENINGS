@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Models
@@ -9,22 +10,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Mo
     /// </summary>
     public class ClusterSleeveInfo
     {
-        public Guid ClashZoneId { get; }
-        public int ClusterSleeveInstanceId { get; }
+        public ClusterSleeveInfo() 
+        {
+            ClashZoneIds = new List<Guid>();
+        }
+
+        public Guid ClashZoneId { get; set; }
+        public List<Guid> ClashZoneIds { get; set; }
+        
+        public int ClusterSleeveInstanceId { get; set; }
         public int CombinedClusterInstanceId { get; set; }
-        public string Category { get; }
-        public int SourceSleeveInstanceId { get; }
+        public string Category { get; set; }
+        public int SourceSleeveInstanceId { get; set; }
+        
+        // Additional properties for ViewModel compatibility
+        public int SleeveInstanceId { get; set; }
+        public string CategoryName 
+        { 
+            get => Category; 
+            set => Category = value; 
+        }
+        public XYZ SleeveCenter { get; set; }
 
-        public double ClusterSleeveBoundingBoxMinX { get; }
-        public double ClusterSleeveBoundingBoxMinY { get; }
-        public double ClusterSleeveBoundingBoxMinZ { get; }
-        public double ClusterSleeveBoundingBoxMaxX { get; }
-        public double ClusterSleeveBoundingBoxMaxY { get; }
-        public double ClusterSleeveBoundingBoxMaxZ { get; }
+        public double ClusterSleeveBoundingBoxMinX { get; set; }
+        public double ClusterSleeveBoundingBoxMinY { get; set; }
+        public double ClusterSleeveBoundingBoxMinZ { get; set; }
+        public double ClusterSleeveBoundingBoxMaxX { get; set; }
+        public double ClusterSleeveBoundingBoxMaxY { get; set; }
+        public double ClusterSleeveBoundingBoxMaxZ { get; set; }
 
-        public double SleeveWidth { get; }
-        public double SleeveHeight { get; }
-        public double SleeveDiameter { get; }
+        public double SleeveWidth { get; set; }
+        public double SleeveHeight { get; set; }
+        public double SleeveDiameter { get; set; }
         
         // Level information for host plane
         public double Level { get; set; } = 0.0;
@@ -46,15 +63,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Mo
             ClusterSleeveBoundingBoxMaxY > ClusterSleeveBoundingBoxMinY &&
             ClusterSleeveBoundingBoxMaxZ > ClusterSleeveBoundingBoxMinZ;
 
-        private ClusterSleeveInfo(ClashZone zone)
+        private ClusterSleeveInfo(ClashZone zone) : this()
         {
             ClashZoneId = zone.Id;
+            ClashZoneIds.Add(zone.Id);
+            
             ClusterSleeveInstanceId = zone.ClusterSleeveInstanceId;
             CombinedClusterInstanceId = zone.CombinedClusterInstanceId;
             Category = zone.MepElementCategory;
             SourceSleeveInstanceId = zone.AfterClusterSleevePlacedSleeveInstanceId > 0
                 ? zone.AfterClusterSleevePlacedSleeveInstanceId
                 : zone.SleeveInstanceId;
+            
+            SleeveInstanceId = zone.SleeveInstanceId; 
 
             ClusterSleeveBoundingBoxMinX = zone.ClusterSleeveBoundingBoxMinX;
             ClusterSleeveBoundingBoxMinY = zone.ClusterSleeveBoundingBoxMinY;
