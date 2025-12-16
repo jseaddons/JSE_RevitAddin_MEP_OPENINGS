@@ -129,5 +129,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Retrieves a list of ClashZones by their Guids.
         /// </summary>
         List<ClashZone> GetClashZonesByGuids(IEnumerable<System.Guid> guids);
+
+        /// <summary>
+        /// Retrieves cluster sleeves associated with the given instance IDs.
+        /// </summary>
+        List<ClusterSleeve> GetClusterSleevesByInstanceIds(IEnumerable<int> instanceIds);
     }
 }

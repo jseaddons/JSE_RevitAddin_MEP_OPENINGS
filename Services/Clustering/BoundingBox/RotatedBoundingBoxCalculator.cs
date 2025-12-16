@@ -54,11 +54,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
 
                 foreach (var sleeveData in cluster)
                 {
-                    var clashZone = _getClashZoneBySleeveInstanceId(sleeveData.SleeveInstanceId, xmlFilePath);
+                    int sId = sleeveData.SleeveInstanceId;
+                    var clashZone = _getClashZoneBySleeveInstanceId(sId, xmlFilePath);
+                    
                     if (clashZone == null)
                     {
+                        DebugLogger.Warning($"[RotatedBoundingBoxCalculator] DB Lookup Failed for Sleeve {sId}. Using Fallsback.");
                         // Try Revit API as fallback
-                        var sleeve = actualSleeves.FirstOrDefault(s => s.Id.IntegerValue == sleeveData.SleeveInstanceId);
+                        var sleeve = actualSleeves.FirstOrDefault(s => s.Id.IntegerValue == sId);
                         if (sleeve != null)
                         {
                             var bbox = sleeve.get_BoundingBox(null);
@@ -80,6 +83,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
 
                     if (hasRotatedBbox)
                     {
+                        DebugLogger.Info($"[RotatedBoundingBoxCalculator] Extracted Corners from DB for Sleeve {sId}: X=[{cz.RotatedBoundingBoxMinX}, {cz.RotatedBoundingBoxMaxX}], Y=[{cz.RotatedBoundingBoxMinY}, {cz.RotatedBoundingBoxMaxY}]");
+                        
                         rotatedBboxes.Add((
                             new XYZ(cz.RotatedBoundingBoxMinX.Value,
                                    cz.RotatedBoundingBoxMinY.Value,
@@ -92,6 +97,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
                     }
                     else
                     {
+                        DebugLogger.Info($"[RotatedBoundingBoxCalculator] Using Axis-Aligned Bounds from DB for Sleeve {sId} (No Rotated Corners Found)");
                         axisAlignedBboxes.Add((
                             new XYZ(cz.SleeveBoundingBoxMinX,
                                    cz.SleeveBoundingBoxMinY,

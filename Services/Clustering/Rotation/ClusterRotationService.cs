@@ -156,6 +156,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                         string wallDirectionType = firstClashZone.WallDirectionType ?? "";
                         string hostOrientation = firstClashZone.HostOrientation ?? "";
                         
+                        // LOGGING FOR USER VERIFICATION
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE-DEBUG] Sleeve {firstClashZone.SleeveInstanceId} WallDirectionType='{wallDirectionType}', HostOrientation='{hostOrientation}'\n");
+                            DebugLogger.Info($"[ClusterRotationService] Sleeve {firstClashZone.SleeveInstanceId} WallDirectionType='{wallDirectionType}', HostOrientation='{hostOrientation}'");
+                        }
+                                                
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             SafeFileLogger.SafeAppendText("cluster_debug.log",

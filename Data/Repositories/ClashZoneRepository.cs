@@ -6743,6 +6743,62 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
 
 
+        /// <summary>
+        /// Retrieves cluster sleeves associated with the given instance IDs.
+        /// </summary>
+        public List<ClusterSleeve> GetClusterSleevesByInstanceIds(IEnumerable<int> instanceIds)
+        {
+            var results = new List<ClusterSleeve>();
+            var ids = instanceIds?.ToList();
+            if (ids == null || ids.Count == 0) return results;
+
+            try
+            {
+                var idString = string.Join(",", ids);
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = $@"
+                        SELECT * 
+                        FROM ClusterSleeves 
+                        WHERE ClusterInstanceId IN ({idString})";
+                    
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            results.Add(MapClusterSleeve(reader));
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ❌ Error in GetClusterSleevesByInstanceIds: {ex.Message}");
+            }
+            return results;
+        }
+
+        private ClusterSleeve MapClusterSleeve(System.Data.SQLite.SQLiteDataReader reader)
+        {
+            return new ClusterSleeve
+            {
+                ClusterSleeveId = reader.GetInt32(reader.GetOrdinal("ClusterSleeveId")),
+                ClusterInstanceId = reader.GetInt32(reader.GetOrdinal("ClusterInstanceId")),
+                Corner1X = reader.IsDBNull(reader.GetOrdinal("Corner1X")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("Corner1X")),
+                Corner1Y = reader.IsDBNull(reader.GetOrdinal("Corner1Y")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("Corner1Y")),
+                Corner1Z = reader.IsDBNull(reader.GetOrdinal("Corner1Z")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("Corner1Z")),
+                Corner2X = reader.IsDBNull(reader.GetOrdinal("Corner2X")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("Corner2X")),
+                Corner2Y = reader.IsDBNull(reader.GetOrdinal("Corner2Y")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("Corner2Y")),
+                Corner2Z = reader.IsDBNull(reader.GetOrdinal("Corner2Z")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("Corner2Z")),
+                Corner3X = reader.IsDBNull(reader.GetOrdinal("Corner3X")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("Corner3X")),
+                Corner3Y = reader.IsDBNull(reader.GetOrdinal("Corner3Y")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("Corner3Y")),
+                Corner3Z = reader.IsDBNull(reader.GetOrdinal("Corner3Z")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("Corner3Z")),
+                Corner4X = reader.IsDBNull(reader.GetOrdinal("Corner4X")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("Corner4X")),
+                Corner4Y = reader.IsDBNull(reader.GetOrdinal("Corner4Y")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("Corner4Y")),
+                Corner4Z = reader.IsDBNull(reader.GetOrdinal("Corner4Z")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("Corner4Z")),
+                RotationAngleDeg = reader.IsDBNull(reader.GetOrdinal("RotationAngleDeg")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("RotationAngleDeg"))
+            };
+        }
     }
 }
 

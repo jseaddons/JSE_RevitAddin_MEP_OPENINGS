@@ -283,6 +283,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                             var cats = new HashSet<string>();
                             var idsToDelete = new List<ElementId>();
 
+                            // Populate deletion list and metrics
+                            foreach (var id in _selectedIds)
+                            {
+                                var el = doc.GetElement(id);
+                                if (el == null) continue;
+                                if (el.Category != null) cats.Add(el.Category.Name);
+                                
+                                if (id != masterId)
+                                {
+                                    idsToDelete.Add(id);
+                                }
+                            }
+
                             DebugLogger.Info($"[ManualJoin] Master Sleeve {masterId} Transform Origin: {masterTransform.Origin}");
 
                             // 4. ADAPTER-BASED CALCULATION
@@ -290,6 +303,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                             // This delegates all geometry analysis (World Space, Rotation, etc.) to the "Golden" services.
 
                             var selectedElements = _selectedIds.Select(id => doc.GetElement(id)).Where(e => e != null).ToList();
+                            
+                            // *** DIAGNOSTIC LOGGING START ***
+                            DebugLogger.Info("--- DIAGNOSTIC DIMENSION LOG ---");
+                            foreach (var el in selectedElements)
+                            {
+                                var pW = el.LookupParameter("Width");
+                                var pH = el.LookupParameter("Height");
+                                var wVal = pW != null ? pW.AsDouble() * 304.8 : 0;
+                                var hVal = pH != null ? pH.AsDouble() * 304.8 : 0;
+                                // Center
+                                var center = XYZ.Zero;
+                                if (el.Location is LocationPoint lpt) center = lpt.Point;
+                                else { var bb = el.get_BoundingBox(null); if (bb!=null) center = (bb.Min+bb.Max)/2; }
+                                
+                                DebugLogger.Info($"Sleeve {el.Id}: Width={wVal:F1}mm, Height={hVal:F1}mm, Center={center}");
+                            }
+
+                            if (selectedElements.Count >= 2)
+                            {
+                                var s1 = selectedElements[0];
+                                var s2 = selectedElements[1];
+                                var c1 = (s1.Location as LocationPoint)?.Point ?? (s1.get_BoundingBox(null).Min + s1.get_BoundingBox(null).Max)/2;
+                                var c2 = (s2.Location as LocationPoint)?.Point ?? (s2.get_BoundingBox(null).Min + s2.get_BoundingBox(null).Max)/2;
+                                var dist = c1.DistanceTo(c2) * 304.8;
+                                DebugLogger.Info($"Distance between Sleeve 1 & 2: {dist:F2} mm");
+                                
+                                // Edge to Edge Approximation
+                                var w1 = s1.LookupParameter("Width")?.AsDouble() * 304.8 ?? 0;
+                                var w2 = s2.LookupParameter("Width")?.AsDouble() * 304.8 ?? 0;
+                                var gap = dist - (w1/2 + w2/2);
+                                DebugLogger.Info($"Approximate Gap (Center Dist - Half Widths): {gap:F2} mm");
+                            }
+                            DebugLogger.Info("--- END DIAGNOSTIC LOG ---");
+                            // *** DIAGNOSTIC LOGGING END ***
                             
                             DebugLogger.Info($"[ManualJoin] Invoking Adapter for {selectedElements.Count} elements.");
                             
