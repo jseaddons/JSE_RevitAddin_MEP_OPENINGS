@@ -12,6 +12,11 @@ using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Repository;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Interfaces;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Interfaces;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Combined;
 using JSE_RevitAddin_MEP_OPENINGS.Data; // For GlobalData
 
 // Explicit Alias for UI Types
@@ -34,13 +39,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
         private string _statusMessage = "Ready";
         
         // Services
-        private readonly CombinedClusterDiscoveryService _discoveryService;
-        private readonly FormationService _formationService; // Phase 3
-        private readonly ParameterAggregatorService _paramService; // Phase 3
-        private readonly CombinedClusterPersistenceService _persistService; // Phase 4
+        // Services
+        private readonly ICombinedClusterDiscoveryService _discoveryService;
+        private readonly ICombinedClusterFormation _formationService; // Phase 3
+        private readonly IParameterAggregatorService _paramService; // Phase 3
+        private readonly ICombinedClusterPersistence _persistService; // Phase 4
 
-        private readonly ClashZoneRepository _repo;
+        private readonly IClashZoneRepository _repo;
         private readonly CrashSafeExecutor _executor; // Safety wrapper
+        private readonly IManualClusterCalculationAdapter _manualCalculator;
         
         // UI Properties (Abbreviated for rewrite)
         public bool IsAutoMode
@@ -86,41 +93,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
         private readonly Autodesk.Revit.UI.ExternalEvent _externalEvent;
         private readonly CombinedSleeveRequestHandler _requestHandler;
 
-        public CombinedSleeveViewModel(Autodesk.Revit.UI.UIDocument uiDoc, Autodesk.Revit.UI.ExternalEvent externalEvent, CombinedSleeveRequestHandler requestHandler)
+        public CombinedSleeveViewModel(
+            Autodesk.Revit.UI.UIDocument uiDoc, 
+            Autodesk.Revit.UI.ExternalEvent externalEvent, 
+            CombinedSleeveRequestHandler requestHandler,
+            IClashZoneRepository repo,
+            ICombinedClusterDiscoveryService discoveryService,
+            ICombinedClusterFormation formationService,
+            IParameterAggregatorService paramService,
+            ICombinedClusterPersistence persistService,
+            IManualClusterCalculationAdapter manualCalculator)
         {
             _uiDocument = uiDoc;
             _document = uiDoc.Document;
             _externalEvent = externalEvent;
             _requestHandler = requestHandler;
 
+            // Injected Dependencies
+            _repo = repo ?? throw new ArgumentNullException(nameof(repo));
+            _discoveryService = discoveryService ?? throw new ArgumentNullException(nameof(discoveryService));
+            _formationService = formationService ?? throw new ArgumentNullException(nameof(formationService));
+            _paramService = paramService ?? throw new ArgumentNullException(nameof(paramService));
+            _persistService = persistService ?? throw new ArgumentNullException(nameof(persistService));
+            _manualCalculator = manualCalculator ?? throw new ArgumentNullException(nameof(manualCalculator));
+
             _executor = new CrashSafeExecutor();
             
-            // Initialize Services
-            // Note: In real app, these should be injected or created via factory.
-            // Simplified here for direct instantiation if context allows.
-            
-            // Creating Context for Repositories
-            // Using shared context potentially
-            // BUT here we create transient context or use one passed in?
-            // Assuming simplified usage:
-            try 
-            {
-                 // Using a dedicated context for VM operations if needed, but Manual Join uses Transaction context
-                 var dbContext = new SleeveDbContext(_document); // Should be disposed?
-                 _repo = new ClashZoneRepository(dbContext);
-                 var combinedRepo = new CombinedClusterRepository(_repo);
-                 
-                 _discoveryService = new CombinedClusterDiscoveryService(combinedRepo);
-                 _formationService = new FormationService(combinedRepo);
-                 
-                 _paramService = new ParameterAggregatorService();
-                 _persistService = new CombinedClusterPersistenceService(_repo);
-            }
-            catch(Exception ex)
-            {
-                StatusMessage = "Service Init Error: " + ex.Message;
-            }
-
             // Commands
             RefreshCommand = new RelayCommand(Refresh);
             CreateCombinedSleevesCommand = new RelayCommand(CreateCombinedSleeves); // Auto flow
@@ -233,11 +231,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
 
                 try
                 {
+                    // Log Build Timestamp to verify latest code
+                    var assemblyLocation = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                    var buildTime = System.IO.File.GetLastWriteTime(assemblyLocation);
+                    DebugLogger.Info($"[CombinedSleeveManual] Build Timestamp: {buildTime}");
+
+                    DebugLogger.Info("[DEBUG] Step 1: About to set StatusMessage");
                     StatusMessage = "Joining...";
+
                     
+                    DebugLogger.Info("[DEBUG] Step 2: Checking _requestHandler");
+                    if (_requestHandler == null)
+                    {
+                        DebugLogger.Error("[ManualJoin] RequestHandler is null");
+                        StatusMessage = "Error: RequestHandler not initialized";
+                        return Autodesk.Revit.UI.Result.Failed;
+                    }
+                    DebugLogger.Info("[DEBUG] Step 3: About to call SetAction");
                     // Delegate Transaction to External Event
                     _requestHandler.SetAction((uiapp) =>
                     {
+                        DebugLogger.Info("[DEBUG] Step 4: Inside SetAction");
                         Document doc = uiapp.ActiveUIDocument.Document;
                         if (!doc.IsValidObject) return;
                         
@@ -259,10 +273,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                             Transform masterTransform = masterSleeve.GetTransform();
                             Transform inverseTransform = masterTransform.Inverse;
                             
-                            // Initialize variables for outer scope (Fixing CS0103)
-                            double newWidth = 0;
-                            double newHeight = 0;
-                            XYZ worldTranslation = XYZ.Zero;
+
 
                             // Legacy placeholders for Parameter Aggregation logic
                             double unionMinX = 0, unionMaxX = 0;
@@ -274,113 +285,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
 
                             DebugLogger.Info($"[ManualJoin] Master Sleeve {masterId} Transform Origin: {masterTransform.Origin}");
 
-                            // 4. ROBUST "CLUSTER-MIMIC" LOGIC (Inverse Transform Strategy)
-                            // This replicates the Auto-Cluster logic: "Rotate to Local -> Measure -> Rotate Back".
-                            // We use MasterTransform.Inverse to put everything in the Master's aligned local space.
+                            // 4. ADAPTER-BASED CALCULATION
+                            // Using the new ManualClusterCalculationAdapter to ensure 1:1 match with Auto-Cluster logic.
+                            // This delegates all geometry analysis (World Space, Rotation, etc.) to the "Golden" services.
+
+                            var selectedElements = _selectedIds.Select(id => doc.GetElement(id)).Where(e => e != null).ToList();
                             
-                            // Bounds in Local Space
-                            double localMinX = double.MaxValue, localMaxX = double.MinValue;
-                            double localMinY = double.MaxValue, localMaxY = double.MinValue; // Depth/Thickness
-                            double localMinZ = double.MaxValue, localMaxZ = double.MinValue; // Height
+                            DebugLogger.Info($"[ManualJoin] Invoking Adapter for {selectedElements.Count} elements.");
+                            
+                            var joinResult = _manualCalculator.Calculate(selectedElements);
 
-                            DebugLogger.Info($"[ManualJoin] Starting Cluster-Mimic Calculation using Master {masterId} Transform.");
+                            // Apply Results
+                            // Apply Results
+                            double newWidth = joinResult.WidthFeet;
+                            double newHeight = joinResult.HeightFeet;
+                            double newDepth = joinResult.DepthFeet;
+                            double newRotation = joinResult.RotationAngleRad;
+                            XYZ newCenter = joinResult.CenterPoint;
+                            
+                            // Initialize translation
+                            XYZ worldTranslation = XYZ.Zero;
 
-                            foreach (var id in _selectedIds)
+                            // Calculate World Translation
+                            // We need to move the Master Sleeve from its current location to this optimal center.
+                            
+                            // Get Master Center (Try LocationPoint first, then BBox Center)
+                            XYZ currentMasterCenter;
+                            if (masterSleeve.Location is LocationPoint lp)
                             {
-                                var el = doc.GetElement(id);
-                                if(el == null) continue;
-                                
-                                BoundingBoxXYZ bb = el.get_BoundingBox(null);
-                                if (bb == null) continue;
-
-                                var corners = GetBoundingBoxCorners(bb);
-                                foreach (var p in corners)
-                                {
-                                    // Transform World Point -> Master Local Space
-                                    XYZ localP = inverseTransform.OfPoint(p);
-                                    
-                                    if (localP.X < localMinX) localMinX = localP.X;
-                                    if (localP.X > localMaxX) localMaxX = localP.X;
-                                    
-                                    if (localP.Y < localMinY) localMinY = localP.Y;
-                                    if (localP.Y > localMaxY) localMaxY = localP.Y;
-                                    
-                                    if (localP.Z < localMinZ) localMinZ = localP.Z;
-                                    if (localP.Z > localMaxZ) localMaxZ = localP.Z;
-                                }
-                                
-                                if (id != masterId) idsToDelete.Add(id);
+                                currentMasterCenter = lp.Point;
+                            }
+                            else
+                            {
+                                var bbox = masterSleeve.get_BoundingBox(null);
+                                currentMasterCenter = (bbox.Min + bbox.Max) / 2.0;
                             }
 
-                            // SIZING (Local Space)
-                            // Width is simply the span along Local X
-                            newWidth = localMaxX - localMinX;
+                            // If newCenter is valid (and not origin due to some error), calculate shift.
+                            // The Adapter returns world coordinates for the center.
+                            if (!newCenter.IsZeroLength())
+                            {
+                                worldTranslation = newCenter - currentMasterCenter;
+                            }
                             
-                            // Height is the span along Local Z
-                            newHeight = localMaxZ - localMinZ;
-                            
-                            // Depth (Thickness) - We calculate it but usually preserve Master's Thickness logic 
-                            // unless we want to resize thickness. Standard Sleeves usually fixed thickness by Host.
-                            // But for Generic Models, we might want to update it.
-                            // Let's log it for now.
-                            double newDepth = localMaxY - localMinY;
+                            DebugLogger.Info($"[ManualJoin] ADAPTER RESULT: Width={newWidth:F4}, Height={newHeight:F4}, Rot={newRotation:F4}, Shift={worldTranslation}");
 
-                            // ROUNDING LOGIC (Nearest Millimeter)
-                            double widthMM_calc = Math.Round(newWidth * 304.8);
-                            double heightMM_calc = Math.Round(newHeight * 304.8);
-                            
-                            newWidth = widthMM_calc / 304.8;
-                            newHeight = heightMM_calc / 304.8;
-
-                            DebugLogger.Info($"[ManualJoin] CLUSTER-MIMIC CALC: Width={newWidth:F4}ft ({widthMM_calc}mm), Height={newHeight:F4}ft ({heightMM_calc}mm), Depth={newDepth:F4}ft");
-
-                            // PLACEMENT (Local -> World)
-                            // We find the center of the Union box in Local Space.
-                            double localCenterX = (localMinX + localMaxX) / 2.0;
-                            double localCenterZ = (localMinZ + localMaxZ) / 2.0;
-                            // For Y (Thickness), we usually stay centered on the Master's plane (Y=0) if it's a Wall.
-                            // However, if we are joining depth-wise (thick wall), we might want the new center.
-                            // Mimicking Auto-Cluster: It calculates a "Theoretical Midpoint".
-                            double localCenterY = (localMinY + localMaxY) / 2.0;
-                            
-                            // Construct Local Center Point
-                            // Note: Using 'localCenterY' correctly centers it in the combined thickness.
-                            // This handles off-center joins.
-                            XYZ localCenterPoint = new XYZ(localCenterX, localCenterY, localCenterZ);
-                            
-                            // Transform Local Center -> World Space
-                            XYZ worldCenterPoint = masterTransform.OfPoint(localCenterPoint);
-                            
-                            // Calculate Shift
-                            worldTranslation = worldCenterPoint - masterTransform.Origin;
-                            
-                            DebugLogger.Info($"[ManualJoin] PLACEMENT: LocalCenter={localCenterPoint}, WorldShift={worldTranslation}");
-
-                            // BYPASSING Previous Logic Blocks
-                            // This replaces the entire "DB Loop" and "Orientation Checks".
-                            // We trust the Master's coordinate system implicitly.
-
-                            // Convert to MM for debug comparison
+                            // Log for comparison
                             double widthMM = newWidth * 304.8;
                             double heightMM = newHeight * 304.8;
-                            
-                            // EMERGENCY LOG - TRACE 1
-                            string tracePath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "JSE_ManualJoin_Trace.txt");
-                            try {
-                                System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now}] ManualJoin Calc Start. Master:{masterId} ZonesFound:{zones?.Count ?? 0}\n");
-                            } catch {}
-
                             DebugLogger.Info($"[ManualJoin] FINAL CALC: Width={newWidth:F4}ft ({widthMM:F1}mm), Height={newHeight:F4}ft ({heightMM:F1}mm)");
-                            
-                            // FORCE LOG regardless of settings
-                            SafeFileLogger.SafeAppendTextAlways("combinesleeveplacer.log", $"[ManualJoin] FINAL CALC: Width={newWidth:F4}ft ({widthMM:F1}mm), Height={newHeight:F4}ft ({heightMM:F1}mm)");
-                            
-                            try {
-                                System.IO.File.AppendAllText(tracePath, 
-                                    $"[{DateTime.Now}] Size:{widthMM:F1}x{heightMM:F1}mm. WorldShift:{worldTranslation}\n");
-                            } catch {}
-
-                            DebugLogger.Info($"[ManualJoin] World Shift: {worldTranslation}");
 
                             // 5. Update Master Parameters (Geometry)
                             var pWidth = masterSleeve.LookupParameter("Width");
@@ -395,114 +348,152 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                                 pHeight.Set(newHeight);
                                 DebugLogger.Info($"[ManualJoin] Set Height Parameter to {newHeight}");
                             }
+                            
+                            // ✅ SET ROTATION (Per Adapter Result)
+                            // We need to rotate the element to match the calculated rotation.
+                            // First, verify current rotation and rotate difference.
+                            // Note: Rotating an Element is tricky. We often need to use ElementTransformUtils.RotateElement.
+                            // Assuming typical sleeve is placed point-based with Rotation.
+                            // We'll trust the Master's axis if rotation is near-identical, otherwise rotate.
+                            
+                            // Simple parameter set if it exists? Usually "Angle" or "Rotation" is read-only or doesn't exist.
+                            // We must use ElementTransformUtils.RotateElement.
+                            
+                            // Get Current Rotation (Angle to X-Axis)
+                             if (masterSleeve.Location is LocationPoint lpRot)
+                             {
+                                 // Calculate current rotation
+                                 double currentRotation = lpRot.Rotation;
+                                 double rotationDiff = newRotation - currentRotation;
+                                 
+                                 if (Math.Abs(rotationDiff) > 0.001) // Tolerance
+                                 {
+                                     Line axis = Line.CreateBound(lpRot.Point, lpRot.Point + XYZ.BasisZ);
+                                     ElementTransformUtils.RotateElement(doc, masterSleeve.Id, axis, rotationDiff);
+                                     DebugLogger.Info($"[ManualJoin] Rotated Master from {currentRotation * 180 / Math.PI:F1} to {newRotation * 180 / Math.PI:F1} degrees.");
+                                 }
+                             }
 
                             // 5b. TRANSFER PARAMETERS (Aggregation)
-                            try 
+                            try
                             {
-                                DebugLogger.Info("[ManualJoin] Starting Parameter Aggregation...");
-                                // Convert selected IDs to ClusterSleeveInfo (Transient) using Live Geometry
-                                // Old 'zones' variable logic replaced by transient creation
-                                var sleeveInfos = new List<ClusterSleeveInfo>();
-                                
-                                foreach(var id in _selectedIds)
+                                if (_paramService == null)
                                 {
-                                    var el = doc.GetElement(id);
-                                    if(el == null) continue;
-                                    
-                                    // Create transient info from element
-                                    // We don't have full ClashZone data here if it wasn't pre-fetched, but we do our best.
-                                    var info = new ClusterSleeveInfo
-                                    {
-                                        SleeveInstanceId = id.IntegerValue,
-                                        CategoryName = el.Category?.Name ?? "Unknown",
-                                        // Approximate placement point (center of bbox)
-                                        SleeveCenter = el.get_BoundingBox(null) is BoundingBoxXYZ b ? (b.Min + b.Max)/2 : XYZ.Zero
-                                    };
-                                    sleeveInfos.Add(info);
-                                }
-                                
-                                // Create Dummy Candidate
-                                var candidate = new CombinedClusterCandidate(0, sleeveInfos);
-                                
-                                // Set Bounds (Using our new LOCAL bounds as proxy for structure)
-                                // Although these are Local, they represent the extent.
-                                // NOTE: Multi-Replace tool might need 'unionMinX' etc defined if we want to strictly match old logic, 
-                                // but here we pass the Calculated Dimensions which is what matters.
-                                
-                                // For Parameter Aggregation, the exact World Coords matter less than the *Sets* of parameters.
-                                // We populate dummy bounds to avoid null refs.
-                                candidate.CombinedBoundingBoxMinX = 0; 
-                                candidate.CombinedBoundingBoxMinY = 0;
-                                candidate.CombinedBoundingBoxMinZ = 0;
-                                candidate.CombinedBoundingBoxMaxX = newWidth; // Use dimensions
-                                candidate.CombinedBoundingBoxMaxY = newDepth;
-                                candidate.CombinedBoundingBoxMaxZ = newHeight;
-
-                                // Generate Parameter Set
-                                var paramSet = _paramService.CreateCombinedSleeveParameterSet(candidate, candidate.CombinedBoundingBox);
-                                
-                                // Apply to Master Sleeve
-                                foreach(var kvp in paramSet)
-                                {
-                                    // FILTER: Do not overwrite Geometry parameters (Width, Height Set above. Depth/Length controlled by Host)
-                                    // User Issue: "depth of sleeve is very big... depth of sleeve is always controlled by structural thickness"
-                                    // The Aggregator calculates Depth from BoundingBox Y-Diff, which is wrong for Manual Join AABB logic.
-                                    if(kvp.Key == "Width" || kvp.Key == "Height" || kvp.Key == "Depth" || kvp.Key == "Length")
-                                    {
-                                        continue; 
-                                    }
-
-                                    var p = masterSleeve.LookupParameter(kvp.Key);
-                                    if(p != null && !p.IsReadOnly)
-                                    {
-                                        if(kvp.Value is double d) p.Set(d);
-                                        else if(kvp.Value is string s) p.Set(s);
-                                        else if(kvp.Value is int i) p.Set(i);
-                                    }
-                                }
-                                DebugLogger.Info($"[ManualJoin] Applied {paramSet.Count} aggregated parameters.");
-
-                                // 5c. SET NEW METADATA: "Combined Sleeve Instance ID" (Case Insensitive)
-                                // User request: "store in that as this si not cluster instance id but combined sleeve instance id"
-                                
-                                Parameter pCombinedId = masterSleeve.LookupParameter("Combined Sleeve Instance ID");
-                                if (pCombinedId == null)
-                                {
-                                    // Try Case-Insensitive Search
-                                    foreach(Parameter p in masterSleeve.Parameters)
-                                    {
-                                        if (string.Equals(p.Definition.Name, "Combined Sleeve Instance ID", StringComparison.OrdinalIgnoreCase))
-                                        {
-                                            pCombinedId = p;
-                                            break;
-                                        }
-                                    }
-                                }
-                                
-                                if(pCombinedId != null && !pCombinedId.IsReadOnly)
-                                {
-                                    bool result = false;
-                                    if (pCombinedId.StorageType == StorageType.Integer)
-                                    {
-                                        result = pCombinedId.Set(masterId.IntegerValue);
-                                    }
-                                    else if (pCombinedId.StorageType == StorageType.String)
-                                    {
-                                        result = pCombinedId.Set(masterId.ToString());
-                                    }
-                                    else if (pCombinedId.StorageType == StorageType.Double)
-                                    {
-                                        result = pCombinedId.Set((double)masterId.IntegerValue);
-                                    }
-                                    
-                                    if(result)
-                                        DebugLogger.Info($"[ManualJoin] Set Combined Sleeve Instance ID: {masterId} (Type: {pCombinedId.StorageType})");
-                                    else
-                                        DebugLogger.Warning($"[ManualJoin] Failed to set Combined Sleeve Instance ID: {masterId} (Type: {pCombinedId.StorageType})");
+                                    DebugLogger.Warning("[ManualJoin] ParameterAggregatorService is null");
+                                    var pComm = masterSleeve.LookupParameter("Comments");
+                                    if (pComm != null) pComm.Set($"Manual Join: {string.Join(",", cats)}");
+                                    // Skip the rest of parameter aggregation
                                 }
                                 else
                                 {
-                                    DebugLogger.Warning("[ManualJoin] Parameter 'Combined Sleeve Instance ID' not found on family (Case Insensitive search).");
+                                    DebugLogger.Info("[ManualJoin] Starting Parameter Aggregation...");
+                                    // Convert selected IDs to ClusterSleeveInfo (Transient) using Live Geometry
+                                    // Old 'zones' variable logic replaced by transient creation
+                                    var sleeveInfos = new List<ClusterSleeveInfo>();
+
+                                    foreach (var id in _selectedIds)
+                                    {
+                                        var el = doc.GetElement(id);
+                                        if (el == null) continue;
+
+                                        // Create transient info from element
+                                        // We don't have full ClashZone data here if it wasn't pre-fetched, but we do our best.
+                                        var info = new ClusterSleeveInfo
+                                        {
+                                            SleeveInstanceId = id.IntegerValue,
+                                            CategoryName = el.Category?.Name ?? "Unknown",
+                                            // Approximate placement point (center of bbox)
+                                            SleeveCenter = el.get_BoundingBox(null) is BoundingBoxXYZ b ? (b.Min + b.Max) / 2 : XYZ.Zero
+                                        };
+                                        sleeveInfos.Add(info);
+                                    }
+
+                                    // Create Dummy Candidate
+                                    var candidate = new CombinedClusterCandidate(0, sleeveInfos);
+
+                                    // Set Bounds (Using our new LOCAL bounds as proxy for structure)
+                                    // Although these are Local, they represent the extent.
+                                    // NOTE: Multi-Replace tool might need 'unionMinX' etc defined if we want to strictly match old logic, 
+                                    // but here we pass the Calculated Dimensions which is what matters.
+
+                                    // For Parameter Aggregation, the exact World Coords matter less than the *Sets* of parameters.
+                                    // We populate dummy bounds to avoid null refs.
+                                    candidate.CombinedBoundingBoxMinX = 0;
+                                    candidate.CombinedBoundingBoxMinY = 0;
+                                    candidate.CombinedBoundingBoxMinZ = 0;
+                                    candidate.CombinedBoundingBoxMaxX = newWidth; // Use dimensions
+                                    candidate.CombinedBoundingBoxMaxY = newDepth;
+                                    candidate.CombinedBoundingBoxMaxZ = newHeight;
+
+                                    // Generate Parameter Set (with null check)
+                                    if (_paramService != null)
+                                    {
+                                        var paramSet = _paramService.CreateCombinedSleeveParameterSet(candidate, candidate.CombinedBoundingBox);
+
+                                        // Apply to Master Sleeve
+                                        foreach (var kvp in paramSet)
+                                        {
+                                            // FILTER: Do not overwrite Geometry parameters (Width, Height Set above. Depth/Length controlled by Host)
+                                            // User Issue: "depth of sleeve is very big... depth of sleeve is always controlled by structural thickness"
+                                            // The Aggregator calculates Depth from BoundingBox Y-Diff, which is wrong for Manual Join AABB logic.
+                                            if (kvp.Key == "Width" || kvp.Key == "Height" || kvp.Key == "Depth" || kvp.Key == "Length")
+                                            {
+                                                continue;
+                                            }
+
+                                            var p = masterSleeve.LookupParameter(kvp.Key);
+                                            if (p != null && !p.IsReadOnly)
+                                            {
+                                                if (kvp.Value is double d) p.Set(d);
+                                                else if (kvp.Value is string s) p.Set(s);
+                                                else if (kvp.Value is int i) p.Set(i);
+                                            }
+                                        }
+                                        DebugLogger.Info($"[ManualJoin] Applied {paramSet.Count} aggregated parameters.");
+
+                                        // 5c. SET NEW METADATA: "Combined Sleeve Instance ID" (Case Insensitive)
+                                        // User request: "store in that as this si not cluster instance id but combined sleeve instance id"
+
+                                        Parameter pCombinedId = masterSleeve.LookupParameter("Combined Sleeve Instance ID");
+                                        if (pCombinedId == null)
+                                        {
+                                            // Try Case-Insensitive Search
+                                            foreach (Parameter p in masterSleeve.Parameters)
+                                            {
+                                                if (string.Equals(p.Definition.Name, "Combined Sleeve Instance ID", StringComparison.OrdinalIgnoreCase))
+                                                {
+                                                    pCombinedId = p;
+                                                    break;
+                                                }
+                                            }
+                                        }
+
+                                        if (pCombinedId != null && !pCombinedId.IsReadOnly)
+                                        {
+                                            bool result = false;
+                                            if (pCombinedId.StorageType == StorageType.Integer)
+                                            {
+                                                result = pCombinedId.Set(masterId.IntegerValue);
+                                            }
+                                            else if (pCombinedId.StorageType == StorageType.String)
+                                            {
+                                                result = pCombinedId.Set(masterId.ToString());
+                                            }
+                                            else if (pCombinedId.StorageType == StorageType.Double)
+                                            {
+                                                result = pCombinedId.Set((double)masterId.IntegerValue);
+                                            }
+
+                                            if (result)
+                                                DebugLogger.Info($"[ManualJoin] Set Combined Sleeve Instance ID: {masterId} (Type: {pCombinedId.StorageType})");
+                                            else
+                                                DebugLogger.Warning($"[ManualJoin] Failed to set Combined Sleeve Instance ID: {masterId} (Type: {pCombinedId.StorageType})");
+                                        }
+                                        else
+                                        {
+                                            DebugLogger.Warning("[ManualJoin] Parameter 'Combined Sleeve Instance ID' not found on family (Case Insensitive search).");
+                                        }
+                                    }
                                 }
                             }
                             catch (Exception ex)
@@ -510,7 +501,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                                 DebugLogger.Error($"[ManualJoin] Parameter Aggregation Failed: {ex.Message}");
                                 // Fallback to simple comments if Aggregation fails?
                                 var pComm = masterSleeve.LookupParameter("Comments");
-                                if(pComm != null) pComm.Set($"Manual Join: {string.Join(",", cats)} (Agg Failed)");
+                                if (pComm != null) pComm.Set($"Manual Join: {string.Join(",", cats)} (Agg Failed)");
                             }
 
 
@@ -539,13 +530,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                     // Ensure the UI is closed before raising the external event
                     HideRequest?.Invoke(); // Hide/close the dialog first
                     // Use dispatcher to delay Raise until after UI is closed
-                    System.Windows.Application.Current.Dispatcher.BeginInvoke(new Action(() => {
-                        try {
-                            _externalEvent.Raise();
-                        } catch (Exception ex) {
-                            DebugLogger.Error("ExternalEvent.Raise() failed: " + ex.ToString());
-                        }
-                    }), System.Windows.Threading.DispatcherPriority.Background);
+                    // Ensure the UI is closed before raising the external event
+                                   
+                    // Check if WPF Application is available
+                    if (System.Windows.Application.Current != null)
+                    {
+                        System.Windows.Application.Current.Dispatcher.BeginInvoke(new Action(() => {
+                            try {
+                                _externalEvent.Raise();
+                            } catch (Exception ex) {
+                                DebugLogger.Error("ExternalEvent.Raise() failed: " + ex.ToString());
+                            }
+                        }), System.Windows.Threading.DispatcherPriority.Background);
+                    }
+                    else
+                    {
+                        // Fallback: Raise directly
+                        DebugLogger.Warning("[ManualJoin] Application.Current is null, raising directly");
+                        _externalEvent.Raise();
+                    }
                     return Autodesk.Revit.UI.Result.Succeeded;
                 }
                 catch (Exception ex)
@@ -557,18 +560,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
             }, "Manual Join");
         }
 
-        private IEnumerable<XYZ> GetBoundingBoxCorners(BoundingBoxXYZ box)
-        {
-            yield return box.Min;
-            yield return box.Max;
-            yield return new XYZ(box.Max.X, box.Min.Y, box.Min.Z);
-            yield return new XYZ(box.Min.X, box.Max.Y, box.Min.Z);
-            yield return new XYZ(box.Min.X, box.Min.Y, box.Max.Z);
-            yield return new XYZ(box.Max.X, box.Max.Y, box.Min.Z); // etc.. simplified needed?
-            // Just all 8 permutations
-            yield return new XYZ(box.Min.X, box.Max.Y, box.Max.Z);
-            yield return new XYZ(box.Max.X, box.Min.Y, box.Max.Z);
-        }
+
+
+
+
+
+
         
         private void CreateCombinedSleeve(CombinedClusterCandidate candidate)
         {

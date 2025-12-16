@@ -26,5 +26,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.In
         void UpdateXmlWithCombinedClusterInfo(
             CombinedClusterCandidate combinedCluster,
             int combinedSleeveInstanceId);
+
+        /// <summary>
+        /// Persists the combined cluster data directly to the repository (Direct Write).
+        /// </summary>
+        void PersistCombinedCluster(CombinedClusterCandidate combinedCluster, int combinedSleeveInstanceId);
     }
 }

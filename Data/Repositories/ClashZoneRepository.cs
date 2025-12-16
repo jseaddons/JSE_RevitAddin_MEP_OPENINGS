@@ -6631,8 +6631,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         SELECT * 
                         FROM ClashZones 
                         WHERE SleeveInstanceId IN ({idString}) 
-                           OR ClusterSleeveInstanceId IN ({idString})
-                           OR AfterClusterSleeveId IN ({idString})";
+                           OR ClusterInstanceId IN ({idString})";
                     
                     using (var reader = cmd.ExecuteReader())
                     {

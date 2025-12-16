@@ -145,6 +145,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
         {
             var placedCombinedSleeves = new List<CombinedSleeve>();
             
+            // CRITICAL: Separate Revit transaction from database operations
+            // Per REVIT_TRANSACTION_MANAGEMENT_SAFE_PLAN.md:
+            // "Never mix database operations with Revit transactions"
+            
+            // Step 1: Place in Revit (Revit transaction)
             using (var transaction = new Transaction(_doc, "Place Cross-Category Combined Sleeves"))
             {
                 transaction.Start();
@@ -155,7 +160,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                     {
                         try
                         {
-                            var combinedSleeve = PlaceSingleCombinedSleeve(group, comboId, filterId);
+                            // Only place in Revit, don't save to database yet
+                            var combinedSleeve = PlaceSingleCombinedSleeveInRevit(group, comboId, filterId);
                             if (combinedSleeve != null)
                             {
                                 placedCombinedSleeves.Add(combinedSleeve);
@@ -168,13 +174,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                     }
                     
                     transaction.Commit();
-                    _logger($"[CombinedSleevePlacement] Transaction committed: {placedCombinedSleeves.Count} combined sleeves placed");
+                    _logger($"[CombinedSleevePlacement] Revit transaction committed: {placedCombinedSleeves.Count} combined sleeves placed");
                 }
                 catch (Exception ex)
                 {
                     transaction.RollBack();
-                    _logger($"[CombinedSleevePlacement] ❌ Transaction rolled back: {ex.Message}");
+                    _logger($"[CombinedSleevePlacement] ❌ Revit transaction rolled back: {ex.Message}");
                     throw;
+                }
+            }
+            
+            // Step 2: Save to database (OUTSIDE Revit transaction)
+            if (placedCombinedSleeves.Count > 0)
+            {
+                try
+                {
+                    foreach (var combinedSleeve in placedCombinedSleeves)
+                    {
+                        // Save to database (Agent A repository)
+                        var combinedSleeveId = _repository.SaveCombinedSleeve(combinedSleeve);
+                        combinedSleeve.CombinedSleeveId = combinedSleeveId;
+                        
+                        // Mark constituents as resolved (Agent A repository)
+                        _repository.MarkConstituentsAsResolved(combinedSleeve.Constituents);
+                        
+                        _logger($"[CombinedSleevePlacement] ✅ Saved combined sleeve {combinedSleeveId} to database");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger($"[CombinedSleevePlacement] ⚠️ Database save failed: {ex.Message}");
+                    // Don't throw - Revit placement succeeded, database is secondary
                 }
             }
             
@@ -182,9 +212,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
         }
         
         /// <summary>
-        /// Places a single combined sleeve for a proximity group
+        /// Places a single combined sleeve for a proximity group (Revit operations only, no database)
         /// </summary>
-        private CombinedSleeve PlaceSingleCombinedSleeve(
+        private CombinedSleeve PlaceSingleCombinedSleeveInRevit(
             ProximityGroup group,
             int comboId,
             int filterId)
@@ -235,17 +265,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                 Constituents = CreateConstituents(group)
             };
             
-            // Calculate and save corners
+            // Calculate and save corners (in-memory only, database save happens later)
             CalculateAndSaveCorners(combinedSleeve, placementPoint, width, height, rotationAngle);
-            
-            // Save to database (Agent A repository)
-            var combinedSleeveId = _repository.SaveCombinedSleeve(combinedSleeve);
-            combinedSleeve.CombinedSleeveId = combinedSleeveId;
-            
-            // Mark constituents as resolved (Agent A repository)
-            _repository.MarkConstituentsAsResolved(combinedSleeve.Constituents);
-            
-            _logger($"[CombinedSleevePlacement] ✅ Saved combined sleeve {combinedSleeveId} to database");
             
             return combinedSleeve;
         }

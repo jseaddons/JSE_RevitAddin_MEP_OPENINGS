@@ -6,13 +6,15 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Interfaces;
 
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Interfaces;
+
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Services
 {
     /// <summary>
     /// Service responsible for preparing parameter sets for combined sleve family instances.
     /// Phase 3 Implementation.
     /// </summary>
-    public class ParameterAggregatorService
+    public class ParameterAggregatorService : IParameterAggregatorService
     {
         /// <summary>
         /// Creates the parameter dictionary to be applied to the new combined sleeve family instance.
