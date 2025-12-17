@@ -118,9 +118,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                         // If sleeve has explicit MEP Category, check compatibility directly
                         if (!string.IsNullOrEmpty(mepCatValue))
                         {
-                            // If I am placing "Pipes" and sleeve says "Ducts" -> Cross Category (Protect)
-                            if (targetCategory.Contains("Pipe") && mepCatValue.Contains("Duct")) isCrossCategory = true;
-                            if (targetCategory.Contains("Duct") && mepCatValue.Contains("Pipe")) isCrossCategory = true;
+                            // If I am placing "Pipes" -> Protect Ducts, Trays, and ALL Accessories/Dampers
+                            if (targetCategory.Contains("Pipe") && (mepCatValue.Contains("Duct") || mepCatValue.Contains("Tray") || mepCatValue.Contains("Accessory") || mepCatValue.Contains("Damper"))) isCrossCategory = true;
+                            
+                            // If I am placing "Ducts" -> Protect Pipes, Trays, and Dampers/Accessories (don't absorb dampers into duct clusters)
+                            // User Request: "delete only sleeves belog to that mep cat" (Damper != Duct)
+                            if (targetCategory.Contains("Duct") && (mepCatValue.Contains("Pipe") || mepCatValue.Contains("Tray") || mepCatValue.Contains("Accessory") || mepCatValue.Contains("Damper"))) isCrossCategory = true;
+                            
+                            // If I am placing "Trays" -> Protect everything else
                             if (targetCategory.Contains("Tray") && !mepCatValue.Contains("Tray")) isCrossCategory = true;
                         }
                         else 
@@ -128,14 +133,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                             // Fallback: Check Revit Category & Family Name
                             if (targetCategory.Contains("Pipe"))
                             {
-                                if (catName.Contains("Duct") || fam.Contains("Damper", StringComparison.OrdinalIgnoreCase)) isCrossCategory = true;
+                                // Protect Ducts, Accessories, Dampers
+                                if (catName.Contains("Duct") || catName.Contains("Accessory") || fam.Contains("Damper", StringComparison.OrdinalIgnoreCase)) isCrossCategory = true;
                             }
                             else if (targetCategory.Contains("Duct"))
                             {
-                                if (catName.Contains("Pipe") || fam.Contains("Round", StringComparison.OrdinalIgnoreCase)) 
-                                { 
-                                    if (catName.Contains("Pipe")) isCrossCategory = true;
-                                }
+                                // Protect Pipes, Accessories, Dampers
+                                if (catName.Contains("Pipe") || catName.Contains("Accessory") || fam.Contains("Damper", StringComparison.OrdinalIgnoreCase)) isCrossCategory = true;
+                            }
+                            else if (targetCategory.Contains("Tray"))
+                            {
+                                // Protect Pipes, Ducts
+                                if (catName.Contains("Pipe") || catName.Contains("Duct")) isCrossCategory = true;
                             }
                         }
                     }

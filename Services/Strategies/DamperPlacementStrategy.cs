@@ -187,14 +187,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                 }
                 
                 // Get clearance from OpeningConditions (loaded from UI via CONDITIONS XML) - CRASH-PROOF: validate clearances
-                // ✅ FIX: Use insulated clearances if zone is insulated
-                bool isInsulated = clashZone.IsInsulated;
-                double otherClearanceMm = isInsulated
-                    ? conditions.ClearanceSettings.DuctAccessoryOtherInsulated
-                    : conditions.ClearanceSettings.DuctAccessoryOtherNormal;
-                double mepClearanceMm = isInsulated
-                    ? conditions.ClearanceSettings.DuctAccessoryMepInsulated
-                    : conditions.ClearanceSettings.DuctAccessoryMepNormal;
+                // Get clearance from OpeningConditions (loaded from UI via CONDITIONS XML) - CRASH-PROOF: validate clearances
+                // ✅ FIX: Force uninsulated for dampers (Duct Accessories usually don't have insulation or it's part of casing)
+                // This prevents phantom insulation thickness (e.g. 50mm) from being added to the sleeve width
+                bool isInsulated = false; // Forced false to match GetMepElementSize logic
+                double otherClearanceMm = conditions.ClearanceSettings.DuctAccessoryOtherNormal;
+                double mepClearanceMm = conditions.ClearanceSettings.DuctAccessoryMepNormal;
                 
                 // CRASH-PROOF: Validate clearance values
                 if (double.IsNaN(otherClearanceMm) || double.IsInfinity(otherClearanceMm) || otherClearanceMm < 0)
@@ -214,20 +212,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                     SafeFileLogger.SafeAppendText("clearance_calculation_trace.log",
                         $"[{DateTime.Now:HH:mm:ss.fff}] [DAMPER-STRATEGY-CLEARANCE] Zone {clashZone.Id}, " +
                         $"MEP Clearance={mepClearanceMm}mm, Other Clearance={otherClearanceMm}mm, " +
-                        $"IsInsulated={clashZone.IsInsulated}, " +
+                        $"IsInsulated={isInsulated} (Forced False), " +
                         $"Raw MEP W={clashZone.MepElementWidth * 304.8:F1}mm, H={clashZone.MepElementHeight * 304.8:F1}mm\n");
                 }
                 
                 double otherClearance = UnitUtils.ConvertToInternalUnits(otherClearanceMm, UnitTypeId.Millimeters);
                 double mepClearance = UnitUtils.ConvertToInternalUnits(mepClearanceMm, UnitTypeId.Millimeters);
                 
-                // ✅ OOP METHOD: Get insulation contribution using sizing service (SOLID principles)
+                // ✅ OOP METHOD: Insulation contribution is ZERO for dampers (already forced uninsulated)
                 double insulationContribution = 0.0;
-                if (clashZone.IsInsulated && clashZone.InsulationThickness > 0)
-                {
-                    insulationContribution = 2 * clashZone.InsulationThickness; // Both sides
-                    DebugLogger.Info($"[DamperStrategy] DAMPER INSULATED: Insulation contribution={RevitUnitConversionService.Instance.FromInternalMillimeters(insulationContribution):F1}mm total (on both sides)");
-                }
+                // if (clashZone.IsInsulated && clashZone.InsulationThickness > 0)
+                // {
+                //      insulationContribution = 2 * clashZone.InsulationThickness; 
+                // }
                 
                 // ✅ PERFORMANCE OPTIMIZATION: Conditional logging
                 if (EnableDebugLogging)

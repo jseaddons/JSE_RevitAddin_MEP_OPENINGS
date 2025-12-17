@@ -203,13 +203,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     List<ClashZone> dbZones;
                     if (unresolvedOnly)
                     {
-                        Log($"[ClashZoneDataService][SQLite] Querying for UNRESOLVED zones only (unresolvedOnly=true, readyForPlacement=true)");
-                        dbZones = repository.GetClashZonesByFilter(filterName, category, unresolvedOnly: true, readyForPlacementOnly: true);
+                        Log($"[ClashZoneDataService][SQLite] Querying for UNRESOLVED zones only (unresolvedOnly=true, readyForPlacement=false) + IsCurrentClash filter");
+                        // ✅ REFACTORED: Ignore ReadyForPlacement in DB query, filter by IsCurrentClash manually
+                        var rawZones = repository.GetClashZonesByFilter(filterName, category, unresolvedOnly: true, readyForPlacementOnly: false);
+                        dbZones = rawZones.Where(z => z.IsCurrentClash).ToList();
                     }
                     else
                     {
-                        Log($"[ClashZoneDataService][SQLite] Querying for zones from CURRENT REFRESH SESSION (unresolvedOnly=false, readyForPlacement=true)");
-                        dbZones = repository.GetClashZonesByFilter(filterName, category, unresolvedOnly: false, readyForPlacementOnly: true) ?? new List<ClashZone>();
+                        Log($"[ClashZoneDataService][SQLite] Querying for zones (unresolvedOnly=false, readyForPlacement=false) + IsCurrentClash filter");
+                        // ✅ REFACTORED: Ignore ReadyForPlacement in DB query, filter by IsCurrentClash manually
+                        var rawZones = repository.GetClashZonesByFilter(filterName, category, unresolvedOnly: false, readyForPlacementOnly: false) ?? new List<ClashZone>();
+                        dbZones = rawZones.Where(z => z.IsCurrentClash).ToList();
                     }
                     
                     Log($"[ClashZoneDataService][SQLite] Query returned {dbZones?.Count ?? 0} zones from database");

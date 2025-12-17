@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
@@ -43,7 +44,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined
 
                 // Include duct accessories/damper so they can be clustered as well
                 var defaultCategories = new List<string> { "Ducts", "Pipes", "CableTrays", "Conduit", "Duct Accessories" };
-                var filterName = "Combined"; // placeholder until UI toggle is wired
+                var filterName = "*"; // ✅ Wildcard: scan all filters for valid cluster sleeves
 
                 using (var dbContext = new SleeveDbContext(_document))
                 {
@@ -51,12 +52,57 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined
                     var clashZoneRepository = new ClashZoneRepository(dbContext, msg => DebugLogger.Info(msg));
                     var repo = new CombinedClusterRepository(clashZoneRepository);
                     
+                    // 1b. Determine Scope: Whole Model or Section Box
+                    BoundingBoxXYZ? sectionBox = null;
+                    bool useSectionBox = false;
+
+                    // CHECK: Is user in a 3D view? If so, offer Section Box option.
+                    if (_document.ActiveView is View3D view3D)
+                    {
+                        var td = new TaskDialog("Combined Sleeve Scope");
+                        td.MainInstruction = "Select Scope for Auto-Joining";
+                        td.MainContent = "Do you want to process the entire model or only elements within the active 3D Section Box?";
+                        td.CommonButtons = TaskDialogCommonButtons.Cancel;
+                        
+                        td.AddCommandLink(TaskDialogCommandLinkId.CommandLink1, "Entire Model", "Process all sleeves in the project.");
+                        td.AddCommandLink(TaskDialogCommandLinkId.CommandLink2, "Active Section Box", "Process only sleeves inside the current Section Box.");
+
+                        var result = td.Show();
+
+                        if (result == TaskDialogResult.Cancel) return;
+
+                        if (result == TaskDialogResult.CommandLink2)
+                        {
+                            if (view3D.IsSectionBoxActive)
+                            {
+                                sectionBox = view3D.GetSectionBox();
+                                useSectionBox = true;
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[CombinedSleeveManager] 📦 Filtering by active section box: {sectionBox.Min} to {sectionBox.Max}");
+                                }
+                            }
+                            else
+                            {
+                                TaskDialog.Show("Warning", "The Section Box is NOT active in the current 3D view.\n\nPlease enable the Section Box in the Properties panel and try again.");
+                                return;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Not in 3D view -> Default to entire model (or could prompt confirming that)
+                        // For now, proceed with entire model to avoid blocking non-3D workflows unless explicitly requested.
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info("[CombinedSleeveManager] Not in 3D View - processing entire model.");
+                    }
+
                     // 2. Discovery Phase
                     var discoveryService = new CombinedClusterDiscoveryService(repo);
                     // Explicitly qualify if needed, but using directives should handle it
                     var formationService = new JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Services.CombinedClusterFormationService(repo);
 
-                    var sleeves = discoveryService.Discover(filterName, defaultCategories);
+                    var sleeves = discoveryService.Discover(filterName, defaultCategories, sectionBox);
                     if (sleeves == null || sleeves.Count == 0)
                     {
                         if (!DeploymentConfiguration.DeploymentMode)
@@ -82,8 +128,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined
                         return;
                     }
 
+                    var combinedSleeveRepository = new CombinedSleeveRepository(dbContext); // ✅ Created repository
                     var paramAggregator = new ParameterAggregatorService();
-                    var persistenceService = new CombinedClusterPersistenceService(clashZoneRepository);
+                    var persistenceService = new CombinedClusterPersistenceService(clashZoneRepository, combinedSleeveRepository); // ✅ Passed to constructor
 
                     using (var tx = new Transaction(_document, "Create Combined Sleeves"))
                     {

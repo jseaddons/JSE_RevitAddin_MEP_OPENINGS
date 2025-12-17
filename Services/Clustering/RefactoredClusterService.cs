@@ -2378,10 +2378,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                 continue;
                             }
                             
-                            // Get dimensions
-                            var widthParam = clusterSleeve.LookupParameter("Width");
-                            var heightParam = clusterSleeve.LookupParameter("Height");
-                            var depthParam = clusterSleeve.LookupParameter("Depth");
+                            // Get dimensions (Robust lookup)
+                            var widthParam = clusterSleeve.LookupParameter("Width") ?? clusterSleeve.LookupParameter("Element Width");
+                            var heightParam = clusterSleeve.LookupParameter("Height") ?? clusterSleeve.LookupParameter("Element Height");
+                            var depthParam = clusterSleeve.LookupParameter("Depth") ?? clusterSleeve.LookupParameter("Element Depth");
                             
                             double width = widthParam?.AsDouble() ?? 0.0;
                             double height = heightParam?.AsDouble() ?? 0.0;
@@ -2692,10 +2692,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                 continue;
                             }
                             
-                            // Get dimensions
-                            var widthParam = clusterSleeve.LookupParameter("Width");
-                            var heightParam = clusterSleeve.LookupParameter("Height");
-                            var depthParam = clusterSleeve.LookupParameter("Depth");
+                            // Get dimensions (Robust lookup)
+                            var widthParam = clusterSleeve.LookupParameter("Width") ?? clusterSleeve.LookupParameter("Element Width");
+                            var heightParam = clusterSleeve.LookupParameter("Height") ?? clusterSleeve.LookupParameter("Element Height");
+                            var depthParam = clusterSleeve.LookupParameter("Depth") ?? clusterSleeve.LookupParameter("Element Depth");
                             
                             double width = widthParam?.AsDouble() ?? 0.0;
                             double height = heightParam?.AsDouble() ?? 0.0;

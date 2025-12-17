@@ -453,10 +453,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                 throw new ArgumentException("Category cannot be null or empty", nameof(category));
             try
             {
-                var dbUpdates = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterInstanceId)>();
+                var dbUpdates = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsCurrentClash)>();
                 foreach (var (clashZone, sleeveId) in clashZones)
                 {
                     if (clashZone == null || sleeveId <= 0) continue;
+
+                    // ✅ UNIFIED FLAG LOGIC: Do NOT reset IsCurrentClash upon placement
+                    // IsCurrentClash should remain true until the next refresh cycle
+                    // IsResolved flag already indicates the zone has been handled
+                    // Resetting IsCurrentClash here would break filtering logic that relies on it
+
                     if (isCluster)
                     {
                         if (clashZone.AfterClusterSleevePlacedSleeveInstanceId <= 0 && clashZone.SleeveInstanceId > 0)
@@ -475,17 +481,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                         clashZone.IsClusterResolved = false;
                         clashZone.ClusterSleeveInstanceId = -1;
                     }
+
                     dbUpdates.Add((
                         clashZone.Id,
                         clashZone.IsResolved,
                         clashZone.IsClusterResolved,
+                        clashZone.IsCombinedResolved,
                         clashZone.SleeveInstanceId,
-                        clashZone.ClusterSleeveInstanceId
+                        clashZone.ClusterSleeveInstanceId,
+                        clashZone.IsCurrentClash
                     ));
                 }
                 if (dbUpdates.Count == 0) return;
-                _logger.Info($"📝 BATCH: Flagging {dbUpdates.Count} clash zones as placed", "FlagManager");
-                _repository.BatchUpdateFlags(dbUpdates);
+                _logger.Info($"📝 BATCH: Flagging {dbUpdates.Count} clash zones as placed (Resetting IsCurrentClash)", "FlagManager");
+                _repository.BatchUpdateFlagsWithCurrentClash(dbUpdates);
                 _logger.Info($"✅ BATCH: Updated flags for {dbUpdates.Count} clash zones", "FlagManager");
             }
             catch (Exception ex)

@@ -66,6 +66,90 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Sizing
                 clashZone.InsulationThickness,
                 clearance);
         }
+
+        /// <summary>
+        /// Calculates final rounded width/height/diameter including insulation thickness and clearance.
+        /// Applies rounding based on provided settings.
+        /// </summary>
+        public (double finalWidth, double finalHeight, double finalDiameter) CalculateFinalDimensionsRounded(
+            double rawWidth,
+            double rawHeight,
+            double rawDiameter,
+            bool isInsulated,
+            double insulationThickness,
+            double clearance,
+            double roundingValue,
+            bool roundAlwaysUp)
+        {
+            // 1. Calculate raw dimensions with insulation and clearance
+            var (width, height, diameter) = CalculateFinalDimensions(
+                rawWidth, rawHeight, rawDiameter, isInsulated, insulationThickness, clearance);
+
+            // 2. Apply rounding logic (logic copied from OpeningSettingsHelper to ensure centralization)
+            double roundedWidth = RoundDimension(width, roundingValue, roundAlwaysUp);
+            double roundedHeight = RoundDimension(height, roundingValue, roundAlwaysUp);
+            double roundedDiameter = RoundDimension(diameter, roundingValue, roundAlwaysUp);
+
+            return (roundedWidth, roundedHeight, roundedDiameter);
+        }
+
+        /// <summary>
+        /// Calculates final rounded width/height/diameter from ClashZone including insulation thickness and clearance.
+        /// Applies rounding based on provided settings.
+        /// </summary>
+        public (double finalWidth, double finalHeight, double finalDiameter) CalculateFinalDimensionsFromClashZoneRounded(
+            double rawWidth,
+            double rawHeight,
+            double rawDiameter,
+            ClashZone clashZone,
+            double clearance,
+            double roundingValue,
+            bool roundAlwaysUp)
+        {
+            if (clashZone == null)
+            {
+                return CalculateFinalDimensionsRounded(
+                    rawWidth, rawHeight, rawDiameter, false, 0.0, clearance, roundingValue, roundAlwaysUp);
+            }
+
+            return CalculateFinalDimensionsRounded(
+                rawWidth,
+                rawHeight,
+                rawDiameter,
+                clashZone.IsInsulated,
+                clashZone.InsulationThickness,
+                clearance,
+                roundingValue,
+                roundAlwaysUp);
+        }
+
+        /// <summary>
+        /// Internal helper to round a single dimension (same logic as OpeningSettingsHelper but pure)
+        /// </summary>
+        private double RoundDimension(double dimension, double roundingValue, bool roundAlwaysUp)
+        {
+            if (roundingValue <= 0) return dimension;
+
+            // Convert to millimeters (Revit internal units are feet)
+            // 1 ft = 304.8 mm
+            double mmDimension = dimension * 304.8;
+            double roundedMm;
+
+            if (roundAlwaysUp)
+            {
+                // Always round up: 453 -> 500 (with rounding value 50)
+                roundedMm = Math.Ceiling(mmDimension / roundingValue) * roundingValue;
+            }
+            else
+            {
+                // Round to nearest: 453 -> 450 (with rounding value 50)
+                roundedMm = Math.Round(mmDimension / roundingValue) * roundingValue;
+            }
+
+            // Convert back to internal units (feet)
+            // 1 mm = 1/304.8 ft
+            return roundedMm / 304.8;
+        }
     }
 }
 

@@ -41,6 +41,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Sizing
             double rawDiameter,
             Models.ClashZone clashZone,
             double clearance);
+
+        /// <summary>
+        /// Calculates final rounded width/height/diameter including insulation thickness and clearance.
+        /// Applies rounding based on provided settings.
+        /// </summary>
+        (double finalWidth, double finalHeight, double finalDiameter) CalculateFinalDimensionsRounded(
+            double rawWidth,
+            double rawHeight,
+            double rawDiameter,
+            bool isInsulated,
+            double insulationThickness,
+            double clearance,
+            double roundingValue,
+            bool roundAlwaysUp);
+
+        /// <summary>
+        /// Calculates final rounded width/height/diameter from ClashZone including insulation thickness and clearance.
+        /// Applies rounding based on provided settings.
+        /// </summary>
+        (double finalWidth, double finalHeight, double finalDiameter) CalculateFinalDimensionsFromClashZoneRounded(
+            double rawWidth,
+            double rawHeight,
+            double rawDiameter,
+            Models.ClashZone clashZone,
+            double clearance,
+            double roundingValue,
+            bool roundAlwaysUp);
     }
 }
 

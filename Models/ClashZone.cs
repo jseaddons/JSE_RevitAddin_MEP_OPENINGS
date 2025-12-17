@@ -265,6 +265,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// ✅ FLAG PERSISTENCE: Stored in both Global XML and Filter XML for transparency; Global XML is still authoritative.
         /// </summary>
         public bool IsClusterResolved { get; set; } = false;
+
+        /// <summary>
+        /// Indicates if this zone is part of a resolved combined sleeve.
+        /// Top priority in resolution hierarchy.
+        /// </summary>
+        public bool IsCombinedResolved { get; set; } = false;
         
         /// <summary>
         /// ✅ DUCT-DAMPER COMBO FLAG: Indicates this duct is near a damper and should be skipped

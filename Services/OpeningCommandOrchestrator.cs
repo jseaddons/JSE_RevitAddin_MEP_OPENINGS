@@ -106,8 +106,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 // Feature: Combined Sleeves (Refactored to dedicated Manager)
                 // We use the new manager to keep this orchestrator clean (SRP)
-                var combinedManager = new CombinedSleeveManager(_document);
-                combinedManager.Execute(showProgress);
+                // var combinedManager = new CombinedSleeveManager(_document);
+                // combinedManager.Execute(showProgress); // ⚠️ DISABLED BY USER REQUEST: Separation of concerns
 
                 // ⚠️ DISABLED: Marking phase removed from OK click as it's handled by separate UI
                 //                 if (!DeploymentConfiguration.DeploymentMode)
@@ -1343,24 +1343,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             DebugLogger.Info($"[OpeningCommandOrchestrator][SQLite] {msg}");
                     });
 
-                    // ✅ CRITICAL FIX: Load zones with ReadyForPlacementFlag=1 from DB (set during refresh after flag reset)
-                    // This ensures we only get zones that are ready for placement in the current session
-                    // The database query filters by ReadyForPlacementFlag=1, which is set AFTER flag manager resets flags
-                    
-                    // ✅ DIAGNOSTIC: Log the query parameters before execution
+                    List<ClashZone> eligibleZones = new List<ClashZone>();
+
+                    // ✅ REFACTORED: Ignore ReadyForPlacementFlag as per user request
+                    // Filter primarily by IsCurrentClash (zones within section box from last refresh)
+
+                    // Query ALL zones (readyForPlacementOnly=false)
+                    var zones = repository.GetClashZonesByFilter(filter.Name, categoryName, unresolvedOnly: false, readyForPlacementOnly: false) ?? new List<ClashZone>();
+
+                    // Filter by IsCurrentClash
+                    eligibleZones = zones.Where(cz => cz != null && cz.IsCurrentClash).ToList();
+
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        DebugLogger.Info($"[OpeningCommandOrchestrator][QUERY] Querying database: filter='{filter.Name}', category='{categoryName}', unresolvedOnly=false, readyForPlacementOnly=true");
-                        
-                        // Also check total zones without the flag filter for comparison
-                        var allZones = repository.GetClashZonesByFilter(filter.Name, categoryName, unresolvedOnly: false, readyForPlacementOnly: false) ?? new List<ClashZone>();
-                        var readyZonesCount = allZones?.Count(z => z.ReadyForPlacement) ?? 0;
-                        DebugLogger.Info($"[OpeningCommandOrchestrator][DIAGNOSTIC] Total zones in DB: {allZones?.Count ?? 0}, zones with ReadyForPlacement=true in memory: {readyZonesCount}");
+                        DebugLogger.Info($"[OpeningCommandOrchestrator] 🔄 Filtered by IsCurrentClash: {zones.Count} total -> {eligibleZones.Count} eligible zones");
                     }
-                    
-                    var zones = repository.GetClashZonesByFilter(filter.Name, categoryName, unresolvedOnly: false, readyForPlacementOnly: true) ?? new List<ClashZone>();
 
-                    foreach (var zone in zones)
+                    foreach (var zone in eligibleZones)
                     {
                         zone?.EnsureSleevePlacementPointReconstructed();
                         zone?.EnsureSleevePlacementPointActiveDocumentReconstructed();
@@ -1368,55 +1367,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        DebugLogger.Info($"[OpeningCommandOrchestrator][SESSION-FILTER] Loaded {zones.Count} zones with ReadyForPlacementFlag=1 from database query");
-                        
-                        // ✅ DIAGNOSTIC: Log to placement_debug.log
-                        var placementLogPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
-                        try
-                        {
-                            File.AppendAllText(placementLogPath, $"[{DateTime.Now:HH:mm:ss}] [QUERY-DIAGNOSTIC] Query: filter='{filter.Name}', category='{categoryName}', readyForPlacementOnly=true → returned {zones.Count} zones\n");
-                        }
-                        catch { }
-                    }
-
-                    // ✅ FILTER IN MEMORY: Only return zones that have ReadyForPlacementFlag=1
-                    // This ensures placement respects section box filtering from refresh
-                    // CRITICAL: Trust ONLY the ReadyForPlacementFlag - don't add OR conditions that bypass it
-                    var eligibleZones = zones
-                        .Where(cz => cz != null && cz.ReadyForPlacement == true)
-                        .ToList();
-                    
-                    // ✅ DIAGNOSTIC: Log why zones are being filtered out
-                    if (!DeploymentConfiguration.DeploymentMode && zones.Count > 0 && eligibleZones.Count == 0)
-                    {
-                        var filteredOut = zones.Where(cz => cz != null && 
-                            !(cz.ReadyForPlacement == true || (!cz.IsResolved && !cz.IsClusterResolved && cz.ClusterSleeveInstanceId <= 0))).ToList();
-                        var placementLogPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
-                        try
-                        {
-                            File.AppendAllText(placementLogPath, $"[{DateTime.Now:HH:mm:ss}] [FILTER-DIAGNOSTIC] ⚠️ All {zones.Count} zones filtered out. Reasons:\n");
-                            foreach (var cz in filteredOut.Take(5))
-                            {
-                                var reasons = new List<string>();
-                                if (cz.IsResolved) reasons.Add($"IsResolved=true");
-                                if (cz.IsClusterResolved) reasons.Add($"IsClusterResolved=true");
-                                if (cz.ClusterSleeveInstanceId > 0) reasons.Add($"ClusterSleeveInstanceId={cz.ClusterSleeveInstanceId}");
-                                if (cz.SleeveInstanceId > 0) reasons.Add($"SleeveInstanceId={cz.SleeveInstanceId}");
-                                if (!cz.ReadyForPlacement) reasons.Add($"ReadyForPlacement=false");
-                                File.AppendAllText(placementLogPath, $"[{DateTime.Now:HH:mm:ss}] [FILTER-DIAGNOSTIC]   Zone {cz.Id}: {string.Join(", ", reasons)}\n");
-                            }
-                        }
-                        catch { }
-                    }
-                    
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"[OpeningCommandOrchestrator][SQLite] Loaded {zones.Count} zones from current refresh, {eligibleZones.Count} eligible for placement (filtered by flags in memory) - DATA SOURCE: DATABASE");
+                        DebugLogger.Info($"[OpeningCommandOrchestrator][SQLite] Loaded {eligibleZones.Count} eligible zones - DATA SOURCE: DATABASE");
                         // ✅ CRITICAL: Log data source for placement debugging
                         var placementLogPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
                         try
                         {
-                            File.AppendAllText(placementLogPath, $"[{DateTime.Now:HH:mm:ss}] [DATA-SOURCE] ✅ Using DATABASE for filter '{filter.Name}', category '{categoryName}' ({eligibleZones.Count} eligible zones from {zones.Count} total)\n");
+                            File.AppendAllText(placementLogPath, $"[{DateTime.Now:HH:mm:ss}] [DATA-SOURCE] ✅ Using DATABASE for filter '{filter.Name}', category '{categoryName}' ({eligibleZones.Count} eligible zones)\n");
                         }
                         catch { }
                     }

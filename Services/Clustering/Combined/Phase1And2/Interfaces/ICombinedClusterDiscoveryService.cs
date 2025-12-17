@@ -8,6 +8,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.In
     /// </summary>
     public interface ICombinedClusterDiscoveryService
     {
-        IReadOnlyList<ClusterSleeveInfo> Discover(string filterName, IReadOnlyCollection<string> categories);
+        IReadOnlyList<ClusterSleeveInfo> Discover(string filterName, IReadOnlyCollection<string> categories, Autodesk.Revit.DB.BoundingBoxXYZ? sectionBox = null);
     }
 }

@@ -22,7 +22,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Se
             _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         }
 
-        public IReadOnlyList<ClusterSleeveInfo> Discover(string filterName, IReadOnlyCollection<string> categories)
+        public IReadOnlyList<ClusterSleeveInfo> Discover(string filterName, IReadOnlyCollection<string> categories, Autodesk.Revit.DB.BoundingBoxXYZ? sectionBox = null)
         {
             if (!OptimizationFlags.UseCombinedClustering || !OptimizationFlags.UseCombinedClusteringPhase1And2)
             {
@@ -38,6 +38,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Se
             var sleeves = new ConcurrentBag<ClusterSleeveInfo>();
             System.Threading.Tasks.Parallel.ForEach(zones, BuildParallelOptions(), zone =>
             {
+                // ✅ SECTION BOX FILTERing: Check if sleeve is inside the section box (if provided)
+                if (sectionBox != null)
+                {
+                    // Basic containment check: check if the sleeve's placement point is inside the section box
+                    // Since ClashZone doesn't store full geometry, we rely on cached placement or intersection point.
+                    // IntersectionPointX,Y,Z are in internal units (feet).
+                    var pt = new Autodesk.Revit.DB.XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ);
+                    
+                    // Simple AABB check (Revit BBox is AABB in local coords, but here we assume World check or convert)
+                    // Note: sectionBox.Min/Max are in World Coordinates if from View.GetSectionBox()
+                    if (pt.X < sectionBox.Min.X || pt.X > sectionBox.Max.X ||
+                        pt.Y < sectionBox.Min.Y || pt.Y > sectionBox.Max.Y ||
+                        pt.Z < sectionBox.Min.Z || pt.Z > sectionBox.Max.Z)
+                    {
+                        return; // Skip this zone
+                    }
+                }
+
                 var sleeve = ClusterSleeveInfo.FromClashZone(zone);
                 if (sleeve != null)
                 {

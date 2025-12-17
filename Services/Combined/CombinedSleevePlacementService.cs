@@ -214,31 +214,143 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
         /// <summary>
         /// Places a single combined sleeve for a proximity group (Revit operations only, no database)
         /// </summary>
-        private CombinedSleeve PlaceSingleCombinedSleeveInRevit(
+        public CombinedSleeve PlaceSingleCombinedSleeveInRevit(
             ProximityGroup group,
             int comboId,
             int filterId)
         {
             // Calculate combined geometry (Agent B logic)
             var bbox = group.CalculateCombinedBoundingBox();
-            var (width, height, depth) = group.CalculateCombinedDimensions();
+            var result = group.CalculateCombinedDimensions();
+            var width = result.width;
+            var height = result.height;
+            var depth = result.depth;
             var placementPoint = group.CalculateCombinedPlacementPoint();
             
             _logger($"[CombinedSleevePlacement] Placing combined sleeve: {group.GetSummary()}");
             _logger($"[CombinedSleevePlacement]   Dimensions: W={width:F2}, H={height:F2}, D={depth:F2}");
             _logger($"[CombinedSleevePlacement]   Placement: ({placementPoint.X:F2}, {placementPoint.Y:F2}, {placementPoint.Z:F2})");
+
+            FamilyInstance placedInstance = null;
+
+            try
+            {
+                // 1. Determine Family Name
+                string familyName = "RectangularOpeningOnWall"; // Default
+                string hostType = group.GetHostType();
+                
+                if (hostType != null && (hostType.Contains("Floor") || hostType.Contains("Slab")))
+                {
+                    familyName = "RectangularOpeningOnSlab";
+                }
+
+                // 2. Load Symbol
+                FamilySymbol symbol = new FilteredElementCollector(_doc)
+                    .OfClass(typeof(FamilySymbol))
+                    .Cast<FamilySymbol>()
+                    .FirstOrDefault(x => x.Name.Equals(familyName, StringComparison.OrdinalIgnoreCase) || 
+                                         x.Family.Name.Equals(familyName, StringComparison.OrdinalIgnoreCase));
+                                         
+                if (symbol != null)
+                {
+                    if (!symbol.IsActive) symbol.Activate();
+
+                    // 3. Create Instance
+                    // Use NonStructural for openings
+                    placedInstance = _doc.Create.NewFamilyInstance(placementPoint, symbol, Autodesk.Revit.DB.Structure.StructuralType.NonStructural);
+                    
+                    if (placedInstance != null)
+                    {
+                        // 4. Set Parameters
+                        var pWidth = placedInstance.LookupParameter("Width");
+                        var pHeight = placedInstance.LookupParameter("Height");
+                        // Depth might be controlled by host or instance parameter
+                        var pDepth = placedInstance.LookupParameter("Depth");
+                        var pLength = placedInstance.LookupParameter("Length"); // Some families use Length for depth
+
+                        if (pWidth != null) pWidth.Set(width);
+                        if (pHeight != null) pHeight.Set(height);
+                        if (pDepth != null) pDepth.Set(depth);
+                        else if (pLength != null) pLength.Set(depth);
+                        
+                        // Set Comments
+                        var pComments = placedInstance.LookupParameter("Comments");
+                        if (pComments != null)
+                        {
+                            var summary = group.GetSummary();
+                            // Truncate if too long
+                            if (summary.Length > 200) summary = summary.Substring(0, 197) + "...";
+                            pComments.Set(summary);
+                        }
+
+                        // 5. AUTO-JOIN (CRITICAL FIX)
+                        try
+                        {
+                            // Try to find a host to join with if not automatically hosted
+                            Element host = placedInstance.Host;
+                            
+                            // If auto-hosting didn't work (e.g. creating in open space), try to find intersecting host
+                            if (host == null)
+                            {
+                                // Simple proximity search for Wall/Floor at placement point
+                                var potentialHosts = new FilteredElementCollector(_doc)
+                                    .OfClass(typeof(HostObject))
+                                    .WherePasses(new BoundingBoxIntersectsFilter(new Outline(placementPoint - new XYZ(0.5, 0.5, 0.5), placementPoint + new XYZ(0.5, 0.5, 0.5))))
+                                    .Cast<HostObject>()
+                                    .ToList();
+
+                                if (potentialHosts.Count > 0)
+                                {
+                                    host = potentialHosts.OrderBy(h => h.Location is LocationCurve lc ? lc.Curve.Distance(placementPoint) : 100).FirstOrDefault();
+                                }
+                            }
+
+                            if (host != null)
+                            {
+                                if (!JoinGeometryUtils.AreElementsJoined(_doc, host, placedInstance))
+                                {
+                                    JoinGeometryUtils.JoinGeometry(_doc, host, placedInstance);
+                                    _logger($"[CombinedSleevePlacement] ✅ Joined combined sleeve {placedInstance.Id} with host {host.Id} ({host.Category?.Name})");
+                                }
+                            }
+                            else
+                            {
+                                _logger($"[CombinedSleevePlacement] ⚠️ No host found to join for sleeve {placedInstance.Id}");
+                            }
+
+                            // 5b. Instance Void Cut (Alternative for families that use voids)
+                            if (InstanceVoidCutUtils.CanBeCutingElement(placedInstance) && host != null)
+                            {
+                                if (!InstanceVoidCutUtils.IsVoidInstanceCutingElement(placedInstance))
+                                {
+                                    InstanceVoidCutUtils.AddInstanceVoidCut(_doc, host, placedInstance);
+                                    _logger($"[CombinedSleevePlacement] ✅ Added Void Cut for sleeve {placedInstance.Id} on host {host.Id}");
+                                }
+                            }
+                        }
+                        catch (Exception joinEx)
+                        {
+                            _logger($"[CombinedSleevePlacement] ⚠️ Auto-Join/Cut failed: {joinEx.Message}");
+                        }
+                    }
+                }
+                else
+                {
+                     _logger($"[CombinedSleevePlacement] ❌ Family symbol '{familyName}' not found!");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[CombinedSleevePlacement] ❌ Error creating Revit bundle: {ex.Message}");
+            }
             
-            // TODO: Place actual Revit family instance
-            // For now, create a placeholder ElementId
-            var placedInstanceId = 999999; // Placeholder - replace with actual Revit placement
-            
-            // Calculate rotation angle (use first sleeve's rotation)
+            // Calculate rotation angle (use first sleeve's rotation or group average)
             var rotationAngle = group.Sleeves.FirstOrDefault()?.RotationAngleDeg ?? 0.0;
             
             // Create combined sleeve data model
             var combinedSleeve = new CombinedSleeve
             {
-                CombinedInstanceId = placedInstanceId,
+                CombinedInstanceId = placedInstance?.Id.IntegerValue ?? -1, // Use actual ID or -1 if failed
                 ComboId = comboId,
                 FilterId = filterId,
                 Categories = group.Categories,
@@ -288,20 +400,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                 
                 if (sleeve.Type == SleeveType.Individual)
                 {
-                    // Individual sleeve - get from source data
+                    // Individual sleeve
                     if (sleeve.SourceData is JSE_RevitAddin_MEP_OPENINGS.Models.ClashZone clashZone)
                     {
                         constituent.ClashZoneGuid = clashZone.Id;
-                        // ClashZoneId will be looked up by repository if needed
                     }
                 }
                 else if (sleeve.Type == SleeveType.Cluster)
                 {
-                    // Cluster sleeve - get from source data
+                    // Cluster sleeve
                     if (sleeve.SourceData is JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClusterSleeveData cluster)
                     {
                         constituent.ClusterInstanceId = cluster.ClusterInstanceId;
-                        // ClusterSleeveId will be looked up by repository if needed
                     }
                 }
                 

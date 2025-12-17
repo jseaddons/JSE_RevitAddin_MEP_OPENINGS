@@ -940,8 +940,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ CRITICAL FIX: Round dimensions ONCE here (for all categories including dampers)
                 // This ensures both the Revit parameters AND the saved zone dimensions are rounded (consistent with cluster sleeves)
                 // Rounding is applied to ALL categories (dampers, pipes, ducts, cable trays, etc.)
-                var (roundedWidth, roundedHeight) = OpeningSettingsHelper.RoundDimensionsToNearest5mm(width, height);
-                double roundedDiameter = OpeningSettingsHelper.RoundDiameterToNearest5mm(diameter);
+                // ✅ REFACTOR: Use saved dimensions directly (respecting persistence)
+                var roundedWidth = width;
+                var roundedHeight = height;
+                double roundedDiameter = diameter;
                 
                 // ✅ CRITICAL FIX: Pass ROUNDED dimensions to SetSleeveParameters (no rounding inside SetSleeveParameters to prevent double rounding)
                 // This ensures Revit parameters are set with rounded values
@@ -1086,8 +1088,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ CRITICAL FIX: Round dimensions ONCE here (for all categories including dampers)
                 // This ensures both the Revit parameters AND the saved zone dimensions are rounded (consistent with cluster sleeves)
                 // Rounding is applied to ALL categories (dampers, pipes, ducts, cable trays, etc.)
-                var (roundedWidth, roundedHeight) = OpeningSettingsHelper.RoundDimensionsToNearest5mm(width, height);
-                double roundedDiameter = OpeningSettingsHelper.RoundDiameterToNearest5mm(diameter);
+                // ✅ REFACTOR: Dimensions are already rounded by CalculateSleeveDimensions (via SizingService)
+                var roundedWidth = width;
+                var roundedHeight = height;
+                double roundedDiameter = diameter;
                 
                 // ✅ CRITICAL FIX: Pass ROUNDED dimensions to SetSleeveParameters (it will round again, but rounding already-rounded values is idempotent)
                 // This ensures Revit parameters are set with rounded values
@@ -1191,10 +1195,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // ✅ SOLID ISP: Extract individual clearance values from damper strategy result
                     // These will be stored in ClashZone and set as sleeve parameters later
                     // This allows placement service to use zone data without direct strategy dependency
-                    double clearanceLeft = damperAdj.finalWidth > 0 ? damperAdj.finalWidth : zone.ClearanceLeft;
-                    double clearanceRight = damperAdj.finalHeight > 0 ? damperAdj.finalHeight : zone.ClearanceRight;
-                    double clearanceTop = damperAdj.finalWidth > 0 ? damperAdj.finalHeight : zone.ClearanceTop;
-                    double clearanceBottom = damperAdj.finalHeight > 0 ? damperAdj.finalWidth : zone.ClearanceBottom;
+                    // ✅ CRITICAL FIX: Use values directly from zone properties (populated by strategy)
+                    // Do NOT overwrite with finalWidth/finalHeight which are total dimensions!
+                    double clearanceLeft = zone.ClearanceLeft;
+                    double clearanceRight = zone.ClearanceRight;
+                    double clearanceTop = zone.ClearanceTop;
+                    double clearanceBottom = zone.ClearanceBottom;
                     
                     // ✅ CRITICAL: Store damper clearance values for later parameter setting
                     // Key: zone.Id (Guid) for matching, Value: final dimensions + individual clearances + offsetVector
@@ -1215,8 +1221,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         DebugLogger.Info($"[NewSleevePlacer] ✅ DAMPER STRATEGY: Zone {zone.Id}, Final W={damperAdj.finalWidth:F6}ft, H={damperAdj.finalHeight:F6}ft (placement point handled by DamperPlacementPointService)");
                     }
                     
+                    // ✅ CRITICAL FIX: Round dimensions to obey global rounding rules (e.g. nearest 50mm)
+                    // Dampers calculate "exact" clearance (e.g. +150mm), but we must round the TOTAL dimension to the module
+                    // This creates the "extra" clearance the user might see (e.g. 150mm -> 175mm total gap -> 12.5mm extra/side)
+                    var profileSettings = ApplicationProfileService.Instance.GetCurrentSettings();
+                    
+                    // Use helper to round (centralized logic)
+                    // Note: We use RoundDimensionsToNearest5mm which respects the global RoundingValue from settings
+                    var (roundedWidth, roundedHeight) = OpeningSettingsHelper.RoundDimensionsToNearest5mm(
+                        damperAdj.finalWidth, 
+                        damperAdj.finalHeight);
+                    
+                    // ✅ COMPREHENSIVE LOGGING: Log rounding effect
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        double finalWidthMmPreRound = damperAdj.finalWidth * 304.8;
+                        double finalHeightMmPreRound = damperAdj.finalHeight * 304.8;
+                        double roundedWidthMm = roundedWidth * 304.8;
+                        double roundedHeightMm = roundedHeight * 304.8;
+                        
+                        if (Math.Abs(roundedWidthMm - finalWidthMmPreRound) > 0.1 || Math.Abs(roundedHeightMm - finalHeightMmPreRound) > 0.1)
+                        {
+                            SafeFileLogger.SafeAppendText("clearance_calculation_trace.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [DAMPER-ROUNDING] Zone {zone.Id}, " +
+                                $"Width {finalWidthMmPreRound:F1}mm -> {roundedWidthMm:F1}mm, " +
+                                $"Height {finalHeightMmPreRound:F1}mm -> {roundedHeightMm:F1}mm " +
+                                $"(RoundingValue={profileSettings.RoundingValue}mm, AlwaysUp={profileSettings.RoundAlwaysUp})\n");
+                        }
+                    }
+                    
                     tracker?.SetItemCount(1);
-                    return (damperAdj.finalWidth, damperAdj.finalHeight, 0, false); // Dampers are always rectangular (false = not circular)
+                    return (roundedWidth, roundedHeight, 0, false); // Dampers are always rectangular (false = not circular)
                 }
                 
                 // ✅ CRITICAL FIX: Cable trays need special handling to read clearances directly from database
@@ -1288,8 +1323,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
                 // ✅ OOP METHOD: Use insulation-aware sizing service for consistent calculation (SOLID principles)
                 // Formula: RawSize + (2 × InsulationThickness) + (2 × Clearance)
-                (double finalWidth, double finalHeight, double finalDiameter) = _sizingService.CalculateFinalDimensionsFromClashZone(
-                    rawWidth, rawHeight, rawDiameter, zone, clearance);
+                // ✅ CRITICAL REFACTOR: Use ROUNDED calculation directly in the service
+                // This centralizes rounding logic and ensures dimensions are final and consistent
+                var settings = ApplicationProfileService.Instance.GetCurrentSettings();
+                (double finalWidth, double finalHeight, double finalDiameter) = _sizingService.CalculateFinalDimensionsFromClashZoneRounded(
+                    rawWidth, rawHeight, rawDiameter, zone, clearance, settings.RoundingValue, settings.RoundAlwaysUp);
                 
                 // ✅ COMPREHENSIVE LOGGING: Log final dimensions AFTER sizing calculation
                 if (!DeploymentConfiguration.DeploymentMode)

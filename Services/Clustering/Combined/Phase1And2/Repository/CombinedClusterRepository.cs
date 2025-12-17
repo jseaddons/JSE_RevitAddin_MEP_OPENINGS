@@ -20,15 +20,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Re
 
         public IReadOnlyList<ClashZone> LoadClusteredZones(string filterName, IReadOnlyCollection<string> categories)
         {
-            if (string.IsNullOrWhiteSpace(filterName) || categories == null || categories.Count == 0)
+            if (categories == null || categories.Count == 0)
             {
                 return Array.Empty<ClashZone>();
             }
 
             var resolved = new List<ClashZone>();
+            // ✅ AUTO-DISCOVERY FIX: Handle wildcard or missing filter name by scanning all filters
+            bool scanAllFilters = string.IsNullOrWhiteSpace(filterName) || filterName.Trim() == "*";
+
             foreach (var category in categories)
             {
-                var zones = _clashZoneRepository.GetClashZonesByFilter(filterName, category, unresolvedOnly: false, readyForPlacementOnly: false);
+                List<ClashZone> zones;
+                if (scanAllFilters)
+                {
+                    zones = _clashZoneRepository.GetClashZonesByCategory(category);
+                }
+                else
+                {
+                    zones = _clashZoneRepository.GetClashZonesByFilter(filterName, category, unresolvedOnly: false, readyForPlacementOnly: false);
+                }
+
                 if (zones == null || zones.Count == 0)
                 {
                     continue;

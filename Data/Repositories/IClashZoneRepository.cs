@@ -96,9 +96,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         System.Collections.Generic.Dictionary<int, System.Collections.Generic.Dictionary<string, string>> GetSnapshotMepParametersForSleeveIds(System.Collections.Generic.IEnumerable<int> sleeveInstanceIds);
 
         /// <summary>
-        /// Batch update IsResolvedFlag, IsClusterResolvedFlag, SleeveInstanceId, and ClusterInstanceId for placed sleeves.
+        /// Batch update IsResolvedFlag, IsClusterResolvedFlag, IsCombinedResolved, SleeveInstanceId, and ClusterInstanceId for placed sleeves.
         /// </summary>
-        void BatchUpdateFlags(List<(System.Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterInstanceId)> updates);
+        void BatchUpdateFlags(List<(System.Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId)> updates);
+
+        /// <summary>
+        /// Batch update flags including IsCurrentClashFlag.
+        /// </summary>
+        void BatchUpdateFlagsWithCurrentClash(IEnumerable<(System.Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsCurrentClash)> updates);
 
         /// <summary>
         /// Force Detection Mode: Reset all flags (IsResolved, IsClusterResolved) to false and clear sleeve IDs
@@ -120,10 +125,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         int ResetIsCurrentClashFlag(List<string> filterNames, List<string> categories);
 
         /// <summary>
+        /// Reset IsFilterComboNew flag to 0 for a specific combo ID.
+        /// </summary>
+        void ResetFileComboFlag(int comboId);
+
+        /// <summary>
         /// Retrieve ClashZone objects associated with the given Revit Sleeve Instance IDs.
         /// This checks both individual SleeveInstanceId and ClusterSleeveInstanceId.
         /// </summary>
         List<ClashZone> GetClashZonesBySleeveIds(IEnumerable<int> sleeveInstanceIds);
+
+        /// <summary>
+        /// Retrieve the ComboId and FilterId for a given ClashZone GUID.
+        /// </summary>
+        (int ComboId, int FilterId) GetComboAndFilterId(System.Guid clashZoneId);
 
         /// <summary>
         /// Retrieves a list of ClashZones by their Guids.

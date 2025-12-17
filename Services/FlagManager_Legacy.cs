@@ -413,6 +413,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     ClashZoneId: u.ClashZoneId,
                                     IsResolved: u.IsResolved,
                                     IsClusterResolved: u.IsClusterResolved,
+                                    IsCombinedResolved: false, // ✅ RESTORED
                                     SleeveInstanceId: u.SleeveInstanceId,
                                     ClusterInstanceId: u.ClusterSleeveInstanceId,
                                     MepElementId: u.MepElementId,
@@ -422,9 +423,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     IntersectionPointZ: u.IntersectionPointZ,
                                     OldSleeveInstanceId: u.OldSleeveInstanceId,
                                     OldClusterInstanceId: u.OldClusterInstanceId,
-                                    MarkedForClusterProcess: u.MarkedForClusterProcess, // ✅ EDGE CASE: Use tuple field name
-                                    AfterClusterSleeveId: u.AfterClusterSleeveId, // ✅ EDGE CASE: Use tuple field name
-                                    IsClusteredFlag: (bool?)null // ✅ EDGE CASE: Deprecated, set to null
+                                    MarkedForClusterProcess: u.MarkedForClusterProcess, 
+                                    AfterClusterSleeveId: u.AfterClusterSleeveId, 
+                                    IsClusteredFlag: (bool?)null 
                                 )).ToList();
                                 
                                 repository.BatchUpdateFlags(dbUpdates);
@@ -1929,6 +1930,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         ClashZoneId: u.Id,
                                         IsResolved: u.IsResolved,
                                         IsClusterResolved: u.IsClusterResolved,
+                                        IsCombinedResolved: false, // ✅ ADDED: Default to false as 'updates' tuple doesn't have it yet
                                         SleeveInstanceId: u.SleeveInstanceId,
                                         ClusterInstanceId: u.ClusterSleeveInstanceId, // Note: BatchUpdateFlags uses ClusterInstanceId, not ClusterSleeveInstanceId
                                         MepElementId: u.MepElementId,
@@ -1938,9 +1940,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         IntersectionPointZ: u.IntersectionPointZ,
                                         OldSleeveInstanceId: u.OldSleeveInstanceId,
                                         OldClusterInstanceId: u.OldClusterInstanceId,
-                                        MarkedForClusterProcess: u.MarkedForClusterProcess, // ✅ EDGE CASE: Use tuple field name
-                                        AfterClusterSleeveId: u.AfterClusterSleeveId, // ✅ EDGE CASE: Use tuple field name
-                                        IsClusteredFlag: (bool?)null // ✅ EDGE CASE: Deprecated, set to null
+                                        MarkedForClusterProcess: u.MarkedForClusterProcess, 
+                                        AfterClusterSleeveId: u.AfterClusterSleeveId, 
+                                        IsClusteredFlag: (bool?)null 
                                     )).ToList();
                                     
                                     LogToRefresh($"✅ DATABASE UPDATE: Calling BatchUpdateFlags with {dbUpdates.Count} updates");
@@ -2358,6 +2360,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     ClashZoneId: u.Id,
                                     IsResolved: u.IsResolved,
                                     IsClusterResolved: u.IsClusterResolved,
+                                    IsCombinedResolved: false, // ✅ ADDED: Default to false
                                     SleeveInstanceId: u.SleeveInstanceId,
                                     ClusterInstanceId: u.ClusterSleeveInstanceId,
                                     MepElementId: u.MepElementId,
@@ -2587,7 +2590,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             try
             {
-                var dbUpdates = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId, bool? MarkedForClusterProcess, int AfterClusterSleeveId, bool? IsClusteredFlag)>();
+                var dbUpdates = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId, bool? MarkedForClusterProcess, int AfterClusterSleeveId, bool? IsClusteredFlag)>();
                 
                 // ✅ STEP 1: Update in-memory ClashZone objects and prepare batch database updates
                 foreach (var (clashZone, sleeveId) in clashZones)
@@ -2631,6 +2634,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         clashZone.Id,
                         clashZone.IsResolved,
                         clashZone.IsClusterResolved,
+                        clashZone.IsCombinedResolved, // ✅ ADDED: Pass IsCombinedResolved from ClashZone
                         clashZone.SleeveInstanceId,
                         clashZone.ClusterSleeveInstanceId,
                         clashZone.MepElementIdValue,
@@ -2811,12 +2815,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             oldSleeveInstanceId = clashZone.AfterClusterSleevePlacedSleeveInstanceId; // Use original individual sleeve ID for matching
                         }
                         
-                        var singleUpdate = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId, bool? MarkedForClusterProcess, int AfterClusterSleeveId, bool? IsClusteredFlag)>
+                        var singleUpdate = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId, bool? MarkedForClusterProcess, int AfterClusterSleeveId, bool? IsClusteredFlag)>
                         {
                             (
                                 clashZone.Id,
                                 clashZone.IsResolved,
                                 clashZone.IsClusterResolved,
+                                clashZone.IsCombinedResolved, // ✅ ADDED: Pass IsCombinedResolved from ClashZone
                                 clashZone.SleeveInstanceId,
                                 clashZone.ClusterSleeveInstanceId,
                                 clashZone.MepElementIdValue,
@@ -2824,11 +2829,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 clashZone.IntersectionPointX,
                                 clashZone.IntersectionPointY,
                                 clashZone.IntersectionPointZ,
-                                oldSleeveInstanceId, // ✅ CRITICAL: Use original sleeve ID for matching
-                                oldClusterInstanceId, // Old cluster ID before update
-                                clashZone.MarkedForClusteringSleeveProcess, // ✅ EDGE CASE: MarkedForClusterProcess flag
-                                clashZone.AfterClusterSleevePlacedSleeveInstanceId, // ✅ EDGE CASE: Original sleeve ID before cluster placement
-                                null // ✅ EDGE CASE: IsClusteredFlag (deprecated, but kept for edge cases - set to null)
+                                oldSleeveInstanceId, 
+                                oldClusterInstanceId, 
+                                clashZone.MarkedForClusteringSleeveProcess, 
+                                clashZone.AfterClusterSleevePlacedSleeveInstanceId, 
+                                null 
                             )
                         };
                         

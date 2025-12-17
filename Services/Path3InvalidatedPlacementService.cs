@@ -197,6 +197,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     (zone.Id, 
                                      IsResolved: true, 
                                      IsClusterResolved: zone.IsClusterResolved, 
+                                     IsCombinedResolved: zone.IsCombinedResolved, // ✅ ADDED: Pass IsCombinedResolved
                                      SleeveInstanceId: 0, 
                                      ClusterInstanceId: zone.ClusterSleeveInstanceId,
                                      zone.MepElementIdValue, 
@@ -206,9 +207,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                      zone.IntersectionPointZ,
                                      OldSleeveInstanceId: zone.SleeveInstanceId,
                                      OldClusterInstanceId: zone.ClusterSleeveInstanceId,
-                                     MarkedForClusterProcess: zone.MarkedForClusteringSleeveProcess, // ✅ EDGE CASE: Pass through if available
-                                     AfterClusterSleeveId: zone.AfterClusterSleevePlacedSleeveInstanceId, // ✅ EDGE CASE: Pass through if available
-                                     IsClusteredFlag: (bool?)null) // ✅ EDGE CASE: Deprecated, set to null
+                                     MarkedForClusterProcess: zone.MarkedForClusteringSleeveProcess, 
+                                     AfterClusterSleeveId: zone.AfterClusterSleevePlacedSleeveInstanceId, 
+                                     IsClusteredFlag: (bool?)null) 
                                 });
                                 
                                 if (!DeploymentConfiguration.DeploymentMode)
@@ -371,7 +372,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     var clashZoneRepository = new ClashZoneRepository(dbContext);
                     
-                    var updates = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, int SleeveInstanceId, int ClusterInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId, bool? MarkedForClusterProcess, int AfterClusterSleeveId, bool? IsClusteredFlag)>();
+                    var updates = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, int MepElementId, int StructuralElementId, double IntersectionPointX, double IntersectionPointY, double IntersectionPointZ, int OldSleeveInstanceId, int OldClusterInstanceId, bool? MarkedForClusterProcess, int AfterClusterSleeveId, bool? IsClusteredFlag)>();
                     
                     foreach (var zone in invalidatedZones)
                     {
@@ -381,6 +382,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 zone.Id,
                                 IsResolved: true,
                                 IsClusterResolved: zone.IsClusterResolved,
+                                IsCombinedResolved: zone.IsCombinedResolved, // ✅ ADDED: Pass IsCombinedResolved
                                 SleeveInstanceId: zone.SleeveInstanceId,
                                 ClusterInstanceId: zone.ClusterSleeveInstanceId,
                                 zone.MepElementIdValue,
@@ -390,9 +392,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 zone.IntersectionPointZ,
                                 OldSleeveInstanceId: 0, // Was deleted, so old ID is 0
                                 OldClusterInstanceId: zone.ClusterSleeveInstanceId,
-                                MarkedForClusterProcess: zone.MarkedForClusteringSleeveProcess, // ✅ EDGE CASE: Pass through if available
-                                AfterClusterSleeveId: zone.AfterClusterSleevePlacedSleeveInstanceId, // ✅ EDGE CASE: Pass through if available
-                                IsClusteredFlag: (bool?)null)); // ✅ EDGE CASE: Deprecated, set to null
+                                MarkedForClusterProcess: zone.MarkedForClusteringSleeveProcess, 
+                                AfterClusterSleeveId: zone.AfterClusterSleevePlacedSleeveInstanceId, 
+                                IsClusteredFlag: (bool?)null)); 
                         }
                     }
                     

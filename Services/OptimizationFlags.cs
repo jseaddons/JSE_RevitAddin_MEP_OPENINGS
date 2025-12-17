@@ -79,7 +79,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Default: true (enabled - R-tree is supported in SQLite 3.42.0+)
         /// Expected gain: 10x faster section box filtering, 80-90% reduction in data transfer
         /// </summary>
-        public static bool UseRTreeDatabaseIndex { get; set; } = true;
+        public static bool UseRTreeDatabaseIndex { get; set; } = false; // ⚠️ DISABLED: R-tree filter not working correctly, using in-memory section box test
         
         #endregion
         
@@ -92,7 +92,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Default: false (disabled initially - enable after validation)
         /// Location: Helpers/SectionBoxHelper.cs
         /// </summary>
-        public static bool UseBoundingBoxSectionBoxFilter { get; set; } = true;
+        public static bool UseBoundingBoxSectionBoxFilter { get; set; } = false; // ⚠️ DISABLED: Causes inverted section box filtering (places sleeves outside instead of inside)
         
         /// <summary>
         /// Re-enable TestCurveInBoundingBox filter for cheap rejection before solid intersection
@@ -348,7 +348,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Enable diagnostic mode for performance monitoring
         /// Default: false (disabled for deployment)
         /// </summary>
-        public static bool UseDiagnosticMode { get; set; } = false; // ✅ DEPLOYMENT: Diagnostic mode OFF - minimal logging for production
+        public static bool UseDiagnosticMode { get; set; } = true; // ⚠️ DEBUG: Diagnostic mode ON for section box debugging
         
         #endregion
         
@@ -539,7 +539,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Default: true (✅ ENABLED FOR TESTING - SOLID refactored services)
         /// Expected: Fixes sleeve duplication bugs, maintains all optimizations
         /// </summary>
-        public static bool UseRefactoredClashZoneFlagServices { get; set; } = true;
+        public static bool UseRefactoredClashZoneFlagServices { get; set; } = false; // \u26a0\ufe0f DISABLED: Batch update not implemented (line 296-297 in FlagManagerService.cs)
         
         #endregion
 

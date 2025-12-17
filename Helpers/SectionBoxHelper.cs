@@ -208,20 +208,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                 
                 Transform transform = sectionBox.Transform;
                 
-                // Transform section box to world coordinates
-                XYZ worldMin = transform.OfPoint(sectionBox.Min);
-                XYZ worldMax = transform.OfPoint(sectionBox.Max);
+                // ✅ CRITICAL FIX: Transform ALL 8 corners to handle rotation correctly
+                // Transforming just Min/Max works only if rotation is 0. For rotated boxes,
+                // the "Min" corner locally might not be the "Min" corner in World logic.
+                
+                // 1. Get all 8 local corners
+                XYZ min = sectionBox.Min;
+                XYZ max = sectionBox.Max;
+                
+                XYZ[] localCorners = new XYZ[8]
+                {
+                    new XYZ(min.X, min.Y, min.Z), // 0: Min
+                    new XYZ(max.X, min.Y, min.Z), // 1
+                    new XYZ(min.X, max.Y, min.Z), // 2
+                    new XYZ(max.X, max.Y, min.Z), // 3
+                    
+                    new XYZ(min.X, min.Y, max.Z), // 4
+                    new XYZ(max.X, min.Y, max.Z), // 5
+                    new XYZ(min.X, max.Y, max.Z), // 6
+                    new XYZ(max.X, max.Y, max.Z)  // 7: Max
+                };
+                
+                // 2. Transform all corners to world coordinates
+                // 3. Find global Min/Max from the cloud of points
+                double wMinX = double.MaxValue, wMinY = double.MaxValue, wMinZ = double.MaxValue;
+                double wMaxX = double.MinValue, wMaxY = double.MinValue, wMaxZ = double.MinValue;
+                
+                foreach (XYZ corner in localCorners)
+                {
+                    XYZ worldCorner = transform.OfPoint(corner);
+                    
+                    if (worldCorner.X < wMinX) wMinX = worldCorner.X;
+                    if (worldCorner.Y < wMinY) wMinY = worldCorner.Y;
+                    if (worldCorner.Z < wMinZ) wMinZ = worldCorner.Z;
+                    
+                    if (worldCorner.X > wMaxX) wMaxX = worldCorner.X;
+                    if (worldCorner.Y > wMaxY) wMaxY = worldCorner.Y;
+                    if (worldCorner.Z > wMaxZ) wMaxZ = worldCorner.Z;
+                }
                 
                 return new BoundingBoxXYZ
                 {
-                    Min = new XYZ(
-                        System.Math.Min(worldMin.X, worldMax.X),
-                        System.Math.Min(worldMin.Y, worldMax.Y),
-                        System.Math.Min(worldMin.Z, worldMax.Z)),
-                    Max = new XYZ(
-                        System.Math.Max(worldMin.X, worldMax.X),
-                        System.Math.Max(worldMin.Y, worldMax.Y),
-                        System.Math.Max(worldMin.Z, worldMax.Z))
+                    Min = new XYZ(wMinX, wMinY, wMinZ),
+                    Max = new XYZ(wMaxX, wMaxY, wMaxZ)
                 };
             }
             catch

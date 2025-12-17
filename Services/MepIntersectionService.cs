@@ -628,7 +628,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         mepBBox = new BoundingBoxXYZ
                         {
                             Min = new XYZ(Math.Min(tMin.X, tMax.X), Math.Min(tMin.Y, tMax.Y), Math.Min(tMin.Z, tMax.Z)),
-                            Max = new XYZ(Math.Max(tMin.X, tMax.X), Math.Max(tMin.Y, tMax.Y), Math.Min(tMin.Z, tMax.Z))
+                            Max = new XYZ(Math.Max(tMin.X, tMax.X), Math.Max(tMin.Y, tMax.Y), Math.Max(tMin.Z, tMax.Z))
                         };
                     }
 
@@ -778,11 +778,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                                                 // BooleanOperations? Or SolidCurveIntersection?
                     if (mepEntry.line != null)
                     {
-                        var sci = structSolid.IntersectWithCurve(mepEntry.line, new SolidCurveIntersectionOptions());
-                        if (sci.SegmentCount > 0)
+                        using (var sci = structSolid.IntersectWithCurve(mepEntry.line, new SolidCurveIntersectionOptions()))
                         {
-                            // Found!
-                            results.Add((mepEntry.mepElement, structEntry.element, structEntry.bbox, XYZ.Zero)); // Point calc needed?
+                            if (sci.SegmentCount > 0)
+                            {
+                                // ✅ PARALLEL FIX: Extract actual intersection points from SCI
+                                // Previous code incorrectly returned XYZ.Zero using a 'Point calc needed?' placeholder
+                                var sciPoints = new List<XYZ>();
+                                for (int i = 0; i < sci.SegmentCount; i++)
+                                {
+                                    var curve = sci.GetCurveSegment(i);
+                                    sciPoints.Add(curve.GetEndPoint(0));
+                                    sciPoints.Add(curve.GetEndPoint(1));
+                                }
+                                
+                                // Calculate proper intersection bbox and center (Using local static helper)
+                                var intsBBox = CreateBoundingBox(sciPoints);
+                                if (intsBBox != null)
+                                {
+                                    var intsCenter = BoundingBoxService.GetBoundingBoxCenter(intsBBox);
+                                    
+                                    // Validate center is not Zero and add to results
+                                    if (intsCenter != null && (Math.Abs(intsCenter.X) > 1e-9 || Math.Abs(intsCenter.Y) > 1e-9 || Math.Abs(intsCenter.Z) > 1e-9))
+                                    {
+                                        results.Add((mepEntry.mepElement, structEntry.element, intsBBox, intsCenter));
+                                        log?.Invoke($"[PARALLEL-FIX] Fixed Zero-Point at Center={intsCenter}");
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -836,6 +859,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     line = Line.CreateBound(mepTransform.OfPoint(line.GetEndPoint(0)), mepTransform.OfPoint(line.GetEndPoint(1)));
                 }
 
+                // ✅ CRITICAL FIX: Skip MEP element if line is null (e.g., dampers or failed line extraction)
+                // Without this check, GetIntersectionPoints gets called with null line, returns empty points,
+                // creates null bbox, gets (0,0,0) center, triggers FIXUP in ClashZoneService
+                if (line == null)
+                {
+                    if (OptimizationFlags.UseDiagnosticMode)
+                        log?.Invoke($"[SKIP-NULL-LINE] Skipping MEP element {mepElement.Id} - line is null (damper or failed line extraction)");
+                    continue; // Skip to next MEP element
+                }
+
                 // Inner Loop: Structural Elements
                 foreach (var structEntry in structuralData)
                 {
@@ -844,47 +877,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var structBBox = structEntry.bbox;
                     var cacheKey = structEntry.cacheKey;
 
-                    // ✅ FAST PATH: Known valid pair logic (approximate check)
-                    // If we are checking known pairs, we might have logic here?
-                    // The original code seemingly had logic for "Known valid pair".
-                    // Assuming standard collision check for now.
-
-                    // NOTE: Proceeding to existing logic which checks structBBox...
-                    // Skip expensive solid geometry intersection calculation
-
-                    // ✅ CRITICAL FIX: Validate structBBox is not null before using it
-                    if (structBBox == null)
-                    {
-                        log?.Invoke($"[⚠️ SKIP-NULL-BBOX-KNOWN] Skipping known pair with null bounding box: MEP={mepElement.Id}, Structural={structElement.Id}");
-                        spatiallyFiltered++;
-                        continue;
-                    }
-
-                    if (BoundingBoxService.BoundingBoxesIntersect(expandedMin, expandedMax, structBBox.Min, structBBox.Max))
-                    {
-                        // Use structural element's bounding box center as intersection point (approximation for known pairs)
-                        var center = BoundingBoxService.GetBoundingBoxCenter(structBBox);
-
-                        // ✅ CRITICAL FIX: Validate intersection point is NOT zero before adding
-                        if (center != null && Math.Abs(center.X) > 1e-9 && Math.Abs(center.Y) > 1e-9 && Math.Abs(center.Z) > 1e-9)
-                        {
-                            results.Add((mepElement, structElement, structBBox, center));
-                            geometrySkippedForKnownPairs++;
-                        }
-                        else
-                        {
-                            log?.Invoke($"[⚠️ SKIP-ZERO-KNOWN] Skipping known pair with zero center: MEP={mepElement.Id}, Structural={structElement.Id}, Center={center}, BBox=Min({structBBox.Min.X},{structBBox.Min.Y},{structBBox.Min.Z}) Max({structBBox.Max.X},{structBBox.Max.Y},{structBBox.Max.Z})");
-                        }
-                    }
-                    else
-                    {
-                        // Bounding boxes don't intersect - element may have moved (shouldn't happen if user trusts model)
-                        // Still skip geometry check but log warning
-                        if (OptimizationFlags.UseDiagnosticMode)
-                            log($"[OPTIMIZATION] Known pair (MEP {mepElement.Id}, Structural {structElement.Id}) bounding boxes don't intersect - skipping");
-                        spatiallyFiltered++;
-                    }
-                    continue;
 
 
                     // ✅ CRITICAL FIX: Validate structBBox is not null before using it in normal path
@@ -1052,6 +1044,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                         // Use bounding box center (average of entry/exit points) to get mid-depth of host
                         var center = BoundingBoxService.GetBoundingBoxCenter(bbox);
+
+                        // ✅ UNCONDITIONAL DEBUG: Always log intersection point calculation
+                        log?.Invoke($"[INTERSECTION-CALC] MEP={mepElement.Id}, Structural={structElement.Id}, Points={allIntersectionPoints.Count}, BBox={(bbox != null ? $"Min={bbox.Min}, Max={bbox.Max}" : "NULL")}, Center={center}");
 
                         // ✅ CRITICAL FIX: Validate intersection point is NOT zero before adding
                         // This prevents creating clash zones with (0,0,0) intersection points
@@ -1680,35 +1675,66 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private static List<XYZ> GetIntersectionPoints(Solid solid, Line line, Action<string>? log = null)
         {
             var intersectionPoints = new List<XYZ>();
+            
+            // ✅ CRITICAL DEBUG: Log input parameters
+            if (OptimizationFlags.UseDiagnosticMode)
+            {
+                log?.Invoke($"[GetIntersectionPoints] ENTER: Solid={(solid != null ? $"Valid(Volume={solid.Volume})" : "NULL")}, Line={(line != null ? $"Valid({line.GetEndPoint(0)} to {line.GetEndPoint(1)})" : "NULL")}");
+            }
+            
             try
             {
+                // ✅ CRITICAL FIX: Check if line is null before using it
+                if (line == null)
+                {
+                    log?.Invoke($"[GetIntersectionPoints] ❌ Line is NULL - returning empty intersection points");
+                    return intersectionPoints;
+                }
+                
                 int faceCount = solid.Faces.Size;
                 if (OptimizationFlags.UseDiagnosticMode)
                     log?.Invoke($"[Intersect] Solid face count = {faceCount}");
+                    
+                int facesChecked = 0;
+                int facesWithIntersections = 0;
+                
                 foreach (Face face in solid.Faces)
                 {
                     if (face == null) continue;
+                    facesChecked++;
+                    
                     IntersectionResultArray? ira;
                     var res = face.Intersect(line, out ira);
+                    
+                    if (OptimizationFlags.UseDiagnosticMode && res != SetComparisonResult.Disjoint)
+                    {
+                        log?.Invoke($"[Intersect] Face {facesChecked}/{faceCount}: Result={res}, IRA={(ira != null ? $"Size={ira.Size}" : "NULL")}");
+                    }
+                    
                     if (res == SetComparisonResult.Overlap && ira != null)
                     {
+                        facesWithIntersections++;
                         foreach (Autodesk.Revit.DB.IntersectionResult ir in ira)
                         {
-                            intersectionPoints.Add(GetIntersectionPointFromRevitResult(ir));
-                        }
-                        if (intersectionPoints.Count > 0)
-                        {
+                            var pt = GetIntersectionPointFromRevitResult(ir);
+                            intersectionPoints.Add(pt);
+                            
                             if (OptimizationFlags.UseDiagnosticMode)
-                                log?.Invoke($"[Intersect] Found {intersectionPoints.Count} intersection point(s). First: {intersectionPoints[0]}");
-                            // early exit optional? keep collecting for bbox
+                                log?.Invoke($"[Intersect] Found intersection point: {pt}");
                         }
                     }
+                }
+                
+                if (OptimizationFlags.UseDiagnosticMode)
+                {
+                    log?.Invoke($"[GetIntersectionPoints] EXIT: FacesChecked={facesChecked}, FacesWithIntersections={facesWithIntersections}, TotalPoints={intersectionPoints.Count}");
                 }
             }
             catch (Exception ex)
             {
+                log?.Invoke($"[Intersect] Exception while computing intersections: {ex.Message}");
                 if (OptimizationFlags.UseDiagnosticMode)
-                    log?.Invoke($"[Intersect] Exception while computing intersections: {ex.Message}");
+                    log?.Invoke($"[Intersect] Stack trace: {ex.StackTrace}");
             }
             return intersectionPoints;
         }
@@ -2436,14 +2462,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             if (element is FamilyInstance fi && fi.Symbol?.Family?.Name?.IndexOf("Damper", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                log($"[MepIntersectionService] Element {element.Id} identified as damper; using bounding-box intersection approach.");
+                log?.Invoke($"[MepIntersectionService] Element {element.Id} identified as damper; using bounding-box intersection approach.");
                 return (null, false);
             }
 
             if (element.Location is LocationCurve locCurve && locCurve.Curve is Line curveLine)
             {
                 if (OptimizationFlags.UseDiagnosticMode)
-                    log($"[GetElementLine] Using LocationCurve path for element {element.Id} - line is in '{element.Document.Title}' coordinates (needs transform to host)");
+                    log?.Invoke($"[GetElementLine] Using LocationCurve path for element {element.Id} - line is in '{element.Document.Title}' coordinates (needs transform to host)");
                 return (curveLine, false); // LocationCurve is in linked doc coordinates, needs transform
             }
 
@@ -2464,14 +2490,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (endpoints != null && endpoints.Distance > 0)
                         {
                             if (OptimizationFlags.UseDiagnosticMode)
-                                log($"[GetElementLine] Using Connector path for element {element.Id} - line is in '{element.Document.Title}' coordinates (needs transform to host)");
+                                log?.Invoke($"[GetElementLine] Using Connector path for element {element.Id} - line is in '{element.Document.Title}' coordinates (needs transform to host)");
                             return (Line.CreateBound(endpoints.First.Origin, endpoints.Second.Origin), false); // Connector is in linked doc coordinates, needs transform
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    log($"[MepIntersectionService] Failed deriving line from MEPCurve connectors for element {element.Id}: {ex.Message}");
+                    log?.Invoke($"[MepIntersectionService] Failed deriving line from MEPCurve connectors for element {element.Id}: {ex.Message}");
                 }
             }
 
@@ -2496,12 +2522,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 if (OptimizationFlags.UseDiagnosticMode)
-                    log($"[GetElementLine] Using Fallback path for element {element.Id} - line created from transformed bbox (already in host coordinates, no transform needed)");
+                    log?.Invoke($"[GetElementLine] Using Fallback path for element {element.Id} - line created from transformed bbox (already in host coordinates, no transform needed)");
                 return (Line.CreateBound(p1, p2), true); // Fallback line is created from transformed bbox, already in host coordinates
             }
             catch (Exception ex)
             {
-                log($"[MepIntersectionService] Failed to derive fallback line for element {element.Id}: {ex.Message}");
+                log?.Invoke($"[MepIntersectionService] Failed to derive fallback line for element {element.Id}: {ex.Message}");
                 return (null, false);
             }
         }

@@ -233,6 +233,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS
         buttonStatus.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
         buttonStatus.ToolTip = "Check current diagnostic mode status and flag values.";
 
+        // ✅ CLEAR DB: Clear all sleeve-related tables in the SQLite database
+        var buttonClearDb = panel.AddPushButton<Commands.ClearAllSleeveDbTablesCommand>("Clear All Sleeve DB");
+        buttonClearDb.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+        buttonClearDb.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+        buttonClearDb.ToolTip = "Clear all sleeve-related tables in the add-in's SQLite database. Use with caution!";
+
             try
             {
                 File.AppendAllText(ribbonLogPath, $"[{DateTime.Now}] TestProfileManagementCommand button added to ribbon\n");

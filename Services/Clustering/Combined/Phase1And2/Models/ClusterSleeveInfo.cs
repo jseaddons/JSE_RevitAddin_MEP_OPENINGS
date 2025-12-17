@@ -54,6 +54,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Mo
         public double Height => SleeveHeight;
 
         public bool CombinedClusterIncorporated { get; set; }
+        public bool IsCombinedResolved { get; set; }
         public string CombinedClusterCategories { get; set; } = string.Empty;
 
         public Dictionary<string, string> ParameterSnapshot { get; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

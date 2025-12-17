@@ -637,9 +637,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     AddColumnIfMissing("ClashZones", "MepElementUniqueId", "TEXT", transaction);
                     AddColumnIfMissing("ClashZones", "IsResolvedFlag", "INTEGER NOT NULL DEFAULT 0", transaction);
                     AddColumnIfMissing("ClashZones", "IsClusterResolvedFlag", "INTEGER NOT NULL DEFAULT 0", transaction);
+                    // ✅ COMBINED RESOLVED: Flag for Phase 4 combined sleeves
+                    if (AddColumnIfMissing("ClashZones", "IsCombinedResolved", "INTEGER NOT NULL DEFAULT 0", transaction))
+                        _logger("[SQLite] ✅ Added IsCombinedResolved column to ClashZones (for combined sleeves)");
                     AddColumnIfMissing("ClashZones", "IsClusteredFlag", "INTEGER", transaction);
                     AddColumnIfMissing("ClashZones", "MarkedForClusterProcess", "INTEGER", transaction);
                     AddColumnIfMissing("ClashZones", "AfterClusterSleeveId", "INTEGER", transaction);
+                    // ✅ COMBINED RESOLVED: Instance ID for the combined sleeve if this zone is part of one
+                    AddColumnIfMissing("ClashZones", "CombinedClusterSleeveInstanceId", "INTEGER", transaction);
                     AddColumnIfMissing("ClashZones", "HasDamperNearbyFlag", "INTEGER NOT NULL DEFAULT 0", transaction);
                     AddColumnIfMissing("ClashZones", "IsCurrentClashFlag", "INTEGER NOT NULL DEFAULT 0", transaction);
                     // ✅ SESSION FLAG: Track zones ready for placement in current refresh session
@@ -1373,6 +1378,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
             {
                 _logger($"[SQLite] ⚠️ Failed to populate R-tree from existing data: {ex.Message}");
                 // Don't throw - allow fallback to B-tree indexes
+            }
+        }
+        /// <summary>
+        /// Clears all data from sleeve-related tables.
+        /// Used by the ClearAllSleeveDbTablesCommand for resetting the database.
+        /// </summary>
+        public void ClearAllTables()
+        {
+            using (var transaction = _connection.BeginTransaction())
+            {
+                try
+                {
+                    // Disable foreign keys temporarily to avoid constraint violations during clear
+                    ExecuteCommand("PRAGMA foreign_keys = OFF;", transaction);
+
+                    // Clear tables in dependency order (reverse creation order roughly)
+                    ExecuteCommand("DELETE FROM SleeveEvents;", transaction);
+                    ExecuteCommand("DELETE FROM ClashZones;", transaction);
+                    ExecuteCommand("DELETE FROM ClusterSleeves;", transaction);
+                    ExecuteCommand("DELETE FROM SleeveSnapshots;", transaction);
+                    ExecuteCommand("DELETE FROM ParameterTransferFlags;", transaction);
+                    ExecuteCommand("DELETE FROM CategoryProcessingMarkers;", transaction);
+                    ExecuteCommand("DELETE FROM Conditions;", transaction);
+                    ExecuteCommand("DELETE FROM FileCombos;", transaction);
+                    ExecuteCommand("DELETE FROM Filters;", transaction);
+                    
+                    // Reset auto-increment counters
+                    ExecuteCommand("DELETE FROM sqlite_sequence WHERE name IN ('SleeveEvents', 'ClashZones', 'ClusterSleeves', 'SleeveSnapshots', 'ParameterTransferFlags', 'CategoryProcessingMarkers', 'Conditions', 'FileCombos', 'Filters');", transaction);
+
+                    // Re-enable foreign keys
+                    ExecuteCommand("PRAGMA foreign_keys = ON;", transaction);
+
+                    transaction.Commit();
+                    _logger("[SQLite] ✅ All tables cleared successfully.");
+                }
+                catch (Exception ex)
+                {
+                    transaction.Rollback();
+                    _logger($"[SQLite] ❌ Error clearing tables: {ex.Message}");
+                    throw;
+                }
             }
         }
     }

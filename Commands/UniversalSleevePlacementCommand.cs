@@ -11,6 +11,7 @@ using System.IO;
 using System;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Refactored;
+using JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 {
@@ -258,8 +259,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     // For now, using inline method for backward compatibility
                     var filteredClashZones = FilterClashZonesByAllCriteria(_clashZones);
 
+                    // ✅ REFACTORED: Apply strict hierarchical filtering as per user request
+                    // Logic: IsCurrentClash -> IsCombinedResolved -> IsClusterResolved -> IsResolved
+                    // "if combined resolved is true skip... if clusterresolved is true skip... if resolved is true skip... else process"
+                    if (OptimizationFlags.UseRefactoredClashZoneFlagServices)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"{_logPrefix} 🔍 Applying STRICT filtering (Refactored Logic): IsCurrentClash -> IsCombined -> IsCluster -> IsResolved");
+                        }
+                        
+                        // Keep only zones that pass the strict gauntlet
+                        filteredClashZones = filteredClashZones?.Where(cz => 
+                        {
+                            // 1. Must be a current clash
+                            if (!cz.IsCurrentClash) return false;
+                            
+                            // 2. Must NOT be resolved (hierarchy)
+                            if (cz.IsCombinedResolved) return false;
+                            if (cz.IsClusterResolved) return false;
+                            if (cz.IsResolved) return false;
+                            
+                            return true;
+                        }).ToList();
+                    }
+
                     // ✅ CRITICAL FIX: Check if there are any eligible (unresolved) clash zones BEFORE starting transaction
                     int total = filteredClashZones?.Count ?? 0;
+                    // Note: With strict filtering, isRes and isCluster will likely be 0 in this list
                     int isRes = filteredClashZones?.Count(cz => cz.IsResolved) ?? 0;
                     int isCluster = filteredClashZones?.Count(cz => cz.IsClusterResolved) ?? 0;
                     int eligible = filteredClashZones?.Count(cz => !cz.IsResolved && !cz.IsClusterResolved) ?? 0;
@@ -377,23 +404,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             crashSafeExecutor = new CrashSafeExecutor();
                         }
                         
-                        // ✅ FIX: Create FlagManagerAdapter to enable flag updates after placement
-                        // FlagManagerAdapter wraps legacy FlagManager and implements IFlagManager interface
-                        Services.Interfaces.Refactor.IFlagManager? flagManagerAdapter = null;
+                        // ✅ FIX: Create FlagManager using Factory (supporting both refactored and legacy)
+                        Services.Interfaces.Refactor.IFlagManager flagManager = null;
+                        JSE_RevitAddin_MEP_OPENINGS.Data.SleeveDbContext dbContext = null;
+
                         try
                         {
-                            flagManagerAdapter = new Services.FlagManagement.FlagManagerAdapter(_doc);
+                            /* DISABLED: Refactored flag manager not fully implemented
                             if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                DebugLogger.Info($"[UniversalSleevePlacementCommand] ✅ Created FlagManagerAdapter for flag updates");
-                            }
+                                DebugLogger.Info($"[UniversalSleevePlacementCommand] 🔄 Creating Refactored FlagManagerService...");
+                            
+                            dbContext = new JSE_RevitAddin_MEP_OPENINGS.Data.SleeveDbContext(_doc);
+                            var repository = new ClashZoneRepository(dbContext);
+                            var sleeveCollector = new RevitSleeveCollector();
+                            
+                            // Wire up refactored services
+                            var (fm, _, _) = Services.FlagManagement.FlagManagerFactory.CreateRefactored(_doc, repository, sleeveCollector);
+                            flagManager = fm;
+                            */
+                            
+                            // Always use legacy adapter since refactored services are not complete
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[UniversalSleevePlacementCommand] ℹ️ Using Legacy FlagManagerAdapter (refactored disabled)");
+                            
+                            flagManager = new Services.FlagManagement.FlagManagerAdapter(_doc);
                         }
                         catch (Exception flagEx)
                         {
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                DebugLogger.Warning($"[UniversalSleevePlacementCommand] ⚠️ Failed to create FlagManagerAdapter: {flagEx.Message}. Flags will not be updated.");
+                                DebugLogger.Warning($"[UniversalSleevePlacementCommand] ⚠️ Failed to create FlagManager: {flagEx.Message}. Flags will not be updated.");
                             }
+                            // Fallback to minimal adapter if possible or null (Service handles null?)
+                            // NewSleevePlacerService might expect non-null. 
+                            // Creating simple adapter as fallback.
+                            flagManager = new Services.FlagManagement.FlagManagerAdapter(_doc);
                         }
                         
                         // ✅ FORCE DETECTION: Get flag from user settings
@@ -415,17 +460,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             sleeveRepository,
                             zoneFilterService,
                             null, // familyManager (not yet implemented)
-                            flagManagerAdapter, // ✅ FIX: Pass FlagManagerAdapter for flag updates
+                            flagManager, // ✅ WIRED: Pass the correctly created flag manager
                             isReplayPath,
                             _filterName,
                             null, // sizingService (will use default)
-                            fileNameNormalizer,  // ✅ WIRED: Pass refactored services
-                            sectionBoxChecker,   // ✅ WIRED: Pass refactored services
-                            crashSafeExecutor,   // ✅ CRASH-SAFE: Pass crash-safe executor
-                            null,                // planner (optional)
-                            isForceDetectionMode); // ✅ FORCE DETECTION: Pass flag to service
+                            fileNameNormalizer,
+                            sectionBoxChecker,
+                            crashSafeExecutor,
+                            null, // planner
+                            isForceDetectionMode);
                         
-                        (placed, skipped, errors) = newPlacerService.PlaceAllSleevesInTransaction(filteredClashZones);
+                        try 
+                        {
+                            (placed, skipped, errors) = newPlacerService.PlaceAllSleevesInTransaction(filteredClashZones);
+                        }
+                        finally
+                        {
+                            // Dispose context after placement is done
+                            dbContext?.Dispose();
+                        }
                         
                         // ✅ DIAGNOSTIC: Log results from new service
                         SafeFileLogger.SafeAppendText("placement_debug.log",

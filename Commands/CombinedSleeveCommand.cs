@@ -52,13 +52,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         // 1. Data Access
                         var dbContext = new SleeveDbContext(doc);
                         var repo = new ClashZoneRepository(dbContext);
+                        var combinedSleeveRepo = new CombinedSleeveRepository(dbContext);
                         var combinedRepo = new CombinedClusterRepository(repo);
 
                         // 2. Core Services
                         var discoveryService = new CombinedClusterDiscoveryService(combinedRepo);
                         var formationService = new JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Services.CombinedClusterFormationService(combinedRepo);
                         var paramService = new ParameterAggregatorService();
-                        var persistService = new CombinedClusterPersistenceService(repo);
+                        var persistService = new CombinedClusterPersistenceService(repo, combinedSleeveRepo);
 
                         // 3. Manual Calculation Components (Adapter + Helpers)
                         var getClashZoneFunc = new Func<int, string, Models.ClashZone>((id, xml) => {

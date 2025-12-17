@@ -16,6 +16,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
     /// </summary>
     public static class FlagManagerFactory
     {
+        /* DISABLED: Refactored services not fully implemented
         /// <summary>
         /// Create refactored flag management services (SOLID-compliant).
         /// 
@@ -64,16 +65,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                 sleeveCollector = new RevitSleeveCollector();
             }
             
-            // ⚠️ TODO: SessionTrackerService and InstanceIdManagerService not yet available
-            // These services are not yet implemented - return null for now
-            // Once they are available, uncomment and wire them in
-            // var sessionTracker = new SessionTrackerService(logger);
-            // var instanceIdManager = new InstanceIdManagerService(document, repository, sleeveCollector, logger);
-            // var flagManager = new FlagManagerService(document, instanceIdManager, repository, sleeveCollector, logger);
-            // return (flagManager, instanceIdManager, sessionTracker);
+            var sessionTracker = new SessionTrackerService(logger);
+            var instanceIdManager = new InstanceIdManagerService(document, repository, sleeveCollector, logger);
+            var flagManager = new FlagManagerService(document, instanceIdManager, repository, sleeveCollector, logger);
             
-            return (null, null, null);
+            return (flagManager, instanceIdManager, sessionTracker);
         }
+        */
         
         /// <summary>
         /// Create adapter for legacy FlagManager (coexistence).

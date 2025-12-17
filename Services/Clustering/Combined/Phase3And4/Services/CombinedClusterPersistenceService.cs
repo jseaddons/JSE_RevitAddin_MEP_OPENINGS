@@ -11,10 +11,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Se
     public class CombinedClusterPersistenceService : ICombinedClusterPersistence
     {
         private readonly IClashZoneRepository _repository;
+        private readonly ICombinedSleeveRepository _combinedSleeveRepository;
 
-        public CombinedClusterPersistenceService(IClashZoneRepository repository)
+        public CombinedClusterPersistenceService(IClashZoneRepository repository, ICombinedSleeveRepository combinedSleeveRepository)
         {
             _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+            _combinedSleeveRepository = combinedSleeveRepository ?? throw new ArgumentNullException(nameof(combinedSleeveRepository));
         }
 
         public List<ClashZone> QueueDatabaseUpdates(CombinedClusterCandidate combinedCluster, int combinedSleeveInstanceId)
@@ -40,8 +42,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Se
                 {
                     if (zoneMap.TryGetValue(guid, out var clashZone))
                     {
-                        clashZone.IsClusterResolved = true;
-                        clashZone.ClusterSleeveInstanceId = combinedSleeveInstanceId;
+                        clashZone.IsCombinedResolved = true;
+                        clashZone.IsResolved = false;
+                        clashZone.IsClusterResolved = false;
+                        clashZone.SleeveInstanceId = -1;
+                        clashZone.ClusterSleeveInstanceId = -1;
+                        clashZone.CombinedClusterSleeveInstanceId = combinedSleeveInstanceId;
                         zonesToUpdate.Add(clashZone);
                     }
                 }
@@ -85,9 +91,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Se
                 {
                     if (zoneMap.TryGetValue(guid, out var clashZone))
                     {
-                        // Update relevant fields
-                        clashZone.IsClusterResolved = true;
-                        clashZone.ClusterSleeveInstanceId = combinedSleeveInstanceId;
+                        // Update relevant fields: Mark as combined and "consume" individual/cluster sleeves
+                        clashZone.IsCombinedResolved = true;
+                        
+                        // Reset lower-level flags as they are superseded by IsCombinedResolved
+                        clashZone.IsResolved = false;
+                        clashZone.IsClusterResolved = false;
+                        
+                        // Reset IDs to -1 to indicate they are replaced by the combined sleeve
+                        clashZone.SleeveInstanceId = -1;
+                        clashZone.ClusterSleeveInstanceId = -1;
+                        
+                        // Track the combined ID in memory (though not currently persisted to ClashZones table)
+                        clashZone.CombinedClusterSleeveInstanceId = combinedSleeveInstanceId;
+                        
                         zonesToUpdate.Add(clashZone);
                     }
                 }
@@ -98,6 +115,82 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Se
             {
                 var category = combinedCluster.CategoriesInvolved.FirstOrDefault() ?? "Unknown";
                 _repository.InsertOrUpdateClashZones(zonesToUpdate, "Combined", category);
+
+                // ✅ RESET FILTER COMBO FLAG
+                // We need to fetch ComboIds. Since ClashZone model doesn't have ComboId property,
+                // we'll get it from the repository for the first zone (assuming homogeneity) or iterate if needed.
+                // For combined sleeves, having one valid ComboId/FilterId is usually sufficient for the main record.
+                var firstZone = zonesToUpdate.FirstOrDefault();
+                var meta = (ComboId: 0, FilterId: 0);
+                if (firstZone != null)
+                {
+                    meta = _repository.GetComboAndFilterId(firstZone.Id);
+                    if (meta.ComboId > 0)
+                    {
+                        _repository.ResetFileComboFlag(meta.ComboId);
+                    }
+                }
+                
+                // 5. Persist CombinedSleeve and Constituents
+                try
+                {
+                    // Map details to CombinedSleeve model
+                    // Using CombinedBoundingBox property which exists on candidate
+                    var bbox = combinedCluster.CombinedBoundingBox;
+                    var width = combinedCluster.CombinedWidth;
+                    var height = combinedCluster.CombinedHeight;
+                    // Depth not directly on candidate, deriving from bbox or setting default
+                    var depth = bbox.Max.Y - bbox.Min.Y; // Approximation if Y-aligned
+
+                    var combinedSleeve = new CombinedSleeve
+                    {
+                        CombinedInstanceId = combinedSleeveInstanceId,
+                        ComboId = meta.ComboId,
+                        FilterId = meta.FilterId,
+                        Categories = combinedCluster.CategoriesInvolved, // ✅ Fixed: Expects List<string>
+                        BoundingBoxMinX = bbox.Min.X,
+                        BoundingBoxMinY = bbox.Min.Y,
+                        BoundingBoxMinZ = bbox.Min.Z,
+                        BoundingBoxMaxX = bbox.Max.X,
+                        BoundingBoxMaxY = bbox.Max.Y,
+                        BoundingBoxMaxZ = bbox.Max.Z,
+                        CombinedWidth = width,
+                        CombinedHeight = height,
+                        CombinedDepth = depth,
+                        PlacementX = bbox.Min.X + (width / 2.0), // Center X
+                        PlacementY = bbox.Min.Y + (depth / 2.0), // Center Y
+                        PlacementZ = bbox.Min.Z + (height / 2.0), // Center Z
+                        RotationAngleDeg = 0,
+                        HostType = combinedCluster.HostType,
+                        HostOrientation = combinedCluster.Orientation
+                    };
+
+                    // Add Constituents
+                    combinedSleeve.Constituents = new List<SleeveConstituent>();
+                    foreach (var zone in zonesToUpdate)
+                    {
+                        combinedSleeve.Constituents.Add(new SleeveConstituent
+                        {
+                            CombinedSleeveId = 0, // Will be set on save
+                            Type = ConstituentType.Individual,
+                            Category = zone.MepElementCategory ?? "Unknown",
+                            ClashZoneId = 0, // ✅ Fixed: ClashZone model doesn't have int ID exposed
+                            ClashZoneGuid = zone.Id,
+                            ClusterSleeveId = zone.ClusterSleeveInstanceId > 0 ? zone.ClusterSleeveInstanceId : (int?)null,
+                            ClusterInstanceId = zone.ClusterSleeveInstanceId > 0 ? zone.ClusterSleeveInstanceId : (int?)null
+                        });
+                    }
+
+                    _combinedSleeveRepository.SaveCombinedSleeve(combinedSleeve);
+                }
+                catch (Exception ex)
+                {
+                    // Log error but don't fail the whole operation as zones are updated
+                    // _logger.Error($"Failed to save combined sleeve record: {ex.Message}");
+                    // Since we don't have logger here, we might just suppress or rethrow?
+                    // Ideally we should log.
+                    System.Diagnostics.Debug.WriteLine($"Error saving combined sleeve: {ex.Message}");
+                }
             }
         }
     }

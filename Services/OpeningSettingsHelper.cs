@@ -80,6 +80,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (settings.RoundAlwaysUp)
                 {
+                    // ✅ FIX: Add tolerance for floating point errors (e.g. 650.0001 -> 700)
+                    // If we are effectively AT the rounding boundary (within 0.1mm), stay there.
+                    double remainder = mmDimension % roundingValue;
+                    if (remainder > 0 && remainder < 0.1) // Tolerance: 0.1mm
+                    {
+                        // We are just slightly over (e.g. 650.0001 with rounding 50) -> Treat as 650
+                        mmDimension -= remainder; 
+                    }
+                    else if (remainder > (roundingValue - 0.1)) // Tolerance: 0.1mm on the other side
+                    {
+                         // We are just slightly under next step (e.g. 699.999) -> Treat as 700
+                         mmDimension += (roundingValue - remainder);
+                    }
+
                     // Always round up: 453 → 500 (with rounding value 50)
                     roundedMm = Math.Ceiling(mmDimension / roundingValue) * roundingValue;
                 }
@@ -92,13 +106,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Convert back to internal units
                 double roundedDimension = UnitUtils.ConvertToInternalUnits(roundedMm, UnitTypeId.Millimeters);
                 
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[OPENING_SETTINGS] Rounded dimension from {mmDimension:F1}mm to {roundedMm:F1}mm (rounding value: {roundingValue}, always up: {settings.RoundAlwaysUp})");
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[OPENING_SETTINGS] Rounded dimension from {UnitUtils.ConvertFromInternalUnits(dimension, UnitTypeId.Millimeters):F3}mm to {roundedMm:F1}mm (rounding value: {roundingValue}, always up: {settings.RoundAlwaysUp})");
                 return roundedDimension;
             }
             catch (Exception ex)
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
+                if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[OPENING_SETTINGS] Error rounding dimension: {ex.Message}");
                 // Return original dimension on error
                 return dimension;
