@@ -702,7 +702,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                 // The service expects this structure to perform placement
                 var group = new JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models.ProximityGroup
                 {
-                    Key = candidate.Key
+                    // No Key property on ProximityGroup
                 };
                 
                 // Add categories
@@ -761,7 +761,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                         if (pHeight != null) pHeight.Set(height);
                         
                         var pComments = instance.LookupParameter("Comments");
-                        if (pComments != null) pComments.Set($"Combined: {candidate.Key}");
+                        if (pComments != null) pComments.Set($"Combined: {candidate.CombinedClusterInstanceId}");
                         
                         // 5. AUTO-JOIN (CRITICAL FIX)
                         try 

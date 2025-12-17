@@ -1454,6 +1454,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         DebugLogger.Info($"[OpeningCommandOrchestrator] Loaded {clashZones.Count} clash zones for {filter.Category}");
                     }
+
+                    // ✅ CRITICAL FIX: Pre-filter zones based on settings (e.g. MinWallThickness)
+                    // This ensures we don't place sleeves on walls that are too thin (user request)
+                    try
+                    {
+                        var zoneFilterService = new ZoneFilterService();
+                        int originalCount = clashZones.Count;
+                        clashZones = zoneFilterService.PreFilterEligibleClashZones(_document, clashZones);
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            int filteredCount = originalCount - clashZones.Count;
+                            if (filteredCount > 0)
+                            {
+                                DebugLogger.Info($"[OpeningCommandOrchestrator] ⚡ FILTERED: {originalCount} -> {clashZones.Count} zones ({filteredCount} removed by settings/wall thickness)");
+                            }
+                        }
+                    }
+                    catch (Exception filterEx)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Warning($"[OpeningCommandOrchestrator] Error during pre-filtering: {filterEx.Message}");
+                        }
+                        // Continue with original list if filtering fails
+                    }
                     try {
                         if (!DeploymentConfiguration.DeploymentMode)
                         {

@@ -319,12 +319,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                             }
 
                             // 5b. Instance Void Cut (Alternative for families that use voids)
-                            if (InstanceVoidCutUtils.CanBeCutingElement(placedInstance) && host != null)
+                            if (host != null)
                             {
-                                if (!InstanceVoidCutUtils.IsVoidInstanceCutingElement(placedInstance))
+                                try
                                 {
                                     InstanceVoidCutUtils.AddInstanceVoidCut(_doc, host, placedInstance);
                                     _logger($"[CombinedSleevePlacement] ✅ Added Void Cut for sleeve {placedInstance.Id} on host {host.Id}");
+                                }
+                                catch
+                                {
+                                    // Ignore failures (e.g. not a void family, or already cut)
                                 }
                             }
                         }
