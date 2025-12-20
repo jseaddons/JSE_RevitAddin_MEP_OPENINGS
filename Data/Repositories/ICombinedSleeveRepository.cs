@@ -20,6 +20,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// <param name="combinedSleeve">Combined sleeve data to save</param>
         /// <returns>Database-generated CombinedSleeveId</returns>
         int SaveCombinedSleeve(CombinedSleeve combinedSleeve);
+
+        /// <summary>
+        /// Saves a batch of combined sleeves and marks their constituents as resolved in a single transaction.
+        /// </summary>
+        void SaveCombinedSleevesBatch(List<CombinedSleeve> combinedSleeves);
         
         /// <summary>
         /// Saves constituents for a combined sleeve.
@@ -106,8 +111,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// <summary>
         /// Marks constituent sleeves as resolved (sets IsCombinedResolved = true).
         /// Updates both ClashZones and ClusterSleeves tables as appropriate.
+        /// Also sets the CombinedClusterSleeveInstanceId column.
         /// </summary>
         /// <param name="constituents">List of constituents to mark as resolved</param>
-        void MarkConstituentsAsResolved(List<SleeveConstituent> constituents);
+        /// <param name="combinedInstanceId">The Revit Instance ID of the placed combined sleeve</param>
+        void MarkConstituentsAsResolved(List<SleeveConstituent> constituents, int combinedInstanceId);
     }
 }

@@ -8,10 +8,10 @@ using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Repository;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Services;
-using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Combined;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Geometry;
 using System.Collections.Generic;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Commands
@@ -55,11 +55,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         var combinedSleeveRepo = new CombinedSleeveRepository(dbContext);
                         var combinedRepo = new CombinedClusterRepository(repo);
 
-                        // 2. Core Services
+                        // 2. Core Services - NEW Agent A/B Architecture
                         var discoveryService = new CombinedClusterDiscoveryService(combinedRepo);
-                        var formationService = new JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Services.CombinedClusterFormationService(combinedRepo);
-                        var paramService = new ParameterAggregatorService();
-                        var persistService = new CombinedClusterPersistenceService(repo, combinedSleeveRepo);
+                        var proximityService = new CrossCategoryProximityService(); // NEW: Agent B
+                        var cornerService = new SleeveCornerCalculationService(); // For corner calculation
+                        var placementService = new CombinedSleevePlacementService(doc, combinedSleeveRepo, proximityService, cornerService); // NEW: Agent A
 
                         // 3. Manual Calculation Components (Adapter + Helpers)
                         var getClashZoneFunc = new Func<int, string, Models.ClashZone>((id, xml) => {
@@ -159,9 +159,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             handler,
                             repo,
                             discoveryService, 
-                            formationService, 
-                            paramService, 
-                            persistService,
+                            proximityService, 
+                            placementService,
                             manualCalculator);
 
                         // Create and Show Window

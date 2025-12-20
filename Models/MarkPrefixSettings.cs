@@ -58,6 +58,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public bool RemarkDamperPrefix { get; set; } = false;
         
         /// <summary>
+        /// ✅ BIM 360 OPTIMIZATION: If true, only mark sleeves visible in active view/sheet
+        /// This enables per-sheet numbering and dramatically improves performance on BIM 360
+        /// </summary>
+        public bool ActiveViewOnly { get; set; } = false;
+
+        
+        /// <summary>
         /// ✅ NEW: System Type overrides for Ducts (System Type → Prefix mapping)
         /// Tier 2: Overrides discipline prefix when System Type matches
         /// Example: "Supply Air" → "V" (overrides "DCT")

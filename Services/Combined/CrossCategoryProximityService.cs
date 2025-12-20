@@ -124,9 +124,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                     if (sleeve.Category == nearbySleeve.Category)
                         continue;
                     
-                    // Check actual distance (center-to-center)
-                    var distance = sleeve.GetDistanceTo(nearbySleeve);
-                    if (distance <= proximityThreshold)
+                    // Check proximity using bounding box edges (accounts for element size)
+                    // Center-to-center distance fails for large cluster sleeves where centers are far apart despite close edges
+                    if (sleeve.BoundingBoxIntersects(nearbySleeve, proximityThreshold))
                     {
                         pairs.Add((sleeve.Id, nearbyId));
                         processed.Add(pairKey);

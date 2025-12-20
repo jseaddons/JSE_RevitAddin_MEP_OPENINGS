@@ -157,8 +157,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 EnsureSharedParametersLoaded(doc);
 
                 // ✅ UPDATED: Get BOTH cluster sleeves AND individual sleeves for this category
-                var clusterSleeves = GetClusterSleevesForCategory(doc, category);
-                var individualSleeves = GetIndividualSleevesForCategory(doc, category);
+                // ✅ BIM 360 OPTIMIZATION: Pass markPrefixes to enable active view filtering
+                var clusterSleeves = GetClusterSleevesForCategory(doc, category, markPrefixes);
+                var individualSleeves = GetIndividualSleevesForCategory(doc, category, markPrefixes);
                 var allSleeves = new List<FamilyInstance>();
                 allSleeves.AddRange(clusterSleeves);
                 allSleeves.AddRange(individualSleeves);
@@ -527,10 +528,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         /// <summary>
         /// Find individual sleeves for a specific category (non-clustered sleeves)
+        /// ✅ BIM 360 OPTIMIZATION: Optionally filter by active view for per-sheet numbering
         /// </summary>
-        private List<FamilyInstance> GetIndividualSleevesForCategory(Document doc, string category)
+        private List<FamilyInstance> GetIndividualSleevesForCategory(Document doc, string category, MarkPrefixSettings? markPrefixes = null)
         {
-            var allSleeves = new FilteredElementCollector(doc)
+            // ✅ BIM 360 OPTIMIZATION: Use active view collector if ActiveViewOnly is enabled
+            FilteredElementCollector collector;
+            if (markPrefixes?.ActiveViewOnly == true && doc.ActiveView != null)
+            {
+                // Only collect elements visible in active view (per-sheet numbering)
+                collector = new FilteredElementCollector(doc, doc.ActiveView.Id);
+                
+                string mepmarkLogPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    File.AppendAllText(mepmarkLogPath,
+                        $"[ACTIVE-VIEW-FILTER] ✅ Filtering by active view: {doc.ActiveView.Name} (ID: {doc.ActiveView.Id})\n");
+                }
+            }
+            else
+            {
+                // Collect all elements in document (global numbering)
+                collector = new FilteredElementCollector(doc);
+            }
+            
+            var allSleeves = collector
                 .OfClass(typeof(FamilyInstance))
                 .Cast<FamilyInstance>()
                 .Where(fi => {
@@ -628,8 +650,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Find cluster sleeves for a specific category
         /// Uses IsClusterResolved flag to identify actual cluster sleeves
+        /// ✅ BIM 360 OPTIMIZATION: Optionally filter by active view for per-sheet numbering
         /// </summary>
-        private List<FamilyInstance> GetClusterSleevesForCategory(Document doc, string category)
+        private List<FamilyInstance> GetClusterSleevesForCategory(Document doc, string category, MarkPrefixSettings? markPrefixes = null)
         {
             // ✅ DEBUG: Log all Opening families in model to verify family names
             var allOpeningFamilies = new FilteredElementCollector(doc)
@@ -643,7 +666,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 $"DEBUG: total Opening families in model = {allOpeningFamilies.Count}\n" +
                 $"DEBUG: exact names found = {string.Join(", ", allOpeningFamilies.Select(f => f.Symbol.Family.Name).Distinct())}\n");
 
-            var allClusterSleeves = new FilteredElementCollector(doc)
+            // ✅ BIM 360 OPTIMIZATION: Use active view collector if ActiveViewOnly is enabled
+            FilteredElementCollector collector;
+            if (markPrefixes?.ActiveViewOnly == true && doc.ActiveView != null)
+            {
+                // Only collect elements visible in active view (per-sheet numbering)
+                collector = new FilteredElementCollector(doc, doc.ActiveView.Id);
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    File.AppendAllText(mepmarkLogPath,
+                        $"[ACTIVE-VIEW-FILTER] ✅ Filtering cluster sleeves by active view: {doc.ActiveView.Name} (ID: {doc.ActiveView.Id})\n");
+                }
+            }
+            else
+            {
+                // Collect all elements in document (global numbering)
+                collector = new FilteredElementCollector(doc);
+            }
+
+            var allClusterSleeves = collector
                 .OfClass(typeof(FamilyInstance))
                 .Cast<FamilyInstance>()
                 .Where(fi => {

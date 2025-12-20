@@ -21,10 +21,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined
     public class CombinedSleeveManager
     {
         private readonly Document _document;
+        private readonly Autodesk.Revit.UI.UIDocument _uiDocument;
 
-        public CombinedSleeveManager(Document document)
+        public CombinedSleeveManager(Document document, Autodesk.Revit.UI.UIDocument uiDocument)
         {
             _document = document ?? throw new ArgumentNullException(nameof(document));
+            _uiDocument = uiDocument ?? throw new ArgumentNullException(nameof(uiDocument));
         }
 
         public void Execute(bool showProgress)
@@ -102,7 +104,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined
                     // Explicitly qualify if needed, but using directives should handle it
                     var formationService = new JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Services.CombinedClusterFormationService(repo);
 
-                    var sleeves = discoveryService.Discover(filterName, defaultCategories, sectionBox);
+                    var sleeves = discoveryService.Discover(_uiDocument, filterName, defaultCategories, sectionBox);
                     if (sleeves == null || sleeves.Count == 0)
                     {
                         if (!DeploymentConfiguration.DeploymentMode)

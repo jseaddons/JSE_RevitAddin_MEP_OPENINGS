@@ -7094,12 +7094,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             return results;
         }
 
+        /// <summary>
+        /// Retrieves all cluster sleeves from the database.
+        /// </summary>
+        public List<ClusterSleeve> GetAllClusterSleeves()
+        {
+            var results = new List<ClusterSleeve>();
+            
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT * FROM ClusterSleeves";
+                    
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            results.Add(MapClusterSleeve(reader));
+                        }
+                    }
+                }
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[ClashZoneRepository] Retrieved {results.Count} cluster sleeves from database");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ❌ Error in GetAllClusterSleeves: {ex.Message}");
+            }
+            
+            return results;
+        }
+
         private ClusterSleeve MapClusterSleeve(System.Data.SQLite.SQLiteDataReader reader)
         {
             return new ClusterSleeve
             {
                 ClusterSleeveId = reader.GetInt32(reader.GetOrdinal("ClusterSleeveId")),
                 ClusterInstanceId = reader.GetInt32(reader.GetOrdinal("ClusterInstanceId")),
+                Category = reader.IsDBNull(reader.GetOrdinal("Category")) ? string.Empty : reader.GetString(reader.GetOrdinal("Category")),
                 Corner1X = reader.IsDBNull(reader.GetOrdinal("Corner1X")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("Corner1X")),
                 Corner1Y = reader.IsDBNull(reader.GetOrdinal("Corner1Y")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("Corner1Y")),
                 Corner1Z = reader.IsDBNull(reader.GetOrdinal("Corner1Z")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("Corner1Z")),
@@ -7112,7 +7148,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 Corner4X = reader.IsDBNull(reader.GetOrdinal("Corner4X")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("Corner4X")),
                 Corner4Y = reader.IsDBNull(reader.GetOrdinal("Corner4Y")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("Corner4Y")),
                 Corner4Z = reader.IsDBNull(reader.GetOrdinal("Corner4Z")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("Corner4Z")),
-                RotationAngleDeg = reader.IsDBNull(reader.GetOrdinal("RotationAngleDeg")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("RotationAngleDeg"))
+                RotationAngleDeg = reader.IsDBNull(reader.GetOrdinal("RotationAngleDeg")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("RotationAngleDeg")),
+                
+                // Map Host Info
+                HostType = reader.IsDBNull(reader.GetOrdinal("HostType")) ? string.Empty : reader.GetString(reader.GetOrdinal("HostType")),
+                HostOrientation = reader.IsDBNull(reader.GetOrdinal("HostOrientation")) ? string.Empty : reader.GetString(reader.GetOrdinal("HostOrientation"))
             };
         }
         public (int ComboId, int FilterId) GetComboAndFilterId(Guid clashZoneId)
@@ -7136,6 +7176,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 }
             }
             return (0, 0);
+        }
+
+        public List<string> GetDistinctCategories()
+        {
+            var results = new List<string>();
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT DISTINCT MepElementCategory FROM ClashZones WHERE MepElementCategory IS NOT NULL AND MepElementCategory != '' ORDER BY MepElementCategory";
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            results.Add(reader.GetString(0));
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ❌ Error getting distinct categories: {ex.Message}");
+            }
+            return results;
         }
     }
 }

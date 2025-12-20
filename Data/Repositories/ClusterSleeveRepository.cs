@@ -1591,6 +1591,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         public string HostType { get; set; } = string.Empty;
         public string HostOrientation { get; set; } = string.Empty;
         public List<Guid> ClashZoneIds { get; set; } = new List<Guid>();
+        
+        // Corner coordinates for precise geometric proximity checks
+        public double Corner1X { get; set; }
+        public double Corner1Y { get; set; }
+        public double Corner1Z { get; set; }
+        public double Corner2X { get; set; }
+        public double Corner2Y { get; set; }
+        public double Corner2Z { get; set; }
+        public double Corner3X { get; set; }
+        public double Corner3Y { get; set; }
+        public double Corner3Z { get; set; }
+        public double Corner4X { get; set; }
+        public double Corner4Y { get; set; }
+        public double Corner4Z { get; set; }
     }
 }
 

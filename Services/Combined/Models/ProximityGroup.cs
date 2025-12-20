@@ -102,13 +102,106 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
         {
             var bbox = CalculateCombinedBoundingBox();
             
-            var width = bbox.Max.X - bbox.Min.X;
-            var height = bbox.Max.Y - bbox.Min.Y;
-            var depth = bbox.Max.Z - bbox.Min.Z;
+            var xRange = bbox.Max.X - bbox.Min.X;
+            var yRange = bbox.Max.Y - bbox.Min.Y;
+            var zRange = bbox.Max.Z - bbox.Min.Z;
+            
+            var orientation = GetHostOrientation();
+            
+            // LOGIC: Use Union Range for Width/Height (Face Dimensions).
+            // FIX: Prioritize explicit DB WallThickness/FramingThickness/ClusterDepth from ANY sleeve.
+            // Search for the first valid thickness (> 0) to use as the Source of Truth.
+            
+            double? dbThickness = null;
+            
+            // 1. Try to find valid thickness in Individual Sleeves first (most accurate)
+            foreach (var s in Sleeves.Where(x => x.Type == SleeveType.Individual))
+            {
+                if (s.SourceData is JSE_RevitAddin_MEP_OPENINGS.Models.ClashZone cz)
+                {
+                    if (cz.WallThickness > 0.001) dbThickness = cz.WallThickness;
+                    else if (cz.FramingThickness > 0.001) dbThickness = cz.FramingThickness;
+                    else if (cz.StructuralElementThickness > 0.001) dbThickness = cz.StructuralElementThickness;
+                    
+                    if (dbThickness.HasValue) break;
+                }
+            }
+            
+            // 2. If no valid thickness found, check Cluster Sleeves
+            if (!dbThickness.HasValue)
+            {
+                foreach (var s in Sleeves.Where(x => x.Type == SleeveType.Cluster))
+                {
+                    if (s.SourceData is JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClusterSleeveData csd && csd.ClusterDepth > 0.001)
+                    {
+                        dbThickness = csd.ClusterDepth;
+                        break;
+                    }
+                }
+            }
+
+            var referenceSleeve = Sleeves.FirstOrDefault(s => s.Type == SleeveType.Individual) ?? Sleeves.First();
+            var refBbox = referenceSleeve.BoundingBox;
+
+            double width, height, depth;
+            
+            if (string.Equals(orientation, "Y", StringComparison.OrdinalIgnoreCase))
+            {
+                // Y-Wall
+                width = yRange;  // Length along wall (Union)
+                height = zRange; // Vertical height (Union)
+                depth = dbThickness ?? (refBbox.Max.X - refBbox.Min.X); // DB Thickness or BBox X-dim
+            }
+            else if (string.Equals(orientation, "Z", StringComparison.OrdinalIgnoreCase) || 
+                     string.Equals(GetHostType(), "Floor", StringComparison.OrdinalIgnoreCase))
+            {
+                // Floor
+                width = xRange;
+                height = yRange;
+                depth = dbThickness ?? (refBbox.Max.Z - refBbox.Min.Z); // DB Thickness or BBox Z-dim
+            }
+            else
+            {
+                // Default / X-Wall
+                width = xRange;  // Length along wall
+                height = zRange; // Vertical height
+                depth = dbThickness ?? (refBbox.Max.Y - refBbox.Min.Y); // DB Thickness or BBox Y-dim
+            }
             
             return (width, height, depth);
         }
         
+        /// <summary>
+        /// Calculates the rotation angle in radians for the combined sleeve
+        /// </summary>
+        public double CalculateCombinedRotation()
+        {
+            var orientation = GetHostOrientation();
+            
+            // USER FEEDBACK: Family is 'Left Oriented' / Y-Aligned by default.
+            // Y-Wall (running North-South): Rotation 0 (Native alignment)
+            // X-Wall (running East-West): Rotation 90 deg (PI/2) to align Y-Width to X-Wall
+            
+            if (string.Equals(orientation, "Y", StringComparison.OrdinalIgnoreCase))
+            {
+                return 0.0; // Native alignment for Y-wall
+            }
+            
+            // For Floors or slanted walls, we might want to respect the sleeve's rotation
+            if (string.Equals(GetHostType(), "Floor", StringComparison.OrdinalIgnoreCase))
+            {
+               // Use rotation of first sleeve if available
+               var first = Sleeves.FirstOrDefault();
+               if (first != null && Math.Abs(first.RotationAngleDeg) > 0.1)
+               {
+                   return first.RotationAngleDeg * (Math.PI / 180.0);
+               }
+            }
+            
+            // Default / X-Wall -> Rotate 90 degrees
+            return Math.PI / 2.0;
+        }
+
         /// <summary>
         /// Calculates the combined placement point (center of combined bounding box)
         /// </summary>

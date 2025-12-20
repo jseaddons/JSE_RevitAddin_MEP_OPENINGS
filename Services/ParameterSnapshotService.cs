@@ -15,7 +15,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// OOP service responsible for building parameter whitelists and capturing element parameter snapshots.
     /// Keeps Refresh integration minimal and isolated.
     /// </summary>
-    public class ParameterSnapshotService
+    public partial class ParameterSnapshotService
     {
         // ✅ FIX 1: Essential parameters whitelist - only capture these to reduce memory by 90%
         private static readonly HashSet<string> ESSENTIAL_PARAMETERS = new HashSet<string>(
@@ -56,7 +56,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             "Schedule Level" // alias for schedule of level
         };
 
-        private readonly ISet<string> _commonMepKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        private static readonly ISet<string> _commonMepKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "Size","Diameter","Nominal Diameter","Outside Diameter","Width","Height",
             "Reference Level","Level","Schedule Level","Schedule of Level","Reference Level Elevation",
@@ -64,7 +64,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             "MEP System Type","MEP System Name","MEP System Abbreviation","MEP Size"
         };
 
-        private readonly ISet<string> _commonHostKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        private static readonly ISet<string> _commonHostKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             // Per user request: only capture Fire Rating for host elements
             "Fire Rating"
@@ -74,7 +74,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Build a whitelist for the current run by combining curated keys and previously learned keys from storage.
         /// ✅ MEMORY OPTIMIZATION: Cap learned parameters at 20 to prevent unbounded growth.
         /// </summary>
+        private static partial HashSet<string> BuildWhitelistLegacy()
+        {
+            return BuildWhitelistLegacy(null, null);
+        }
+
         public HashSet<string> BuildWhitelist(ClashZoneStorage storage, IEnumerable<(Element mep, Element host)> sample)
+        {
+            return BuildWhitelistLegacy(storage, sample);
+        }
+
+        private static HashSet<string> BuildWhitelistLegacy(ClashZoneStorage storage, IEnumerable<(Element mep, Element host)> sample)
         {
             var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -113,6 +123,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// ✅ FIX 1 & 6: Only capture ESSENTIAL parameters to reduce memory by 90%.
         /// </summary>
         public List<SerializableKeyValue> CaptureParams(Element element, HashSet<string> whitelist)
+        {
+            return CaptureParamsLegacy(element, whitelist, element?.Document, null);
+        }
+
+        private static partial List<SerializableKeyValue> CaptureParamsLegacy(Element element, HashSet<string> whitelist, Document doc, string docKey)
         {
             var result = new List<SerializableKeyValue>();
             if (element == null || whitelist == null || whitelist.Count == 0)
@@ -163,7 +178,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 foreach (var param in allParams.Take(10)) // Log first 10 parameters
                 {
-                    var paramValue = ConvertParameterToString(element, param);
+                    var paramValue = ConvertParameterToStringLegacy(element, param);
                                         if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: Parameter '{param.Definition.Name}' = '{paramValue}'\n");
                 }
@@ -205,7 +220,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // No need for additional filtering that causes inconsistency
 
                 // ✅ CRITICAL: Use actualKey (mapped for Cable Trays) instead of original key
-                var p = LookupParam(element, actualKey);
+                var p = LookupParamLegacy(element, actualKey);
                 
                 // ✅ CRITICAL: Special fallback for System Type/Service Type when not found by name
                 // NOTE: For Cable Trays, use "Service Type" instead of "System Type"
@@ -272,7 +287,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         if (p != null)
                         {
-                            var testValue = ConvertParameterToString(element, p);
+                            var testValue = ConvertParameterToStringLegacy(element, p);
                                                         if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: System Abbreviation value = '{testValue}'\n");
                         }
@@ -291,7 +306,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     if (!DeploymentConfiguration.DeploymentMode && p != null)
                     {
-                        var testValue = ConvertParameterToString(element, p);
+                        var testValue = ConvertParameterToStringLegacy(element, p);
                         DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Schedule of Level fallback found, value = '{testValue}'\n");
                     }
                 }
@@ -333,7 +348,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     if (!DeploymentConfiguration.DeploymentMode && p != null)
                     {
-                        var testValue = ConvertParameterToString(element, p);
+                        var testValue = ConvertParameterToStringLegacy(element, p);
                         DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Reference Level fallback found, value = '{testValue}'\n");
                     }
                 }
@@ -363,7 +378,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     continue;
                 }
 
-                var value = ConvertParameterToString(element, p);
+                var value = ConvertParameterToStringLegacy(element, p);
                 if (string.IsNullOrWhiteSpace(value)) 
                 {
                     // ✅ ENHANCED LOGGING: Show parameter details when empty (to diagnose why parameters exist in model but are empty here)
@@ -474,26 +489,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Convert a parameter value to a robust invariant string.
         /// ✅ ENHANCED: Tries multiple methods to extract parameter value.
         /// </summary>
-        private string ConvertParameterToString(Element owner, Parameter p)
+        private static partial string ConvertParameterToStringLegacy(Element element, Parameter param)
         {
-            if (p == null) return string.Empty;
+            if (param == null) return string.Empty;
 
             // ✅ METHOD 1: Try AsString() first (most common for text parameters)
-            string value = p.AsString();
+            string value = param.AsString();
             if (!string.IsNullOrEmpty(value)) return value;
 
             // ✅ METHOD 2: Try AsValueString() (formatted display value)
-            value = p.AsValueString();
+            value = param.AsValueString();
             if (!string.IsNullOrEmpty(value)) return value;
 
             // ✅ METHOD 3: Try storage type-specific conversions
-            switch (p.StorageType)
+            switch (param.StorageType)
             {
                 case StorageType.Integer:
                     try
                     {
-                        if (p.HasValue)
-                            return p.AsInteger().ToString(CultureInfo.InvariantCulture);
+                        if (param.HasValue)
+                            return param.AsInteger().ToString(CultureInfo.InvariantCulture);
                     }
                     catch { }
                     return string.Empty;
@@ -501,10 +516,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 case StorageType.Double:
                     try
                     {
-                        if (p.HasValue)
+                        if (param.HasValue)
                         {
                             // ✅ FIX 1: Round doubles to 3 decimals to reduce string size
-                            return Math.Round(p.AsDouble(), 3).ToString(CultureInfo.InvariantCulture);
+                            return Math.Round(param.AsDouble(), 3).ToString(CultureInfo.InvariantCulture);
                         }
                     }
                     catch { }
@@ -513,13 +528,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 case StorageType.ElementId:
                     try
                     {
-                        if (p.HasValue)
+                        if (param.HasValue)
                         {
-                            var id = p.AsElementId();
+                            var id = param.AsElementId();
                             if (id == null || id == ElementId.InvalidElementId) return string.Empty;
                             
                             // Prefer referenced element name for readability if available
-                            var e = owner?.Document?.GetElement(id);
+                            var e = element?.Document?.GetElement(id);
                             if (e != null)
                             {
                                 var name = e.Name;
@@ -547,14 +562,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
-        private Parameter LookupParam(Element e, string key)
+        private static partial Parameter LookupParamLegacy(Element element, string paramName)
         {
-            var p = e.LookupParameter(key);
+            var p = element.LookupParameter(paramName);
             if (p != null) return p;
 
-            if (e is FamilyInstance fi)
+            if (element is FamilyInstance fi)
             {
-                var sp = fi.Symbol?.LookupParameter(key);
+                var sp = fi.Symbol?.LookupParameter(paramName);
                 if (sp != null) return sp;
             }
 
@@ -579,7 +594,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return Path.Combine(dir, "learned_parameter_keys.xml");
         }
 
-        public IEnumerable<string> LoadLearnedKeysFromDisk()
+        public static IEnumerable<string> LoadLearnedKeysFromDisk()
         {
             try
             {
@@ -603,7 +618,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             catch { return Enumerable.Empty<string>(); }
         }
 
-        public static void AddLearnedKey(string key)
+        private static partial void AddLearnedKeyLegacy(string key)
         {
             if (string.IsNullOrWhiteSpace(key)) return;
             try

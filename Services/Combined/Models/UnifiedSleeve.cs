@@ -179,7 +179,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
                 Corners = corners,
                 HostType = clashZone.StructuralElementType,
                 HostOrientation = clashZone.HostOrientation,
-                RotationAngleDeg = 0.0, // ClashZone doesn't have rotation angle, default to 0
+                RotationAngleDeg = clashZone.MepElementRotationAngle * (180.0 / Math.PI), // Convert Rad to Deg
                 SourceData = clashZone
             };
         }
@@ -192,8 +192,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
             if (clusterSleeve == null)
                 throw new ArgumentNullException(nameof(clusterSleeve));
             
-            // ClusterSleeveData doesn't have corner coordinates, so create empty list
-            var corners = new List<XYZ>();
+            // Populate corners from ClusterSleeveData (corner columns now exist in DB)
+            var corners = new List<XYZ>
+            {
+                new XYZ(clusterSleeve.Corner1X, clusterSleeve.Corner1Y, clusterSleeve.Corner1Z),
+                new XYZ(clusterSleeve.Corner2X, clusterSleeve.Corner2Y, clusterSleeve.Corner2Z),
+                new XYZ(clusterSleeve.Corner3X, clusterSleeve.Corner3Y, clusterSleeve.Corner3Z),
+                new XYZ(clusterSleeve.Corner4X, clusterSleeve.Corner4Y, clusterSleeve.Corner4Z)
+            };
             
             var bbox = new BoundingBoxXYZ
             {

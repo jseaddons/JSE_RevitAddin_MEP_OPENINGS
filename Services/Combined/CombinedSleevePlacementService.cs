@@ -78,7 +78,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                 }
                 
                 // Step 3: Place combined sleeves in Revit
-                var placedCombinedSleeves = PlaceCombinedSleevesInRevit(proximityGroups, comboId, filterId);
+                var placedCombinedSleeves = PlaceProximityGroups(proximityGroups, comboId, filterId);
                 _logger($"[CombinedSleevePlacement] ✅ Placed {placedCombinedSleeves.Count} combined sleeves");
                 
                 return placedCombinedSleeves;
@@ -136,9 +136,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
         }
         
         /// <summary>
-        /// Places combined sleeves in Revit for each proximity group
+        /// Places combined sleeves in Revit for each proximity group.
+        /// Handles Revit Transaction, Database Persistence, and Cleanup.
         /// </summary>
-        private List<CombinedSleeve> PlaceCombinedSleevesInRevit(
+        public List<CombinedSleeve> PlaceProximityGroups(
             List<ProximityGroup> proximityGroups,
             int comboId,
             int filterId)
@@ -162,9 +163,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                         {
                             // Only place in Revit, don't save to database yet
                             var combinedSleeve = PlaceSingleCombinedSleeveInRevit(group, comboId, filterId);
-                            if (combinedSleeve != null)
+                            // ✅ Only add if placement succeeded (CombinedInstanceId > 0)
+                            if (combinedSleeve != null && combinedSleeve.CombinedInstanceId > 0)
                             {
                                 placedCombinedSleeves.Add(combinedSleeve);
+                            }
+                            else if (combinedSleeve != null)
+                            {
+                                _logger($"[CombinedSleevePlacement] ⚠️ Skipping failed placement (CombinedInstanceId={combinedSleeve.CombinedInstanceId})");
                             }
                         }
                         catch (Exception ex)
@@ -172,6 +178,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                             _logger($"[CombinedSleevePlacement] ⚠️ Failed to place combined sleeve for group: {ex.Message}");
                         }
                     }
+                    
+                    _doc.Regenerate(); // ✅ REGEN: Requested by user ("regen revit one time")
                     
                     transaction.Commit();
                     _logger($"[CombinedSleevePlacement] Revit transaction committed: {placedCombinedSleeves.Count} combined sleeves placed");
@@ -189,16 +197,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
             {
                 try
                 {
-                    foreach (var combinedSleeve in placedCombinedSleeves)
+                    // ✅ BATCH SAVE & FLAG UPDATE: Use single transaction for efficiency
+                    // Filter out invalid ones first
+                    var validSleeves = placedCombinedSleeves
+                        .Where(cs => cs.CombinedInstanceId > 0)
+                        .ToList();
+
+                    if (validSleeves.Count < placedCombinedSleeves.Count)
                     {
-                        // Save to database (Agent A repository)
-                        var combinedSleeveId = _repository.SaveCombinedSleeve(combinedSleeve);
-                        combinedSleeve.CombinedSleeveId = combinedSleeveId;
-                        
-                        // Mark constituents as resolved (Agent A repository)
-                        _repository.MarkConstituentsAsResolved(combinedSleeve.Constituents);
-                        
-                        _logger($"[CombinedSleevePlacement] ✅ Saved combined sleeve {combinedSleeveId} to database");
+                         _logger($"[CombinedSleevePlacement] ⚠️ Skipping {placedCombinedSleeves.Count - validSleeves.Count} invalid sleeves from DB save");
+                    }
+                    
+                    if (validSleeves.Count > 0)
+                    {
+                        _repository.SaveCombinedSleevesBatch(validSleeves);
+                        _logger($"[CombinedSleevePlacement] ✅ Batch saved {validSleeves.Count} combined sleeves to database");
                     }
                 }
                 catch (Exception ex)
@@ -225,10 +238,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
             var width = result.width;
             var height = result.height;
             var depth = result.depth;
+            var rotation = group.CalculateCombinedRotation();
             var placementPoint = group.CalculateCombinedPlacementPoint();
             
             _logger($"[CombinedSleevePlacement] Placing combined sleeve: {group.GetSummary()}");
-            _logger($"[CombinedSleevePlacement]   Dimensions: W={width:F2}, H={height:F2}, D={depth:F2}");
+            _logger($"[CombinedSleevePlacement] Placing combined sleeve: {group.GetSummary()}");
+            _logger($"[CombinedSleevePlacement]   Dimensions: W={width:F2}, H={height:F2}, D={depth:F2}, Rot={rotation * 180/Math.PI:F0}°");
+
             _logger($"[CombinedSleevePlacement]   Placement: ({placementPoint.X:F2}, {placementPoint.Y:F2}, {placementPoint.Z:F2})");
 
             FamilyInstance placedInstance = null;
@@ -261,6 +277,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                     
                     if (placedInstance != null)
                     {
+                        // 3b. Apply Rotation if needed
+                        if (Math.Abs(rotation) > 0.001)
+                        {
+                             // Rotate around Z axis at placement point
+                             Line axis = Line.CreateBound(placementPoint, placementPoint + XYZ.BasisZ);
+                             ElementTransformUtils.RotateElement(_doc, placedInstance.Id, axis, rotation);
+                        }
+
                         // 4. Set Parameters
                         var pWidth = placedInstance.LookupParameter("Width");
                         var pHeight = placedInstance.LookupParameter("Height");
@@ -281,6 +305,158 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                             // Truncate if too long
                             if (summary.Length > 200) summary = summary.Substring(0, 197) + "...";
                             pComments.Set(summary);
+                        }
+
+                        // 4b. Set Instance ID (Address user request: "setting the combined sleeve instance id")
+                        // ✅ FIX: Case-insensitive lookup with space variations
+                        Parameter pInstanceId = null;
+                        foreach (Parameter p in placedInstance.Parameters)
+                        {
+                            var paramName = p.Definition.Name.Replace(" ", "").Replace("_", "").ToLower();
+                            if (paramName == "combinedsleeveinstanceid" || 
+                                paramName == "combinedinstanceid" ||
+                                paramName == "instanceid" || 
+                                paramName == "sleeveid")
+                            {
+                                pInstanceId = p;
+                                break;
+                            }
+                        }
+                                        
+                        if (pInstanceId != null && !pInstanceId.IsReadOnly)
+                        {
+                            try
+                            {
+                                if (pInstanceId.StorageType == StorageType.ElementId)
+                                {
+                                    pInstanceId.Set(placedInstance.Id);
+                                }
+                                else if (pInstanceId.StorageType == StorageType.Integer)
+                                {
+                                    pInstanceId.Set(placedInstance.Id.IntegerValue);
+                                }
+                                else if (pInstanceId.StorageType == StorageType.String)
+                                {
+                                    pInstanceId.Set(placedInstance.Id.IntegerValue.ToString());
+                                }
+                                _logger($"[CombinedSleevePlacement] ✅ Set Instance ID parameter '{pInstanceId.Definition.Name}' = {placedInstance.Id.IntegerValue}");
+                            }
+                            catch (Exception paramEx)
+                            {
+                                _logger($"[CombinedSleevePlacement] ⚠️ Failed to set Instance ID parameter: {paramEx.Message}");
+                            }
+                        }
+                        else
+                        {
+                            _logger($"[CombinedSleevePlacement] ⚠️ No CombinedInstanceId parameter found in opening family");
+                        }
+
+                        // ✅ SCHEDULE LEVEL & ELEVATION FROM LEVEL: Set from first sleeve's MEP element level (matches cluster sleeve logic)
+                        try
+                        {
+                            // Get first sleeve from proximity group to extract level information
+                            var firstSleeve = group.Sleeves.FirstOrDefault();
+                            if (firstSleeve != null)
+                            {
+                                string levelName = null;
+                                
+                                // Extract level name from first sleeve (Individual or Cluster)
+                                if (firstSleeve.SourceData is JSE_RevitAddin_MEP_OPENINGS.Models.ClashZone cz)
+                                {
+                                    levelName = cz.MepElementLevelName;
+                                }
+                                else if (firstSleeve.SourceData is JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClusterSleeveData cluster)
+                                {
+                                    // For cluster sleeves, try to get level from first constituent
+                                    // This is a simplified approach - ideally we'd query the ClashZone for the cluster
+                                    levelName = null; // TODO: Implement cluster level extraction if needed
+                                }
+                                
+                                if (!string.IsNullOrWhiteSpace(levelName))
+                                {
+                                    // Find level in document
+                                    Level mepLevel = new FilteredElementCollector(_doc)
+                                        .OfClass(typeof(Level))
+                                        .Cast<Level>()
+                                        .FirstOrDefault(l => string.Equals(l.Name, levelName, StringComparison.OrdinalIgnoreCase));
+                                    
+                                    if (mepLevel != null)
+                                    {
+                                        // Set Schedule Level parameter (try multiple variations)
+                                        var scheduleLevelParam = placedInstance.LookupParameter("Schedule of Level")
+                                                             ?? placedInstance.LookupParameter("Schedule Level")
+                                                             ?? placedInstance.LookupParameter("ScheduleLevel")
+                                                             ?? placedInstance.Symbol?.LookupParameter("Schedule of Level")
+                                                             ?? placedInstance.Symbol?.LookupParameter("Schedule Level")
+                                                             ?? placedInstance.Symbol?.LookupParameter("ScheduleLevel");
+                                        
+                                        if (scheduleLevelParam != null && !scheduleLevelParam.IsReadOnly)
+                                        {
+                                            if (scheduleLevelParam.StorageType == StorageType.ElementId)
+                                            {
+                                                scheduleLevelParam.Set(mepLevel.Id);
+                                            }
+                                            else if (scheduleLevelParam.StorageType == StorageType.String)
+                                            {
+                                                scheduleLevelParam.Set(mepLevel.Name);
+                                            }
+                                            
+                                            _logger($"[CombinedSleevePlacement] ✅ Set Schedule Level to '{mepLevel.Name}' on combined sleeve {placedInstance.Id.IntegerValue}");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception levelEx)
+                        {
+                            _logger($"[CombinedSleevePlacement] ⚠️ Error setting Schedule Level: {levelEx.Message}");
+                        }
+                        
+                        // ✅ BOTTOM OF OPENING: Calculate and set "Bottom of Opening" AFTER Schedule Level is set
+                        // Formula: Bottom of Opening = Elevation from Level - (Height / 2)
+                        try
+                        {
+                            // Step 1: Read "Elevation from Level" from parameter (Revit calculates this after Schedule Level is set)
+                            var elevationParam = placedInstance.LookupParameter("Elevation from Level");
+                            double? elevationFromLevel = null;
+                            
+                            if (elevationParam != null && elevationParam.StorageType == StorageType.Double)
+                            {
+                                elevationFromLevel = elevationParam.AsDouble();
+                            }
+                            
+                            if (elevationFromLevel.HasValue)
+                            {
+                                // Step 2: Calculate Bottom of Opening = Elevation from Level - (Height / 2)
+                                double bottomOfOpening = elevationFromLevel.Value - (height / 2.0);
+                                
+                                // Step 3: Set "Bottom of Opening" parameter (try multiple variations)
+                                var bottomParam = placedInstance.LookupParameter("Bottom Of Opening")
+                                               ?? placedInstance.LookupParameter("Bottom of Opening")
+                                               ?? placedInstance.LookupParameter("BottomOfOpening")
+                                               ?? placedInstance.Symbol?.LookupParameter("Bottom Of Opening")
+                                               ?? placedInstance.Symbol?.LookupParameter("Bottom of Opening")
+                                               ?? placedInstance.Symbol?.LookupParameter("BottomOfOpening");
+                                
+                                if (bottomParam != null && !bottomParam.IsReadOnly)
+                                {
+                                    bottomParam.Set(bottomOfOpening);
+                                    _logger($"[CombinedSleevePlacement] ✅ Set Bottom of Opening = {bottomOfOpening * 304.8:F1}mm " +
+                                           $"(Elevation from Level = {elevationFromLevel.Value * 304.8:F1}mm, Height = {height * 304.8:F1}mm)");
+                                }
+                                else
+                                {
+                                    _logger($"[CombinedSleevePlacement] ⚠️ 'Bottom of Opening' parameter not found or read-only");
+                                }
+                            }
+                            else
+                            {
+                                _logger($"[CombinedSleevePlacement] ⚠️ 'Elevation from Level' parameter not available - skipping Bottom of Opening calculation");
+                            }
+                        }
+                        catch (Exception bottomEx)
+                        {
+                            _logger($"[CombinedSleevePlacement] ⚠️ Error setting Bottom of Opening: {bottomEx.Message}");
                         }
 
                         // 5. AUTO-JOIN (CRITICAL FIX)
@@ -349,7 +525,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
             }
             
             // Calculate rotation angle (use first sleeve's rotation or group average)
-            var rotationAngle = group.Sleeves.FirstOrDefault()?.RotationAngleDeg ?? 0.0;
+            var rotationAngle = rotation * (180.0 / Math.PI);
             
             // Create combined sleeve data model
             var combinedSleeve = new CombinedSleeve
@@ -383,6 +559,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
             
             // Calculate and save corners (in-memory only, database save happens later)
             CalculateAndSaveCorners(combinedSleeve, placementPoint, width, height, rotationAngle);
+
+            // ✅ CLEANUP: Delete original sleeves (Individual and Cluster) if placement was successful
+            // Matches user request: "delete those sleeves that forms the combined sleeve"
+            if (placedInstance != null && placedInstance.IsValidObject)
+            {
+                try 
+                {
+                    DeleteConstituents(_doc, group);
+                }
+                catch (Exception ex)
+                {
+                    _logger($"[CombinedSleevePlacement] ⚠️ Cleanup failed: {ex.Message}");
+                }
+            }
             
             return combinedSleeve;
         }
@@ -417,6 +607,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                     {
                         constituent.ClusterInstanceId = cluster.ClusterInstanceId;
                     }
+                    else if (sleeve.SourceData is JSE_RevitAddin_MEP_OPENINGS.Models.ClashZone cz && cz.ClusterSleeveInstanceId > 0)
+                    {
+                        // Supports ClusterSleeveInfo -> ClashZone mapping
+                        constituent.ClusterInstanceId = cz.ClusterSleeveInstanceId;
+                    }
                 }
                 
                 constituents.Add(constituent);
@@ -424,6 +619,114 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
             
             return constituents;
         }
+
+        /// <summary>
+        /// Deletes the constituent sleeves (Individual and Cluster) that formed the group.
+        /// </summary>
+        private void DeleteConstituents(Document doc, ProximityGroup group)
+        {
+            try
+            {
+                var idsToDelete = new List<ElementId>();
+                _logger($"[CombinedSleeveCleanup] Reviewing {group.Sleeves.Count} constituent sleeves for cleanup...");
+
+                // Collect IDs to delete
+                foreach (var sleeve in group.Sleeves)
+                {
+                    if (sleeve.Type == SleeveType.Individual)
+                    {
+                        if (sleeve.SourceData is JSE_RevitAddin_MEP_OPENINGS.Models.ClashZone cz)
+                        {
+                            if (cz.SleeveInstanceId > 0)
+                            {
+                                idsToDelete.Add(new ElementId(cz.SleeveInstanceId));
+                                _logger($"[CombinedSleeveCleanup]   MARKED: Individual Sleeve {cz.SleeveInstanceId} (GUID={cz.Id})");
+                            }
+                            else
+                            {
+                                _logger($"[CombinedSleeveCleanup]   SKIP: Individual Sleeve (GUID={cz.Id}) has invalid SleeveInstanceId={cz.SleeveInstanceId}");
+                            }
+                        }
+                        else
+                        {
+                            _logger($"[CombinedSleeveCleanup]   SKIP: Individual Sleeve {sleeve.Id} - SourceData is null or not ClashZone");
+                        }
+                    }
+                    else if (sleeve.Type == SleeveType.Cluster)
+                    {
+                        // For clusters, Id property holds the Revit Element ID as string
+                        // Also check SourceData for robustness
+                        int cid = -1;
+                        if (sleeve.SourceData is JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClusterSleeveData csd && csd.ClusterInstanceId > 0)
+                        {
+                            cid = csd.ClusterInstanceId;
+                            _logger($"[CombinedSleeveCleanup]   MARKED: Cluster Sleeve {cid} (from SourceData ClusterData)");
+                        }
+                        else if (sleeve.SourceData is JSE_RevitAddin_MEP_OPENINGS.Models.ClashZone cz && cz.ClusterSleeveInstanceId > 0)
+                        {
+                            cid = cz.ClusterSleeveInstanceId;
+                            _logger($"[CombinedSleeveCleanup]   MARKED: Cluster Sleeve {cid} (from SourceData ClashZone)");
+                        }
+                        else if (int.TryParse(sleeve.Id, out int parsedId) && parsedId > 0)
+                        {
+                            cid = parsedId;
+                            _logger($"[CombinedSleeveCleanup]   MARKED: Cluster Sleeve {cid} (from ID parsing)");
+                        }
+                        else if (sleeve.Id.StartsWith("C_") && int.TryParse(sleeve.Id.Substring(2), out int parsedIdC) && parsedIdC > 0)
+                        {
+                             cid = parsedIdC;
+                             _logger($"[CombinedSleeveCleanup]   MARKED: Cluster Sleeve {cid} (from ID parsing C_ prefix)");
+                        }
+                        else
+                        {
+                            _logger($"[CombinedSleeveCleanup]   SKIP: Cluster Sleeve {sleeve.Id} - Could not resolve Element ID");
+                        }
+                        
+                        if (cid > 0)
+                        {
+                            idsToDelete.Add(new ElementId(cid));
+                        }
+                    }
+                }
+
+                _logger($"[CombinedSleeveCleanup] Found {idsToDelete.Count} potential sleeves to delete.");
+
+                // Perform Deletion
+                if (idsToDelete.Count > 0)
+                {
+                    // Verify elements exist before deleting to avoid exceptions
+                    var validIds = new List<ElementId>();
+                    foreach (var id in idsToDelete)
+                    {
+                        var elem = doc.GetElement(id);
+                        if (elem != null && elem.IsValidObject)
+                        {
+                            validIds.Add(id);
+                        }
+                        else
+                        {
+                            _logger($"[CombinedSleeveCleanup]   ⚠️ Element {id} not found in document or invalid (already deleted?)");
+                        }
+                    }
+
+                    if (validIds.Count > 0)
+                    {
+                        doc.Delete(validIds);
+                        _logger($"[CombinedSleeveCleanup] ✅ SUCCESS: Deleted {validIds.Count} constituent sleeves.");
+                    }
+                    else
+                    {
+                        _logger($"[CombinedSleeveCleanup] ⚠️ No valid elements found to delete (all were missing/invalid).");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[CombinedSleeveCleanup] ❌ CRITICAL ERROR in DeleteConstituents: {ex.Message}\n{ex.StackTrace}");
+            }
+        }
+
+
         
         /// <summary>
         /// Calculates and saves corner coordinates for combined sleeve

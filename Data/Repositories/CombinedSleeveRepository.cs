@@ -36,13 +36,88 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             {
                 try
                 {
-                    int combinedSleeveId;
-                    
-                    // Insert combined sleeve
-                    using (var cmd = _context.Connection.CreateCommand())
+                    int id = SaveCombinedSleeveInternal(combinedSleeve, transaction);
+                    transaction.Commit();
+                    _logger($"[SQLite] ✅ Saved combined sleeve {id}");
+                    return id;
+                }
+                catch (Exception ex)
+                {
+                    transaction.Rollback();
+                    _logger($"[SQLite] ❌ Error saving combined sleeve: {ex.Message}");
+                    DatabaseOperationLogger.LogOperation("ROLLBACK", "CombinedSleeves", null, 0, $"Error: {ex.Message}");
+                    throw;
+                }
+            }
+        }
+
+        public void SaveCombinedSleevesBatch(List<CombinedSleeve> combinedSleeves)
+        {
+            if (combinedSleeves == null || combinedSleeves.Count == 0) return;
+
+            using (var transaction = _context.Connection.BeginTransaction())
+            {
+                try
+                {
+                    int count = 0;
+                    foreach (var sleeve in combinedSleeves)
                     {
-                        cmd.Transaction = transaction;
-                        cmd.CommandText = @"
+                        // 1. Save Sleeve
+                        int id = SaveCombinedSleeveInternal(sleeve, transaction);
+                        sleeve.CombinedSleeveId = id;
+
+                        // 2. Mark Constituents (Logic duplicated/inlined for transactional safety)
+                        if (sleeve.Constituents != null)
+                        {
+                            foreach (var constituent in sleeve.Constituents)
+                            {
+                                if (constituent.Type == ConstituentType.Individual && constituent.ClashZoneGuid.HasValue)
+                                {
+                                    using (var cmd = _context.Connection.CreateCommand())
+                                    {
+                                        cmd.Transaction = transaction;
+                                        cmd.CommandText = @"UPDATE ClashZones SET IsCombinedResolved = 1, CombinedClusterSleeveInstanceId = @CId WHERE ClashZoneGuid = @Guid";
+                                        cmd.Parameters.AddWithValue("@Guid", constituent.ClashZoneGuid.Value.ToString());
+                                        cmd.Parameters.AddWithValue("@CId", sleeve.CombinedInstanceId);
+                                        cmd.ExecuteNonQuery();
+                                    }
+                                }
+                                else if (constituent.Type == ConstituentType.Cluster && constituent.ClusterInstanceId.HasValue)
+                                {
+                                    // ✅ FIX: Update CombinedClusterSleeveInstanceId for parameter transfer lookup
+                                    // NOTE: IsCombinedResolved is NOT in ClusterSleeves table - only in ClashZones
+                                    using (var cmd = _context.Connection.CreateCommand())
+                                    {
+                                        cmd.Transaction = transaction;
+                                        cmd.CommandText = @"UPDATE ClusterSleeves SET CombinedClusterSleeveInstanceId = @CId WHERE ClusterInstanceId = @Id";
+                                        cmd.Parameters.AddWithValue("@Id", constituent.ClusterInstanceId.Value);
+                                        cmd.Parameters.AddWithValue("@CId", sleeve.CombinedInstanceId);
+                                        cmd.ExecuteNonQuery();
+                                    }
+                                }
+                            }
+                        }
+                        count++;
+                    }
+                    transaction.Commit();
+                    _logger($"[SQLite] ✅ Batch saved {count} combined sleeves and updated flags.");
+                }
+                catch (Exception ex)
+                {
+                    transaction.Rollback();
+                    _logger($"[SQLite] ❌ Batch save failed: {ex.Message}");
+                    throw;
+                }
+            }
+        }
+
+        private int SaveCombinedSleeveInternal(CombinedSleeve combinedSleeve, SQLiteTransaction transaction)
+        {
+             int combinedSleeveId;
+             using (var cmd = _context.Connection.CreateCommand())
+             {
+                 cmd.Transaction = transaction;
+                 cmd.CommandText = @"
                             INSERT INTO CombinedSleeves (
                                 CombinedInstanceId, ComboId, FilterId, Categories,
                                 BoundingBoxMinX, BoundingBoxMinY, BoundingBoxMinZ,
@@ -67,11 +142,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 @Corner4X, @Corner4Y, @Corner4Z
                             );
                             SELECT last_insert_rowid();";
-                        
+
                         // Add parameters
                         cmd.Parameters.AddWithValue("@CombinedInstanceId", combinedSleeve.CombinedInstanceId);
-                        cmd.Parameters.AddWithValue("@ComboId", combinedSleeve.ComboId);
-                        cmd.Parameters.AddWithValue("@FilterId", combinedSleeve.FilterId);
+                        cmd.Parameters.AddWithValue("@ComboId", combinedSleeve.ComboId > 0 ? (object)combinedSleeve.ComboId : DBNull.Value);
+                        cmd.Parameters.AddWithValue("@FilterId", combinedSleeve.FilterId > 0 ? (object)combinedSleeve.FilterId : DBNull.Value);
                         cmd.Parameters.AddWithValue("@Categories", string.Join(",", combinedSleeve.Categories));
                         
                         cmd.Parameters.AddWithValue("@BoundingBoxMinX", combinedSleeve.BoundingBoxMinX);
@@ -105,37 +180,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         cmd.Parameters.AddWithValue("@Corner4X", combinedSleeve.Corner4X);
                         cmd.Parameters.AddWithValue("@Corner4Y", combinedSleeve.Corner4Y);
                         cmd.Parameters.AddWithValue("@Corner4Z", combinedSleeve.Corner4Z);
-                        
+
                         combinedSleeveId = Convert.ToInt32(cmd.ExecuteScalar());
-                        
-                        DatabaseOperationLogger.LogOperation("INSERT", "CombinedSleeves",
-                            new Dictionary<string, object>
-                            {
-                                { "CombinedSleeveId", combinedSleeveId },
-                                { "CombinedInstanceId", combinedSleeve.CombinedInstanceId },
-                                { "Categories", string.Join(",", combinedSleeve.Categories) }
-                            });
-                    }
-                    
-                    // Save constituents
-                    if (combinedSleeve.Constituents != null && combinedSleeve.Constituents.Count > 0)
-                    {
-                        SaveConstituentsInternal(combinedSleeveId, combinedSleeve.Constituents, transaction);
-                    }
-                    
-                    transaction.Commit();
-                    _logger($"[SQLite] ✅ Saved combined sleeve {combinedSleeveId} with {combinedSleeve.Constituents?.Count ?? 0} constituents");
-                    
-                    return combinedSleeveId;
-                }
-                catch (Exception ex)
-                {
-                    transaction.Rollback();
-                    _logger($"[SQLite] ❌ Error saving combined sleeve: {ex.Message}");
-                    DatabaseOperationLogger.LogOperation("ROLLBACK", "CombinedSleeves", null, 0, $"Error: {ex.Message}");
-                    throw;
-                }
-            }
+             }
+             
+             if (combinedSleeve.Constituents != null && combinedSleeve.Constituents.Count > 0)
+             {
+                 SaveConstituentsInternal(combinedSleeveId, combinedSleeve.Constituents, transaction);
+             }
+             return combinedSleeveId;
         }
         
         public void SaveConstituents(int combinedSleeveId, List<SleeveConstituent> constituents)
@@ -413,48 +466,67 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         // FLAG OPERATIONS
         // ============================================================================
         
-        public void MarkConstituentsAsResolved(List<SleeveConstituent> constituents)
+        public void MarkConstituentsAsResolved(List<SleeveConstituent> constituents, int combinedInstanceId)
         {
             using (var transaction = _context.Connection.BeginTransaction())
             {
                 try
                 {
+                    int updatedCount = 0;
                     foreach (var constituent in constituents)
                     {
-                        if (constituent.Type == ConstituentType.Individual && constituent.ClashZoneId.HasValue)
+                        if (constituent.Type == ConstituentType.Individual && constituent.ClashZoneGuid.HasValue)
                         {
-                            // Update ClashZones.IsCombinedResolved
+                            // Update ClashZones.IsCombinedResolved AND CombinedClusterSleeveInstanceId
                             using (var cmd = _context.Connection.CreateCommand())
                             {
                                 cmd.Transaction = transaction;
                                 cmd.CommandText = @"
                                     UPDATE ClashZones 
-                                    SET IsCombinedResolved = 1 
-                                    WHERE ClashZoneId = @ClashZoneId";
+                                    SET IsCombinedResolved = 1,
+                                        CombinedClusterSleeveInstanceId = @CombinedInstanceId
+                                    WHERE ClashZoneGuid = @ClashZoneGuid";
                                 
-                                cmd.Parameters.AddWithValue("@ClashZoneId", constituent.ClashZoneId.Value);
-                                cmd.ExecuteNonQuery();
+                                cmd.Parameters.AddWithValue("@ClashZoneGuid", constituent.ClashZoneGuid.Value.ToString());
+                                cmd.Parameters.AddWithValue("@CombinedInstanceId", combinedInstanceId);
+                                int rows = cmd.ExecuteNonQuery();
+                                if (rows > 0)
+                                {
+                                    updatedCount++;
+                                    _logger($"[SQLite]   -> Flag set for ClashZone {constituent.ClashZoneGuid}");
+                                }
                             }
                         }
-                        else if (constituent.Type == ConstituentType.Cluster && constituent.ClusterSleeveId.HasValue)
+                        else if (constituent.Type == ConstituentType.Cluster && constituent.ClusterInstanceId.HasValue)
                         {
-                            // Update ClusterSleeves.IsCombinedResolved
+                            // ✅ FIX: Update CombinedClusterSleeveInstanceId for parameter transfer lookup
+                            // NOTE: IsCombinedResolved is NOT in ClusterSleeves table - only in ClashZones
                             using (var cmd = _context.Connection.CreateCommand())
                             {
                                 cmd.Transaction = transaction;
                                 cmd.CommandText = @"
                                     UPDATE ClusterSleeves 
-                                    SET IsCombinedResolved = 1 
-                                    WHERE ClusterSleeveId = @ClusterSleeveId";
+                                    SET CombinedClusterSleeveInstanceId = @CombinedInstanceId
+                                    WHERE ClusterInstanceId = @ClusterInstanceId";
                                 
-                                cmd.Parameters.AddWithValue("@ClusterSleeveId", constituent.ClusterSleeveId.Value);
-                                cmd.ExecuteNonQuery();
+                                cmd.Parameters.AddWithValue("@ClusterInstanceId", constituent.ClusterInstanceId.Value);
+                                cmd.Parameters.AddWithValue("@CombinedInstanceId", combinedInstanceId);
+                                int rows = cmd.ExecuteNonQuery();
+                                if (rows > 0) 
+                                {
+                                    updatedCount++;
+                                    _logger($"[SQLite]   -> CombinedInstanceId set for ClusterSleeve {constituent.ClusterInstanceId}");
+                                }
                             }
+                        }
+                        else
+                        {
+                            _logger($"[SQLite]   ⚠️ Skipping flag update for constituent: Type={constituent.Type}, No ID available");
                         }
                     }
                     
                     transaction.Commit();
-                    _logger($"[SQLite] ✅ Marked {constituents.Count} constituents as resolved");
+                    _logger($"[SQLite] ✅ Successfully marked {updatedCount}/{constituents.Count} constituents as resolved (CombinedID={combinedInstanceId})");
                 }
                 catch (Exception ex)
                 {

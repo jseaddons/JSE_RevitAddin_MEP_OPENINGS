@@ -66,27 +66,60 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                     hostFilter = new ElementIntersectsSolidFilter(sectionBoxSolid);
                 }
                 
-                // DebugLogger.Info($"[SectionBoxDiag] Host elements count={hostElements.Count}, sampleIds={string.Join(",", hostIds.Take(6).Select(id => id.IntegerValue.ToString()))}");
+                DebugLogger.Info($"[SectionBoxDiag] Host elements count={hostElements.Count}, sampleIds={string.Join(",", hostIds.Take(6).Select(id => id.IntegerValue.ToString()))}");
                 var passingHostIds = new FilteredElementCollector(uiDoc.Document, hostIds)
                     .WherePasses(hostFilter)
                     .ToElementIds();
+                
+                DebugLogger.Info($"[SectionBoxDiag] ElementIntersectsSolidFilter returned {passingHostIds.Count} passing elements");
+                
+                // ✅ CRITICAL FIX: Manual fallback if filter fails
+                // ElementIntersectsSolidFilter sometimes fails for family instances
+                // Use manual bounding box intersection check as fallback
+                if (passingHostIds.Count == 0 && hostElements.Count > 0)
+                {
+                    DebugLogger.Warning($"[SectionBoxDiag] ElementIntersectsSolidFilter returned 0 results, using manual BBox check fallback");
+                    var sectionBoxBounds = GetSectionBoxBounds(view3D);
+                    if (sectionBoxBounds != null)
+                    {
+                        var manualPassingIds = new List<ElementId>();
+                        foreach (var elem in hostElements)
+                        {
+                            var elemBBox = elem.get_BoundingBox(null);
+                            if (elemBBox != null && BoundingBoxesIntersect(
+                                sectionBoxBounds.Min, sectionBoxBounds.Max,
+                                elemBBox.Min, elemBBox.Max))
+                            {
+                                manualPassingIds.Add(elem.Id);
+                                DebugLogger.Info($"[SectionBoxDiag] ✅ Manual check: Element {elem.Id.IntegerValue} PASSES (BBox intersects)");
+                            }
+                            else
+                            {
+                                DebugLogger.Info($"[SectionBoxDiag] ❌ Manual check: Element {elem.Id.IntegerValue} FAILS (BBox does not intersect)");
+                            }
+                        }
+                        passingHostIds = manualPassingIds;
+                        DebugLogger.Info($"[SectionBoxDiag] Manual BBox check found {passingHostIds.Count} passing elements");
+                    }
+                }
+                
                 filteredList.AddRange(hostElements.Where(e => passingHostIds.Contains(e.Id)).Select(e => (e, (Transform?)null)));
                 try
                 {
-                    // DebugLogger.Info($"[SectionBoxDiag] Host section-solid volume={sectionBoxSolid.Volume}, passingHostCount={passingHostIds.Count}");
+                    DebugLogger.Info($"[SectionBoxDiag] Host section-solid volume={sectionBoxSolid.Volume}, passingHostCount={passingHostIds.Count}");
                     foreach (var e in hostElements.Where(e => passingHostIds.Contains(e.Id)).Take(3))
                     {
                         var bbox = e.get_BoundingBox(null);
                         if (bbox != null)
                         {
-                            // DebugLogger.Info($"[SectionBoxDiag] Host Element {e.Id} BBox Min({bbox.Min.X:F3}, {bbox.Min.Y:F3}, {bbox.Min.Z:F3}) Max({bbox.Max.X:F3}, {bbox.Max.Y:F3}, {bbox.Max.Z:F3})");
+                            DebugLogger.Info($"[SectionBoxDiag] Host Element {e.Id} BBox Min({bbox.Min.X:F3}, {bbox.Min.Y:F3}, {bbox.Min.Z:F3}) Max({bbox.Max.X:F3}, {bbox.Max.Y:F3}, {bbox.Max.Z:F3})");
                         }
                     }
                 }
                 catch { }
 
                 // No fallback for host elements - if no elements pass solid filter, return empty
-                // DebugLogger.Info($"[SectionBoxDiag] Host elements: no fallback implemented");
+                DebugLogger.Info($"[SectionBoxDiag] Host elements: manual fallback implemented");
             }
 
             // Filter linked elements

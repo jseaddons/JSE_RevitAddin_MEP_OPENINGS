@@ -149,5 +149,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Retrieves cluster sleeves associated with the given instance IDs.
         /// </summary>
         List<ClusterSleeve> GetClusterSleevesByInstanceIds(IEnumerable<int> instanceIds);
+
+        /// <summary>
+        /// Retrieves all cluster sleeves from the database.
+        /// </summary>
+        List<ClusterSleeve> GetAllClusterSleeves();
+
+        /// <summary>
+        /// Retrieves distinct MEP categories from the ClashZones table.
+        /// </summary>
+        List<string> GetDistinctCategories();
     }
 }

@@ -63,38 +63,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         $"[{DateTime.Now:HH:mm:ss}] Found {availableCategories.Count} categories: {string.Join(", ", availableCategories)}\n");
                     }
 
-                    // ✅ CRITICAL FIX: Process each category OUTSIDE the deployment mode check
-                    // Process each category with its specific discipline prefix from UI
-                    foreach (var category in availableCategories)
+                    // ✅ BIM 360 OPTIMIZATION: Use SINGLE transaction for ALL categories
+                    // This reduces cloud sync overhead from N syncs to 1 sync (25-50x faster on BIM 360)
+                    using (var tx = new Transaction(doc, "Mark All Categories"))
                     {
-                        var disciplinePrefix = _markPrefixes?.GetDisciplinePrefix(category) ?? GetDisciplinePrefixForCategory(category);
-                        // ✅ FIX: Get remark flag per category from MarkPrefixSettings
-                        var remarkFlag = _markPrefixes?.GetRemarkFlag(category) ?? _remarkAll;
+                        tx.Start();
                         
-                        // ✅ DEBUG: Log remark flag details
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Processing category: {category}, discipline: {disciplinePrefix}, remark: {remarkFlag}");
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}]   RemarkAll={_markPrefixes?.RemarkAll ?? false}, RemarkProjectPrefix={_markPrefixes?.RemarkProjectPrefix ?? false}");
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}]   RemarkDuctPrefix={_markPrefixes?.RemarkDuctPrefix ?? false}, RemarkPipePrefix={_markPrefixes?.RemarkPipePrefix ?? false}");
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}]   RemarkCableTrayPrefix={_markPrefixes?.RemarkCableTrayPrefix ?? false}, RemarkDamperPrefix={_markPrefixes?.RemarkDamperPrefix ?? false}\n");
-                        }
-                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Processing category: {category}, discipline: {disciplinePrefix}, remark: {remarkFlag}\n");
+                        int totalProcessed = 0;
+                        int totalErrors = 0;
 
-                        using (var tx = new Transaction(doc, $"Mark {category} Clusters"))
+                        // ✅ CRITICAL FIX: Process each category OUTSIDE the deployment mode check
+                        // Process each category with its specific discipline prefix from UI
+                        foreach (var category in availableCategories)
                         {
-                            tx.Start();
+                            var disciplinePrefix = _markPrefixes?.GetDisciplinePrefix(category) ?? GetDisciplinePrefixForCategory(category);
+                            // ✅ FIX: Get remark flag per category from MarkPrefixSettings
+                            var remarkFlag = _markPrefixes?.GetRemarkFlag(category) ?? _remarkAll;
+                            
+                            // ✅ DEBUG: Log remark flag details
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Processing category: {category}, discipline: {disciplinePrefix}, remark: {remarkFlag}");
+                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}]   RemarkAll={_markPrefixes?.RemarkAll ?? false}, RemarkProjectPrefix={_markPrefixes?.RemarkProjectPrefix ?? false}");
+                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}]   RemarkDuctPrefix={_markPrefixes?.RemarkDuctPrefix ?? false}, RemarkPipePrefix={_markPrefixes?.RemarkPipePrefix ?? false}");
+                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}]   RemarkCableTrayPrefix={_markPrefixes?.RemarkCableTrayPrefix ?? false}, RemarkDamperPrefix={_markPrefixes?.RemarkDamperPrefix ?? false}\n");
+                            }
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Processing category: {category}, discipline: {disciplinePrefix}, remark: {remarkFlag}\n");
 
                             var markService = new MarkParameterService();
                             var numberFormat = _markPrefixes?.NumberFormat ?? "000";
                             var (processedCount, errorCount) = markService.ApplyMepMarkToClusters(
                                 doc, category, _projectPrefix, disciplinePrefix, remarkFlag, numberFormat, _markPrefixes);
 
-                            tx.Commit();
+                            totalProcessed += processedCount;
+                            totalErrors += errorCount;
 
                             DebugLogger.Info($"[MarkParameterCommand] ✓ MEPMARK complete for {category}: {processedCount} clusters processed, {errorCount} errors");
                             DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Category {category}: {processedCount} processed, {errorCount} errors\n");
                         }
+                        
+                        // ✅ BIM 360 OPTIMIZATION: Single commit for all categories
+                        tx.Commit(); // Cloud sync happens ONCE for all categories
+                        
+                        DebugLogger.Info($"[MarkParameterCommand] ✅ ALL CATEGORIES COMPLETE: {totalProcessed} total processed, {totalErrors} total errors");
                     }
                 }
                 else

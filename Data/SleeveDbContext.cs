@@ -402,6 +402,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     EnsureParameterTransferFlagsTable(transaction);
                     EnsureCategoryProcessingMarkersTable(transaction);
                     EnsureClusterSleevesTable(transaction);
+                    EnsureCombinedSleevesTables(transaction);
                     
                     // ✅ R-TREE: Create R-tree virtual table for spatial indexing (if enabled)
                     EnsureRTreeTable(transaction);
@@ -810,6 +811,120 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     // ✅ TEMPORARILY DISABLED: Views causing SQL logic errors
                     // EnsureGuidManagementViews(transaction);
 
+                    // ✅ COMBINED SLEEVES: Ensure tables exist (Phase 4)
+                    EnsureCombinedSleevesTables(transaction);
+
+                    // ✅ MIGRATION: Make ComboId and FilterId nullable for cross-filter support
+                    // SQLite doesn't support ALTER COLUMN, so we need to check if FK constraints exist
+                    // and recreate the table if needed
+                    try
+                    {
+                        using (var checkCmd = _connection.CreateCommand())
+                        {
+                            checkCmd.Transaction = transaction;
+                            
+                            // ✅ CLEANUP: First, check if orphaned CombinedSleeves_Old exists from failed migration
+                            checkCmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='CombinedSleeves_Old'";
+                            var oldTableExists = checkCmd.ExecuteScalar() != null;
+                            
+                            if (oldTableExists)
+                            {
+                                _logger("[SQLite] 🧹 Found orphaned CombinedSleeves_Old table from failed migration - cleaning up");
+                                
+                                // Check if current CombinedSleeves table exists and has data
+                                checkCmd.CommandText = "SELECT COUNT(*) FROM CombinedSleeves";
+                                var currentCount = Convert.ToInt32(checkCmd.ExecuteScalar());
+                                
+                                checkCmd.CommandText = "SELECT COUNT(*) FROM CombinedSleeves_Old";
+                                var oldCount = Convert.ToInt32(checkCmd.ExecuteScalar());
+                                
+                                // If old table has data but current doesn't, restore from old
+                                if (oldCount > 0 && currentCount == 0)
+                                {
+                                    _logger($"[SQLite] 🔄 Restoring {oldCount} records from CombinedSleeves_Old");
+                                    ExecuteCommand("INSERT INTO CombinedSleeves SELECT * FROM CombinedSleeves_Old", transaction);
+                                }
+                                
+                                // Drop the orphaned table
+                                ExecuteCommand("DROP TABLE CombinedSleeves_Old", transaction);
+                                _logger("[SQLite] ✅ Cleaned up orphaned CombinedSleeves_Old table");
+                            }
+                            
+                            // Now check if migration is needed
+                            checkCmd.CommandText = "SELECT sql FROM sqlite_master WHERE type='table' AND name='CombinedSleeves'";
+                            var tableSql = checkCmd.ExecuteScalar()?.ToString() ?? "";
+                            
+                            // Check if table has FK constraints (old schema)
+                            if (tableSql.Contains("FOREIGN KEY(ComboId)") || tableSql.Contains("FOREIGN KEY(FilterId)"))
+                            {
+                                _logger("[SQLite] 🔄 Migrating CombinedSleeves table to remove FK constraints (cross-filter support)");
+                                
+                                // Step 1: Rename old table
+                                ExecuteCommand("ALTER TABLE CombinedSleeves RENAME TO CombinedSleeves_Old", transaction);
+                                
+                                // Step 2: Create new table without FK constraints (calls EnsureCombinedSleevesTables again)
+                                EnsureCombinedSleevesTables(transaction);
+                                
+                                // Step 3: Copy data from old table (if any columns match)
+                                try
+                                {
+                                    ExecuteCommand(@"
+                                        INSERT INTO CombinedSleeves 
+                                        SELECT * FROM CombinedSleeves_Old", transaction);
+                                }
+                                catch
+                                {
+                                    // If SELECT * fails (schema mismatch), try column-by-column
+                                    _logger("[SQLite] ⚠️ Schema mismatch - attempting selective column copy");
+                                    ExecuteCommand(@"
+                                        INSERT INTO CombinedSleeves (
+                                            CombinedInstanceId, ComboId, FilterId, Categories,
+                                            BoundingBoxMinX, BoundingBoxMinY, BoundingBoxMinZ,
+                                            BoundingBoxMaxX, BoundingBoxMaxY, BoundingBoxMaxZ,
+                                            CombinedWidth, CombinedHeight, CombinedDepth,
+                                            PlacementX, PlacementY, PlacementZ
+                                        )
+                                        SELECT 
+                                            CombinedInstanceId, ComboId, FilterId, Categories,
+                                            BoundingBoxMinX, BoundingBoxMinY, BoundingBoxMinZ,
+                                            BoundingBoxMaxX, BoundingBoxMaxY, BoundingBoxMaxZ,
+                                            CombinedWidth, CombinedHeight, CombinedDepth,
+                                            PlacementX, PlacementY, PlacementZ
+                                        FROM CombinedSleeves_Old", transaction);
+                                }
+                                
+                                // Step 4: Drop old table
+                                ExecuteCommand("DROP TABLE CombinedSleeves_Old", transaction);
+                                
+                                _logger("[SQLite] ✅ Successfully migrated CombinedSleeves table");
+                            }
+                        }
+                    }
+                    catch (Exception migEx)
+                    {
+                        _logger($"[SQLite] ⚠️ CombinedSleeves migration skipped or failed: {migEx.Message}");
+                        
+                        // ✅ CRITICAL: If migration fails, try to clean up orphaned table to prevent future errors
+                        try
+                        {
+                            using (var cleanupCmd = _connection.CreateCommand())
+                            {
+                                cleanupCmd.Transaction = transaction;
+                                cleanupCmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='CombinedSleeves_Old'";
+                                if (cleanupCmd.ExecuteScalar() != null)
+                                {
+                                    ExecuteCommand("DROP TABLE CombinedSleeves_Old", transaction);
+                                    _logger("[SQLite] 🧹 Cleaned up CombinedSleeves_Old after migration failure");
+                                }
+                            }
+                        }
+                        catch (Exception cleanupEx)
+                        {
+                            _logger($"[SQLite] ⚠️ Failed to cleanup CombinedSleeves_Old: {cleanupEx.Message}");
+                        }
+                        // Non-fatal - table might not exist yet or already migrated
+                    }
+
                     transaction.Commit();
                 }
             }
@@ -1015,6 +1130,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
             AddColumnIfMissing("ClusterSleeves", "Corner4X", "REAL DEFAULT 0.0", transaction);
             AddColumnIfMissing("ClusterSleeves", "Corner4Y", "REAL DEFAULT 0.0", transaction);
             AddColumnIfMissing("ClusterSleeves", "Corner4Z", "REAL DEFAULT 0.0", transaction);
+            
+            // ✅ COMBINED SLEEVE TRACKING: Instance ID for the combined sleeve if this cluster is part of one
+            // NOTE: IsCombinedResolved is NOT needed here - only in ClashZones
+            // But CombinedClusterSleeveInstanceId IS needed for parameter transfer lookup
+            AddColumnIfMissing("ClusterSleeves", "CombinedClusterSleeveInstanceId", "INTEGER DEFAULT -1", transaction);
         }
 
         /// <summary>
@@ -1381,6 +1501,109 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
             }
         }
         /// <summary>
+        /// Ensures Combined Sleeves tables exist (Phase 4)
+        /// </summary>
+        private void EnsureCombinedSleevesTables(SQLiteTransaction transaction)
+        {
+            // ✅ CRITICAL FIX: Drop any legacy triggers that reference CombinedSleeves_Old
+            // These triggers were created by old migration code and cause "no such table" errors
+            try
+            {
+                using (var cmd = _connection.CreateCommand())
+                {
+                    cmd.Transaction = transaction;
+                    
+                    // Get all trigger names for CombinedSleeves table
+                    cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='CombinedSleeves'";
+                    var triggerNames = new List<string>();
+                    
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            triggerNames.Add(reader.GetString(0));
+                        }
+                    }
+                    
+                    // Drop each trigger
+                    foreach (var triggerName in triggerNames)
+                    {
+                        ExecuteCommand($"DROP TRIGGER IF EXISTS {triggerName}", transaction);
+                        _logger($"[SQLite] 🧹 Dropped legacy trigger: {triggerName}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ⚠️ Error dropping legacy triggers: {ex.Message}");
+            }
+            
+            // Table 1: Combined Sleeves
+            // ✅ CROSS-FILTER SUPPORT: ComboId and FilterId are nullable because combined sleeves
+            // can span multiple filters/combos (e.g., Pipes from Filter A + Duct Accessories from Filter B)
+            ExecuteCommand(@"CREATE TABLE IF NOT EXISTS CombinedSleeves (
+                    CombinedSleeveId    INTEGER PRIMARY KEY AUTOINCREMENT,
+                    CombinedInstanceId  INTEGER NOT NULL UNIQUE,
+                    ComboId             INTEGER,
+                    FilterId            INTEGER,
+                    Categories          TEXT NOT NULL,
+                    BoundingBoxMinX     REAL NOT NULL,
+                    BoundingBoxMinY     REAL NOT NULL,
+                    BoundingBoxMinZ     REAL NOT NULL,
+                    BoundingBoxMaxX     REAL NOT NULL,
+                    BoundingBoxMaxY     REAL NOT NULL,
+                    BoundingBoxMaxZ     REAL NOT NULL,
+                    CombinedWidth       REAL NOT NULL,
+                    CombinedHeight      REAL NOT NULL,
+                    CombinedDepth       REAL NOT NULL,
+                    PlacementX          REAL NOT NULL,
+                    PlacementY          REAL NOT NULL,
+                    PlacementZ          REAL NOT NULL,
+                    RotationAngleDeg    REAL DEFAULT 0.0,
+                    HostType            TEXT,
+                    HostOrientation     TEXT,
+                    Corner1X            REAL DEFAULT 0.0,
+                    Corner1Y            REAL DEFAULT 0.0,
+                    Corner1Z            REAL DEFAULT 0.0,
+                    Corner2X            REAL DEFAULT 0.0,
+                    Corner2Y            REAL DEFAULT 0.0,
+                    Corner2Z            REAL DEFAULT 0.0,
+                    Corner3X            REAL DEFAULT 0.0,
+                    Corner3Y            REAL DEFAULT 0.0,
+                    Corner3Z            REAL DEFAULT 0.0,
+                    Corner4X            REAL DEFAULT 0.0,
+                    Corner4Y            REAL DEFAULT 0.0,
+                    Corner4Z            REAL DEFAULT 0.0,
+                    CreatedAt           DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
+                    UpdatedAt           DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes'))
+                )", transaction);
+
+            // Table 2: Constituents (One-to-many relationship)
+            ExecuteCommand(@"CREATE TABLE IF NOT EXISTS CombinedSleeveConstituents (
+                    ConstituentId       INTEGER PRIMARY KEY AUTOINCREMENT,
+                    CombinedSleeveId    INTEGER NOT NULL,
+                    ConstituentType     TEXT NOT NULL,
+                    Category            TEXT NOT NULL,
+                    ClashZoneId         INTEGER,
+                    ClashZoneGuid       TEXT,
+                    ClusterSleeveId     INTEGER,
+                    ClusterInstanceId   INTEGER,
+                    CreatedAt           DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
+                    FOREIGN KEY(CombinedSleeveId) REFERENCES CombinedSleeves(CombinedSleeveId) ON DELETE CASCADE
+                )", transaction);
+
+            // Indexes for Combined Sleeves
+            ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_combined_instance ON CombinedSleeves(CombinedInstanceId)", transaction);
+            ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_combined_combo ON CombinedSleeves(ComboId)", transaction);
+            ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_combined_filter ON CombinedSleeves(FilterId)", transaction);
+
+            // Indexes for Constituents
+            ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_const_combined_id ON CombinedSleeveConstituents(CombinedSleeveId)", transaction);
+            ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_const_clash_zone ON CombinedSleeveConstituents(ClashZoneId)", transaction);
+            ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_const_cluster_id ON CombinedSleeveConstituents(ClusterSleeveId)", transaction);
+        }
+
+        /// <summary>
         /// Clears all data from sleeve-related tables.
         /// Used by the ClearAllSleeveDbTablesCommand for resetting the database.
         /// </summary>
@@ -1396,6 +1619,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     // Clear tables in dependency order (reverse creation order roughly)
                     ExecuteCommand("DELETE FROM SleeveEvents;", transaction);
                     ExecuteCommand("DELETE FROM ClashZones;", transaction);
+                    ExecuteCommand("DELETE FROM CombinedSleeveConstituents;", transaction);
+                    ExecuteCommand("DELETE FROM CombinedSleeves;", transaction);
                     ExecuteCommand("DELETE FROM ClusterSleeves;", transaction);
                     ExecuteCommand("DELETE FROM SleeveSnapshots;", transaction);
                     ExecuteCommand("DELETE FROM ParameterTransferFlags;", transaction);

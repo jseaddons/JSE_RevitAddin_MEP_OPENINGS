@@ -133,9 +133,58 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
             double minZ = allCorners.Min(c => c.Z);
             double maxZ = allCorners.Max(c => c.Z);
             
-            double width = maxX - minX;
-            double height = maxZ - minZ;
-            double depth = maxY - minY;
+            double xRange = maxX - minX;
+            double yRange = maxY - minY;
+            double zRange = maxZ - minZ;
+            
+            // Determine Orientation from the first valid ClashZone or ClusterSleeve
+            string orientation = "X"; // Default
+            string hostType = "Wall"; // Default
+            
+            var refZone = clashZones.FirstOrDefault(c => !string.IsNullOrEmpty(c.HostOrientation));
+            if (refZone != null)
+            {
+                orientation = refZone.HostOrientation;
+                hostType = refZone.StructuralElementType;
+            }
+            else
+            {
+                // Try clusters
+                var refCluster = clusterSleeves.FirstOrDefault(c => !string.IsNullOrEmpty(c.HostOrientation)); // Ensure ClusterSleeve model has this
+                if (refCluster != null)
+                {
+                    orientation = refCluster.HostOrientation;
+                    hostType = refCluster.HostType;
+                }
+            }
+
+            double width, height, depth;
+            
+            if (string.Equals(orientation, "Y", StringComparison.OrdinalIgnoreCase))
+            {
+                // Y-Wall
+                width = yRange;  // Length along wall
+                height = zRange; // Vertical height
+                depth = xRange;  // Wall thickness
+                JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Info($"[ManualAdapter] Host Orientation: Y (Width=Y, Depth=X)");
+            }
+            else if (string.Equals(orientation, "Z", StringComparison.OrdinalIgnoreCase) || 
+                     string.Equals(hostType, "Floor", StringComparison.OrdinalIgnoreCase))
+            {
+                // Floor or Vertical Host
+                width = xRange;
+                height = yRange;
+                depth = zRange; // Floor thickness
+                JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Info($"[ManualAdapter] Host Orientation: Floor/Z (Width=X, Depth=Z)");
+            }
+            else
+            {
+                // Default / X-Wall
+                width = xRange;
+                height = zRange; // Vertical height
+                depth = yRange;  // Wall thickness
+                 JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Info($"[ManualAdapter] Host Orientation: X (Width=X, Depth=Y)");
+            }
             
             XYZ center = new XYZ(
                 (minX + maxX) / 2.0,

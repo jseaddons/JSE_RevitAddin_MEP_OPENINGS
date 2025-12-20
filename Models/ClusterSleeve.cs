@@ -10,6 +10,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
     {
         public int ClusterSleeveId { get; set; }
         public int ClusterInstanceId { get; set; }
+        public string Category { get; set; } = string.Empty;
         
         // Corners 1-4 X/Y/Z
         public double? Corner1X { get; set; }
@@ -29,5 +30,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public double? Corner4Z { get; set; }
         
         public double? RotationAngleDeg { get; set; }
+        
+        // Host Info
+        public string HostType { get; set; }
+        public string HostOrientation { get; set; }
     }
 }

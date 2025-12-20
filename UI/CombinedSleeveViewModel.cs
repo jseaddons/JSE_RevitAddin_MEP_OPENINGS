@@ -6,17 +6,16 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Services;
-using FormationService = JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Services.CombinedClusterFormationService;
-using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Repository;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Interfaces;
-using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Interfaces;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Combined;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Geometry;
 using JSE_RevitAddin_MEP_OPENINGS.Data; // For GlobalData
 
 // Explicit Alias for UI Types
@@ -38,12 +37,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
         private bool _isAutoMode = true;
         private string _statusMessage = "Ready";
         
-        // Services
-        // Services
+        // Services - NEW Agent A/B Architecture
         private readonly ICombinedClusterDiscoveryService _discoveryService;
-        private readonly ICombinedClusterFormation _formationService; // Phase 3
-        private readonly IParameterAggregatorService _paramService; // Phase 3
-        private readonly ICombinedClusterPersistence _persistService; // Phase 4
+        private readonly ICrossCategoryProximityService _proximityService; // NEW: Agent B proximity detection
+        private readonly CombinedSleevePlacementService _placementService; // NEW: Agent A placement
 
         private readonly IClashZoneRepository _repo;
         private readonly CrashSafeExecutor _executor; // Safety wrapper
@@ -94,14 +91,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
         private readonly CombinedSleeveRequestHandler _requestHandler;
 
         public CombinedSleeveViewModel(
-            Autodesk.Revit.UI.UIDocument uiDoc, 
-            Autodesk.Revit.UI.ExternalEvent externalEvent, 
+            Autodesk.Revit.UI.UIDocument uiDoc,
+            Autodesk.Revit.UI.ExternalEvent externalEvent,
             CombinedSleeveRequestHandler requestHandler,
             IClashZoneRepository repo,
             ICombinedClusterDiscoveryService discoveryService,
-            ICombinedClusterFormation formationService,
-            IParameterAggregatorService paramService,
-            ICombinedClusterPersistence persistService,
+            ICrossCategoryProximityService proximityService,
+            CombinedSleevePlacementService placementService,
             IManualClusterCalculationAdapter manualCalculator)
         {
             _uiDocument = uiDoc;
@@ -112,20 +108,53 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
             // Injected Dependencies
             _repo = repo ?? throw new ArgumentNullException(nameof(repo));
             _discoveryService = discoveryService ?? throw new ArgumentNullException(nameof(discoveryService));
-            _formationService = formationService ?? throw new ArgumentNullException(nameof(formationService));
-            _paramService = paramService ?? throw new ArgumentNullException(nameof(paramService));
-            _persistService = persistService ?? throw new ArgumentNullException(nameof(persistService));
+            _proximityService = proximityService ?? throw new ArgumentNullException(nameof(proximityService));
+            _placementService = placementService ?? throw new ArgumentNullException(nameof(placementService));
             _manualCalculator = manualCalculator ?? throw new ArgumentNullException(nameof(manualCalculator));
 
             _executor = new CrashSafeExecutor();
-            
+
             // Commands
             RefreshCommand = new RelayCommand(Refresh);
             CreateCombinedSleevesCommand = new RelayCommand(CreateCombinedSleeves); // Auto flow
-            
+
             SelectCrossingCommand = new RelayCommand(SelectByCrossing);
-            SelectIndividuallyCommand = new RelayCommand(SelectIndividually);
-            JoinSelectedCommand = new RelayCommand(JoinSelected);
+        }
+
+        // Category Selection Properties
+        private bool _isDuctsSelected = false;
+        public bool IsDuctsSelected
+        {
+            get => _isDuctsSelected;
+            set { _isDuctsSelected = value; OnPropertyChanged(nameof(IsDuctsSelected)); }
+        }
+
+        private bool _isPipesSelected = false;
+        public bool IsPipesSelected
+        {
+            get => _isPipesSelected;
+            set { _isPipesSelected = value; OnPropertyChanged(nameof(IsPipesSelected)); }
+        }
+
+        private bool _isCableTraysSelected = false;
+        public bool IsCableTraysSelected
+        {
+            get => _isCableTraysSelected;
+            set { _isCableTraysSelected = value; OnPropertyChanged(nameof(IsCableTraysSelected)); }
+        }
+
+        private bool _isConduitsSelected = false;
+        public bool IsConduitsSelected
+        {
+            get => _isConduitsSelected;
+            set { _isConduitsSelected = value; OnPropertyChanged(nameof(IsConduitsSelected)); }
+        }
+
+        private bool _isDuctAccessoriesSelected = false;
+        public bool IsDuctAccessoriesSelected
+        {
+            get => _isDuctAccessoriesSelected;
+            set { _isDuctAccessoriesSelected = value; OnPropertyChanged(nameof(IsDuctAccessoriesSelected)); }
         }
 
         protected void OnPropertyChanged(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
@@ -165,40 +194,97 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                         if (!doc.IsValidObject) return;
 
                         // Example: Use default categories and filter name (could be parameterized)
-                        var defaultCategories = new List<string> { "Ducts", "Pipes", "CableTrays", "Conduit", "Duct Accessories" };
-                        var filterName = "Combined";
+                        // CRITICAL FIX: Use user-selected categories instead of hardcoded defaults
+                        var categories = new List<string>();
+                        if (IsDuctsSelected) categories.Add("Ducts");
+                        if (IsPipesSelected) categories.Add("Pipes");
+                        if (IsCableTraysSelected) categories.Add("CableTrays"); // Note: Internal name is "CableTrays" without space for some services, check usage
+                        if (IsConduitsSelected) categories.Add("Conduit");
+                        if (IsDuctAccessoriesSelected) categories.Add("Duct Accessories");
 
-                        // 1. Discover cluster sleeves
-                        var clusterSleeves = _discoveryService.Discover(filterName, defaultCategories);
-                        DebugLogger.Info($"[AutoCluster] Discovered {clusterSleeves.Count} cluster sleeves");
-                        if (clusterSleeves.Count == 0)
+                        if (categories.Count == 0)
                         {
-                            StatusMessage = "No cluster sleeves found for auto-clustering.";
+                            StatusMessage = "No categories selected.";
+                            DebugLogger.Warning("[AutoCluster] No categories selected by user.");
                             return;
                         }
 
-                        // 2. Form combined clusters (async)
-                        var combinedCandidates = await _formationService.FormCombinedClustersAsync(clusterSleeves.ToList());
-                        DebugLogger.Info($"[AutoCluster] Formed {combinedCandidates.Count} combined cluster candidates");
+                        // CRITICAL FIX: Use wildcard filter to find sleeves across all filters
+                        // "Combined" was likely an invalid filter name causing 0 results
+                        var filterName = "*"; 
 
-                        using (Transaction tx = new Transaction(doc, "Auto Place Combined Sleeves"))
+                        // ✅ SECTION BOX FILTERing: Pass section box if available
+                        // CRITICAL FIX: Use SectionBoxHelper to get WORLD coordinates (with transform applied)
+                        // Raw v3d.GetSectionBox() returns LOCAL coordinates which don't match element positions!
+                        Autodesk.Revit.DB.BoundingBoxXYZ sectionBox = null;
+                        if (doc.ActiveView is View3D v3d && v3d.IsSectionBoxActive)
                         {
-                            tx.Start();
+                            sectionBox = Helpers.SectionBoxHelper.GetSectionBoxBounds(v3d);
+                            DebugLogger.Info($"[AutoCluster] Using Section Box from View: {v3d.Name}");
+                        }
+
+                        // 1. Discover cluster sleeves (returns ClusterSleeveInfo)
+                        var clusterSleeveInfos = _discoveryService.Discover(_uiDocument, filterName, categories, sectionBox);
+                        DebugLogger.Info($"[AutoCluster] Discovered {clusterSleeveInfos.Count} cluster sleeves using categories: {string.Join(", ", categories)} and filter: {filterName}");
+                        
+                        if (clusterSleeveInfos.Count == 0)
+                        {
+                            StatusMessage = "No cluster sleeves found (Check selection/filters).";
+                            return;
+                        }
+
+                        // 2. Convert to UnifiedSleeves for proximity detection
+                        var unifiedSleeves = new List<UnifiedSleeve>();
+                        foreach (var info in clusterSleeveInfos)
+                        {
                             try
                             {
-                                foreach (var candidate in combinedCandidates)
+                                // Convert ClusterSleeveInfo to UnifiedSleeve
+                                var unified = new UnifiedSleeve
                                 {
-                                    CreateCombinedSleeve(candidate);
-                                }
-                                tx.Commit();
-                                StatusMessage = $"Auto-Clustered {combinedCandidates.Count} combined sleeves.";
+                                    Id = info.SleeveInstanceId > 0 ? $"I_{info.SleeveInstanceId}" : $"C_{info.ClusterSleeveInstanceId}",
+                                    Type = info.SleeveInstanceId > 0 ? SleeveType.Individual : SleeveType.Cluster,
+                                    Category = info.CategoryName,
+                                    BoundingBox = new BoundingBoxXYZ
+                                    {
+                                        Min = new XYZ(info.ClusterSleeveBoundingBoxMinX, info.ClusterSleeveBoundingBoxMinY, info.ClusterSleeveBoundingBoxMinZ),
+                                        Max = new XYZ(info.ClusterSleeveBoundingBoxMaxX, info.ClusterSleeveBoundingBoxMaxY, info.ClusterSleeveBoundingBoxMaxZ)
+                                    },
+                                    HostType = info.HostType,
+                                    HostOrientation = info.HostOrientation,
+                                    SourceData = info.OriginalZone
+                                };
+                                unifiedSleeves.Add(unified);
                             }
                             catch (Exception ex)
                             {
-                                tx.RollBack();
-                                StatusMessage = "Auto-Cluster failed: " + ex.Message;
-                                DebugLogger.Error("Auto-Cluster Failed: " + ex.ToString());
+                                DebugLogger.Warning($"[AutoCluster] Failed to convert sleeve {info.SleeveInstanceId}: {ex.Message}");
                             }
+                        }
+
+                        // 3. Detect proximity groups using NEW service
+                        double proximityThreshold = 1.0; // 1 foot default
+                        var proximityGroups = _proximityService.DetectProximityGroups(unifiedSleeves, proximityThreshold);
+                        DebugLogger.Info($"[AutoCluster] Formed {proximityGroups.Count} proximity groups (threshold={proximityThreshold:F2} ft)");
+
+                        if (proximityGroups.Count == 0)
+                        {
+                            StatusMessage = "No proximity groups found (sleeves too far apart).";
+                            return;
+                        }
+
+                        // 4. Place combined sleeves using NEW placement service
+                        // 4. Place combined sleeves using NEW placement service (Batch Method handles Transaction & DB Save)
+                        try
+                        {
+                            var placedSleeves = _placementService.PlaceProximityGroups(proximityGroups, 0, 0);
+                            StatusMessage = $"Auto-Clustered {placedSleeves.Count} combined sleeves.";
+                            DebugLogger.Info($"[AutoCluster] Batch placement complete. Placed: {placedSleeves.Count}");
+                        }
+                        catch (Exception ex)
+                        {
+                            StatusMessage = "Auto-Cluster failed: " + ex.Message;
+                            DebugLogger.Error("Auto-Cluster Failed: " + ex.ToString());
                         }
                     });
 
@@ -497,127 +583,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                                  }
                              }
 
-                            // 5b. TRANSFER PARAMETERS (Aggregation)
+                            // 5b. SET COMMENTS (Parameter aggregation removed in refactoring)
                             try
                             {
-                                if (_paramService == null)
-                                {
-                                    DebugLogger.Warning("[ManualJoin] ParameterAggregatorService is null");
-                                    var pComm = masterSleeve.LookupParameter("Comments");
-                                    if (pComm != null) pComm.Set($"Manual Join: {string.Join(",", cats)}");
-                                    // Skip the rest of parameter aggregation
-                                }
-                                else
-                                {
-                                    DebugLogger.Info("[ManualJoin] Starting Parameter Aggregation...");
-                                    // Convert selected IDs to ClusterSleeveInfo (Transient) using Live Geometry
-                                    // Old 'zones' variable logic replaced by transient creation
-                                    var sleeveInfos = new List<ClusterSleeveInfo>();
-
-                                    foreach (var id in _selectedIds)
-                                    {
-                                        var el = doc.GetElement(id);
-                                        if (el == null) continue;
-
-                                        // Create transient info from element
-                                        // We don't have full ClashZone data here if it wasn't pre-fetched, but we do our best.
-                                        var info = new ClusterSleeveInfo
-                                        {
-                                            SleeveInstanceId = id.IntegerValue,
-                                            CategoryName = el.Category?.Name ?? "Unknown",
-                                            // Approximate placement point (center of bbox)
-                                            SleeveCenter = el.get_BoundingBox(null) is BoundingBoxXYZ b ? (b.Min + b.Max) / 2 : XYZ.Zero
-                                        };
-                                        sleeveInfos.Add(info);
-                                    }
-
-                                    // Create Dummy Candidate
-                                    var candidate = new CombinedClusterCandidate(0, sleeveInfos);
-
-                                    // Set Bounds (Using our new LOCAL bounds as proxy for structure)
-                                    // Although these are Local, they represent the extent.
-                                    // NOTE: Multi-Replace tool might need 'unionMinX' etc defined if we want to strictly match old logic, 
-                                    // but here we pass the Calculated Dimensions which is what matters.
-
-                                    // For Parameter Aggregation, the exact World Coords matter less than the *Sets* of parameters.
-                                    // We populate dummy bounds to avoid null refs.
-                                    candidate.CombinedBoundingBoxMinX = 0;
-                                    candidate.CombinedBoundingBoxMinY = 0;
-                                    candidate.CombinedBoundingBoxMinZ = 0;
-                                    candidate.CombinedBoundingBoxMaxX = newWidth; // Use dimensions
-                                    candidate.CombinedBoundingBoxMaxY = newDepth;
-                                    candidate.CombinedBoundingBoxMaxZ = newHeight;
-
-                                    // Generate Parameter Set (with null check)
-                                    if (_paramService != null)
-                                    {
-                                        var paramSet = _paramService.CreateCombinedSleeveParameterSet(candidate, candidate.CombinedBoundingBox);
-
-                                        // Apply to Master Sleeve
-                                        foreach (var kvp in paramSet)
-                                        {
-                                            // FILTER: Do not overwrite Geometry parameters (Width, Height Set above. Depth/Length controlled by Host)
-                                            // User Issue: "depth of sleeve is very big... depth of sleeve is always controlled by structural thickness"
-                                            // The Aggregator calculates Depth from BoundingBox Y-Diff, which is wrong for Manual Join AABB logic.
-                                            if (kvp.Key == "Width" || kvp.Key == "Height" || kvp.Key == "Depth" || kvp.Key == "Length")
-                                            {
-                                                continue;
-                                            }
-
-                                            var p = masterSleeve.LookupParameter(kvp.Key);
-                                            if (p != null && !p.IsReadOnly)
-                                            {
-                                                if (kvp.Value is double d) p.Set(d);
-                                                else if (kvp.Value is string s) p.Set(s);
-                                                else if (kvp.Value is int i) p.Set(i);
-                                            }
-                                        }
-                                        DebugLogger.Info($"[ManualJoin] Applied {paramSet.Count} aggregated parameters.");
-
-                                        // 5c. SET NEW METADATA: "Combined Sleeve Instance ID" (Case Insensitive)
-                                        // User request: "store in that as this si not cluster instance id but combined sleeve instance id"
-
-                                        Parameter pCombinedId = masterSleeve.LookupParameter("Combined Sleeve Instance ID");
-                                        if (pCombinedId == null)
-                                        {
-                                            // Try Case-Insensitive Search
-                                            foreach (Parameter p in masterSleeve.Parameters)
-                                            {
-                                                if (string.Equals(p.Definition.Name, "Combined Sleeve Instance ID", StringComparison.OrdinalIgnoreCase))
-                                                {
-                                                    pCombinedId = p;
-                                                    break;
-                                                }
-                                            }
-                                        }
-
-                                        if (pCombinedId != null && !pCombinedId.IsReadOnly)
-                                        {
-                                            bool result = false;
-                                            if (pCombinedId.StorageType == StorageType.Integer)
-                                            {
-                                                result = pCombinedId.Set(masterId.IntegerValue);
-                                            }
-                                            else if (pCombinedId.StorageType == StorageType.String)
-                                            {
-                                                result = pCombinedId.Set(masterId.ToString());
-                                            }
-                                            else if (pCombinedId.StorageType == StorageType.Double)
-                                            {
-                                                result = pCombinedId.Set((double)masterId.IntegerValue);
-                                            }
-
-                                            if (result)
-                                                DebugLogger.Info($"[ManualJoin] Set Combined Sleeve Instance ID: {masterId} (Type: {pCombinedId.StorageType})");
-                                            else
-                                                DebugLogger.Warning($"[ManualJoin] Failed to set Combined Sleeve Instance ID: {masterId} (Type: {pCombinedId.StorageType})");
-                                        }
-                                        else
-                                        {
-                                            DebugLogger.Warning("[ManualJoin] Parameter 'Combined Sleeve Instance ID' not found on family (Case Insensitive search).");
-                                        }
-                                    }
-                                }
+                                var pComm = masterSleeve.LookupParameter("Comments");
+                                if (pComm != null) pComm.Set($"Manual Join: {string.Join(",", cats)}");
+                                // Parameter aggregation code removed (service no longer exists)                                                          
                             }
                             catch (Exception ex)
                             {
@@ -790,8 +761,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                         }
                         catch { /* Ignore join errors */ }
 
-                        // 6. Persistence
-                        _persistService.PersistCombinedCluster(candidate, instance.Id.IntegerValue);
+                        // 6. Persistence (removed - using new placement service instead)
+                        // _persistService.PersistCombinedCluster(candidate, instance.Id.IntegerValue);
                     }
                 }
             }

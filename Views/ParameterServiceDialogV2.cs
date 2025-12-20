@@ -24,6 +24,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
     /// </summary>
     public partial class ParameterServiceDialogV2 : WinForms.Form
     {
+        // ✅ Public property to expose Active View Only state
+        public bool IsActiveViewOnly => _activeViewOnlyCheckBox != null && _activeViewOnlyCheckBox.Checked;
+
         private readonly Document? _document;
         private readonly UIDocument? _uiDocument;
 
@@ -65,6 +68,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.Button _remarkSelectedButton = null!;
         private WinForms.Button _transferParametersButton = null!;
         private WinForms.Button _closeButton = null!;
+        private WinForms.CheckBox _activeViewOnlyCheckBox = null!;
 
         public ParameterServiceDialogV2(Document document, UIDocument uiDocument)
         {
@@ -168,6 +172,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             _closeButton.Click += (s, e) => this.Close();
             topBar.Controls.Add(_closeButton);
+
+            // ✅ RESTORED: Active View Only Checkbox
+            _activeViewOnlyCheckBox = new WinForms.CheckBox
+            {
+                Text = "Active View Only",
+                Location = new Point(buttonsStartX - 130, 15), // Position to the left of buttons
+                Size = new Size(120, 20),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Font = new Font("Microsoft Sans Serif", 9F, FontStyle.Regular),
+                Checked = true // Default to true for safety/performance
+            };
+            topBar.Controls.Add(_activeViewOnlyCheckBox);
         }
 
         /// <summary>
@@ -852,13 +868,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             panel.Controls.Add(row);
 
-            // MEP Parameter dropdown
+            // MEP Parameter Dropdown
             var mepCombo = new WinForms.ComboBox
             {
-                Location = new Point(0, 3),
-                Size = new Size(140, 22),
+                Location = new Point(10, 2),
+                Size = new Size(row.Width / 2 - 60, 22), // Adjusted for lookup button
                 DropDownStyle = ComboBoxStyle.DropDownList,
-                Tag = "mep" // Tag for identification when collecting mappings
+                Tag = "mep"
             };
             var mepParams = GetMepParametersForCategory(category);
             mepCombo.Items.AddRange(mepParams);
@@ -866,18 +882,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 mepCombo.SelectedItem = mepParam;
             row.Controls.Add(mepCombo);
 
+            // 🔍 MEP Search button (Greenish)
+            var mepSearchBtn = new WinForms.Button
+            {
+                Text = "🔍",
+                Location = new Point(mepCombo.Right + 2, 2),
+                Size = new Size(24, 22),
+                BackColor = Color.LightGreen,
+                FlatStyle = FlatStyle.Flat
+            };
+            var mepSearchTooltip = new System.Windows.Forms.ToolTip();
+            mepSearchTooltip.SetToolTip(mepSearchBtn, "Search MEP/Host parameters from linked files");
+            mepSearchBtn.Click += (s, e) => ShowMepParameterSearchDialog(mepCombo, category);
+            row.Controls.Add(mepSearchBtn);
+
             // Arrow
-            var arrow = new WinForms.Label { Text = "→", Location = new Point(145, 6), Size = new Size(20, 16) };
+            var arrow = new WinForms.Label
+            {
+                Text = "→",
+                Location = new Point(mepSearchBtn.Right + 5, 4),
+                Size = new Size(20, 20),
+                Font = new Font("Arial", 10, FontStyle.Bold)
+            };
             row.Controls.Add(arrow);
 
-            // Opening Parameter dropdown (width reduced by 20px, maintains Right anchor for proper sizing)
+            // Opening Parameter Dropdown 
             var openingCombo = new WinForms.ComboBox
             {
-                Location = new Point(170, 3),
-                Size = new Size(row.Width - 200, 22), // Reduced by 20px (was 180, now 200)
+                Location = new Point(arrow.Right + 5, 2),
+                Size = new Size(row.Width / 2 - 60, 22),
                 DropDownStyle = ComboBoxStyle.DropDownList,
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                Tag = "opening" // Tag for identification when collecting mappings
+                Tag = "opening"
             };
             var openingParams = GetOpeningParametersForCategory(category);
             openingCombo.Items.AddRange(openingParams);
@@ -885,30 +920,253 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 openingCombo.SelectedItem = openingParam;
             row.Controls.Add(openingCombo);
 
-            // ✅ FIX: Explicitly set width AFTER adding to prevent Right anchor expansion
-            openingCombo.Width = row.Width - 200; // Reduced by 20px (was 180, now 200)
-            
-            // ✅ FIX: Handle resize to maintain width
+            // 🔍 Opening Search button (Yellowish)
+            var openingSearchBtn = new WinForms.Button
+            {
+                Text = "🔍",
+                Location = new Point(openingCombo.Right + 2, 2),
+                Size = new Size(24, 22),
+                BackColor = Color.Khaki,
+                FlatStyle = FlatStyle.Flat
+            };
+            var openingSearchTooltip = new System.Windows.Forms.ToolTip();
+            openingSearchTooltip.SetToolTip(openingSearchBtn, "Search Opening family instance parameters");
+            openingSearchBtn.Click += (s, e) => ShowOpeningParameterSearchDialog(openingCombo, category);
+            row.Controls.Add(openingSearchBtn);
+
+            // Row Resize Logic to keep layout tight
             row.Resize += (s, e) => {
-                openingCombo.Width = row.Width - 200;
+                int half = (row.Width - 140) / 2;
+                mepCombo.Width = half;
+                mepSearchBtn.Location = new Point(mepCombo.Right + 2, 2);
+                arrow.Location = new Point(mepSearchBtn.Right + 5, 4);
+                openingCombo.Location = new Point(arrow.Right + 5, 2);
+                openingCombo.Width = half;
+                openingSearchBtn.Location = new Point(openingCombo.Right + 2, 2);
             };
 
-            // Close button at far right
-            var deleteBtn = new WinForms.Button
+            // Remove button
+            var removeBtn = new WinForms.Button
             {
-                Text = "×",
-                Location = new Point(row.Width - 30, 2), // Standard position at far right
-                Size = new Size(22, 22),
-                BackColor = Color.FromArgb(255, 200, 200),
+                Text = "⨉",
+                Location = new Point(row.Width - 30, 2),
+                Size = new Size(24, 22),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Microsoft Sans Serif", 10F, FontStyle.Bold),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
+                ForeColor = Color.Red
             };
-            deleteBtn.Click += (s, e) => {
+            removeBtn.Click += (s, e) => {
                 panel.Controls.Remove(row);
                 RepositionRows(panel);
             };
-            row.Controls.Add(deleteBtn);
+            row.Controls.Add(removeBtn);
+            
+            panel.Controls.Add(row);
+            RepositionRows(panel);
+        }
+
+        private void ShowMepParameterSearchDialog(WinForms.ComboBox comboBox, string category)
+        {
+            // ✅ FIX: Get ALL parameters for search, scanning linked files/host elements
+            var allParams = GetAllMepParametersForCategory(category);
+            ShowSearchDialog(comboBox, allParams, "Search MEP/Host Parameters");
+        }
+
+        /// <summary>
+        /// Get ALL MEP/Host parameters for search dialog
+        /// Scans linked files and current document to find ALL available parameters for the category
+        /// </summary>
+        private string[] GetAllMepParametersForCategory(string category)
+        {
+            if (_document == null) return new string[0];
+            
+            var allParams = new HashSet<string>();
+            
+            try
+            {
+                // Map category to BuiltInCategory
+                BuiltInCategory? targetCategory = category switch
+                {
+                    "Ducts" => BuiltInCategory.OST_DuctCurves,
+                    "Pipes" => BuiltInCategory.OST_PipeCurves,
+                    "Cable Trays" => BuiltInCategory.OST_CableTray,
+                    "Duct Accessories" => BuiltInCategory.OST_DuctAccessory,
+                    "Walls" => BuiltInCategory.OST_Walls,
+                    "Floors" => BuiltInCategory.OST_Floors,
+                    "Structural Framing" => BuiltInCategory.OST_StructuralFraming,
+                    _ => null
+                };
+
+                if (targetCategory == null) return new string[0];
+
+                // Determine if we should look in linked files or current document
+                // MEP elements usually in linked files (Reference Elements tab) or current doc
+                // Host elements usually in linked files (Host Elements tab)
+                
+                var linkedFileService = new Services.LinkedFileService();
+                var allLinkedFiles = linkedFileService.GetLinkedFiles(_document);
+                
+                // For search, we look in BOTH current document AND all linked files to be comprehensive
+                // 1. Scan Current Document
+                ScanDocumentForParameters(_document, targetCategory.Value, allParams);
+                
+                // 2. Scan Linked Files
+                foreach (var link in allLinkedFiles)
+                {
+                    if (link.LinkInstance != null)
+                    {
+                        var linkDoc = link.LinkInstance.GetLinkDocument();
+                        if (linkDoc != null)
+                        {
+                            ScanDocumentForParameters(linkDoc, targetCategory.Value, allParams);
+                        }
+                    }
+                }
+                
+                return allParams.OrderBy(p => p).ToArray();
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[ParameterServiceDialogV2] Error getting all MEP parameters: {ex.Message}");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                     string paramLogPath = SafeFileLogger.GetLogFilePath("parameter_service_debug.log");
+                     System.IO.File.AppendAllText(paramLogPath, $"[{DateTime.Now}] ERROR getting all MEP params: {ex.Message}\n");
+                }
+                // Fallback to startup essentials if search fails
+                return GetMepParametersForCategory(category);
+            }
+        }
+
+        private void ScanDocumentForParameters(Document doc, BuiltInCategory category, HashSet<string> paramsSet)
+        {
+            try
+            {
+                // Get first few elements to sample parameters
+                var collector = new FilteredElementCollector(doc)
+                    .OfCategory(category)
+                    .WhereElementIsNotElementType()
+                    .Take(5); // Sample 5 elements to get a good mix of instance parameters
+                
+                foreach (Element elem in collector)
+                {
+                    foreach (Parameter param in elem.Parameters)
+                    {
+                        if (param.Definition != null && !string.IsNullOrEmpty(param.Definition.Name))
+                        {
+                            paramsSet.Add(param.Definition.Name);
+                        }
+                    }
+                    
+                    // Also check Type parameters
+                    ElementId typeId = elem.GetTypeId();
+                    if (typeId != ElementId.InvalidElementId)
+                    {
+                        Element typeElem = doc.GetElement(typeId);
+                        if (typeElem != null)
+                        {
+                            foreach (Parameter param in typeElem.Parameters)
+                            {
+                                if (param.Definition != null && !string.IsNullOrEmpty(param.Definition.Name))
+                                {
+                                    paramsSet.Add(param.Definition.Name);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { /* Ignore read errors in individual docs */ }
+        }
+
+        private void ShowOpeningParameterSearchDialog(WinForms.ComboBox comboBox, string category)
+        {
+            // ✅ FIX: Get ALL parameters for search, not just the essential ones
+            var allParams = GetAllOpeningParametersForCategory(category);
+            ShowSearchDialog(comboBox, allParams, "Search Opening Parameters");
+        }
+
+        /// <summary>
+        /// Get ALL parameters from opening families for the search dialog
+        /// Scans all parameters in all opening families found in the document
+        /// </summary>
+        private string[] GetAllOpeningParametersForCategory(string category)
+        {
+            if (_document == null) return new string[0];
+
+            try 
+            {
+                var openingFamilies = GetOpeningFamilies(_document);
+                var allParams = new HashSet<string>();
+
+                foreach (var familySymbol in openingFamilies)
+                {
+                    foreach (Parameter param in familySymbol.Parameters)
+                    {
+                        if (param.Definition != null && !string.IsNullOrEmpty(param.Definition.Name))
+                        {
+                            allParams.Add(param.Definition.Name);
+                        }
+                    }
+                }
+                
+                return allParams.OrderBy(p => p).ToArray();
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[ParameterServiceDialogV2] Error getting all opening parameters: {ex.Message}");
+                return new string[0];
+            }
+        }
+
+        private void ShowSearchDialog(WinForms.ComboBox comboBox, string[] allParams, string title)
+        {
+            var searchForm = new WinForms.Form
+            {
+                Text = title,
+                Size = new Size(400, 500),
+                StartPosition = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MaximizeBox = false,
+                MinimizeBox = false
+            };
+
+            var searchBox = new WinForms.TextBox { Location = new Point(10, 10), Width = 365 };
+            var listBox = new WinForms.ListBox { Location = new Point(10, 40), Width = 365, Height = 380 };
+            
+            listBox.Items.AddRange(allParams);
+
+            searchBox.TextChanged += (s, e) => {
+                listBox.Items.Clear();
+                var filtered = allParams.Where(p => p.IndexOf(searchBox.Text, StringComparison.OrdinalIgnoreCase) >= 0).ToArray();
+                listBox.Items.AddRange(filtered);
+            };
+
+            listBox.DoubleClick += (s, e) => {
+                if (listBox.SelectedItem != null)
+                {
+                    var val = listBox.SelectedItem.ToString();
+                    if (!comboBox.Items.Contains(val)) comboBox.Items.Add(val);
+                    comboBox.SelectedItem = val;
+                    searchForm.Close();
+                }
+            };
+
+            var selectBtn = new WinForms.Button { Text = "Select", Location = new Point(300, 430), DialogResult = DialogResult.OK };
+            selectBtn.Click += (s, e) => {
+                if (listBox.SelectedItem != null)
+                {
+                    var val = listBox.SelectedItem.ToString();
+                    if (!comboBox.Items.Contains(val)) comboBox.Items.Add(val);
+                    comboBox.SelectedItem = val;
+                }
+                searchForm.Close();
+            };
+
+            searchForm.Controls.Add(searchBox);
+            searchForm.Controls.Add(listBox);
+            searchForm.Controls.Add(selectBtn);
+            searchForm.ShowDialog();
         }
 
         /// <summary>
@@ -1288,11 +1546,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     // Create parameter transfer service
                     var transferService = new ParameterTransferService();
                     
-                    // ✅ OPTIMIZATION 1: Section Box Filtering DURING COLLECTION (not after)
-                    // Filter sleeves at collection time if section box is active, NOT after loading all elements
-                    ElementFilter sectionBoxFilter = null;
-                    int totalSleeveCountBeforeFilter = 0;
-                    
+                // ✅ OPTIMIZATION: Filter by Active View OR Section Box
+                // Filter sleeves at collection time to reduce processing set
+                FilteredElementCollector collector;
+                ElementFilter sectionBoxFilter = null;
+                
+                // 1. ACTIVE VIEW FILTER (User Checkbox) - Highest Priority
+                if (_activeViewOnlyCheckBox.Checked && _document.ActiveView != null)
+                {
+                    // Filter by current view only - extremely fast
+                    collector = new FilteredElementCollector(_document, _document.ActiveView.Id)
+                        .OfClass(typeof(FamilyInstance));
+                        
+                    DebugLogger.Info($"[ParameterServiceDialogV2] ⚠️ Filtering by Active View: {_document.ActiveView.Name} (ID: {_document.ActiveView.Id})");
+                }
+                else
+                {
+                    // 2. GLOBAL COLLECTION (with optional Section Box filter)
+                    collector = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance));
+                        
+                    // Section Box Filter (only applied if not using Active View filter)
                     if (Services.OptimizationFlags.UseSectionBoxFilterForParameterTransfer && _uiDocument != null)
                     {
                         try
@@ -1304,45 +1578,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                                 {
                                     var sectionBoxOutline = new Outline(sectionBoxBounds.Min, sectionBoxBounds.Max);
                                     sectionBoxFilter = new BoundingBoxIntersectsFilter(sectionBoxOutline);
+                                    collector = (FilteredElementCollector)collector.WherePasses(sectionBoxFilter);
+                                    DebugLogger.Info($"[ParameterServiceDialogV2] ✅ Section box filtering applied during collection");
                                 }
                             }
                         }
                         catch (Exception sectionBoxEx)
                         {
                             if (!DeploymentConfiguration.DeploymentMode)
-                            {
                                 DebugLogger.Warning($"[ParameterServiceDialogV2] ⚠️ Section box filter setup failed: {sectionBoxEx.Message}");
-                            }
                         }
                     }
-                    
-                    // Build collector with section box filter applied DURING collection if available
-                    var collector = new FilteredElementCollector(_document)
-                        .OfClass(typeof(FamilyInstance));
-                    
-                    if (sectionBoxFilter != null)
-                    {
-                        collector = (FilteredElementCollector)collector.WherePasses(sectionBoxFilter);
-                    }
-                    
-                    // Now get all openings (individual + cluster) in the document, pre-filtered by section box if active
-                    // Only match the 4 specific opening families: RectangularOpeningOnWall, RectangularOpeningOnSlab, CircularOpeningOnWall, CircularOpeningOnSlab
-                    var sleevesToProcess = collector
-                        .Cast<FamilyInstance>()
-                        .Where(fi => {
-                            var famName = fi.Symbol?.Family?.Name ?? string.Empty;
-                            // Match only the 4 specific opening families
-                            return famName.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0
-                                || famName.IndexOf("OpeningOnSlab", StringComparison.OrdinalIgnoreCase) >= 0;
-                        })
-                        .ToList();
-                    
-                    // Log family names for debugging
-                    var familyNames = sleevesToProcess
-                        .Select(fi => fi.Symbol?.Family?.Name ?? "Unknown")
-                        .Distinct()
-                        .ToList();
-                    DebugLogger.Info($"[ParameterServiceDialogV2] Found opening families: {string.Join(", ", familyNames)}");
+                }
+                
+                // Now get all openings (individual + cluster) in the document, pre-filtered
+                // Only match the 4 specific opening families: RectangularOpeningOnWall, RectangularOpeningOnSlab, CircularOpeningOnWall, CircularOpeningOnSlab
+                var sleevesToProcess = collector
+                    .Cast<FamilyInstance>()
+                    .Where(fi => {
+                        var famName = fi.Symbol?.Family?.Name ?? string.Empty;
+                        // Match only the 4 specific opening families
+                        return famName.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0
+                            || famName.IndexOf("OpeningOnSlab", StringComparison.OrdinalIgnoreCase) >= 0;
+                    })
+                    .ToList();
+                
+                // Log family names for debugging
+                var familyNames = sleevesToProcess
+                    .Select(fi => fi.Symbol?.Family?.Name ?? "Unknown")
+                    .Distinct()
+                    .ToList();
+                DebugLogger.Info($"[ParameterServiceDialogV2] Found opening families: {string.Join(", ", familyNames)}");
                     
                     if (sectionBoxFilter != null && !DeploymentConfiguration.DeploymentMode)
                     {
@@ -1617,7 +1883,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         PipePrefix = pipePrefix,
                         CableTrayPrefix = cableTrayPrefix,
                         DamperPrefix = damperPrefix,
-                        NumberFormat = numberFormat
+                        NumberFormat = numberFormat,
+                        // ✅ OPTIMIZATION: Pass Active View Only flag to service
+                        ActiveViewOnly = _activeViewOnlyCheckBox.Checked
                     };
 
                     // Sync remark checkboxes so MarkParameterCommand honours the user's selection

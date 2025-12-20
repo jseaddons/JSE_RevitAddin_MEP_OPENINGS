@@ -22,10 +22,10 @@
                 <!-- AUTO MODE UI -->
                 <StackPanel Visibility="{Binding AutoVisibility}">
                     <TextBlock Text="Select Categories to Combine:" FontWeight="Bold" Margin="0,0,0,10"/>
-                    <CheckBox Content="Ducts" IsChecked="{Binding IncludeDucts}" Margin="0,5"/>
-                    <CheckBox Content="Duct Accessories" IsChecked="{Binding IncludeDuctAccessories}" Margin="0,5"/>
-                    <CheckBox Content="Pipes" IsChecked="{Binding IncludePipes}" Margin="0,5"/>
-                    <CheckBox Content="Cable Trays" IsChecked="{Binding IncludeCableTrays}" Margin="0,5"/>
+                    <CheckBox Content="Ducts" IsChecked="{Binding IsDuctsSelected, Mode=TwoWay}" Margin="0,5"/>
+                    <CheckBox Content="Duct Accessories" IsChecked="{Binding IsDuctAccessoriesSelected, Mode=TwoWay}" Margin="0,5"/>
+                    <CheckBox Content="Pipes" IsChecked="{Binding IsPipesSelected, Mode=TwoWay}" Margin="0,5"/>
+                    <CheckBox Content="Cable Trays" IsChecked="{Binding IsCableTraysSelected, Mode=TwoWay}" Margin="0,5"/>
                     <Separator Margin="0,15"/>
                     <Button Content="Run Auto-Combine" Command="{Binding CreateCombinedSleevesCommand}" Height="30" FontWeight="Bold"/>
                 </StackPanel>
