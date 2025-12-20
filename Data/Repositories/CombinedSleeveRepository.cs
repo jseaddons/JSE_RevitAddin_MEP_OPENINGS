@@ -76,7 +76,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     using (var cmd = _context.Connection.CreateCommand())
                                     {
                                         cmd.Transaction = transaction;
-                                        cmd.CommandText = @"UPDATE ClashZones SET IsCombinedResolved = 1, CombinedClusterSleeveInstanceId = @CId WHERE ClashZoneGuid = @Guid";
+                                        cmd.CommandText = @"UPDATE ClashZones 
+                                                            SET IsCombinedResolved = 1, 
+                                                                IsResolvedFlag = 0, 
+                                                                IsClusterResolvedFlag = 0, 
+                                                                SleeveInstanceId = -1, 
+                                                                ClusterInstanceId = -1, 
+                                                                CombinedClusterSleeveInstanceId = @CId 
+                                                            WHERE ClashZoneGuid = @Guid";
                                         cmd.Parameters.AddWithValue("@Guid", constituent.ClashZoneGuid.Value.ToString());
                                         cmd.Parameters.AddWithValue("@CId", sleeve.CombinedInstanceId);
                                         cmd.ExecuteNonQuery();
@@ -484,6 +491,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 cmd.CommandText = @"
                                     UPDATE ClashZones 
                                     SET IsCombinedResolved = 1,
+                                        IsResolvedFlag = 0,
+                                        IsClusterResolvedFlag = 0,
+                                        SleeveInstanceId = -1,
+                                        ClusterInstanceId = -1,
                                         CombinedClusterSleeveInstanceId = @CombinedInstanceId
                                     WHERE ClashZoneGuid = @ClashZoneGuid";
                                 

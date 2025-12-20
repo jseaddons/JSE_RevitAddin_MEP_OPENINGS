@@ -159,5 +159,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Retrieves distinct MEP categories from the ClashZones table.
         /// </summary>
         List<string> GetDistinctCategories();
+
+        /// <summary>
+        /// Updates resolution flags for zones that are part of a combined sleeve.
+        /// Sets IsCombinedResolved=true, IsResolved=false, IsClusterResolved=false, 
+        /// and links to the combined sleeve ID.
+        /// </summary>
+        void UpdateCombinedResolutionFlags(IEnumerable<System.Guid> zoneGuids, int combinedSleeveId);
     }
 }

@@ -21,39 +21,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Se
 
         public List<ClashZone> QueueDatabaseUpdates(CombinedClusterCandidate combinedCluster, int combinedSleeveInstanceId)
         {
-            if (combinedCluster == null || combinedCluster.MemberClusters.Count == 0)
-                return new List<ClashZone>();
-
-            var allZoneGuids = combinedCluster.MemberClusters
-                .SelectMany(c => c.ClashZoneIds)
-                .Distinct()
-                .ToList();
-
-            if (allZoneGuids.Count == 0)
-                return new List<ClashZone>();
-
-            var existingZones = _repository.GetClashZonesByGuids(allZoneGuids);
-            var zoneMap = existingZones.ToDictionary(z => z.Id, z => z);
-            var zonesToUpdate = new List<ClashZone>();
-
-            foreach (var clusterSleeveInfo in combinedCluster.MemberClusters)
-            {
-                foreach (var guid in clusterSleeveInfo.ClashZoneIds)
-                {
-                    if (zoneMap.TryGetValue(guid, out var clashZone))
-                    {
-                        clashZone.IsCombinedResolved = true;
-                        clashZone.IsResolved = false;
-                        clashZone.IsClusterResolved = false;
-                        clashZone.SleeveInstanceId = -1;
-                        clashZone.ClusterSleeveInstanceId = -1;
-                        clashZone.CombinedClusterSleeveInstanceId = combinedSleeveInstanceId;
-                        zonesToUpdate.Add(clashZone);
-                    }
-                }
-            }
-
-            return zonesToUpdate;
+             // 2025-12-18: REFACTORED
+             // This method previously queued updates for the background worker.
+             // However, with the new 'UpdateCombinedResolutionFlags' direct database method,
+             // updates must be synchronous to prevent race conditions during subsequent placements.
+             // Therefore, this method is now a no-op as the updates are handled in PersistCombinedCluster.
+             // We return empty list to signify no zones need further memory-queue processing.
+             return new List<ClashZone>();
         }
 
         public void UpdateXmlWithCombinedClusterInfo(CombinedClusterCandidate combinedCluster, int combinedSleeveInstanceId)
@@ -77,58 +51,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Se
 
             if (allZoneGuids.Count == 0) return;
 
-            // 2. Fetch full objects
-            var existingZones = _repository.GetClashZonesByGuids(allZoneGuids);
-            // IClashZoneRepository now has GetClashZonesByGuids
-            var zoneMap = existingZones.ToDictionary(z => z.Id, z => z);
+            // 3. Update resolution flags efficiently using the new repository method
+            // This prevents overwriting other properties of the ClashZone and focuses purely on flag management
+            // "Update Existing, Do Not Create New"
+            _repository.UpdateCombinedResolutionFlags(allZoneGuids, combinedSleeveInstanceId);
 
-            // 3. Prepare updates
-            var zonesToUpdate = new List<ClashZone>();
+            // Re-fetch zones to continue with other logic if necessary, or just rely on GUIDs
+            // For the following logic (ResetFileComboFlag and CombinedSleeve creation), we need at least one zone to get metadata
+            var firstZoneGuid = allZoneGuids.FirstOrDefault();
+            
+            // 4. Batch Persist - NO LONGER NEEDED for flags as we used UpdateCombinedResolutionFlags
+            // But we still need to persist the CombinedSleeve entity below/
 
-            foreach (var clusterSleeveInfo in combinedCluster.MemberClusters)
+            // ✅ RESET FILTER COMBO FLAG
+            if (firstZoneGuid != Guid.Empty)
             {
-                foreach (var guid in clusterSleeveInfo.ClashZoneIds)
+                var meta = _repository.GetComboAndFilterId(firstZoneGuid);
+                if (meta.ComboId > 0)
                 {
-                    if (zoneMap.TryGetValue(guid, out var clashZone))
-                    {
-                        // Update relevant fields: Mark as combined and "consume" individual/cluster sleeves
-                        clashZone.IsCombinedResolved = true;
-                        
-                        // Reset lower-level flags as they are superseded by IsCombinedResolved
-                        clashZone.IsResolved = false;
-                        clashZone.IsClusterResolved = false;
-                        
-                        // Reset IDs to -1 to indicate they are replaced by the combined sleeve
-                        clashZone.SleeveInstanceId = -1;
-                        clashZone.ClusterSleeveInstanceId = -1;
-                        
-                        // Track the combined ID in memory (though not currently persisted to ClashZones table)
-                        clashZone.CombinedClusterSleeveInstanceId = combinedSleeveInstanceId;
-                        
-                        zonesToUpdate.Add(clashZone);
-                    }
-                }
-            }
-
-            // 4. Batch Persist
-            if (zonesToUpdate.Count > 0)
-            {
-                var category = combinedCluster.CategoriesInvolved.FirstOrDefault() ?? "Unknown";
-                _repository.InsertOrUpdateClashZones(zonesToUpdate, "Combined", category);
-
-                // ✅ RESET FILTER COMBO FLAG
-                // We need to fetch ComboIds. Since ClashZone model doesn't have ComboId property,
-                // we'll get it from the repository for the first zone (assuming homogeneity) or iterate if needed.
-                // For combined sleeves, having one valid ComboId/FilterId is usually sufficient for the main record.
-                var firstZone = zonesToUpdate.FirstOrDefault();
-                var meta = (ComboId: 0, FilterId: 0);
-                if (firstZone != null)
-                {
-                    meta = _repository.GetComboAndFilterId(firstZone.Id);
-                    if (meta.ComboId > 0)
-                    {
-                        _repository.ResetFileComboFlag(meta.ComboId);
-                    }
+                    _repository.ResetFileComboFlag(meta.ComboId);
                 }
                 
                 // 5. Persist CombinedSleeve and Constituents
@@ -167,7 +108,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Se
 
                     // Add Constituents
                     combinedSleeve.Constituents = new List<SleeveConstituent>();
-                    foreach (var zone in zonesToUpdate)
+                    
+                    // We need basic info for constituents. Since we skipped full object fetch for optimization,
+                    // we can either fetch them now or use available info. 
+                    // Let's fetch them now as it is safer for constituent data accuracy.
+                    var existingZones = _repository.GetClashZonesByGuids(allZoneGuids);
+                    
+                    foreach (var zone in existingZones)
                     {
                         combinedSleeve.Constituents.Add(new SleeveConstituent
                         {
@@ -185,13 +132,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Se
                 }
                 catch (Exception ex)
                 {
-                    // Log error but don't fail the whole operation as zones are updated
-                    // _logger.Error($"Failed to save combined sleeve record: {ex.Message}");
-                    // Since we don't have logger here, we might just suppress or rethrow?
-                    // Ideally we should log.
                     System.Diagnostics.Debug.WriteLine($"Error saving combined sleeve: {ex.Message}");
                 }
             }
+
+
         }
     }
 }

@@ -686,6 +686,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Expected benefit: Better testability, extensibility, SOLID compliance
         /// </summary>
         public static bool UseRefreshServiceInterfaces { get; set; } = true;
+
+        /// <summary>
+        /// Enable using specialized SOLID-refactored repositories (Combined, Cluster, Snapshot)
+        /// via ClashZoneRepository delegation.
+        /// When true: ClashZoneRepository delegates logic to specialized repos.
+        /// When false: ClashZoneRepository performs operations directly (legacy).
+        /// Default: true (enabled).
+        /// </summary>
+        public static bool UseSolidRefactoredRepositories { get; set; } = true;
         
         /// <summary>
         /// Enable dependency injection for refresh services.

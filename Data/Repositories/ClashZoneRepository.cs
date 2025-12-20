@@ -22,10 +22,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         private readonly Action<string> _logger;
         private static bool _dbVerifiedOnce = false; // session-level guard
 
+        // SOLID Refactoring: Sub-repositories
+        private readonly CombinedSleeveRepository _combinedRepo;
+        private readonly ClusterSleeveRepository _clusterRepo;
+        private readonly SleeveSnapshotRepository _snapshotRepo;
+
         public ClashZoneRepository(SleeveDbContext context, Action<string> logger = null)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _logger = logger ?? (msg => { });
+            
+            // Initialize sub-repositories for delegation
+            _combinedRepo = new CombinedSleeveRepository(_context);
+            // ClusterSleeveRepository constructor requires context and optional logger
+            _clusterRepo = new ClusterSleeveRepository(_context, _logger);
+            // SleeveSnapshotRepository constructor requires context and optional logger
+            _snapshotRepo = new SleeveSnapshotRepository(_context, _logger);
         }
 
         // Interface implementation for IClashZoneRepository
@@ -33,7 +45,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         {
             var result = new List<ClashZone>();
             if (clashZoneGuids == null) return result;
-            
+
             var guidList = clashZoneGuids.Distinct().ToList();
             if (guidList.Count == 0) return result;
 
@@ -41,14 +53,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             {
                 // Create comma-separated string of quoted GUIDs for IN clause
                 var guidString = string.Join(",", guidList.Select(g => $"'{g.ToString().ToUpperInvariant()}'"));
-                
+
                 using (var cmd = _context.Connection.CreateCommand())
                 {
                     cmd.CommandText = $@"
                         SELECT * 
                         FROM ClashZones 
                         WHERE UPPER(ClashZoneGuid) IN ({guidString})";
-                    
+
                     using (var reader = cmd.ExecuteReader())
                     {
                         while (reader.Read())
@@ -57,7 +69,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         }
                     }
                 }
-                
+
                 if (!OptimizationFlags.DisableVerboseLogging)
                 {
                     _logger($"[SQLite] Custom Fetch: Retrieved {result.Count} zones by {guidList.Count} GUIDs");
@@ -67,7 +79,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             {
                 _logger($"[SQLite] ❌ Error in GetClashZonesByGuids: {ex.Message}");
             }
-            
+
             return result;
         }
 
@@ -121,7 +133,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                     // Build GUID list for batch lookup
                     var guidList = string.Join(",", zonesList.Select(z => $"'{z.Id.ToString().ToUpperInvariant()}'"));
-                    
+
                     // Batch lookup: find all existing ClashZoneIds by GUID in single query
                     var existingMap = new Dictionary<Guid, int>();
                     using (var cmd = _context.Connection.CreateCommand())
@@ -132,7 +144,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             FROM ClashZones 
                             WHERE UPPER(ClashZoneGuid) IN ({guidList})
                               AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL";
-                        
+
                         using (var reader = cmd.ExecuteReader())
                         {
                             while (reader.Read())
@@ -151,7 +163,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     foreach (var zone in zonesList)
                     {
                         var mepCategory = zone.MepElementCategory ?? category;
-                        List<string>? hostCategories = null;
+                        List<string> hostCategories = null;
                         if (FilterUiStateProvider.GetSelectedHostCategories != null)
                         {
                             hostCategories = FilterUiStateProvider.GetSelectedHostCategories.Invoke();
@@ -181,40 +193,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         using (var checkCmd = _context.Connection.CreateCommand())
                         {
                             checkCmd.Transaction = transaction;
-                            
+
                             // Build WHERE clause for all zones to check
                             var whereConditions = new List<string>();
                             var paramIndex = 0;
                             foreach (var zone in toInsert)
                             {
                                 if (!comboMap.ContainsKey(zone.Id)) continue;
-                                
+
                                 var comboId = comboMap[zone.Id];
                                 var mepId = zone.MepElementId?.IntegerValue ?? zone.MepElementIdValue;
                                 var hostId = zone.StructuralElementId?.IntegerValue ?? zone.StructuralElementIdValue;
                                 var interX = zone.IntersectionPoint?.X ?? zone.IntersectionPointX;
                                 var interY = zone.IntersectionPoint?.Y ?? zone.IntersectionPointY;
                                 var interZ = zone.IntersectionPoint?.Z ?? zone.IntersectionPointZ;
-                                
+
                                 whereConditions.Add($"(ComboId = @ComboId{paramIndex} AND MepElementId = @MepId{paramIndex} AND HostElementId = @HostId{paramIndex} AND IntersectionX = @InterX{paramIndex} AND IntersectionY = @InterY{paramIndex} AND IntersectionZ = @InterZ{paramIndex})");
-                                
+
                                 checkCmd.Parameters.AddWithValue($"@ComboId{paramIndex}", comboId);
                                 checkCmd.Parameters.AddWithValue($"@MepId{paramIndex}", mepId);
                                 checkCmd.Parameters.AddWithValue($"@HostId{paramIndex}", hostId);
                                 checkCmd.Parameters.AddWithValue($"@InterX{paramIndex}", interX);
                                 checkCmd.Parameters.AddWithValue($"@InterY{paramIndex}", interY);
                                 checkCmd.Parameters.AddWithValue($"@InterZ{paramIndex}", interZ);
-                                
+
                                 paramIndex++;
                             }
-                            
+
                             if (whereConditions.Count > 0)
                             {
                                 checkCmd.CommandText = $@"
                                     SELECT ClashZoneId, ComboId, MepElementId, HostElementId, IntersectionX, IntersectionY, IntersectionZ
                                     FROM ClashZones 
                                     WHERE {string.Join(" OR ", whereConditions)}";
-                                
+
                                 using (var reader = checkCmd.ExecuteReader())
                                 {
                                     while (reader.Read())
@@ -226,37 +238,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                         var interX = reader.GetDouble(4);
                                         var interY = reader.GetDouble(5);
                                         var interZ = reader.GetDouble(6);
-                                        
+
                                         var key = $"{comboId}|{mepId}|{hostId}|{interX}|{interY}|{interZ}";
                                         uniqueConstraintMap[key] = clashZoneId;
                                     }
                                 }
                             }
                         }
-                        
+
                         // ✅ STEP 2: Filter out zones that already exist by UNIQUE constraint, add them to existingMap for UPDATE
                         var actuallyNew = new List<ClashZone>();
                         var toUpdateByConstraint = new List<(ClashZone zone, int clashZoneId)>();
-                        
+
                         foreach (var zone in toInsert)
                         {
                             if (!comboMap.ContainsKey(zone.Id)) continue;
-                            
+
                             var comboId = comboMap[zone.Id];
                             var mepId = zone.MepElementId?.IntegerValue ?? zone.MepElementIdValue;
                             var hostId = zone.StructuralElementId?.IntegerValue ?? zone.StructuralElementIdValue;
                             var interX = zone.IntersectionPoint?.X ?? zone.IntersectionPointX;
                             var interY = zone.IntersectionPoint?.Y ?? zone.IntersectionPointY;
                             var interZ = zone.IntersectionPoint?.Z ?? zone.IntersectionPointZ;
-                            
+
                             var key = $"{comboId}|{mepId}|{hostId}|{interX}|{interY}|{interZ}";
-                            
+
                             if (uniqueConstraintMap.TryGetValue(key, out var existingClashZoneId))
                             {
                                 // ✅ Zone exists by UNIQUE constraint - add to existingMap and update instead of insert
                                 existingMap[zone.Id] = existingClashZoneId;
                                 toUpdateByConstraint.Add((zone, existingClashZoneId));
-                                
+
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
                                     _logger($"[SQLite][BULK] ✅ Found existing zone by UNIQUE constraint: GUID={zone.Id} matches ClashZoneId={existingClashZoneId} (will UPDATE instead of INSERT)");
@@ -267,7 +279,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 actuallyNew.Add(zone);
                             }
                         }
-                        
+
                         // ✅ STEP 3: UPDATE zones found by UNIQUE constraint
                         if (toUpdateByConstraint.Count > 0)
                         {
@@ -275,7 +287,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             BulkUpdateClashZones(zonesToUpdate, existingMap, comboMap, transaction);
                             _logger($"[SQLite][BULK] ✅ Updated {toUpdateByConstraint.Count} zones (found by UNIQUE constraint, not GUID)");
                         }
-                        
+
                         // ✅ STEP 4: INSERT only truly new zones
                         if (actuallyNew.Count > 0)
                         {
@@ -321,10 +333,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         SELECT ClashZoneId, SleeveInstanceId 
                         FROM ClashZones 
                         WHERE IsResolvedFlag = 1 AND SleeveInstanceId > 0";
-                    
+
                     // Add filter/category filtering if needed (simplified for now to check all resolved)
                     // In a real scenario, we should filter by the passed filterNames/categories
-                    
+
                     using (var reader = cmd.ExecuteReader())
                     {
                         while (reader.Read())
@@ -430,7 +442,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 // 1. Find all constituent ClashZones for these missing combined sleeves
                                 // We need to reset their flags
                                 var idsStr = string.Join(",", missingCombinedIds);
-                                
+
                                 // Reset flags for constituent ClashZones
                                 // We join with CombinedSleeveConstituents to find them
                                 using (var resetCmd = _context.Connection.CreateCommand())
@@ -499,11 +511,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             try
             {
                 var sw = System.Diagnostics.Stopwatch.StartNew();
-                
+
                 // ✅ CORRECT LOGIC: Reset ALL zones to IsCurrentClash=0 (clean slate)
                 // Then SetReadyForPlacementForUnresolvedZonesInSectionBox will set IsCurrentClash=1
                 // ONLY for zones that are BOTH in section box AND in selected filters/categories
-                
+
                 using (var transaction = _context.Connection.BeginTransaction())
                 {
                     using (var cmd = _context.Connection.CreateCommand())
@@ -512,7 +524,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         cmd.CommandText = "UPDATE ClashZones SET IsCurrentClashFlag = 0";
                         int count = cmd.ExecuteNonQuery();
                         transaction.Commit();
-                        
+
                         sw.Stop();
                         _logger($"[IsCurrentClash] 🧹 Reset flag for {count} zones in {sw.ElapsedMilliseconds}ms");
                         return count;
@@ -533,20 +545,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             using (var cmd = _context.Connection.CreateCommand())
             {
                 cmd.Transaction = transaction;
-                
+
                 // ✅ CRITICAL FIX: Filter to valid zones first (zones that exist in both maps)
                 var validZonesForQuery = zones
                     .Where(z => existingMap.ContainsKey(z.Id) && comboMap.ContainsKey(z.Id))
                     .ToList();
-                
+
                 // Get existing flags from database first (preserve FlagManager resets)
                 var flagMap = new Dictionary<int, (bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveId, int ClusterId)>();
                 var idList = string.Join(",", validZonesForQuery.Select(z => existingMap[z.Id]));
-                
+
                 cmd.CommandText = $@"
                     SELECT ClashZoneId, IsResolvedFlag, IsClusterResolvedFlag, IsCombinedResolved, SleeveInstanceId, ClusterInstanceId
                     FROM ClashZones WHERE ClashZoneId IN ({idList})";
-                
+
                 using (var reader = cmd.ExecuteReader())
                 {
                     while (reader.Read())
@@ -566,34 +578,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 var sql = new System.Text.StringBuilder();
                 sql.AppendLine("UPDATE ClashZones SET");
                 sql.AppendLine("  UpdatedAt = CURRENT_TIMESTAMP,");
-                
+
                 // ✅ CRITICAL FIX: Only process zones that exist in both maps
                 // Filter zones first to ensure parameter indices match CASE statement indices
                 var validZones = zones
                     .Where(z => existingMap.ContainsKey(z.Id) && comboMap.ContainsKey(z.Id))
                     .ToList();
-                
+
                 // Add parameters for each VALID zone (ensures indices match CASE statements)
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     var zone = validZones[i];
                     var clashZoneId = existingMap[zone.Id];
                     var comboId = comboMap[zone.Id];
-                    
+
                     // Extract values
                     var mepId = zone.MepElementId?.IntegerValue ?? zone.MepElementIdValue;
                     var hostId = zone.StructuralElementId?.IntegerValue ?? zone.StructuralElementIdValue;
                     var interX = zone.IntersectionPoint?.X ?? zone.IntersectionPointX;
                     var interY = zone.IntersectionPoint?.Y ?? zone.IntersectionPointY;
                     var interZ = zone.IntersectionPoint?.Z ?? zone.IntersectionPointZ;
-                    
+
                     // Determine flags (preserve database resets)
                     bool finalIsResolved = zone.IsResolved;
                     bool finalIsClusterResolved = zone.IsClusterResolved;
                     bool finalIsCombinedResolved = zone.IsCombinedResolved;
                     int finalSleeveId = zone.SleeveInstanceId;
                     int finalClusterId = zone.ClusterSleeveInstanceId;
-                    
+
                     if (flagMap.TryGetValue(clashZoneId, out var dbFlags))
                     {
                         // If database has reset flags (false, false, -1, -1), preserve them
@@ -604,14 +616,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             finalIsCombinedResolved = false;
                             finalSleeveId = -1;
                             finalClusterId = -1;
-                            
+
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
                                 _logger($"[SQLite][BULK] ✅ PRESERVING reset flags for ClashZoneId={clashZoneId}, GUID={zone.Id}: IsResolved=false, IsClusterResolved=false, IsCombinedResolved=false");
                             }
                         }
                     }
-                    
+
                     // ✅ CRITICAL FIX: Serialize parameters to JSON for bulk update
                     var mepParamsJson = "{}";
                     if (zone.MepParameterValues != null && zone.MepParameterValues.Count > 0)
@@ -619,26 +631,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         var mepDict = zone.MepParameterValues
                             .Where(kv => kv != null && !string.IsNullOrEmpty(kv.Key) && !string.IsNullOrEmpty(kv.Value))
                             .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
-                        
+
                         if (mepDict.Count > 0)
                         {
                             mepParamsJson = JsonSerializer.Serialize(mepDict);
                         }
                     }
-                    
+
                     var hostParamsJson = "{}";
                     if (zone.HostParameterValues != null && zone.HostParameterValues.Count > 0)
                     {
                         var hostDict = zone.HostParameterValues
                             .Where(kv => kv != null && !string.IsNullOrEmpty(kv.Key) && !string.IsNullOrEmpty(kv.Value))
                             .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
-                        
+
                         if (hostDict.Count > 0)
                         {
                             hostParamsJson = JsonSerializer.Serialize(hostDict);
                         }
                     }
-                    
+
                     // ✅ DIAGNOSTIC: Log parameter serialization for debugging
                     if (!DeploymentConfiguration.DeploymentMode && string.Equals(zone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
                     {
@@ -649,7 +661,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             _logger($"[SQLite][BULK] Zone {zone.Id}: Serializing {mepCount} MEP params → {mepDictCount} in JSON for bulk update");
                         }
                     }
-                    
+
                     // Add parameters
                     cmd.Parameters.AddWithValue($"@ComboId{i}", comboId);
                     cmd.Parameters.AddWithValue($"@MepId{i}", mepId);
@@ -673,21 +685,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     cmd.Parameters.AddWithValue($"@StructuralThickness{i}", zone.StructuralElementThickness);
                     cmd.Parameters.AddWithValue($"@HostOrientation{i}", (object)zone.HostOrientation ?? DBNull.Value);
                     cmd.Parameters.AddWithValue($"@MepOrientationDirection{i}", (object)zone.MepElementOrientationDirection ?? DBNull.Value);
-                    
+
                     // ✅ CRITICAL FIX: Add MEP category, structural type, and orientation fields
                     cmd.Parameters.AddWithValue($"@MepCategory{i}", (object)zone.MepElementCategory ?? DBNull.Value);
                     cmd.Parameters.AddWithValue($"@StructuralType{i}", (object)zone.StructuralElementType ?? DBNull.Value);
                     cmd.Parameters.AddWithValue($"@MepOrientationX{i}", zone.MepElementOrientationX);
                     cmd.Parameters.AddWithValue($"@MepOrientationY{i}", zone.MepElementOrientationY);
                     cmd.Parameters.AddWithValue($"@MepOrientationZ{i}", zone.MepElementOrientationZ);
-                    
+
                     // ✅ CRITICAL FIX: Add MEP rotation and angle fields (for rotation logic)
                     var rotationAngleRad = zone.MepElementRotationAngle;
                     var rotationAngleDeg = NormalizeDegrees(rotationAngleRad);
                     var orientationDirection = zone.MepElementOrientationDirection ?? string.Empty;
                     var (angleToXRad, angleToXDeg, angleToYRad, angleToYDeg) =
                         ComputePlanarOrientationAngles(zone.MepElementOrientationX, zone.MepElementOrientationY, orientationDirection);
-                    
+
                     cmd.Parameters.AddWithValue($"@MepRotationAngleRad{i}", rotationAngleRad);
                     cmd.Parameters.AddWithValue($"@MepRotationAngleDeg{i}", rotationAngleDeg);
                     cmd.Parameters.AddWithValue($"@MepRotationCos{i}", Math.Cos(rotationAngleRad));
@@ -696,24 +708,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     cmd.Parameters.AddWithValue($"@MepAngleToXDeg{i}", angleToXDeg);
                     cmd.Parameters.AddWithValue($"@MepAngleToYRad{i}", angleToYRad);
                     cmd.Parameters.AddWithValue($"@MepAngleToYDeg{i}", angleToYDeg);
-                    
+
                     // ✅ CRITICAL FIX: Add pipe diameter and size parameter fields
                     cmd.Parameters.AddWithValue($"@MepElementOuterDiameter{i}", (object)zone.MepElementOuterDiameter ?? DBNull.Value);
                     cmd.Parameters.AddWithValue($"@MepElementNominalDiameter{i}", (object)zone.MepElementNominalDiameter ?? DBNull.Value);
                     cmd.Parameters.AddWithValue($"@MepElementSizeParameterValue{i}", (object)zone.MepElementSizeParameterValue ?? DBNull.Value);
-                    
+
                     // ✅ CRITICAL FIX: Add sleeve family name and document keys
                     cmd.Parameters.AddWithValue($"@SleeveFamilyName{i}", (object)zone.SleeveFamilyName ?? DBNull.Value);
                     cmd.Parameters.AddWithValue($"@SourceDocKey{i}", (object)zone.SourceDocKey ?? DBNull.Value);
                     cmd.Parameters.AddWithValue($"@HostDocKey{i}", (object)zone.HostDocKey ?? DBNull.Value);
                     cmd.Parameters.AddWithValue($"@MepElementUniqueId{i}", (object)zone.MepElementUniqueId ?? DBNull.Value);
-                    
+
                     // ✅ CRITICAL FIX: Add damper connector and insulation fields
                     cmd.Parameters.AddWithValue($"@HasMepConnector{i}", zone.HasMepConnector ? 1 : 0);
                     cmd.Parameters.AddWithValue($"@DamperConnectorSide{i}", (object)zone.DamperConnectorSide ?? DBNull.Value);
                     cmd.Parameters.AddWithValue($"@IsInsulated{i}", zone.IsInsulated ? 1 : 0);
                     cmd.Parameters.AddWithValue($"@InsulationThickness{i}", (object)zone.InsulationThickness ?? DBNull.Value);
-                    
+
                     // ✅ REFERENCE LEVEL: Add MEP element Reference Level (used for Schedule Level and Bottom of Opening calculation)
                     cmd.Parameters.AddWithValue($"@MepElementLevelName{i}", (object)zone.MepElementLevelName ?? DBNull.Value);
                     // ✅ REFERENCE LEVEL ELEVATION: Add MEP element Reference Level elevation (critical for Elevation from Level and Bottom of Opening calculation)
@@ -722,7 +734,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     cmd.Parameters.AddWithValue($"@WallCenterlinePointX{i}", zone.WallCenterlinePointX);
                     cmd.Parameters.AddWithValue($"@WallCenterlinePointY{i}", zone.WallCenterlinePointY);
                     cmd.Parameters.AddWithValue($"@WallCenterlinePointZ{i}", zone.WallCenterlinePointZ);
-                    
+
                     cmd.Parameters.AddWithValue($"@ZoneId{i}", clashZoneId);
                 }
 
@@ -733,42 +745,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @ComboId{i}");
                 }
                 sql.AppendLine("    ELSE ComboId END,");
-                
+
                 sql.AppendLine("  MepElementId = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepId{i}");
                 }
                 sql.AppendLine("    ELSE MepElementId END,");
-                
+
                 sql.AppendLine("  HostElementId = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @HostId{i}");
                 }
                 sql.AppendLine("    ELSE HostElementId END,");
-                
+
                 sql.AppendLine("  IntersectionX = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @InterX{i}");
                 }
                 sql.AppendLine("    ELSE IntersectionX END,");
-                
+
                 sql.AppendLine("  IntersectionY = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @InterY{i}");
                 }
                 sql.AppendLine("    ELSE IntersectionY END,");
-                
+
                 sql.AppendLine("  IntersectionZ = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @InterZ{i}");
                 }
                 sql.AppendLine("    ELSE IntersectionZ END,");
-                
+
                 // ✅ WALL CENTERLINE POINT: Pre-calculated during refresh (enables multi-threaded placement)
                 sql.AppendLine("  WallCenterlinePointX = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
@@ -776,56 +788,56 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @WallCenterlinePointX{i}");
                 }
                 sql.AppendLine("    ELSE WallCenterlinePointX END,");
-                
+
                 sql.AppendLine("  WallCenterlinePointY = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @WallCenterlinePointY{i}");
                 }
                 sql.AppendLine("    ELSE WallCenterlinePointY END,");
-                
+
                 sql.AppendLine("  WallCenterlinePointZ = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @WallCenterlinePointZ{i}");
                 }
                 sql.AppendLine("    ELSE WallCenterlinePointZ END,");
-                
+
                 sql.AppendLine("  IsResolvedFlag = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @IsResolved{i}");
                 }
                 sql.AppendLine("    ELSE IsResolvedFlag END,");
-                
+
                 sql.AppendLine("  IsClusterResolvedFlag = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @IsClusterResolved{i}");
                 }
                 sql.AppendLine("    ELSE IsClusterResolvedFlag END,");
-                
+
                 sql.AppendLine("  IsCombinedResolved = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @IsCombinedResolved{i}");
                 }
                 sql.AppendLine("    ELSE IsCombinedResolved END,");
-                
+
                 sql.AppendLine("  SleeveInstanceId = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @SleeveId{i}");
                 }
                 sql.AppendLine("    ELSE SleeveInstanceId END,");
-                
+
                 sql.AppendLine("  ClusterInstanceId = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @ClusterId{i}");
                 }
                 sql.AppendLine("    ELSE ClusterInstanceId END,");
-                
+
                 // ✅ CRITICAL FIX: Add MepParameterValuesJson and HostParameterValuesJson to bulk update
                 sql.AppendLine("  MepParameterValuesJson = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
@@ -833,14 +845,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepParamsJson{i}");
                 }
                 sql.AppendLine("    ELSE MepParameterValuesJson END,");
-                
+
                 sql.AppendLine("  HostParameterValuesJson = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @HostParamsJson{i}");
                 }
                 sql.AppendLine("    ELSE HostParameterValuesJson END,");
-                
+
                 // ✅ CRITICAL FIX: Add MEP dimensions and thickness to bulk update
                 // These are essential for damper sizing and depth calculation
                 sql.AppendLine("  MepWidth = CASE ClashZoneId");
@@ -849,49 +861,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepWidth{i}");
                 }
                 sql.AppendLine("    ELSE MepWidth END,");
-                
+
                 sql.AppendLine("  MepHeight = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepHeight{i}");
                 }
                 sql.AppendLine("    ELSE MepHeight END,");
-                
+
                 sql.AppendLine("  WallThickness = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @WallThickness{i}");
                 }
                 sql.AppendLine("    ELSE WallThickness END,");
-                
+
                 sql.AppendLine("  FramingThickness = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @FramingThickness{i}");
                 }
                 sql.AppendLine("    ELSE FramingThickness END,");
-                
+
                 sql.AppendLine("  StructuralThickness = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @StructuralThickness{i}");
                 }
                 sql.AppendLine("    ELSE StructuralThickness END,");
-                
+
                 sql.AppendLine("  HostOrientation = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @HostOrientation{i}");
                 }
                 sql.AppendLine("    ELSE HostOrientation END,");
-                
+
                 sql.AppendLine("  MepOrientationDirection = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepOrientationDirection{i}");
                 }
                 sql.AppendLine("    ELSE MepOrientationDirection END,");
-                
+
                 // ✅ CRITICAL FIX: Add MEP category and structural type to bulk update
                 sql.AppendLine("  MepCategory = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
@@ -899,14 +911,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepCategory{i}");
                 }
                 sql.AppendLine("    ELSE MepCategory END,");
-                
+
                 sql.AppendLine("  StructuralType = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @StructuralType{i}");
                 }
                 sql.AppendLine("    ELSE StructuralType END,");
-                
+
                 // ✅ CRITICAL FIX: Add MEP orientation vectors to bulk update
                 sql.AppendLine("  MepOrientationX = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
@@ -914,21 +926,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepOrientationX{i}");
                 }
                 sql.AppendLine("    ELSE MepOrientationX END,");
-                
+
                 sql.AppendLine("  MepOrientationY = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepOrientationY{i}");
                 }
                 sql.AppendLine("    ELSE MepOrientationY END,");
-                
+
                 sql.AppendLine("  MepOrientationZ = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepOrientationZ{i}");
                 }
                 sql.AppendLine("    ELSE MepOrientationZ END,");
-                
+
                 // ✅ CRITICAL FIX: Add MEP rotation angles to bulk update
                 sql.AppendLine("  MepRotationAngleRad = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
@@ -936,56 +948,56 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepRotationAngleRad{i}");
                 }
                 sql.AppendLine("    ELSE MepRotationAngleRad END,");
-                
+
                 sql.AppendLine("  MepRotationAngleDeg = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepRotationAngleDeg{i}");
                 }
                 sql.AppendLine("    ELSE MepRotationAngleDeg END,");
-                
+
                 sql.AppendLine("  MepRotationCos = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepRotationCos{i}");
                 }
                 sql.AppendLine("    ELSE MepRotationCos END,");
-                
+
                 sql.AppendLine("  MepRotationSin = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepRotationSin{i}");
                 }
                 sql.AppendLine("    ELSE MepRotationSin END,");
-                
+
                 sql.AppendLine("  MepAngleToXRad = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepAngleToXRad{i}");
                 }
                 sql.AppendLine("    ELSE MepAngleToXRad END,");
-                
+
                 sql.AppendLine("  MepAngleToXDeg = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepAngleToXDeg{i}");
                 }
                 sql.AppendLine("    ELSE MepAngleToXDeg END,");
-                
+
                 sql.AppendLine("  MepAngleToYRad = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepAngleToYRad{i}");
                 }
                 sql.AppendLine("    ELSE MepAngleToYRad END,");
-                
+
                 sql.AppendLine("  MepAngleToYDeg = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepAngleToYDeg{i}");
                 }
                 sql.AppendLine("    ELSE MepAngleToYDeg END,");
-                
+
                 // ✅ CRITICAL FIX: Add pipe diameter and size parameter to bulk update
                 sql.AppendLine("  MepElementOuterDiameter = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
@@ -993,28 +1005,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepElementOuterDiameter{i}");
                 }
                 sql.AppendLine("    ELSE MepElementOuterDiameter END,");
-                
+
                 sql.AppendLine("  MepElementNominalDiameter = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepElementNominalDiameter{i}");
                 }
                 sql.AppendLine("    ELSE MepElementNominalDiameter END,");
-                
+
                 sql.AppendLine("  MepElementSizeParameterValue = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepElementSizeParameterValue{i}");
                 }
                 sql.AppendLine("    ELSE MepElementSizeParameterValue END,");
-                
+
                 sql.AppendLine("  SleeveFamilyName = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @SleeveFamilyName{i}");
                 }
                 sql.AppendLine("    ELSE SleeveFamilyName END,");
-                
+
                 // ✅ REFERENCE LEVEL: Add MEP element Reference Level to bulk update
                 sql.AppendLine("  MepElementLevelName = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
@@ -1022,7 +1034,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepElementLevelName{i}");
                 }
                 sql.AppendLine("    ELSE MepElementLevelName END,");
-                
+
                 // ✅ REFERENCE LEVEL ELEVATION: Add MEP element Reference Level elevation to bulk update (critical for Elevation from Level and Bottom of Opening calculation)
                 sql.AppendLine("  MepElementLevelElevation = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
@@ -1030,7 +1042,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepElementLevelElevation{i}");
                 }
                 sql.AppendLine("    ELSE MepElementLevelElevation END,");
-                
+
                 // ✅ CRITICAL FIX: Add document keys to bulk update
                 sql.AppendLine("  SourceDocKey = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
@@ -1038,21 +1050,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @SourceDocKey{i}");
                 }
                 sql.AppendLine("    ELSE SourceDocKey END,");
-                
+
                 sql.AppendLine("  HostDocKey = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @HostDocKey{i}");
                 }
                 sql.AppendLine("    ELSE HostDocKey END,");
-                
+
                 sql.AppendLine("  MepElementUniqueId = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepElementUniqueId{i}");
                 }
                 sql.AppendLine("    ELSE MepElementUniqueId END,");
-                
+
                 // ✅ CRITICAL FIX: Add damper connector and insulation fields to bulk update
                 sql.AppendLine("  HasMepConnector = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
@@ -1060,32 +1072,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @HasMepConnector{i}");
                 }
                 sql.AppendLine("    ELSE HasMepConnector END,");
-                
+
                 sql.AppendLine("  DamperConnectorSide = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @DamperConnectorSide{i}");
                 }
                 sql.AppendLine("    ELSE DamperConnectorSide END,");
-                
+
                 sql.AppendLine("  IsInsulated = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @IsInsulated{i}");
                 }
                 sql.AppendLine("    ELSE IsInsulated END,");
-                
+
                 sql.AppendLine("  InsulationThickness = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @InsulationThickness{i}");
                 }
                 sql.AppendLine("    ELSE InsulationThickness END");
-                
+
                 sql.AppendLine($"WHERE ClashZoneId IN ({idList})");
-                
+
                 cmd.CommandText = sql.ToString();
-                
+
                 // ✅ CRITICAL DIAGNOSTIC: Log the SQL and parameter values for debugging
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
@@ -1096,7 +1108,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     {
                         _logger($"[SQLite][BULK] SQL includes parameter updates: {string.Join(" | ", paramLines)}");
                     }
-                    
+
                     // Log parameter values being set
                     foreach (var zone in zones)
                     {
@@ -1112,14 +1124,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         }
                     }
                 }
-                
+
                 var rowsAffected = cmd.ExecuteNonQuery();
-                
+
                 // ✅ CRITICAL DIAGNOSTIC: Verify rows were updated
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     _logger($"[SQLite][BULK] ✅ Bulk UPDATE executed: {rowsAffected} rows affected for {zones.Count} zones");
-                    
+
                     // ✅ VERIFY: Check if parameters were actually saved
                     if (rowsAffected > 0)
                     {
@@ -1133,7 +1145,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 verifyCmd.Parameters.AddWithValue("@ClashZoneId", clashZoneId);
                                 var savedJson = verifyCmd.ExecuteScalar()?.ToString() ?? "NULL";
                                 var savedLength = savedJson != "NULL" && savedJson != "{}" ? savedJson.Length : 0;
-                                
+
                                 if (string.Equals(zone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
                                 {
                                     _logger($"[SQLite][BULK] ✅ VERIFICATION: Zone {zone.Id} (ClashZoneId={clashZoneId}): Saved MepParameterValuesJson length={savedLength}, preview={(savedLength > 0 ? savedJson.Substring(0, Math.Min(100, savedLength)) : savedJson)}");
@@ -1160,46 +1172,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             var dbDiagnosticLogPath = SafeFileLogger.GetLogFilePath("save_db_diagnostic.log");
             var diagnosticLog = new System.Text.StringBuilder();
             var startTime = DateTime.Now;
-            
+
             try
             {
                 var zonesList = clashZones.ToList();
                 diagnosticLog.AppendLine($"[{startTime:yyyy-MM-dd HH:mm:ss.fff}] === SaveToDatabase START ===");
                 diagnosticLog.AppendLine($"[{startTime:HH:mm:ss.fff}] Input count: {zonesList.Count}");
-                
+
                 // Sample data (first 10)
                 var sample = string.Join(", ", zonesList.Take(10).Select(z => $"{z.Id}:{z.SleeveInstanceId}"));
                 diagnosticLog.AppendLine($"[{startTime:HH:mm:ss.fff}] Sample (first 10): {sample}");
-                
+
                 diagnosticLog.AppendLine($"[{startTime:HH:mm:ss.fff}] Filter name: '{filterName}', Category: '{category}'");
                 diagnosticLog.AppendLine($"[{startTime:HH:mm:ss.fff}] Database path: {_context.DatabasePath}");
                 diagnosticLog.AppendLine($"[{startTime:HH:mm:ss.fff}] Database exists: {System.IO.File.Exists(_context.DatabasePath)}");
 
-            using (var transaction = _context.Connection.BeginTransaction())
-            {
-                try
+                using (var transaction = _context.Connection.BeginTransaction())
                 {
-                        diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Step 1: Beginning transaction...");
-                        
-                    // Retrieve existing filter; do not create new entries
-                    var filterId = GetOrCreateFilter(filterName, category, transaction);
-                        diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Step 1: FilterId={filterId}");
-                        
-                    if (filterId <= 0)
+                    try
                     {
+                        diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Step 1: Beginning transaction...");
+
+                        // Retrieve existing filter; do not create new entries
+                        var filterId = GetOrCreateFilter(filterName, category, transaction);
+                        diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Step 1: FilterId={filterId}");
+
+                        if (filterId <= 0)
+                        {
                             diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Step 1 FAILED: Filter '{filterName}' with category '{category}' does not exist in SQLite.");
-                        _logger($"[SQLite] ⚠️ Skipping persistence: Filter '{filterName}' with category '{category}' does not exist in SQLite.");
-                        transaction.Rollback();
-                            
+                            _logger($"[SQLite] ⚠️ Skipping persistence: Filter '{filterName}' with category '{category}' does not exist in SQLite.");
+                            transaction.Rollback();
+
                             diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] === SaveToDatabase END (FAILED - Filter not found) ===");
                             File.AppendAllText(dbDiagnosticLogPath, diagnosticLog.ToString());
-                        return;
-                    }
-                        
+                            return;
+                        }
+
                         diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Step 1 SUCCESS: FilterId={filterId}");
                         diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Step 2: Processing {zonesList.Count} clash zones...");
 
-                    var processedZones = new List<(int ComboId, ClashZone Zone)>();
+                        var processedZones = new List<(int ComboId, ClashZone Zone)>();
                         int insertedCount = 0;
                         int updatedCount = 0;
                         int skippedCount = 0;
@@ -1207,7 +1219,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         int comboExistingCount = 0;
 
                         foreach (var clashZone in zonesList)
-                    {
+                        {
                             if (clashZone == null)
                             {
                                 skippedCount++;
@@ -1217,18 +1229,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                             // ✅ STEP 1: Get or create file combo with category and host categories
                             diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Processing zone {clashZone.Id}: Getting/creating file combo...");
-                            
+
                             // ✅ CRITICAL: Get category from clash zone (MEP category)
                             string mepCategory = clashZone.MepElementCategory ?? category;
-                            
+
                             // ✅ CRITICAL: Get host categories from FilterUiStateProvider or fallback
-                            List<string>? hostCategories = null;
+                            List<string> hostCategories = null;
                             if (FilterUiStateProvider.GetSelectedHostCategories != null)
                             {
                                 hostCategories = FilterUiStateProvider.GetSelectedHostCategories.Invoke();
                             }
-                            
-                        var comboId = GetOrCreateFileCombo(filterId, mepCategory, hostCategories ?? new List<string>(), clashZone, transaction);
+
+                            var comboId = GetOrCreateFileCombo(filterId, mepCategory, hostCategories ?? new List<string>(), clashZone, transaction);
 
                             if (comboId <= 0)
                             {
@@ -1239,7 +1251,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 _logger($"[SQLite] {errorMsg}");
                                 continue; // Skip this zone - cannot save without a valid comboId
                             }
-                            
+
                             // ✅ STEP 2: Track combo creation/retrieval
                             if (processedZones.Any(p => p.Zone.Id == clashZone.Id))
                             {
@@ -1277,39 +1289,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Stack trace: {zoneEx.StackTrace}");
                                 _logger($"[SQLite] {errorMsg}");
                             }
-                            
-                        processedZones.Add((comboId, clashZone));
-                    }
+
+                            processedZones.Add((comboId, clashZone));
+                        }
 
                         diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Step 2 SUCCESS: Processed={processedZones.Count}, Inserted={insertedCount}, Updated={updatedCount}, Skipped={skippedCount}, CombosCreated={comboCreatedCount}, CombosExisting={comboExistingCount}");
                         diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Step 2 Sample (first 10 processed): {string.Join(", ", processedZones.Take(10).Select(p => $"{p.Zone.Id}:{p.ComboId}"))}");
-                        
+
                         diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Step 3: Inserting/updating sleeve snapshots...");
-                    InsertOrUpdateSleeveSnapshots(filterId, processedZones, transaction);
+                        InsertOrUpdateSleeveSnapshots(filterId, processedZones, transaction);
                         diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Step 3 SUCCESS: Sleeve snapshots updated");
 
                         diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Step 4: Committing transaction...");
-                    transaction.Commit();
+                        transaction.Commit();
                         diagnosticLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] Step 4 SUCCESS: Transaction committed");
-                        
+
                         var endTime = DateTime.Now;
                         var duration = (endTime - startTime).TotalMilliseconds;
                         diagnosticLog.AppendLine($"[{endTime:HH:mm:ss.fff}] ✅ Database save complete: {zonesList.Count} zones, Duration={duration:F0}ms");
                         diagnosticLog.AppendLine($"[{endTime:HH:mm:ss.fff}] === SaveToDatabase END (SUCCESS) ===");
-                        
+
                         _logger($"[SQLite] ✅ Inserted/updated {zonesList.Count} clash zones for filter '{filterName}', category '{category}'");
-                }
-                catch (Exception ex)
-                {
+                    }
+                    catch (Exception ex)
+                    {
                         var errorTime = DateTime.Now;
                         diagnosticLog.AppendLine($"[{errorTime:HH:mm:ss.fff}] ❌ ERROR: {ex.Message}");
                         diagnosticLog.AppendLine($"[{errorTime:HH:mm:ss.fff}] Stack trace: {ex.StackTrace}");
                         diagnosticLog.AppendLine($"[{errorTime:HH:mm:ss.fff}] === SaveToDatabase END (FAILED) ===");
-                        
-                    transaction.Rollback();
-                    _logger($"[SQLite] ❌ Error inserting/updating clash zones: {ex.Message}");
-                    throw;
-                }
+
+                        transaction.Rollback();
+                        _logger($"[SQLite] ❌ Error inserting/updating clash zones: {ex.Message}");
+                        throw;
+                    }
                     finally
                     {
                         // Write diagnostic log to file
@@ -1326,13 +1338,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 var errorTime = DateTime.Now;
                 diagnosticLog.AppendLine($"[{errorTime:HH:mm:ss.fff}] ❌ FATAL ERROR: {ex.Message}");
                 diagnosticLog.AppendLine($"[{errorTime:HH:mm:ss.fff}] === SaveToDatabase END (FATAL ERROR) ===");
-                
+
                 try
                 {
                     File.AppendAllText(dbDiagnosticLogPath, diagnosticLog.ToString() + "\n");
                 }
                 catch { }
-                
+
                 throw;
             }
         }
@@ -1391,19 +1403,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             // ✅ FIX: Use same fallback logic as ClashZonePersistenceService.GetFileComboKey()
             // Try SourceDocKey first, then fall back to DocumentPath
             var linkedFileKey = NormalizeDocumentKey(
-                !string.IsNullOrWhiteSpace(clashZone.SourceDocKey) 
-                    ? clashZone.SourceDocKey 
+                !string.IsNullOrWhiteSpace(clashZone.SourceDocKey)
+                    ? clashZone.SourceDocKey
                     : (!string.IsNullOrWhiteSpace(clashZone.DocumentPath) ? clashZone.DocumentPath : "unknown-linked"));
-            
+
             // Try HostDocKey first, then fall back to StructuralElementDocumentTitle
             var hostFileKey = NormalizeDocumentKey(
-                !string.IsNullOrWhiteSpace(clashZone.HostDocKey) 
-                    ? clashZone.HostDocKey 
+                !string.IsNullOrWhiteSpace(clashZone.HostDocKey)
+                    ? clashZone.HostDocKey
                     : (!string.IsNullOrWhiteSpace(clashZone.StructuralElementDocumentTitle) ? clashZone.StructuralElementDocumentTitle : "unknown-host"));
 
             // ✅ CRITICAL: Normalize category
             string normalizedCategory = MepCategoryConstants.Normalize(category ?? "Unknown");
-            
+
             // ✅ CRITICAL: Store host categories as comma-separated string (not JSON) for readability
             // User wants "Floors" not ["Floors"] in database
             string hostCategoriesJson = null;
@@ -1430,7 +1442,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             using (var cmd = _context.Connection.CreateCommand())
             {
                 cmd.Transaction = transaction;
-                
+
                 // ✅ STEP 1: Check if file combo already exists (with Category in UNIQUE constraint)
                 cmd.CommandText = @"
                     SELECT ComboId FROM FileCombos 
@@ -1460,7 +1472,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             updateCmd.ExecuteNonQuery();
                         }
                     }
-                    
+
                     if (!DeploymentConfiguration.DeploymentMode)
                         _logger($"[SQLite] ✅ Found existing FileCombo: ComboId={comboId}, FilterId={filterId}, Category='{normalizedCategory}', Linked='{linkedFileKey}', Host='{hostFileKey}'");
                     return comboId;
@@ -1471,21 +1483,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     INSERT INTO FileCombos (FilterId, Category, SelectedHostCategories, LinkedFileKey, HostFileKey, IsFilterComboNew, ProcessedAt, CreatedAt, UpdatedAt)
                     VALUES (@FilterId, @Category, @SelectedHostCategories, @LinkedFileKey, @HostFileKey, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
                     SELECT last_insert_rowid();";
-                
+
                 cmd.Parameters.Clear();
                 cmd.Parameters.AddWithValue("@FilterId", filterId);
                 cmd.Parameters.AddWithValue("@Category", normalizedCategory);
                 cmd.Parameters.AddWithValue("@SelectedHostCategories", hostCategoriesJson ?? (object)DBNull.Value);
                 cmd.Parameters.AddWithValue("@LinkedFileKey", linkedFileKey);
                 cmd.Parameters.AddWithValue("@HostFileKey", hostFileKey);
-                
+
                 var newIdObj = cmd.ExecuteScalar();
                 if (newIdObj == null)
                 {
                     _logger($"[SQLite] ❌ Failed to create FileCombo: INSERT returned NULL for FilterId={filterId}, Category='{normalizedCategory}', Linked='{linkedFileKey}', Host='{hostFileKey}'");
                     return -1;
                 }
-                
+
                 var newId = Convert.ToInt32(newIdObj);
                 if (!DeploymentConfiguration.DeploymentMode)
                     _logger($"[SQLite] ✅ Created new FileCombo: ComboId={newId}, FilterId={filterId}, Category='{normalizedCategory}', HostCategories={selectedHostCategories?.Count ?? 0}, Linked='{linkedFileKey}', Host='{hostFileKey}'");
@@ -1505,7 +1517,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 var intersectionY = clashZone.IntersectionPoint?.Y ?? clashZone.IntersectionPointY;
                 var intersectionZ = clashZone.IntersectionPoint?.Z ?? clashZone.IntersectionPointZ;
                 var guid = clashZone.Id.ToString().ToUpperInvariant();
-                
+
                 // ✅ CRITICAL FIX: Check by GUID FIRST (to prevent UNIQUE constraint violation)
                 // Use UPPER() on both sides for case-insensitive comparison, and check for empty/NULL
                 // This ensures deterministic GUIDs always match existing rows
@@ -1514,7 +1526,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid) 
                       AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL
                     LIMIT 1";
-                
+
                 cmd.Parameters.AddWithValue("@ClashZoneGuid", guid);
                 var existingIdByGuid = cmd.ExecuteScalar();
 
@@ -1522,13 +1534,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 {
                     // ✅ Found by GUID - update existing
                     var clashZoneId = Convert.ToInt32(existingIdByGuid);
-                    
+
                     // ✅ DIAGNOSTIC: Log GUID match for troubleshooting
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         _logger($"[SQLite] ✅ GUID MATCH: Found existing ClashZoneId={clashZoneId} for GUID={guid} - will UPDATE (not insert)");
                     }
-                    
+
                     UpdateClashZone(clashZoneId, comboId, clashZone, transaction);
                     return false; // Was an update
                 }
@@ -1537,7 +1549,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     // ✅ DIAGNOSTIC: Log GUID mismatch for troubleshooting
                     _logger($"[SQLite] ⚠️ GUID NOT FOUND: GUID={guid} not in database - will check MEP+Host+Point fallback");
                 }
-                
+
                 // ✅ FALLBACK: Check by MEP+Host+Point if GUID didn't match
                 // This handles cases where GUID wasn't set or is different (legacy data)
                 cmd.CommandText = @"
@@ -1549,7 +1561,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                       AND ABS(IntersectionY - @IntersectionY) < 0.001
                       AND ABS(IntersectionZ - @IntersectionZ) < 0.001
                     LIMIT 1";
-                
+
                 cmd.Parameters.Clear();
                 cmd.Parameters.AddWithValue("@ComboId", comboId);
                 cmd.Parameters.AddWithValue("@MepElementId", mepElementId);
@@ -1564,7 +1576,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 {
                     // ✅ FALLBACK MATCH: Found by MEP+Host+Point - update existing AND set GUID
                     var clashZoneId = Convert.ToInt32(existingId);
-                    
+
                     // ✅ CRITICAL FIX: If we found a row by MEP+Host+Point but GUID didn't match,
                     // update the existing row's GUID to the deterministic GUID
                     // This ensures future updates will match by GUID (faster lookup)
@@ -1579,7 +1591,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 updateCmd.Parameters.AddWithValue("@ClashZoneGuid", guid);
                                 updateCmd.Parameters.AddWithValue("@ClashZoneId", clashZoneId);
                                 updateCmd.ExecuteNonQuery();
-                                
+
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
                                     _logger($"[SQLite] ✅ FALLBACK MATCH + GUID UPDATE: Found ClashZoneId={clashZoneId} by MEP+Host+Point, updated GUID to {guid}");
@@ -1594,12 +1606,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             }
                         }
                     }
-                    
+
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         _logger($"[SQLite] ✅ FALLBACK MATCH: Found existing ClashZoneId={clashZoneId} by MEP+Host+Point - will UPDATE (not insert)");
                     }
-                    
+
                     UpdateClashZone(clashZoneId, comboId, clashZone, transaction);
                     return false; // Was an update
                 }
@@ -1610,7 +1622,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     {
                         _logger($"[SQLite] ✅ NEW INSERT: No match found for GUID={guid} or MEP={mepElementId}+Host={hostElementId}+Point=({intersectionX:F3},{intersectionY:F3},{intersectionZ:F3}) - creating new row");
                     }
-                    
+
                     InsertClashZone(comboId, clashZone, transaction);
                     return true; // Was an insert
                 }
@@ -1687,7 +1699,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                 AddClashZoneParameters(cmd, comboId, clashZone);
                 cmd.ExecuteNonQuery();
-                
+
                 // ✅ R-TREE MAINTENANCE: Get inserted ClashZoneId and update R-tree index
                 cmd.CommandText = "SELECT last_insert_rowid()";
                 var insertedId = Convert.ToInt32(cmd.ExecuteScalar());
@@ -1706,11 +1718,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 SafeFileLogger.SafeAppendText("save_db_diagnostic.log",
                     $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Zone {clashZone.Id} (ClashZoneId={clashZoneId}): UpdateClashZone - OuterDiameter={clashZone.MepElementOuterDiameter:F6}ft ({odMm:F1}mm), NominalDiameter={clashZone.MepElementNominalDiameter:F6}ft ({nomMm:F1}mm), SizeParameterValue='{clashZone.MepElementSizeParameterValue ?? "NULL"}'\n");
             }
-            
+
             using (var cmd = _context.Connection.CreateCommand())
             {
                 cmd.Transaction = transaction;
-                
+
                 // ✅ CRITICAL FIX: Smart flag/ID preservation logic to handle both deleted sleeves and moved MEP elements
                 // Flags and SleeveInstanceIds are a PAIR - they must be consistent!
                 // Flags are managed by FlagManager (ResetFlagsForDeletedSleeves, UpdateFlagsForPlacement, DeleteSleeveForIntersectionPointChange)
@@ -1722,7 +1734,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 // 3. If clash zone has no sleeve IDs AND entry is not reset:
                 //    a. If entry in DB has flags=true and IDs>0: Update to clash zone values (MEP moved, old sleeve deleted)
                 //    This handles the "Adopt to Document" scenario where MEP moves, old sleeve is deleted, new sleeve will be placed
-                
+
                 // ✅ CRITICAL: ALWAYS read existing flags from database FIRST to check if FlagManager already reset them
                 // This must happen regardless of whether ClashZone has sleeve IDs, because ClashZone might have stale values
                 cmd.CommandText = @"
@@ -1730,13 +1742,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     FROM ClashZones
                     WHERE ClashZoneId = @ClashZoneId";
                 cmd.Parameters.AddWithValue("@ClashZoneId", clashZoneId);
-                
+
                 int? existingIsResolved = null;
                 int? existingIsClusterResolved = null;
                 int? existingSleeveInstanceId = null;
                 int? existingClusterInstanceId = null;
                 bool entryWasResetByFlagManager = false;
-                
+
                 using (var reader = cmd.ExecuteReader())
                 {
                     if (reader.Read())
@@ -1745,16 +1757,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         existingIsClusterResolved = GetInt(reader, "IsClusterResolvedFlag", 0);
                         existingSleeveInstanceId = GetInt(reader, "SleeveInstanceId", -1);
                         existingClusterInstanceId = GetInt(reader, "ClusterInstanceId", -1);
-                        
+
                         // Check if FlagManager already reset this entry (flags=false, IDs=-1)
-                        entryWasResetByFlagManager = existingIsResolved == 0 && existingIsClusterResolved == 0 && 
+                        entryWasResetByFlagManager = existingIsResolved == 0 && existingIsClusterResolved == 0 &&
                                                      existingSleeveInstanceId <= 0 && existingClusterInstanceId <= 0;
                     }
                 }
                 cmd.Parameters.Clear();
-                
+
                 bool zoneHasSleeve = clashZone.SleeveInstanceId > 0 || clashZone.ClusterSleeveInstanceId > 0;
-                
+
                 // ✅ CRITICAL: If entry was reset by FlagManager, ALWAYS preserve flags/IDs, even if ClashZone has stale values
                 // This prevents SaveClashZones from overwriting correctly reset flags with old values from clash zone objects
                 // 
@@ -1763,17 +1775,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 // This handles the case where new zones are created during refresh and should update existing resolved zones.
                 bool zoneIsUnresolved = !clashZone.IsResolved && !clashZone.IsClusterResolved && clashZone.SleeveInstanceId <= 0 && clashZone.ClusterSleeveInstanceId <= 0;
                 bool preserveFlags = entryWasResetByFlagManager && !zoneIsUnresolved;
-                
+
                 if (preserveFlags && !DeploymentConfiguration.DeploymentMode)
                 {
                     _logger($"[SQLite] ✅ PRESERVING reset flags for ClashZoneId={clashZoneId}, GUID={clashZone.Id}: IsResolved=false, IsClusterResolved=false (FlagManager reset, ClashZone has stale values)");
                 }
-                
+
                 if (zoneIsUnresolved && !entryWasResetByFlagManager && !DeploymentConfiguration.DeploymentMode)
                 {
                     _logger($"[SQLite] ✅ OVERRIDING flags for ClashZoneId={clashZoneId}, GUID={clashZone.Id}: Setting IsResolved=false, IsClusterResolved=false (new unresolved zone from refresh)");
                 }
-                
+
                 cmd.CommandText = @"
                     UPDATE ClashZones SET
                         SleeveState = @SleeveState,
@@ -1849,7 +1861,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 AddClashZoneParameters(cmd, comboId, clashZone, preserveFlags, existingIsResolved, existingIsClusterResolved, existingSleeveInstanceId, existingClusterInstanceId);
                 cmd.Parameters.AddWithValue("@ClashZoneId", clashZoneId);
                 cmd.ExecuteNonQuery();
-                
+
                 // ✅ R-TREE MAINTENANCE: Update R-tree index when clash zone is updated
                 UpdateRTreeIndex(clashZoneId, clashZone, transaction);
             }
@@ -1895,7 +1907,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             cmd.Parameters.AddWithValue("@WallCenterlinePointX", clashZone.WallCenterlinePointX);
             cmd.Parameters.AddWithValue("@WallCenterlinePointY", clashZone.WallCenterlinePointY);
             cmd.Parameters.AddWithValue("@WallCenterlinePointZ", clashZone.WallCenterlinePointZ);
-            
+
             // ✅ DIAGNOSTIC: Log WallCenterlinePoint values being saved (ALWAYS log for dampers, even in deployment mode)
             if (string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
             {
@@ -1908,7 +1920,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     $"{zeroWarning}\n");
             }
             cmd.Parameters.AddWithValue("@SleeveState", sleeveState);
-            
+
             // ✅ CRITICAL FIX: Preserve existing sleeve IDs from database if preserveFlags=true
             // Flags and SleeveInstanceIds are a PAIR - they must be consistent!
             if (preserveFlags && existingSleeveInstanceId.HasValue && existingClusterInstanceId.HasValue)
@@ -1920,15 +1932,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             else
             {
                 // Use clash zone sleeve IDs (for new entries or when sleeve was placed)
-            cmd.Parameters.AddWithValue("@SleeveInstanceId", (object)clashZone.SleeveInstanceId ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@ClusterInstanceId", (object)clashZone.ClusterSleeveInstanceId ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@SleeveInstanceId", (object)clashZone.SleeveInstanceId ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@ClusterInstanceId", (object)clashZone.ClusterSleeveInstanceId ?? DBNull.Value);
             }
             // ✅ DIAGNOSTIC: Log sleeve dimensions before saving
             if (!DeploymentConfiguration.DeploymentMode && clashZone.SleeveInstanceId > 0)
             {
                 _logger($"[SQLite] [SLEEVE-DIMENSIONS] ClashZone {clashZone.Id}: SleeveWidth={clashZone.SleeveWidth}, SleeveHeight={clashZone.SleeveHeight}, SleeveDiameter={clashZone.SleeveDiameter}, SleeveInstanceId={clashZone.SleeveInstanceId}");
             }
-            
+
             cmd.Parameters.AddWithValue("@SleeveWidth", (object)clashZone.SleeveWidth ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@SleeveHeight", (object)clashZone.SleeveHeight ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@SleeveDiameter", (object)clashZone.SleeveDiameter ?? DBNull.Value);
@@ -1970,7 +1982,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             cmd.Parameters.AddWithValue("@MepAngleToYDeg", angleToYDeg);
             cmd.Parameters.AddWithValue("@MepWidth", clashZone.MepElementWidth);
             cmd.Parameters.AddWithValue("@MepHeight", clashZone.MepElementHeight);
-            
+
             // ✅ DIAGNOSTIC: Log MEP element sizes being saved to database (for debugging sleeve size issues)
             if (!DeploymentConfiguration.DeploymentMode)
             {
@@ -1979,13 +1991,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 SafeFileLogger.SafeAppendText("refresh_mep_sizes.log",
                     $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [DB-SAVE] Zone {clashZone.Id}: Saving MepWidth={clashZone.MepElementWidth:F6}ft ({widthMm:F1}mm), MepHeight={clashZone.MepElementHeight:F6}ft ({heightMm:F1}mm) to database\n");
             }
-            
+
             // ✅ PIPE DIAMETER COLUMNS: Add outer diameter and nominal diameter parameters
             cmd.Parameters.AddWithValue("@MepElementOuterDiameter", clashZone.MepElementOuterDiameter);
             cmd.Parameters.AddWithValue("@MepElementNominalDiameter", clashZone.MepElementNominalDiameter);
             // ✅ SIZE PARAMETER VALUE: Add Size parameter value as string for snapshot table and parameter transfer
             cmd.Parameters.AddWithValue("@MepElementSizeParameterValue", (object)clashZone.MepElementSizeParameterValue ?? DBNull.Value);
-            
+
             // ✅ DIAGNOSTIC: Log pipe diameters and size parameter value being saved
             if (!DeploymentConfiguration.DeploymentMode && string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
             {
@@ -1995,7 +2007,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 SafeFileLogger.SafeAppendText("save_db_diagnostic.log",
                     $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Zone {clashZone.Id}: Pipe diameters - OuterDiameter={clashZone.MepElementOuterDiameter:F6}ft ({odMm:F1}mm), NominalDiameter={clashZone.MepElementNominalDiameter:F6}ft ({nomMm:F1}mm), SizeParameterValue='{clashZone.MepElementSizeParameterValue ?? "NULL"}'\n");
             }
-            
+
             // ✅ DIAGNOSTIC: Log MEP dimensions being saved for duct accessories
             if (!DeploymentConfiguration.DeploymentMode && string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
             {
@@ -2013,7 +2025,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             cmd.Parameters.AddWithValue("@SourceDocKey", (object)clashZone.SourceDocKey ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@HostDocKey", (object)clashZone.HostDocKey ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@MepElementUniqueId", (object)clashZone.MepElementUniqueId ?? DBNull.Value);
-            
+
             // ✅ CRITICAL FIX: Preserve existing flags from database if preserveFlags=true
             // This prevents SaveClashZones from overwriting correctly reset flags with old values from clash zone objects
             if (preserveFlags && existingIsResolved.HasValue && existingIsClusterResolved.HasValue)
@@ -2025,26 +2037,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             else
             {
                 // Use clash zone flags (for new entries or when sleeve was placed)
-            cmd.Parameters.AddWithValue("@IsResolvedFlag", clashZone.IsResolved ? 1 : 0);
-            cmd.Parameters.AddWithValue("@IsClusterResolvedFlag", clashZone.IsClusterResolved ? 1 : 0);
+                cmd.Parameters.AddWithValue("@IsResolvedFlag", clashZone.IsResolved ? 1 : 0);
+                cmd.Parameters.AddWithValue("@IsClusterResolvedFlag", clashZone.IsClusterResolved ? 1 : 0);
             }
-            
+
             cmd.Parameters.AddWithValue("@IsClusteredFlag", isClustered);
             cmd.Parameters.AddWithValue("@MarkedForClusterProcess", markedForCluster);
             cmd.Parameters.AddWithValue("@AfterClusterSleeveId", clashZone.AfterClusterSleevePlacedSleeveInstanceId);
             cmd.Parameters.AddWithValue("@HasDamperNearbyFlag", clashZone.HasDamperNearby ? 1 : 0);
             cmd.Parameters.AddWithValue("@IsCurrentClashFlag", clashZone.IsCurrentClash ? 1 : 0);
             cmd.Parameters.AddWithValue("@ReadyForPlacementFlag", clashZone.ReadyForPlacement ? 1 : 0);
-            
+
             // ✅ CRITICAL: Add thickness parameters for depth calculation
             cmd.Parameters.AddWithValue("@StructuralThickness", clashZone.StructuralElementThickness);
             cmd.Parameters.AddWithValue("@WallThickness", clashZone.WallThickness);
             cmd.Parameters.AddWithValue("@FramingThickness", clashZone.FramingThickness);
-            
+
             // ✅ PARAMETER VALUES: Serialize parameter values to JSON for storage
             // Convert List<SerializableKeyValue> to Dictionary<string, string> then to JSON
             var mepParamsJson = "{}";
-            
+
             // ✅ CRITICAL DIAGNOSTIC: Log parameter availability before serialization
             var mepParamCount = clashZone.MepParameterValues?.Count ?? 0;
             if (!DeploymentConfiguration.DeploymentMode && string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
@@ -2053,13 +2065,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 var mepSampleStr = mepSampleKeys.Count > 0 ? string.Join(", ", mepSampleKeys) : "none";
                 _logger($"[SQLite] [PARAM-SERIALIZE] Zone {clashZone.Id}: MepParameterValues={(clashZone.MepParameterValues != null ? "NOT NULL" : "NULL")}, Count={mepParamCount}, Sample keys: {mepSampleStr}");
             }
-            
+
             if (clashZone.MepParameterValues != null && clashZone.MepParameterValues.Count > 0)
             {
                 // ✅ LOGGING: Track filtered parameters for debugging
                 var filteredOut = new List<string>();
                 var mepDict = clashZone.MepParameterValues
-                    .Where(kv => 
+                    .Where(kv =>
                     {
                         if (kv == null || string.IsNullOrEmpty(kv.Key))
                         {
@@ -2075,23 +2087,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         return true;
                     })
                     .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
-                
+
                 // ✅ LOGGING: Log filtered parameters for debugging
                 if (filteredOut.Count > 0 && !DeploymentConfiguration.DeploymentMode)
                 {
                     _logger($"[SQLite] ⚠️ Filtered out {filteredOut.Count} empty MEP parameters for zone {clashZone.Id} (MEP={clashZone.MepElementId?.IntegerValue ?? clashZone.MepElementIdValue}): {string.Join(", ", filteredOut)}");
                 }
-                
+
                 // ✅ LOGGING: Log parameter count comparison
                 if (!DeploymentConfiguration.DeploymentMode && clashZone.MepParameterValues.Count > mepDict.Count)
                 {
                     _logger($"[SQLite] 📊 Parameter count for zone {clashZone.Id}: Captured={clashZone.MepParameterValues.Count}, Saved={mepDict.Count}, Filtered={clashZone.MepParameterValues.Count - mepDict.Count}");
                 }
-                
+
                 if (mepDict.Count > 0)
                 {
                     mepParamsJson = JsonSerializer.Serialize(mepDict);
-                    
+
                     // ✅ CRITICAL DIAGNOSTIC: Log parameter serialization for debugging
                     if (!DeploymentConfiguration.DeploymentMode && string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
                     {
@@ -2110,14 +2122,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             {
                 _logger($"[SQLite] [PARAM-SERIALIZE] ⚠️ Zone {clashZone.Id}: MepParameterValues is NULL or empty (Count={clashZone.MepParameterValues?.Count ?? 0})");
             }
-            
+
             var hostParamsJson = "{}";
             if (clashZone.HostParameterValues != null && clashZone.HostParameterValues.Count > 0)
             {
                 // ✅ LOGGING: Track filtered parameters for debugging
                 var filteredOutHost = new List<string>();
                 var hostDict = clashZone.HostParameterValues
-                    .Where(kv => 
+                    .Where(kv =>
                     {
                         if (kv == null || string.IsNullOrEmpty(kv.Key))
                         {
@@ -2133,26 +2145,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         return true;
                     })
                     .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
-                
+
                 // ✅ LOGGING: Log filtered parameters for debugging
                 if (filteredOutHost.Count > 0 && !DeploymentConfiguration.DeploymentMode)
                 {
                     _logger($"[SQLite] ⚠️ Filtered out {filteredOutHost.Count} empty Host parameters for zone {clashZone.Id} (Host={clashZone.StructuralElementId?.IntegerValue ?? clashZone.StructuralElementIdValue}): {string.Join(", ", filteredOutHost)}");
                 }
-                
+
                 if (hostDict.Count > 0)
                 {
                     hostParamsJson = JsonSerializer.Serialize(hostDict);
                 }
             }
-            
+
             cmd.Parameters.AddWithValue("@MepParameterValuesJson", mepParamsJson);
             cmd.Parameters.AddWithValue("@HostParameterValuesJson", hostParamsJson);
-            
+
             // ✅ OOP METHOD: Add damper connector detection parameters
             cmd.Parameters.AddWithValue("@HasMepConnector", clashZone.HasMepConnector ? 1 : 0);
             cmd.Parameters.AddWithValue("@DamperConnectorSide", (object)clashZone.DamperConnectorSide ?? string.Empty);
-            
+
             // ✅ OOP METHOD: Add insulation detection parameters
             cmd.Parameters.AddWithValue("@IsInsulated", clashZone.IsInsulated ? 1 : 0);
             cmd.Parameters.AddWithValue("@InsulationThickness", clashZone.InsulationThickness);
@@ -2184,14 +2196,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             int clusterCount = placedZones.Count(z => z != null && z.ClusterSleeveInstanceId > 0);
             int bothCount = placedZones.Count(z => z != null && z.SleeveInstanceId > 0 && z.ClusterSleeveInstanceId > 0);
             int invalidCount = placedZones.Count(z => z == null || (z.SleeveInstanceId <= 0 && z.ClusterSleeveInstanceId <= 0));
-            
+
             // ✅ CRITICAL: Log category breakdown to identify if pipes are being filtered out
             var categoryBreakdown = placedZones
                 .Where(z => z != null)
                 .GroupBy(z => z.MepElementCategory ?? "Unknown")
                 .Select(g => $"{g.Key}={g.Count()}({g.Count(z => z.SleeveInstanceId > 0)} with SleeveId)")
                 .ToList();
-            
+
             // ✅ CRITICAL: Log pipe-specific details
             int pipeCount = placedZones.Count(z => z != null && string.Equals(z.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase));
             int pipeWithSleeveId = placedZones.Count(z => z != null && string.Equals(z.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase) && z.SleeveInstanceId > 0);
@@ -2200,7 +2212,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 .Take(5)
                 .Select(z => $"{z.Id}:SleeveId={z.SleeveInstanceId}, Category={z.MepElementCategory}")
                 .ToList();
-            
+
             // ✅ CRITICAL: Always log this diagnostic (even in deployment mode) to debug missing individual sleeves
             string diagnosticMsg = $"[SQLite] SaveSleeveSnapshotsForPlacedSleeves: Total={placedZones.Count}, Individual={individualCount}, Cluster={clusterCount}, Both={bothCount}, Invalid={invalidCount}, Categories=[{string.Join(", ", categoryBreakdown)}], Pipes={pipeCount}({pipeWithSleeveId} with SleeveId)";
             _logger(diagnosticMsg);
@@ -2216,7 +2228,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 {
                     _logger($"[SQLite] SaveSleeveSnapshotsForPlacedSleeves: Individual sleeve samples: {string.Join(", ", individualSamples)}");
                 }
-                
+
                 // ✅ CRITICAL: Always log pipe samples if any exist
                 if (pipeSamples.Any())
                 {
@@ -2238,7 +2250,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             return -1; // ComboId will be determined from FilterId + Category + FileKeys
                         })
                         .ToList();
-                    
+
                     // ✅ DIAGNOSTIC: Log filtered zones
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
@@ -2275,12 +2287,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                             {
                                                 var dbSourceDocKey = GetNullableString(reader, "SourceDocKey");
                                                 var dbHostDocKey = GetNullableString(reader, "HostDocKey");
-                                                
+
                                                 if (!string.IsNullOrWhiteSpace(dbSourceDocKey))
                                                     zone.SourceDocKey = dbSourceDocKey;
                                                 if (!string.IsNullOrWhiteSpace(dbHostDocKey))
                                                     zone.HostDocKey = dbHostDocKey;
-                                                
+
                                                 if (!DeploymentConfiguration.DeploymentMode && (!string.IsNullOrWhiteSpace(dbSourceDocKey) || !string.IsNullOrWhiteSpace(dbHostDocKey)))
                                                 {
                                                     _logger($"[SQLite] ✅ Reloaded SourceDocKey/HostDocKey for zone {zone.Id} from database");
@@ -2304,7 +2316,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         try
                         {
                             var firstZone = zones[0];
-                            
+
                             // ✅ CRITICAL FIX: Try multiple strategies to get ComboId
                             // Strategy 1: Use SourceDocKey and HostDocKey from zone (if available)
                             if (!string.IsNullOrWhiteSpace(firstZone.SourceDocKey) && !string.IsNullOrWhiteSpace(firstZone.HostDocKey))
@@ -2346,7 +2358,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     }
                                 }
                             }
-                            
+
                             // ✅ Strategy 2: If keys are missing, load them from database using ClashZoneGuid
                             if (comboId <= 0 && firstZone.Id != Guid.Empty)
                             {
@@ -2366,13 +2378,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                             var dbSourceDocKey = GetNullableString(reader, "SourceDocKey");
                                             var dbHostDocKey = GetNullableString(reader, "HostDocKey");
                                             var dbComboId = GetInt(reader, "ComboId", -1);
-                                            
+
                                             // Update zone with keys from database
                                             if (!string.IsNullOrWhiteSpace(dbSourceDocKey))
                                                 firstZone.SourceDocKey = dbSourceDocKey;
                                             if (!string.IsNullOrWhiteSpace(dbHostDocKey))
                                                 firstZone.HostDocKey = dbHostDocKey;
-                                            
+
                                             // If ComboId is available directly, use it
                                             if (dbComboId > 0)
                                             {
@@ -2426,7 +2438,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     }
                                 }
                             }
-                            
+
                             // ✅ Strategy 3: If still no ComboId, try to get it from any zone in the group that has SleeveInstanceId
                             if (comboId <= 0)
                             {
@@ -2453,7 +2465,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     }
                                 }
                             }
-                            
+
                             // ✅ DIAGNOSTIC: Log when all strategies fail
                             if (comboId <= 0)
                             {
@@ -2477,20 +2489,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                         // Create processed zones list
                         var processedZones = zones.Select(z => (comboId, z)).ToList();
-                        
+
                         // Call private method with transaction
                         InsertOrUpdateSleeveSnapshotsInternal(filterId, processedZones, transaction);
                     }
 
                     transaction.Commit();
-                    
+
                     // ✅ CRITICAL SAFETY: Verify snapshots were saved correctly
                     var verificationResult = VerifySnapshotCompleteness(placedZones, transaction);
                     if (!verificationResult.Success)
                     {
                         _logger($"[SQLite] ⚠️⚠️⚠️ SNAPSHOT VERIFICATION FAILED: {verificationResult.Message}");
                         _logger($"[SQLite] Missing snapshots for sleeves: {string.Join(", ", verificationResult.MissingSleeveIds)}");
-                        
+
                         // Don't throw - log warning but allow operation to continue
                         // Retry mechanism will handle missing snapshots on next refresh
                     }
@@ -2550,7 +2562,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 .ToList();
             int validPipes = validZones.Count(p => p.Zone != null && string.Equals(p.Zone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase));
             int validPipeIndividual = validZones.Count(p => p.Zone != null && string.Equals(p.Zone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase) && p.Zone.SleeveInstanceId > 0 && p.Zone.ClusterSleeveInstanceId <= 0);
-            
+
             if (!DeploymentConfiguration.DeploymentMode)
             {
                 int individualZones = validZones.Count(p => p.Zone.SleeveInstanceId > 0 && p.Zone.ClusterSleeveInstanceId <= 0);
@@ -2576,7 +2588,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             int clusterGroups = groups.Count((IGrouping<(string, int), (int ComboId, ClashZone Zone)> g) => string.Equals(g.Key.Item1, "cluster", StringComparison.OrdinalIgnoreCase));
             int sleeveGroups = groups.Count((IGrouping<(string, int), (int ComboId, ClashZone Zone)> g) => string.Equals(g.Key.Item1, "sleeve", StringComparison.OrdinalIgnoreCase));
             int skippedGroups = groups.Count((IGrouping<(string, int), (int ComboId, ClashZone Zone)> g) => g.Key.Item2 <= 0);
-            
+
             // ✅ CRITICAL: Count pipes in each group type for diagnostic purposes
             int pipeGroups = 0;
             int pipeZonesInGroups = 0;
@@ -2595,7 +2607,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     pipeZonesSkipped += pipesInGroup;
                 }
             }
-            
+
             string logMsg = $"[SQLite] InsertOrUpdateSleeveSnapshotsInternal: Grouped into {groupsCount} groups (Cluster={clusterGroups}, Sleeve={sleeveGroups}, Skipped={skippedGroups}), Pipes: {pipeGroups} groups with {pipeZonesInGroups} zones ({pipeZonesSkipped} skipped)";
             _logger(logMsg);
 
@@ -2609,7 +2621,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 var sampleZone = group.Select(g => g.Zone).FirstOrDefault(z => z != null);
                 var zonesInGroup = group.Select(g => g.Zone).Where(z => z != null).ToList();
                 int pipesInGroup = zonesInGroup.Count(z => string.Equals(z.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase));
-                string sampleInfo = sampleZone != null 
+                string sampleInfo = sampleZone != null
                     ? $"Sample: ZoneId={sampleZone.Id}, SleeveId={sampleZone.SleeveInstanceId}, ClusterId={sampleZone.ClusterSleeveInstanceId}, Category={sampleZone.MepElementCategory}, HasMepParams={sampleZone.MepParameterValues?.Count > 0}, HasHostParams={sampleZone.HostParameterValues?.Count > 0}"
                     : "No valid zones in group";
                 _logger($"[SQLite] InsertOrUpdateSleeveSnapshotsInternal: Processing group - isCluster={isCluster}, groupId={groupId}, zoneCount={group.Count()}, Pipes={pipesInGroup}, {sampleInfo}");
@@ -2646,7 +2658,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 // ✅ DEBUG: Check if zones have parameter values before aggregating
                 var zonesWithMepParams = zones.Count(z => z.MepParameterValues != null && z.MepParameterValues.Count > 0);
                 var zonesWithHostParams = zones.Count(z => z.HostParameterValues != null && z.HostParameterValues.Count > 0);
-                
+
                 // ✅ CRITICAL FIX: ALWAYS load parameters from ClashZones table as fallback
                 // Database is the source of truth - ensure we have the latest parameters
                 // This fixes cases where zones have partial or missing parameters
@@ -2654,14 +2666,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 {
                     _logger($"[SQLite] ⚠️ SleeveSnapshots: {zones.Count} zones, but only {zonesWithMepParams} have MEP params, {zonesWithHostParams} have Host params. Loading from ClashZones table...");
                 }
-                
+
                 // ✅ AGGRESSIVE FALLBACK: Load parameters from database for ALL zones that need them
                 // Check each zone individually and load if missing or incomplete
                 foreach (var zone in zones)
                 {
                     var needsMepParams = zone.MepParameterValues == null || zone.MepParameterValues.Count == 0;
                     var needsHostParams = zone.HostParameterValues == null || zone.HostParameterValues.Count == 0;
-                    
+
                     // ✅ DIAGNOSTIC: Log parameter availability before loading
                     if (!DeploymentConfiguration.DeploymentMode && (needsMepParams || needsHostParams))
                     {
@@ -2670,12 +2682,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         var mepCount = zone.MepParameterValues?.Count ?? 0;
                         _logger($"[SQLite] Zone {zone.Id} (SleeveId={zone.SleeveInstanceId}): Before load - HasMepParams={hasMepParams} ({mepCount} params), HasHostParams={hasHostParams}");
                     }
-                    
+
                     // ✅ ALWAYS load from database if parameters are missing (database is source of truth)
                     if (needsMepParams || needsHostParams)
                     {
                         LoadParameterValuesFromDatabase(zone, transaction);
-                        
+
                         // ✅ DIAGNOSTIC: Log parameter availability after loading
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
@@ -2683,7 +2695,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             var hasHostParamsAfter = zone.HostParameterValues != null && zone.HostParameterValues.Count > 0;
                             var mepParamCount = zone.MepParameterValues?.Count ?? 0;
                             _logger($"[SQLite] Zone {zone.Id} (SleeveId={zone.SleeveInstanceId}): After load - HasMepParams={hasMepParamsAfter} ({mepParamCount} params), HasHostParams={hasHostParamsAfter}");
-                            
+
                             if (hasMepParamsAfter && mepParamCount > 0)
                             {
                                 var sampleKeys = zone.MepParameterValues.Take(5).Select(kv => kv.Key).ToList();
@@ -2696,21 +2708,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         }
                     }
                 }
-                
+
                 // Re-count after loading
                 zonesWithMepParams = zones.Count(z => z.MepParameterValues != null && z.MepParameterValues.Count > 0);
                 zonesWithHostParams = zones.Count(z => z.HostParameterValues != null && z.HostParameterValues.Count > 0);
-                
+
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     _logger($"[SQLite] ✅ After loading from ClashZones table: {zonesWithMepParams}/{zones.Count} zones have MEP params, {zonesWithHostParams}/{zones.Count} have Host params");
                 }
-                
+
                 if (!DeploymentConfiguration.DeploymentMode && zones.Count > 0 && (zonesWithMepParams == 0 || zonesWithHostParams == 0))
                 {
                     _logger($"[SQLite] ⚠️ SleeveSnapshots: {zones.Count} zones, but only {zonesWithMepParams} have MEP params, {zonesWithHostParams} have Host params. This may result in empty JSON.");
                 }
-                
+
                 // ✅ CRITICAL DEBUG: Log Size parameter availability before aggregation
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
@@ -2722,10 +2734,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         .ToList();
                     _logger($"[SQLite] SleeveSnapshots: Before aggregation - {zonesWithSizeParam}/{zones.Count} zones have MepElementSizeParameterValue. Samples: {string.Join(", ", sampleSizeValues)}");
                 }
-                
+
                 var mepParams = AggregateParameterValues(zones, useHost: false);
                 var hostParams = AggregateParameterValues(zones, useHost: true);
-                
+
                 // ✅ CRITICAL SAFETY: Validate critical parameters are present
                 var criticalParamValidation = ValidateCriticalParameters(mepParams, hostParams, zones, isCluster, groupId);
                 if (!criticalParamValidation.IsValid)
@@ -2733,23 +2745,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     _logger($"[SQLite] ⚠️⚠️⚠️ CRITICAL PARAMETER MISSING for groupId={groupId}: {criticalParamValidation.Message}");
                     // Continue anyway - parameter transfer will attempt fallback to Revit
                 }
-                
+
                 // ✅ DEBUG: Log aggregated parameter counts and check if Size is present
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     var sizeKvp = mepParams.FirstOrDefault(kvp => string.Equals(kvp.Key, "Size", StringComparison.OrdinalIgnoreCase));
                     bool hasSizeParam = sizeKvp.Key != null;
                     string sizeValue = hasSizeParam ? sizeKvp.Value : "NOT FOUND";
-                    
+
                     // ✅ ENHANCED LOGGING: Show all parameter keys for debugging
                     var allParamKeys = string.Join(", ", mepParams.Keys.Take(15));
                     var moreCount = mepParams.Count > 15 ? $" (+{mepParams.Count - 15} more)" : "";
                     _logger($"[SQLite] SleeveSnapshots: Aggregated {mepParams.Count} MEP params, {hostParams.Count} Host params for {zones.Count} zones (isCluster={isCluster}, groupId={groupId}). Size parameter: {(hasSizeParam ? $"FOUND='{sizeValue}'" : "MISSING")}. All MEP params: {allParamKeys}{moreCount}");
-                    
+
                     // ✅ CRITICAL: Log if parameters are empty after aggregation
                     if (mepParams.Count == 0 && zones.Count > 0)
                     {
-                        var zoneSamples = zones.Take(3).Select(z => 
+                        var zoneSamples = zones.Take(3).Select(z =>
                             $"ZoneId={z.Id}, HasMepParams={z.MepParameterValues?.Count > 0} ({z.MepParameterValues?.Count ?? 0} params), HasSizeValue={!string.IsNullOrWhiteSpace(z.MepElementSizeParameterValue)}"
                         ).ToList();
                         _logger($"[SQLite] ⚠️⚠️⚠️ CRITICAL: No MEP parameters after aggregation! Zone samples: {string.Join("; ", zoneSamples)}");
@@ -2786,8 +2798,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 // ✅ DETERMINISTIC GUID: For individual sleeves, use the zone's Id (deterministic GUID)
                 // For clusters, use the first zone's GUID as the primary identifier
                 // ✅ CRITICAL FIX: Ensure GUID matches what's in ClashZones table by querying the database
-                string? clashZoneGuidString = null;
-                
+                string clashZoneGuidString = null;
+
                 if (isCluster && clusterInstanceId.HasValue && clusterInstanceId.Value > 0)
                 {
                     // ✅ For cluster sleeves, get GUID from ClashZones table where ClusterInstanceId matches
@@ -2809,18 +2821,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         }
                     }
                 }
-                
+
                 // ✅ Fallback: Use first zone's GUID if database lookup failed or for individual sleeves
                 if (string.IsNullOrEmpty(clashZoneGuidString))
                 {
                     clashZoneGuidString = zones.FirstOrDefault()?.Id.ToString().ToUpperInvariant();
                 }
-                
+
                 // ✅ CRITICAL DEBUG: Log GUID extraction for diagnostic purposes
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     _logger($"[SQLite] [UPSERT-DEBUG] Attempting upsert with ClashZoneGuid='{clashZoneGuidString ?? "NULL"}', SourceType='{(isCluster ? "Cluster" : "Individual")}', GroupId={groupId}, ClusterInstanceId={clusterInstanceId?.ToString() ?? "NULL"}, SleeveInstanceId={sleeveInstanceId?.ToString() ?? "NULL"}, GUIDSource='{(isCluster && clusterInstanceId.HasValue ? "DB" : "Zone.Id")}'");
-                    
+
                     // ✅ DIAGNOSTIC: Check if existing snapshot exists before upsert
                     if (isCluster && clusterInstanceId.HasValue && clusterInstanceId.Value > 0)
                     {
@@ -2845,7 +2857,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         }
                     }
                 }
-                
+
                 UpsertSleeveSnapshot(
                     transaction,
                     new SleeveSnapshot
@@ -2875,23 +2887,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             // ✅ DETERMINISTIC GUID PRIORITY: Check by ClashZoneGuid first (deterministic matching)
             // Then fall back to SleeveInstanceId/ClusterInstanceId for legacy data or when GUID is missing
             var existingId = GetExistingSnapshotId(
-                snapshot.ClashZoneGuid, 
-                snapshot.SleeveInstanceId, 
-                snapshot.ClusterInstanceId, 
+                snapshot.ClashZoneGuid,
+                snapshot.SleeveInstanceId,
+                snapshot.ClusterInstanceId,
                 transaction);
 
             if (existingId.HasValue)
             {
                 snapshot.SnapshotId = existingId.Value;
-                
+
                 // ✅ DIAGNOSTIC: Log what SleeveInstanceId is being updated
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     _logger($"[SQLite] [UPSERT] Updating snapshot SnapshotId={existingId.Value} with SleeveInstanceId={snapshot.SleeveInstanceId?.ToString() ?? "NULL"}, ClusterInstanceId={snapshot.ClusterInstanceId?.ToString() ?? "NULL"}, ClashZoneGuid='{snapshot.ClashZoneGuid ?? "NULL"}'");
                 }
-                
+
                 UpdateSleeveSnapshot(transaction, snapshot);
-                
+
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     _logger($"[SQLite] ✅ UPSERT: Updated existing SleeveSnapshot SnapshotId={existingId.Value} (ClashZoneGuid={snapshot.ClashZoneGuid ?? "NULL"}, SleeveInstanceId={snapshot.SleeveInstanceId?.ToString() ?? "NULL"}, ClusterInstanceId={snapshot.ClusterInstanceId?.ToString() ?? "NULL"})");
@@ -2900,7 +2912,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             else
             {
                 InsertSleeveSnapshot(transaction, snapshot);
-                
+
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     _logger($"[SQLite] ✅ UPSERT: Inserted new SleeveSnapshot (ClashZoneGuid={snapshot.ClashZoneGuid ?? "NULL"}, SleeveInstanceId={snapshot.SleeveInstanceId?.ToString() ?? "NULL"}, ClusterInstanceId={snapshot.ClusterInstanceId?.ToString() ?? "NULL"})");
@@ -2913,25 +2925,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// then fall back to SleeveInstanceId/ClusterInstanceId for legacy data or when GUID is missing.
         /// This ensures snapshots are updated instead of appended, following the deterministic GUID principle.
         /// </summary>
-        private int? GetExistingSnapshotId(string? clashZoneGuid, int? sleeveInstanceId, int? clusterInstanceId, SQLiteTransaction transaction)
+        private int? GetExistingSnapshotId(string clashZoneGuid, int? sleeveInstanceId, int? clusterInstanceId, SQLiteTransaction transaction)
         {
             using (var cmd = _context.Connection.CreateCommand())
             {
                 cmd.Transaction = transaction;
 
                 // ✅ PRIORITY 1: Check by ClashZoneGuid (deterministic GUID) - most reliable
-                                if (!string.IsNullOrWhiteSpace(clashZoneGuid))
-                                {
-                                        // ✅ CRITICAL FIX: Normalize GUID to uppercase for consistent comparison
-                                        var normalizedGuid = clashZoneGuid != null ? clashZoneGuid.ToUpperInvariant().Trim() : string.Empty;
-                                        // ✅ FIXED: Use simpler comparison - SQLite UPPER() is sufficient, TRIM() may cause issues
-                                        cmd.CommandText = @"
+                if (!string.IsNullOrWhiteSpace(clashZoneGuid))
+                {
+                    // ✅ CRITICAL FIX: Normalize GUID to uppercase for consistent comparison
+                    var normalizedGuid = clashZoneGuid != null ? clashZoneGuid.ToUpperInvariant().Trim() : string.Empty;
+                    // ✅ FIXED: Use simpler comparison - SQLite UPPER() is sufficient, TRIM() may cause issues
+                    cmd.CommandText = @"
                                                 SELECT SnapshotId FROM SleeveSnapshots 
                                                 WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid) 
                                                     AND ClashZoneGuid IS NOT NULL 
                                                     AND ClashZoneGuid != ''
                                                 LIMIT 1";
-                                        cmd.Parameters.AddWithValue("@ClashZoneGuid", normalizedGuid);
+                    cmd.Parameters.AddWithValue("@ClashZoneGuid", normalizedGuid);
 
                     var resultByGuid = cmd.ExecuteScalar();
                     if (resultByGuid != null && resultByGuid != DBNull.Value)
@@ -2942,7 +2954,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         }
                         return Convert.ToInt32(resultByGuid);
                     }
-                    
+
                     // ✅ DEBUG: Log when GUID lookup fails to help diagnose issues
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
@@ -2952,7 +2964,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             SELECT COUNT(*) FROM SleeveSnapshots 
                             WHERE ClashZoneGuid IS NOT NULL AND ClashZoneGuid != ''";
                         var totalWithGuid = cmd.ExecuteScalar();
-                        
+
                         // ✅ DIAGNOSTIC: Also check what GUIDs are actually in the database (sample)
                         cmd.Parameters.Clear();
                         cmd.CommandText = @"
@@ -2969,7 +2981,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     sampleGuids.Add(guid);
                             }
                         }
-                        
+
                         _logger($"[SQLite] ⚠️ GUID lookup FAILED for ClashZoneGuid='{normalizedGuid}' - No matching snapshot found (Total snapshots with GUID: {totalWithGuid}, Sample GUIDs in DB: [{string.Join(", ", sampleGuids)}])");
                     }
                 }
@@ -2980,7 +2992,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     cmd.Parameters.Clear();
                     cmd.CommandText = "SELECT SnapshotId FROM SleeveSnapshots WHERE SleeveInstanceId = @SleeveInstanceId LIMIT 1";
                     cmd.Parameters.AddWithValue("@SleeveInstanceId", sleeveInstanceId.Value);
-                    
+
                     var resultBySleeveId = cmd.ExecuteScalar();
                     if (resultBySleeveId != null && resultBySleeveId != DBNull.Value)
                     {
@@ -2998,7 +3010,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     cmd.Parameters.Clear();
                     cmd.CommandText = "SELECT SnapshotId FROM SleeveSnapshots WHERE ClusterInstanceId = @ClusterInstanceId LIMIT 1";
                     cmd.Parameters.AddWithValue("@ClusterInstanceId", clusterInstanceId.Value);
-                    
+
                     var resultByClusterId = cmd.ExecuteScalar();
                     if (resultByClusterId != null && resultByClusterId != DBNull.Value)
                     {
@@ -3077,7 +3089,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                 AddSnapshotParameters(cmd, snapshot);
                 cmd.ExecuteNonQuery();
-                
+
                 // ✅ LOG: Log all columns of inserted row (one sample row)
                 var snapshotParams = new Dictionary<string, object>
                 {
@@ -3094,12 +3106,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     { "HostDocKeysJson", snapshot.HostDocKeysJson ?? "NULL" },
                     { "ClashZoneGuid", snapshot.ClashZoneGuid ?? "NULL" }
                 };
-                
+
                 // ✅ ENHANCED LOGGING: Show parameter details for INSERT
                 int mepParamCount = 0;
                 int hostParamCount = 0;
                 string mepParamSample = "";
-                
+
                 if (!string.IsNullOrWhiteSpace(snapshot.MepParametersJson) && snapshot.MepParametersJson != "{}")
                 {
                     try
@@ -3114,7 +3126,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     }
                     catch { }
                 }
-                
+
                 if (!string.IsNullOrWhiteSpace(snapshot.HostParametersJson) && snapshot.HostParametersJson != "{}")
                 {
                     try
@@ -3127,7 +3139,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     }
                     catch { }
                 }
-                
+
                 string additionalInfo = $"✅ Inserted NEW snapshot for SleeveId={snapshot.SleeveInstanceId}, ClusterId={snapshot.ClusterInstanceId}";
                 if (mepParamCount > 0)
                 {
@@ -3141,7 +3153,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 {
                     additionalInfo += $", Host params: {hostParamCount}";
                 }
-                
+
                 DatabaseOperationLogger.LogOperation(
                     "INSERT",
                     "SleeveSnapshots",
@@ -3176,7 +3188,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 AddSnapshotParameters(cmd, snapshot);
                 cmd.Parameters.AddWithValue("@SnapshotId", snapshot.SnapshotId);
                 var rowsAffected = cmd.ExecuteNonQuery();
-                
+
                 // ✅ LOG: Log UPDATE operation with parameter details
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
@@ -3184,7 +3196,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     int mepParamCount = 0;
                     int hostParamCount = 0;
                     string mepParamSample = "";
-                    
+
                     if (!string.IsNullOrWhiteSpace(snapshot.MepParametersJson) && snapshot.MepParametersJson != "{}")
                     {
                         try
@@ -3199,7 +3211,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         }
                         catch { }
                     }
-                    
+
                     if (!string.IsNullOrWhiteSpace(snapshot.HostParametersJson) && snapshot.HostParametersJson != "{}")
                     {
                         try
@@ -3212,7 +3224,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         }
                         catch { }
                     }
-                    
+
                     var updateParams = new Dictionary<string, object>
                     {
                         { "SnapshotId", snapshot.SnapshotId.ToString() },
@@ -3222,7 +3234,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         { "MepParamsCount", mepParamCount.ToString() },
                         { "HostParamsCount", hostParamCount.ToString() }
                     };
-                    
+
                     string additionalInfo = $"✅ Updated existing snapshot SnapshotId={snapshot.SnapshotId}";
                     if (mepParamCount > 0)
                     {
@@ -3236,7 +3248,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     {
                         additionalInfo += $", Host params: {hostParamCount}";
                     }
-                    
+
                     DatabaseOperationLogger.LogOperation(
                         "UPDATE",
                         "SleeveSnapshots",
@@ -3270,7 +3282,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             foreach (var zone in zones)
             {
                 var bag = useHost ? zone.HostParameterValues : zone.MepParameterValues;
-                
+
                 // ✅ CRITICAL FIX FOR ALL CATEGORIES: Ensure Size parameter uses MepElementSizeParameterValue (current refresh is source of truth)
                 // This ensures snapshot table saves the exact text value from the Size parameter (e.g., "20 mmø", "200 mm dia symbol")
                 // MepElementSizeParameterValue is the raw Size parameter value read during refresh - different from MepElementFormattedSize which may be calculated
@@ -3284,19 +3296,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         bag = new List<Models.SerializableKeyValue>();
                         zone.MepParameterValues = bag;
                     }
-                    
+
                     // ✅ CRITICAL FIX FOR CLUSTER ZONES: Don't remove/re-add Size for cluster zones - preserve aggregated value
                     // Cluster zones have Size already aggregated from individual zones in SaveClusterSleeveSnapshots
                     // Individual zones have MepElementSizeParameterValue populated from database
                     bool isClusterZone = zone.ClusterSleeveInstanceId > 0;
                     bool hasSizeInParams = bag.Any(kv => kv != null && IsSizeParameter(kv.Key?.Trim() ?? string.Empty));
-                    
+
                     if (!isClusterZone)
                     {
                         // ✅ For individual zones: Remove existing Size parameter if it exists (to replace with fresh value from current refresh)
                         // This ensures old values (like "0.082") are replaced with fresh values (like "20 mmø") from current refresh
                         bag.RemoveAll(kv => kv != null && IsSizeParameter(kv.Key?.Trim() ?? string.Empty));
-                        
+
                         // ✅ PRIORITY 1: Use MepElementSizeParameterValue (raw Size parameter value from current refresh)
                         if (!string.IsNullOrWhiteSpace(zone.MepElementSizeParameterValue))
                         {
@@ -3321,7 +3333,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             bag.Add(new Models.SerializableKeyValue { Key = "Size", Value = zone.MepElementFormattedSize });
                         }
                     }
-                    
+
                     // ✅ CRITICAL FIX: Add MEP_ElementId to MepParameterValues for parameter transfer
                     // MEP_ElementId is required for parameter transfer command to work correctly
                     // For individual sleeves, use the zone's MepElementId
@@ -3329,24 +3341,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     if (!useHost && zone.MepElementId != null && zone.MepElementId.IntegerValue > 0)
                     {
                         // Check if MEP_ElementId already exists in bag
-                        bool hasMepElementId = bag.Any(kv => kv != null && 
+                        bool hasMepElementId = bag.Any(kv => kv != null &&
                             string.Equals(kv.Key?.Trim(), "MEP_ElementId", StringComparison.OrdinalIgnoreCase));
-                        
+
                         if (!hasMepElementId)
                         {
-                            bag.Add(new Models.SerializableKeyValue 
-                            { 
-                                Key = "MEP_ElementId", 
-                                Value = zone.MepElementId.IntegerValue.ToString() 
+                            bag.Add(new Models.SerializableKeyValue
+                            {
+                                Key = "MEP_ElementId",
+                                Value = zone.MepElementId.IntegerValue.ToString()
                             });
                         }
                     }
-                    
+
                     // ✅ REMOVED: No longer adding "MEP Size" alias to snapshot
                     // Parameter transfer now reads "MEP Size" directly from Revit MEP element (not from snapshot)
                     // This avoids stale data and ensures we always get the current value from the live MEP element
                 }
-                
+
                 if (bag == null) continue;
 
                 foreach (var kv in bag)
@@ -3384,11 +3396,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 kvp => kvp.Key,
                 kvp => string.Join(", ", kvp.Value),
                 StringComparer.OrdinalIgnoreCase);
-            
+
             // ✅ REMOVED: No longer adding "MEP Size" alias to aggregated parameters
             // Parameter transfer now reads "MEP Size" directly from Revit MEP element (not from snapshot)
             // This avoids stale data and ensures we always get the current value from the live MEP element
-            
+
             return result;
         }
 
@@ -3546,15 +3558,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     "f.FilterName = @FilterName",
                     "f.Category = @Category"
                 };
-                
+
                 if (unresolvedOnly)
                     whereConditions.Add("(cz.IsResolvedFlag = 0 AND cz.IsClusterResolvedFlag = 0 AND cz.IsCombinedResolved = 0)");
-                    
+
                 if (readyForPlacementOnly)
                     whereConditions.Add("cz.ReadyForPlacementFlag = 1");
-                
+
                 var whereClause = string.Join(" AND ", whereConditions);
-                
+
                 cmd.CommandText = $@"
                     SELECT 
                         cz.*,
@@ -3576,7 +3588,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     {
                         var clashZone = MapClashZone(reader);
                         SetMetadataFromReader(clashZone, reader);
-                        
+
                         // ⚠️⚠️⚠️ CRITICAL FIX - DO NOT REMOVE OR MODIFY ⚠️⚠️⚠️
                         // ============================================================
                         // PROBLEM: Zones loaded from database may have IntersectionPoint = null even though
@@ -3599,7 +3611,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         {
                             clashZone.IntersectionPoint = new XYZ(clashZone.IntersectionPointX, clashZone.IntersectionPointY, clashZone.IntersectionPointZ);
                         }
-                        
+
                         result.Add(clashZone);
                     }
                 }
@@ -3651,13 +3663,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         {
                             var clashZone = MapClashZone(reader);
                             SetMetadataFromReader(clashZone, reader);
-                            
+
                             // ✅ CRITICAL FIX: Reconstruct IntersectionPoint from database coordinates if null
                             if (clashZone.IntersectionPoint == null && (Math.Abs(clashZone.IntersectionPointX) > 1e-9 || Math.Abs(clashZone.IntersectionPointY) > 1e-9 || Math.Abs(clashZone.IntersectionPointZ) > 1e-9))
                             {
                                 clashZone.IntersectionPoint = new XYZ(clashZone.IntersectionPointX, clashZone.IntersectionPointY, clashZone.IntersectionPointZ);
                             }
-                            
+
                             result.Add(clashZone);
                         }
                     }
@@ -3693,9 +3705,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 cmd.CommandText = @"UPDATE ClashZones SET ReadyForPlacementFlag = @Flag, UpdatedAt = CURRENT_TIMESTAMP WHERE UPPER(ClashZoneGuid) = UPPER(@Guid) AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL";
                 cmd.Parameters.AddWithValue("@Flag", value ? 1 : 0);
                 cmd.Parameters.AddWithValue("@Guid", clashZoneGuid.ToString().ToUpperInvariant());
-                
+
                 var rowsAffected = cmd.ExecuteNonQuery();
-                
+
                 // ✅ DIAGNOSTIC: Log if no rows were updated (might indicate GUID mismatch)
                 if (rowsAffected == 0 && !DeploymentConfiguration.DeploymentMode)
                 {
@@ -3730,7 +3742,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
             const int batchSize = 100;
             int totalUpdated = 0;
-            
+
             for (int i = 0; i < list.Count; i += batchSize)
             {
                 var batch = list.Skip(i).Take(batchSize).Select(g => $"UPPER('{g.ToString().ToUpperInvariant()}')");
@@ -3745,7 +3757,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     totalUpdated += rowsAffected;
                 }
             }
-            
+
             if (!DeploymentConfiguration.DeploymentMode && totalUpdated > 0)
             {
                 _logger($"[SQLite] ✅ BulkSetReadyForPlacementFlags: Updated {totalUpdated} zones (ReadyForPlacement={value}, IsCurrentClash={value}, batches={(list.Count + batchSize - 1) / batchSize})");
@@ -3763,9 +3775,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// <param name="sectionBox">Section box bounds (null if no section box active)</param>
         /// <returns>Number of zones marked as ready</returns>
         public int SetReadyForPlacementForUnresolvedZonesInSectionBox(
-            List<string> filterNames, 
-            List<string> categories, 
-            BoundingBoxXYZ? sectionBox)
+            List<string> filterNames,
+            List<string> categories,
+            BoundingBoxXYZ sectionBox)
         {
             // ✅ DIAGNOSTIC: Log method entry with parameters (direct logging to ensure it appears)
             if (!DeploymentConfiguration.DeploymentMode)
@@ -3775,18 +3787,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     _logger($"[SQLite] [FLAG-RESET-ENTRY] Method called: filterNames={filterNames?.Count ?? 0}, categories={categories?.Count ?? 0}, sectionBox={(sectionBox != null ? "Present" : "NULL")}");
                     // ✅ ALSO: Direct DebugLogger to ensure message appears
                     DebugLogger.Info($"[ClashZoneRepository] [FLAG-RESET-ENTRY] Method called: filterNames={filterNames?.Count ?? 0}, categories={categories?.Count ?? 0}, sectionBox={(sectionBox != null ? "Present" : "NULL")}");
-                    
+
                     // ✅ CRITICAL DIAGNOSTIC: Also log to refresh log for visibility
                     var refreshLogPath = SafeFileLogger.GetLogFilePath("Refresh_debug.log");
                     if (File.Exists(refreshLogPath))
                     {
-                        File.AppendAllText(refreshLogPath, 
+                        File.AppendAllText(refreshLogPath,
                             $"[{DateTime.Now:HH:mm:ss.fff}] [FLAG-RESET-ENTRY] SetReadyForPlacementForUnresolvedZonesInSectionBox called: filters={filterNames?.Count ?? 0}, categories={categories?.Count ?? 0}, sectionBox={(sectionBox != null ? "Present" : "NULL")}\n");
                     }
                 }
                 catch { }
             }
-            
+
             if (filterNames == null || filterNames.Count == 0 || categories == null || categories.Count == 0)
             {
                 // ✅ DIAGNOSTIC: Log early return
@@ -3814,7 +3826,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 // ✅ R-TREE OPTIMIZATION: Use R-tree spatial query if enabled and section box is active
                 // BUT: Disable R-tree if this is called immediately after SaveClashZones (zones not indexed yet)
                 bool useRTree = Services.OptimizationFlags.UseRTreeDatabaseIndex && sectionBox != null;
-                
+
                 // ✅ CRITICAL: If R-tree is enabled but we just saved zones, they may not be indexed yet
                 // Force B-tree query to ensure newly saved zones are found
                 // Note: This is a conservative approach - we could check if zones were just saved, but simpler to always use B-tree after SaveClashZones
@@ -3823,7 +3835,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 {
                     _logger($"[SQLite] [FLAG-RESET] ⚠️ R-tree enabled but may miss newly saved zones - will fallback to B-tree if R-tree returns 0");
                 }
-                
+
                 foreach (var filterName in filterNames)
                 {
                     foreach (var category in categories)
@@ -3833,7 +3845,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                         List<ClashZone> zones;
                         var zonesToMark = new List<Guid>();
-                        
+
                         // ✅ DIAGNOSTIC: Log which path will be used (direct logging to ensure it appears)
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
@@ -3845,7 +3857,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             }
                             catch { }
                         }
-                        
+
                         if (useRTree)
                         {
                             // ✅ R-TREE PATH: Query using R-tree spatial index (O(log n))
@@ -3853,17 +3865,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             {
                                 _logger($"[SQLite] [FLAG-RESET] Using R-tree query path for filter '{filterName}', category '{category}'");
                             }
-                            
+
                             try
                             {
                                 zones = GetClashZonesInSectionBoxRTree(filterName, category, sectionBox) ?? new List<ClashZone>();
-                                
+
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
                                     _logger($"[SQLite] ✅ R-tree query returned {zones.Count} zones for filter '{filterName}', category '{category}'");
                                     DebugLogger.Info($"[ClashZoneRepository] [FLAG-RESET] R-tree query returned {zones.Count} zones");
                                 }
-                                
+
                                 // ⚠️⚠️⚠️ CRITICAL FIX - DO NOT REMOVE OR MODIFY ⚠️⚠️⚠️
                                 // ============================================================
                                 // PROBLEM: After SaveClashZones, newly saved zones may not be indexed in R-tree yet.
@@ -3889,10 +3901,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                         _logger($"[SQLite] ⚠️ R-tree returned 0 zones - falling back to B-tree (newly saved zones may not be indexed yet)");
                                         DebugLogger.Warning($"[ClashZoneRepository] [FLAG-RESET] R-tree returned 0 zones for filter '{filterName}', category '{category}' - using B-tree fallback");
                                     }
-                                    
+
                                     useRTree = false; // Disable R-tree for remaining iterations
                                     zones = GetClashZonesByFilter(filterName, category, unresolvedOnly: false) ?? new List<ClashZone>();
-                                    
+
                                     if (!DeploymentConfiguration.DeploymentMode)
                                     {
                                         _logger($"[SQLite] ✅ B-tree fallback returned {zones.Count} zones for filter '{filterName}', category '{category}'");
@@ -3908,10 +3920,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     _logger($"[SQLite] ⚠️ R-tree query failed, falling back to B-tree: {rtreeEx.Message}");
                                     DebugLogger.Warning($"[ClashZoneRepository] R-tree query failed for filter '{filterName}', category '{category}': {rtreeEx.Message}");
                                 }
-                                
+
                                 useRTree = false; // Disable R-tree for remaining iterations
                                 zones = GetClashZonesByFilter(filterName, category, unresolvedOnly: false) ?? new List<ClashZone>();
-                                
+
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
                                     _logger($"[SQLite] ✅ B-tree fallback returned {zones.Count} zones for filter '{filterName}', category '{category}'");
@@ -3926,16 +3938,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             {
                                 _logger($"[SQLite] [FLAG-RESET] Using B-tree fallback path for filter '{filterName}', category '{category}' (useRTree={useRTree}, sectionBox={(sectionBox != null ? "Present" : "NULL")})");
                             }
-                            
+
                             zones = GetClashZonesByFilter(filterName, category, unresolvedOnly: false) ?? new List<ClashZone>();
-                            
+
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
                                 _logger($"[SQLite] ✅ B-tree query returned {zones.Count} zones for filter '{filterName}', category '{category}'");
                                 DebugLogger.Info($"[ClashZoneRepository] [FLAG-RESET] B-tree query returned {zones.Count} zones");
                             }
                         }
-                        
+
                         // ✅ DIAGNOSTIC: Log zone resolution status
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
@@ -3960,14 +3972,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                         diagCmd.Parameters.AddWithValue("@FilterName", filterName);
                                         diagCmd.Parameters.AddWithValue("@Category", category);
                                         var totalInDb = Convert.ToInt32(diagCmd.ExecuteScalar());
-                                        
+
                                         diagCmd.CommandText = @"
                                             SELECT COUNT(*) FROM ClashZones cz
                                             INNER JOIN Filters f ON cz.FilterId = f.FilterId
                                             WHERE f.FilterName = @FilterName AND cz.MepElementCategory = @Category
                                             AND cz.IsResolved = 0 AND cz.IsClusterResolved = 0";
                                         var unresolvedInDb = Convert.ToInt32(diagCmd.ExecuteScalar());
-                                        
+
                                         _logger($"[SQLite] [FLAG-RESET] ⚠️ DIAGNOSTIC: Query returned 0 zones, but database has {totalInDb} total zones ({unresolvedInDb} unresolved) for filter '{filterName}', category '{category}'");
                                         DebugLogger.Warning($"[ClashZoneRepository] [FLAG-RESET] ⚠️ DIAGNOSTIC: Query returned 0 zones, but database has {totalInDb} total zones ({unresolvedInDb} unresolved) for filter '{filterName}', category '{category}'");
                                     }
@@ -3978,17 +3990,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 }
                             }
                         }
-                        
+
                         int zonesChecked = 0;
                         int zonesUnresolved = 0;
                         int zonesWithinSectionBox = 0;
                         int zonesMarked = 0;
-                        
+
                         foreach (var zone in zones)
                         {
                             if (zone == null) continue;
                             zonesChecked++;
-                            
+
                             // ⚠️ DEBUG: Log ALL important flags for each zone
                             SafeFileLogger.SafeAppendText("flag_debug.log",
                                 $"[{DateTime.Now:HH:mm:ss.fff}] [FLAG-STATUS] Zone {zone.Id}: " +
@@ -3996,7 +4008,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 $"IsResolved={zone.IsResolved}, IsClusterResolved={zone.IsClusterResolved}, " +
                                 $"IsCurrentClash={zone.IsCurrentClash}, ReadyForPlacement={zone.ReadyForPlacement}, " +
                                 $"IntersectionPoint=({zone.IntersectionPointX:F2},{zone.IntersectionPointY:F2},{zone.IntersectionPointZ:F2})\n");
-                            
+
                             // ⚠️⚠️⚠️ CRITICAL FIX - DO NOT REMOVE OR MODIFY ⚠️⚠️⚠️
                             // ============================================================
                             // PROBLEM: Zones loaded from database may have IntersectionPoint = null even though
@@ -4019,11 +4031,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             {
                                 zone.IntersectionPoint = new XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ);
                             }
-                            
+
                             // ✅ CHECK 1: Is zone unresolved? (AFTER flag manager reset)
                             bool isUnresolved = !zone.IsResolved && !zone.IsClusterResolved;
                             if (isUnresolved) zonesUnresolved++;
-                            
+
                             // ✅ CHECK 2: Is zone within section box? (if section box is active and not using R-tree)
                             // Note: If using R-tree, spatial filtering already done at database level
                             bool isWithinSectionBox = true; // Default: true if no section box
@@ -4033,22 +4045,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 if (intersectionPoint != null)
                                 {
                                     var sb = sectionBox;
-                                    
+
                                     // ⚠️ DEBUG: Log section box test for ALL zones to file
                                     SafeFileLogger.SafeAppendText("flag_debug.log",
                                         $"[{DateTime.Now:HH:mm:ss.fff}] [SECTION-BOX-TEST] Zone {zone.Id}: " +
                                         $"IntersectionPoint=({intersectionPoint.X:F2},{intersectionPoint.Y:F2},{intersectionPoint.Z:F2}), " +
                                         $"SectionBox Min=({sb.Min.X:F2},{sb.Min.Y:F2},{sb.Min.Z:F2}) Max=({sb.Max.X:F2},{sb.Max.Y:F2},{sb.Max.Z:F2})\n");
-                                    
+
                                     // ✅ CRITICAL FIX: Use OVERLAP check instead of POINT check
                                     // This selects pipes that are "long" and overlap the box even if center is outside
-                                    
+
                                     // 1. Get Zone Bounding Box
                                     double zMinX, zMaxX, zMinY, zMaxY, zMinZ, zMaxZ;
-                                    
-                                    bool hasValidSleeveBox = 
+
+                                    bool hasValidSleeveBox =
                                         Math.Abs(zone.SleeveBoundingBoxMinX) > 1e-9 || Math.Abs(zone.SleeveBoundingBoxMaxX) > 1e-9;
-                                        
+
                                     if (hasValidSleeveBox)
                                     {
                                         zMinX = zone.SleeveBoundingBoxMinX; zMaxX = zone.SleeveBoundingBoxMaxX;
@@ -4063,7 +4075,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                         zMinY = intersectionPoint.Y - padding; zMaxY = intersectionPoint.Y + padding;
                                         zMinZ = intersectionPoint.Z - padding; zMaxZ = intersectionPoint.Z + padding;
                                     }
-                                    
+
                                     // 2. Check Overlap (Standard AABB Intersection)
                                     // !(Max1 < Min2 || Min1 > Max2)
                                     isWithinSectionBox = !(
@@ -4071,11 +4083,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                         zMaxY < sb.Min.Y - tol || zMinY > sb.Max.Y + tol ||
                                         zMaxZ < sb.Min.Z - tol || zMinZ > sb.Max.Z + tol
                                     );
-                                    
+
                                     // ⚠️ DEBUG: Log section box test RESULT for ALL zones
                                     SafeFileLogger.SafeAppendText("flag_debug.log",
                                         $"[{DateTime.Now:HH:mm:ss.fff}] [SECTION-BOX-RESULT] Zone {zone.Id}: isWithinSectionBox={isWithinSectionBox} (Overlap Check)\n");
-                                    
+
                                     if (isWithinSectionBox) zonesWithinSectionBox++;
                                 }
                                 else
@@ -4094,13 +4106,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             {
                                 zonesWithinSectionBox++; // R-tree already filtered spatially
                             }
-                            
+
                             // ✅ SET FLAG: Only if BOTH conditions are true
                             if (isUnresolved && isWithinSectionBox)
                             {
                                 zonesToMark.Add(zone.Id);
                                 zonesMarked++;
-                                
+
                                 // ⚠️ DEBUG: Log which zone is being MARKED
                                 SafeFileLogger.SafeAppendText("flag_debug.log",
                                     $"[{DateTime.Now:HH:mm:ss.fff}] [ZONE-MARKED] ✅ Zone {zone.Id} MARKED: Category={zone.MepElementCategory}, IsUnresolved={isUnresolved}, IsWithinSectionBox={isWithinSectionBox}\n");
@@ -4112,13 +4124,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     $"[{DateTime.Now:HH:mm:ss.fff}] [ZONE-SKIPPED] ❌ Zone {zone.Id} NOT marked: Category={zone.MepElementCategory}, IsUnresolved={isUnresolved}, IsWithinSectionBox={isWithinSectionBox}\n");
                             }
                         }
-                        
+
                         // ✅ DIAGNOSTIC: Log filtering breakdown with sample zone details
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             _logger($"[SQLite] [FLAG-RESET] Filtering breakdown: Checked={zonesChecked}, Unresolved={zonesUnresolved}, WithinSectionBox={zonesWithinSectionBox}, ToMark={zonesMarked}");
                             DebugLogger.Info($"[ClashZoneRepository] [FLAG-RESET] Filtering breakdown: Checked={zonesChecked}, Unresolved={zonesUnresolved}, WithinSectionBox={zonesWithinSectionBox}, ToMark={zonesMarked}");
-                            
+
                             // ✅ CRITICAL DIAGNOSTIC: Log sample zones that were NOT marked (for debugging)
                             if (zonesChecked > 0 && zonesMarked == 0)
                             {
@@ -4127,73 +4139,73 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     .Take(5)
                                     .Select(z => $"GUID={z.Id}, IsResolved={z.IsResolved}, IsClusterResolved={z.IsClusterResolved}, IntersectionPoint={z.IntersectionPoint?.ToString() ?? "NULL"}, ReadyForPlacement={z.ReadyForPlacement}")
                                     .ToList();
-                                
+
                                 _logger($"[SQLite] [FLAG-RESET] ⚠️ WARNING: {zonesChecked} zones checked but 0 marked! Sample zones: {string.Join("; ", sampleNotMarked)}");
                                 DebugLogger.Warning($"[ClashZoneRepository] [FLAG-RESET] ⚠️ WARNING: {zonesChecked} zones checked but 0 marked! Sample zones: {string.Join("; ", sampleNotMarked)}");
                             }
                         }
-                        
-                            // ✅ UPDATE DB: Set ReadyForPlacementFlag=1 for zones that meet criteria
-                            // ✅ PERFORMANCE FIX: Use batch update instead of individual updates
-                            if (zonesToMark.Count > 0)
+
+                        // ✅ UPDATE DB: Set ReadyForPlacementFlag=1 for zones that meet criteria
+                        // ✅ PERFORMANCE FIX: Use batch update instead of individual updates
+                        if (zonesToMark.Count > 0)
+                        {
+                            try
                             {
-                                try
+                                // ✅ BATCH UPDATE: Update all zones in a single SQL statement (much faster)
+                                BulkSetReadyForPlacementFlags(zonesToMark, true);
+                                totalMarked += zonesToMark.Count;
+
+                                if (!DeploymentConfiguration.DeploymentMode)
                                 {
-                                    // ✅ BATCH UPDATE: Update all zones in a single SQL statement (much faster)
-                                    BulkSetReadyForPlacementFlags(zonesToMark, true);
-                                    totalMarked += zonesToMark.Count;
-                                    
-                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    try
                                     {
-                                        try
-                                        {
-                                            _logger($"[SQLite] ✅ Batch set ReadyForPlacementFlag=1 for {zonesToMark.Count} zones (out of {zones.Count} total) in filter '{filterName}', category '{category}' (unresolved + within section box)");
-                                            _logger($"[SQLite] [FLAG-RESET-BATCH] ✅ Batch update completed: {zonesToMark.Count} zones marked, totalMarked={totalMarked}");
-                                            // ✅ ALSO: Direct DebugLogger to ensure message appears
-                                            DebugLogger.Info($"[ClashZoneRepository] [FLAG-RESET-BATCH] ✅ Batch update completed: {zonesToMark.Count} zones marked, totalMarked={totalMarked} for filter '{filterName}', category '{category}'");
-                                        }
-                                        catch { }
+                                        _logger($"[SQLite] ✅ Batch set ReadyForPlacementFlag=1 for {zonesToMark.Count} zones (out of {zones.Count} total) in filter '{filterName}', category '{category}' (unresolved + within section box)");
+                                        _logger($"[SQLite] [FLAG-RESET-BATCH] ✅ Batch update completed: {zonesToMark.Count} zones marked, totalMarked={totalMarked}");
+                                        // ✅ ALSO: Direct DebugLogger to ensure message appears
+                                        DebugLogger.Info($"[ClashZoneRepository] [FLAG-RESET-BATCH] ✅ Batch update completed: {zonesToMark.Count} zones marked, totalMarked={totalMarked} for filter '{filterName}', category '{category}'");
                                     }
-                                }
-                                catch (Exception ex)
-                                {
-                                    // ✅ FALLBACK: If batch update fails, fall back to individual updates
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        _logger($"[SQLite] ⚠️ Batch update failed, falling back to individual updates: {ex.Message}");
-                                        DebugLogger.Warning($"[ClashZoneRepository] Batch update failed, using fallback: {ex.Message}");
-                                    }
-                                    
-                                    // Fallback to individual updates
-                                    int successCount = 0;
-                                    foreach (var guid in zonesToMark)
-                                    {
-                                        try
-                                        {
-                                            SetReadyForPlacementFlag(guid, true);
-                                            successCount++;
-                                        }
-                                        catch (Exception individualEx)
-                                        {
-                                            if (!DeploymentConfiguration.DeploymentMode)
-                                            {
-                                                _logger($"[SQLite] ❌ Failed to set ReadyForPlacementFlag=1 for GUID {guid}: {individualEx.Message}");
-                                                DebugLogger.Error($"[ClashZoneRepository] Failed to set ReadyForPlacementFlag for GUID {guid}: {individualEx.Message}");
-                                            }
-                                        }
-                                    }
-                                    totalMarked += successCount;
-                                    
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        _logger($"[SQLite] ✅ Set ReadyForPlacementFlag=1 for {successCount}/{zonesToMark.Count} zones (fallback mode) in filter '{filterName}', category '{category}'");
-                                    }
+                                    catch { }
                                 }
                             }
-                            else if (!DeploymentConfiguration.DeploymentMode)
+                            catch (Exception ex)
                             {
-                                _logger($"[SQLite] ⚠️ No zones to mark as ReadyForPlacement in filter '{filterName}', category '{category}' (total zones: {zones.Count}, unresolved: {zones.Count(z => !z.IsResolved && !z.IsClusterResolved)}, within section box: checked)");
+                                // ✅ FALLBACK: If batch update fails, fall back to individual updates
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    _logger($"[SQLite] ⚠️ Batch update failed, falling back to individual updates: {ex.Message}");
+                                    DebugLogger.Warning($"[ClashZoneRepository] Batch update failed, using fallback: {ex.Message}");
+                                }
+
+                                // Fallback to individual updates
+                                int successCount = 0;
+                                foreach (var guid in zonesToMark)
+                                {
+                                    try
+                                    {
+                                        SetReadyForPlacementFlag(guid, true);
+                                        successCount++;
+                                    }
+                                    catch (Exception individualEx)
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            _logger($"[SQLite] ❌ Failed to set ReadyForPlacementFlag=1 for GUID {guid}: {individualEx.Message}");
+                                            DebugLogger.Error($"[ClashZoneRepository] Failed to set ReadyForPlacementFlag for GUID {guid}: {individualEx.Message}");
+                                        }
+                                    }
+                                }
+                                totalMarked += successCount;
+
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    _logger($"[SQLite] ✅ Set ReadyForPlacementFlag=1 for {successCount}/{zonesToMark.Count} zones (fallback mode) in filter '{filterName}', category '{category}'");
+                                }
                             }
+                        }
+                        else if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            _logger($"[SQLite] ⚠️ No zones to mark as ReadyForPlacement in filter '{filterName}', category '{category}' (total zones: {zones.Count}, unresolved: {zones.Count(z => !z.IsResolved && !z.IsClusterResolved)}, within section box: checked)");
+                        }
                     }
                 }
             }
@@ -4215,18 +4227,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Falls back to B-tree if R-tree is not available
         /// </summary>
         private List<ClashZone> GetClashZonesInSectionBoxRTree(
-            string filterName, 
-            string category, 
+            string filterName,
+            string category,
             BoundingBoxXYZ sectionBox)
         {
             var zones = new List<ClashZone>();
-            
+
             if (!Services.OptimizationFlags.UseRTreeDatabaseIndex || sectionBox == null)
             {
                 // Fallback to B-tree query
                 return GetClashZonesByFilter(filterName, category, unresolvedOnly: false) ?? new List<ClashZone>();
             }
-            
+
             try
             {
                 using (var cmd = _context.Connection.CreateCommand())
@@ -4244,7 +4256,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                           AND rtree.minX <= @maxX AND rtree.maxX >= @minX
                           AND rtree.minY <= @maxY AND rtree.maxY >= @minY
                           AND rtree.minZ <= @maxZ AND rtree.maxZ >= @minZ";
-                    
+
                     cmd.Parameters.AddWithValue("@filterName", filterName);
                     cmd.Parameters.AddWithValue("@category", category);
                     cmd.Parameters.AddWithValue("@minX", sectionBox.Min.X);
@@ -4253,7 +4265,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     cmd.Parameters.AddWithValue("@maxY", sectionBox.Max.Y);
                     cmd.Parameters.AddWithValue("@minZ", sectionBox.Min.Z);
                     cmd.Parameters.AddWithValue("@maxZ", sectionBox.Max.Z);
-                    
+
                     using (var reader = cmd.ExecuteReader())
                     {
                         while (reader.Read())
@@ -4266,7 +4278,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         }
                     }
                 }
-                
+
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     _logger($"[SQLite] ✅ R-tree query: Found {zones.Count} zones in section box for filter '{filterName}', category '{category}'");
@@ -4282,7 +4294,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 }
                 throw; // Re-throw to trigger fallback in caller
             }
-            
+
             return zones;
         }
 
@@ -4293,7 +4305,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// </summary>
         public List<ClashZone> GetClashZonesByCategoryInSectionBox(
             string category,
-            BoundingBoxXYZ? sectionBox)
+            BoundingBoxXYZ sectionBox)
         {
             var zones = new List<ClashZone>();
 
@@ -4344,7 +4356,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 {
                     _logger($"[SQLite] ✅ R-tree category query: Found {zones.Count} zones in section box for category '{category}'");
                 }
-                
+
                 // ✅ CRITICAL: Load parameter values from snapshots
                 LoadParameterValuesFromSnapshots(zones);
             }
@@ -4354,7 +4366,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 {
                     _logger($"[SQLite] ⚠️ R-tree category query failed: {ex.Message}, falling back to B-tree");
                 }
-                
+
                 // Fallback to B-tree query
                 zones = GetClashZonesByCategory(category) ?? new List<ClashZone>();
             }
@@ -4369,7 +4381,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// </summary>
         public List<ClashZone> GetResolvedClashZonesByCategoryInSectionBox(
             string category,
-            BoundingBoxXYZ? sectionBox)
+            BoundingBoxXYZ sectionBox)
         {
             var zones = new List<ClashZone>();
 
@@ -4429,7 +4441,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 {
                     _logger($"[SQLite] ⚠️ R-tree resolved category query failed: {ex.Message}, falling back to B-tree");
                 }
-                
+
                 // Fallback to B-tree query
                 var all = GetClashZonesByCategory(category) ?? new List<ClashZone>();
                 zones = all.Where(z => z != null && (z.IsResolved || z.IsClusterResolved)).ToList();
@@ -4446,7 +4458,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         public List<ClashZone> GetResolvedClashZonesByFilterInSectionBox(
             string filterName,
             string category,
-            BoundingBoxXYZ? sectionBox)
+            BoundingBoxXYZ sectionBox)
         {
             var zones = new List<ClashZone>();
 
@@ -4528,33 +4540,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         {
             if (!Services.OptimizationFlags.UseRTreeDatabaseIndex)
                 return;
-            
+
             try
             {
                 using (var cmd = _context.Connection.CreateCommand())
                 {
                     cmd.Transaction = transaction;
-                    
+
                     // Delete old entry (if exists)
                     cmd.CommandText = "DELETE FROM ClashZonesRTree WHERE id = @id";
                     cmd.Parameters.AddWithValue("@id", clashZoneId);
                     cmd.ExecuteNonQuery();
                     cmd.Parameters.Clear();
-                    
+
                     // ✅ CRITICAL FIX: Use sleeve bounding box if available (placed sleeves), otherwise use intersection point bounding box (unplaced zones)
                     // This ensures R-tree is populated for ALL zones, not just placed ones
                     double minX = 0.0, maxX = 0.0, minY = 0.0, maxY = 0.0, minZ = 0.0, maxZ = 0.0;
                     bool hasValidBoundingBox = false;
-                    
+
                     // Priority 1: Use sleeve bounding box if valid (sleeve already placed)
-                    bool hasValidSleeveBoundingBox = 
+                    bool hasValidSleeveBoundingBox =
                         clashZone.SleeveBoundingBoxMinX < clashZone.SleeveBoundingBoxMaxX &&
                         clashZone.SleeveBoundingBoxMinY < clashZone.SleeveBoundingBoxMaxY &&
                         clashZone.SleeveBoundingBoxMinZ < clashZone.SleeveBoundingBoxMaxZ &&
                         (clashZone.SleeveBoundingBoxMinX != 0.0 || clashZone.SleeveBoundingBoxMaxX != 0.0 ||
                          clashZone.SleeveBoundingBoxMinY != 0.0 || clashZone.SleeveBoundingBoxMaxY != 0.0 ||
                          clashZone.SleeveBoundingBoxMinZ != 0.0 || clashZone.SleeveBoundingBoxMaxZ != 0.0);
-                    
+
                     if (hasValidSleeveBoundingBox)
                     {
                         minX = clashZone.SleeveBoundingBoxMinX;
@@ -4572,13 +4584,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         double intersectionX = clashZone.IntersectionPoint?.X ?? clashZone.IntersectionPointX;
                         double intersectionY = clashZone.IntersectionPoint?.Y ?? clashZone.IntersectionPointY;
                         double intersectionZ = clashZone.IntersectionPoint?.Z ?? clashZone.IntersectionPointZ;
-                        
+
                         // Check if intersection point is valid (not zero)
-                        bool hasValidIntersectionPoint = 
-                            Math.Abs(intersectionX) > 1e-9 || 
-                            Math.Abs(intersectionY) > 1e-9 || 
+                        bool hasValidIntersectionPoint =
+                            Math.Abs(intersectionX) > 1e-9 ||
+                            Math.Abs(intersectionY) > 1e-9 ||
                             Math.Abs(intersectionZ) > 1e-9;
-                        
+
                         if (hasValidIntersectionPoint)
                         {
                             // Create bounding box around intersection point (1m = 3.28084ft tolerance on each side)
@@ -4592,13 +4604,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             hasValidBoundingBox = true;
                         }
                     }
-                    
+
                     if (hasValidBoundingBox)
                     {
                         cmd.CommandText = @"
                             INSERT INTO ClashZonesRTree (id, minX, maxX, minY, maxY, minZ, maxZ)
                             VALUES (@id, @minX, @maxX, @minY, @maxY, @minZ, @maxZ)";
-                        
+
                         cmd.Parameters.AddWithValue("@id", clashZoneId);
                         cmd.Parameters.AddWithValue("@minX", minX);
                         cmd.Parameters.AddWithValue("@maxX", maxX);
@@ -4607,7 +4619,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         cmd.Parameters.AddWithValue("@minZ", minZ);
                         cmd.Parameters.AddWithValue("@maxZ", maxZ);
                         cmd.ExecuteNonQuery();
-                        
+
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             _logger($"[SQLite] ✅ R-tree index updated for ClashZoneId={clashZoneId}: {(hasValidSleeveBoundingBox ? "SleeveBBox" : "IntersectionPoint")} bbox");
@@ -4638,7 +4650,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         {
             if (!Services.OptimizationFlags.UseRTreeDatabaseIndex)
                 return;
-            
+
             try
             {
                 using (var cmd = _context.Connection.CreateCommand())
@@ -4860,31 +4872,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     var sleeveIds = sleeveIdToClashZone.Keys.ToList();
                     var clusterIds = clusterIdToClashZone.Keys.ToList();
 
-                if (sleeveIds.Count > 0 || clusterIds.Count > 0)
-                {
-                    var conditions = new List<string>();
-
-                    if (sleeveIds.Count > 0)
+                    if (sleeveIds.Count > 0 || clusterIds.Count > 0)
                     {
-                        var placeholders = string.Join(",", sleeveIds.Select((_, i) => $"@SleeveId{i}"));
-                        conditions.Add($"SleeveInstanceId IN ({placeholders})");
-                        for (int i = 0; i < sleeveIds.Count; i++)
-                        {
-                            cmd.Parameters.AddWithValue($"@SleeveId{i}", sleeveIds[i]);
-                        }
-                    }
+                        var conditions = new List<string>();
 
-                    if (clusterIds.Count > 0)
-                    {
-                        var placeholders = string.Join(",", clusterIds.Select((_, i) => $"@ClusterId{i}"));
-                        conditions.Add($"ClusterInstanceId IN ({placeholders})");
-                        for (int i = 0; i < clusterIds.Count; i++)
+                        if (sleeveIds.Count > 0)
                         {
-                            cmd.Parameters.AddWithValue($"@ClusterId{i}", clusterIds[i]);
+                            var placeholders = string.Join(",", sleeveIds.Select((_, i) => $"@SleeveId{i}"));
+                            conditions.Add($"SleeveInstanceId IN ({placeholders})");
+                            for (int i = 0; i < sleeveIds.Count; i++)
+                            {
+                                cmd.Parameters.AddWithValue($"@SleeveId{i}", sleeveIds[i]);
+                            }
                         }
-                    }
 
-                    cmd.CommandText = $@"
+                        if (clusterIds.Count > 0)
+                        {
+                            var placeholders = string.Join(",", clusterIds.Select((_, i) => $"@ClusterId{i}"));
+                            conditions.Add($"ClusterInstanceId IN ({placeholders})");
+                            for (int i = 0; i < clusterIds.Count; i++)
+                            {
+                                cmd.Parameters.AddWithValue($"@ClusterId{i}", clusterIds[i]);
+                            }
+                        }
+
+                        cmd.CommandText = $@"
                         SELECT 
                             SleeveInstanceId,
                             ClusterInstanceId,
@@ -4926,13 +4938,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                         // Only populate if not already set (preserve existing values)
                                         if (cz.MepParameterValues == null || cz.MepParameterValues.Count == 0)
                                         {
-                                            cz.MepParameterValues = mepParams?.Select(kv => new Models.SerializableKeyValue { Key = kv.Key, Value = kv.Value }).ToList() 
+                                            cz.MepParameterValues = mepParams?.Select(kv => new Models.SerializableKeyValue { Key = kv.Key, Value = kv.Value }).ToList()
                                                 ?? new List<Models.SerializableKeyValue>();
                                         }
 
                                         if (cz.HostParameterValues == null || cz.HostParameterValues.Count == 0)
                                         {
-                                            cz.HostParameterValues = hostParams?.Select(kv => new Models.SerializableKeyValue { Key = kv.Key, Value = kv.Value }).ToList() 
+                                            cz.HostParameterValues = hostParams?.Select(kv => new Models.SerializableKeyValue { Key = kv.Key, Value = kv.Value }).ToList()
                                                 ?? new List<Models.SerializableKeyValue>();
                                         }
                                     }
@@ -5007,7 +5019,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                         var existingDict = zone.MepParameterValues
                                             .Where(kv => kv != null && !string.IsNullOrEmpty(kv.Key))
                                             .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
-                                        
+
                                         var beforeCount = existingDict.Count;
                                         foreach (var dbParam in mepDict)
                                         {
@@ -5016,11 +5028,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                                 existingDict[dbParam.Key] = dbParam.Value;
                                             }
                                         }
-                                        
+
                                         zone.MepParameterValues = existingDict
                                             .Select(kv => new Models.SerializableKeyValue { Key = kv.Key, Value = kv.Value })
                                             .ToList();
-                                        
+
                                         if (!DeploymentConfiguration.DeploymentMode)
                                         {
                                             var addedCount = zone.MepParameterValues.Count - beforeCount;
@@ -5068,7 +5080,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                         var existingDict = zone.HostParameterValues
                                             .Where(kv => kv != null && !string.IsNullOrEmpty(kv.Key))
                                             .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
-                                        
+
                                         var beforeCount = existingDict.Count;
                                         foreach (var dbParam in hostDict)
                                         {
@@ -5077,11 +5089,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                                 existingDict[dbParam.Key] = dbParam.Value;
                                             }
                                         }
-                                        
+
                                         zone.HostParameterValues = existingDict
                                             .Select(kv => new Models.SerializableKeyValue { Key = kv.Key, Value = kv.Value })
                                             .ToList();
-                                        
+
                                         if (!DeploymentConfiguration.DeploymentMode)
                                         {
                                             var addedCount = zone.HostParameterValues.Count - beforeCount;
@@ -5121,7 +5133,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
             try
             {
-                return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json) 
+                return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json)
                     ?? new Dictionary<string, string>();
             }
             catch
@@ -5174,7 +5186,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             clashZone.SleeveWidth = GetDouble(reader, "SleeveWidth");
             clashZone.SleeveHeight = GetDouble(reader, "SleeveHeight");
             clashZone.SleeveDiameter = GetDouble(reader, "SleeveDiameter");
-            
+
             // ✅ DIRECT LOGGING: Always log sleeve dimensions being loaded for duct accessories
             if (string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
             {
@@ -5191,7 +5203,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             clashZone.WallCenterlinePointX = GetNullableDouble(reader, "WallCenterlinePointX") ?? 0.0;
             clashZone.WallCenterlinePointY = GetNullableDouble(reader, "WallCenterlinePointY") ?? 0.0;
             clashZone.WallCenterlinePointZ = GetNullableDouble(reader, "WallCenterlinePointZ") ?? 0.0;
-            
+
             // ✅ DIAGNOSTIC: Log wall centerline loading for debugging (especially for dampers)
             if (!DeploymentConfiguration.DeploymentMode && string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
             {
@@ -5219,7 +5231,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             clashZone.SleeveBoundingBoxMaxX = GetNullableDouble(reader, "BoundingBoxMaxX") ?? 0.0;
             clashZone.SleeveBoundingBoxMaxY = GetNullableDouble(reader, "BoundingBoxMaxY") ?? 0.0;
             clashZone.SleeveBoundingBoxMaxZ = GetNullableDouble(reader, "BoundingBoxMaxZ") ?? 0.0;
-            
+
             // ✅ RCS BBOX: Load wall-aligned RCS bounding box coordinates (0.0 for floors or if not calculated)
             clashZone.SleeveBoundingBoxRCS_MinX = GetNullableDouble(reader, "SleeveBoundingBoxRCS_MinX") ?? 0.0;
             clashZone.SleeveBoundingBoxRCS_MinY = GetNullableDouble(reader, "SleeveBoundingBoxRCS_MinY") ?? 0.0;
@@ -5227,7 +5239,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             clashZone.SleeveBoundingBoxRCS_MaxX = GetNullableDouble(reader, "SleeveBoundingBoxRCS_MaxX") ?? 0.0;
             clashZone.SleeveBoundingBoxRCS_MaxY = GetNullableDouble(reader, "SleeveBoundingBoxRCS_MaxY") ?? 0.0;
             clashZone.SleeveBoundingBoxRCS_MaxZ = GetNullableDouble(reader, "SleeveBoundingBoxRCS_MaxZ") ?? 0.0;
-            
+
             // ✅ ROTATED BBOX: Load rotated bounding box coordinates (NULL for axis-aligned sleeves)
             clashZone.RotatedBoundingBoxMinX = GetNullableDouble(reader, "RotatedBoundingBoxMinX");
             clashZone.RotatedBoundingBoxMinY = GetNullableDouble(reader, "RotatedBoundingBoxMinY");
@@ -5235,7 +5247,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             clashZone.RotatedBoundingBoxMaxX = GetNullableDouble(reader, "RotatedBoundingBoxMaxX");
             clashZone.RotatedBoundingBoxMaxY = GetNullableDouble(reader, "RotatedBoundingBoxMaxY");
             clashZone.RotatedBoundingBoxMaxZ = GetNullableDouble(reader, "RotatedBoundingBoxMaxZ");
-            
+
             // ✅ SLEEVE CORNERS: Load pre-calculated 4 corner coordinates in world space (NULL if not calculated yet)
             clashZone.SleeveCorner1X = GetNullableDouble(reader, "SleeveCorner1X");
             clashZone.SleeveCorner1Y = GetNullableDouble(reader, "SleeveCorner1Y");
@@ -5256,7 +5268,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             // ✅ REFERENCE LEVEL: Load MEP element Reference Level (used for Schedule Level and Bottom of Opening calculation)
             clashZone.MepElementLevelName = GetNullableString(reader, "MepElementLevelName") ?? string.Empty;
             clashZone.MepElementLevelElevation = GetDouble(reader, "MepElementLevelElevation", 0.0);
-            
+
             // ✅ DIAGNOSTIC: Log level elevation loading for debugging (especially for dampers)
             if (!DeploymentConfiguration.DeploymentMode && !string.IsNullOrWhiteSpace(clashZone.MepElementLevelName))
             {
@@ -5264,9 +5276,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 SafeFileLogger.SafeAppendText("placement_debug.log",
                     $"[{DateTime.Now:HH:mm:ss.fff}] [DB-LOAD] Zone {clashZone.Id}: Loaded MepElementLevelName='{clashZone.MepElementLevelName}', MepElementLevelElevation={clashZone.MepElementLevelElevation:F6}ft ({elevationMm:F1}mm)\n");
             }
-            
+
             clashZone.WallDirectionType = GetNullableString(reader, "WallDirectionType") ?? string.Empty;
-            
+
             // ✅ PARAMETER VALUES: Load parameter values from JSON columns
             var mepParamsJson = GetNullableString(reader, "MepParameterValuesJson");
             if (!string.IsNullOrWhiteSpace(mepParamsJson) && mepParamsJson != "{}")
@@ -5277,7 +5289,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     clashZone.MepParameterValues = mepDict
                         .Select(kv => new SerializableKeyValue { Key = kv.Key, Value = kv.Value })
                         .ToList();
-                    
+
                     // ✅ CRITICAL DIAGNOSTIC: Log parameter loading for debugging
                     if (!DeploymentConfiguration.DeploymentMode && string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
                     {
@@ -5299,7 +5311,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             {
                 _logger($"[SQLite] [PARAM-LOAD] ⚠️ Zone {clashZone.Id}: MepParameterValuesJson is NULL, empty, or '{{}}' - no params loaded");
             }
-            
+
             var hostParamsJson = GetNullableString(reader, "HostParameterValuesJson");
             if (!string.IsNullOrWhiteSpace(hostParamsJson) && hostParamsJson != "{}")
             {
@@ -5320,7 +5332,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             }
 
             clashZone.MepElementOrientationDirection = GetNullableString(reader, "MepOrientationDirection") ?? string.Empty;
-            
+
             // ✅ WALL DIRECTION: Calculate WallDirection from HostOrientation once when loading from DB
             // This avoids expensive on-the-fly calculations during placement
             // HostOrientation "X" = X-WALL (wall runs along X-axis, direction = +X)
@@ -5328,21 +5340,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             bool isWallHost = string.Equals(clashZone.StructuralElementType, "Wall", StringComparison.OrdinalIgnoreCase) ||
                               string.Equals(clashZone.StructuralElementType, "Walls", StringComparison.OrdinalIgnoreCase);
             bool isFramingHost = string.Equals(clashZone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
-            
+
             if (isWallHost || isFramingHost)
             {
                 string hostOrientation = clashZone.HostOrientation ?? string.Empty;
                 string wallDirectionType = clashZone.WallDirectionType ?? string.Empty;
-                
+
                 if (!string.IsNullOrEmpty(hostOrientation))
                 {
                     if (string.Equals(hostOrientation, "X", StringComparison.OrdinalIgnoreCase) ||
-                        wallDirectionType.Contains("X-WALL", StringComparison.OrdinalIgnoreCase))
+                        ((string)wallDirectionType).IndexOf("X-WALL", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         clashZone.WallDirection = new XYZ(1, 0, 0); // X-WALL: direction along X-axis
                     }
                     else if (string.Equals(hostOrientation, "Y", StringComparison.OrdinalIgnoreCase) ||
-                             wallDirectionType.Contains("Y-WALL", StringComparison.OrdinalIgnoreCase))
+                             ((string)wallDirectionType).IndexOf("Y-WALL", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         clashZone.WallDirection = new XYZ(0, 1, 0); // Y-WALL: direction along Y-axis
                     }
@@ -5356,7 +5368,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             // ✅ ROTATION MATRIX: Load pre-calculated cos/sin (dump once use many times)
             clashZone.MepRotationCos = GetNullableDouble(reader, "MepRotationCos");
             clashZone.MepRotationSin = GetNullableDouble(reader, "MepRotationSin");
-            
+
             // ✅ DIAGNOSTIC: Log MEP orientation values when loading for placement (to diagnose orientation=0 issue)
             if (!DeploymentConfiguration.DeploymentMode)
             {
@@ -5369,7 +5381,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
             clashZone.MepElementWidth = GetNullableDouble(reader, "MepWidth") ?? 0.0;
             clashZone.MepElementHeight = GetNullableDouble(reader, "MepHeight") ?? 0.0;
-            
+
             // ✅ DIAGNOSTIC: Log MEP element sizes loaded from database (for debugging sleeve size issues)
             if (!DeploymentConfiguration.DeploymentMode && clashZone.MepElementWidth > 0 && clashZone.MepElementHeight > 0)
             {
@@ -5383,7 +5395,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             clashZone.MepElementNominalDiameter = GetNullableDouble(reader, "MepElementNominalDiameter") ?? 0.0;
             // ✅ SIZE PARAMETER VALUE: Load Size parameter value as string for snapshot table and parameter transfer
             clashZone.MepElementSizeParameterValue = GetNullableString(reader, "MepElementSizeParameterValue") ?? string.Empty;
-            
+
             // ✅ DIRECT LOGGING: Always log MEP dimensions being loaded for duct accessories
             if (string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
             {
@@ -5403,29 +5415,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             clashZone.HasDamperNearby = GetBool(reader, "HasDamperNearbyFlag");
             clashZone.IsCurrentClash = GetBool(reader, "IsCurrentClashFlag");
             clashZone.ReadyForPlacement = GetBool(reader, "ReadyForPlacementFlag");
-            
+
             // ✅ OOP METHOD: Load damper connector detection values
             clashZone.HasMepConnector = GetBool(reader, "HasMepConnector");
             clashZone.DamperConnectorSide = GetNullableString(reader, "DamperConnectorSide") ?? string.Empty;
-            
+
             // ✅ PIPE DIAMETER COLUMNS: Load outer diameter and nominal diameter
             clashZone.MepElementOuterDiameter = GetDouble(reader, "MepElementOuterDiameter", 0.0);
             clashZone.MepElementNominalDiameter = GetDouble(reader, "MepElementNominalDiameter", 0.0);
-            
+
             // ✅ SIZE PARAMETER VALUE: Load Size parameter value as string (critical for cluster snapshots)
             clashZone.MepElementSizeParameterValue = GetNullableString(reader, "MepElementSizeParameterValue") ?? string.Empty;
-            
+
             // ✅ OOP METHOD: Load insulation detection values
             clashZone.IsInsulated = GetBool(reader, "IsInsulated");
             clashZone.InsulationThickness = GetDouble(reader, "InsulationThickness", 0.0);
             // Update InsulationType for backward compatibility
             clashZone.InsulationType = clashZone.IsInsulated ? "Insulated" : "Normal";
-            
+
             // ✅ CRITICAL: Load thickness values for depth calculation
             clashZone.StructuralElementThickness = GetDouble(reader, "StructuralThickness", 0.0);
             clashZone.WallThickness = GetDouble(reader, "WallThickness", 0.0);
             clashZone.FramingThickness = GetDouble(reader, "FramingThickness", 0.0);
-            
+
             // ✅ DIAGNOSTIC: Log thickness values for ALL zones when loading for placement (to diagnose depth=0 issue)
             if (!DeploymentConfiguration.DeploymentMode)
             {
@@ -5672,7 +5684,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 using (var cmd = _context.Connection.CreateCommand())
                 {
                     cmd.Transaction = transaction;
-                    
+
                     cmd.CommandText = @"
                         UPDATE ClashZones SET
                             BoundingBoxMinX = @BoundingBoxMinX,
@@ -5692,7 +5704,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     cmd.Parameters.AddWithValue("@BoundingBoxMaxX", maxX);
                     cmd.Parameters.AddWithValue("@BoundingBoxMaxY", maxY);
                     cmd.Parameters.AddWithValue("@BoundingBoxMaxZ", maxZ);
-                    
+
                     var rowsAffected = cmd.ExecuteNonQuery();
                     if (rowsAffected == 0 && !DeploymentConfiguration.DeploymentMode)
                     {
@@ -5707,11 +5719,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                               AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL
                             LIMIT 1";
                         var clashZoneIdResult = cmd.ExecuteScalar();
-                        
+
                         if (clashZoneIdResult != null)
                         {
                             int clashZoneId = Convert.ToInt32(clashZoneIdResult);
-                            
+
                             // ✅ Create a temporary ClashZone object with updated bounding boxes for R-tree update
                             var tempClashZone = new ClashZone
                             {
@@ -5722,13 +5734,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 SleeveBoundingBoxMinZ = minZ,
                                 SleeveBoundingBoxMaxZ = maxZ
                             };
-                            
+
                             // ✅ Update R-tree index with new bounding boxes
                             UpdateRTreeIndex(clashZoneId, tempClashZone, transaction);
                         }
                     }
                 }
-                
+
                 transaction.Commit();
             }
         }
@@ -5763,7 +5775,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     cmd.Parameters.AddWithValue("@RcsMaxX", rcsMaxX);
                     cmd.Parameters.AddWithValue("@RcsMaxY", rcsMaxY);
                     cmd.Parameters.AddWithValue("@RcsMaxZ", rcsMaxZ);
-                    
+
                     var rowsAffected = cmd.ExecuteNonQuery();
                     if (rowsAffected == 0 && !DeploymentConfiguration.DeploymentMode)
                     {
@@ -5808,7 +5820,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 cmd.Parameters.AddWithValue("@RotatedBoundingBoxMaxX", rotatedMaxX);
                 cmd.Parameters.AddWithValue("@RotatedBoundingBoxMaxY", rotatedMaxY);
                 cmd.Parameters.AddWithValue("@RotatedBoundingBoxMaxZ", rotatedMaxZ);
-                
+
                 var rowsAffected = cmd.ExecuteNonQuery();
                 if (rowsAffected == 0 && !DeploymentConfiguration.DeploymentMode)
                 {
@@ -5826,7 +5838,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Calculated once during individual sleeve placement, stored for reuse during clustering
         /// Corner order: 1=Bottom-left, 2=Bottom-right, 3=Top-left, 4=Top-right (in local space, then rotated to world)
         /// </summary>
-        public void UpdateSleeveCorners(Guid clashZoneGuid, 
+        public void UpdateSleeveCorners(Guid clashZoneGuid,
             double corner1X, double corner1Y, double corner1Z,
             double corner2X, double corner2Y, double corner2Z,
             double corner3X, double corner3Y, double corner3Z,
@@ -5865,7 +5877,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 cmd.Parameters.AddWithValue("@SleeveCorner4X", corner4X);
                 cmd.Parameters.AddWithValue("@SleeveCorner4Y", corner4Y);
                 cmd.Parameters.AddWithValue("@SleeveCorner4Z", corner4Z);
-                
+
                 var rowsAffected = cmd.ExecuteNonQuery();
                 if (rowsAffected == 0 && !DeploymentConfiguration.DeploymentMode)
                 {
@@ -5927,7 +5939,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         cmd.Parameters.AddWithValue("@Corner4Z", corner4Z);
 
                         var rowsAffected = cmd.ExecuteNonQuery();
-                        
+
                         // ✅ DIAGNOSTIC LOGGING (User Request)
                         var logParams = new Dictionary<string, object>
                         {
@@ -5935,18 +5947,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             { "Corner1", $"({corner1X:F2},{corner1Y:F2},{corner1Z:F2})" },
                             { "RowsAffected", rowsAffected }
                         };
-                        
+
                         if (rowsAffected == 0)
                         {
-                            DatabaseOperationLogger.LogOperation("UPDATE", "ClusterSleeves", logParams, rowsAffected, 
+                            DatabaseOperationLogger.LogOperation("UPDATE", "ClusterSleeves", logParams, rowsAffected,
                                 $"⚠️ Failed to update corners for Cluster {clusterInstanceId} (Row not found?)");
                             _logger($"[SQLite] ⚠️ UpdateClusterSleeveCorners: No rows updated for ClusterInstanceId {clusterInstanceId}");
                         }
                         else
                         {
-                            DatabaseOperationLogger.LogOperation("UPDATE", "ClusterSleeves", logParams, rowsAffected, 
+                            DatabaseOperationLogger.LogOperation("UPDATE", "ClusterSleeves", logParams, rowsAffected,
                                 $"✅ Saved corners for Cluster {clusterInstanceId}");
-                             // Only log to file if not in strict deployment mode, or if crucial
+                            // Only log to file if not in strict deployment mode, or if crucial
                             if (!DeploymentConfiguration.DeploymentMode)
                                 _logger($"[SQLite] ✅ Saved 4 corners for ClusterInstanceId {clusterInstanceId}");
                         }
@@ -5977,13 +5989,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 checkCmd.Parameters.AddWithValue("@ClashZoneGuid", clashZoneGuid.ToString());
                 var count = Convert.ToInt32(checkCmd.ExecuteScalar());
                 rowExists = count > 0;
-                
+
                 if (!rowExists && !DeploymentConfiguration.DeploymentMode)
                 {
                     _logger($"[SQLite] ⚠️ UpdateSleeveInstanceId: Zone {clashZoneGuid} does NOT exist in ClashZones table (row will be created later in batch persistence)");
                 }
             }
-            
+
             using (var cmd = _context.Connection.CreateCommand())
             {
                 cmd.CommandText = @"
@@ -5995,9 +6007,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                 cmd.Parameters.AddWithValue("@ClashZoneGuid", clashZoneGuid.ToString());
                 cmd.Parameters.AddWithValue("@SleeveInstanceId", sleeveInstanceId > 0 ? (object)sleeveInstanceId : DBNull.Value);
-                
+
                 var rowsAffected = cmd.ExecuteNonQuery();
-                
+
                 // ✅ DATABASE LOGGING: Log the operation result (single log entry with all info)
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
@@ -6007,12 +6019,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         { "SleeveInstanceId", sleeveInstanceId },
                         { "RowExists", rowExists }
                     };
-                    DatabaseOperationLogger.LogOperation("UPDATE", "ClashZones", logParams, rowsAffected, 
-                        rowsAffected > 0 ? $"✅ Updated SleeveInstanceId={sleeveInstanceId} for zone {clashZoneGuid}" 
-                                         : (rowExists ? $"⚠️ UPDATE failed for zone {clashZoneGuid} (row exists but UPDATE returned 0 rows)" 
+                    DatabaseOperationLogger.LogOperation("UPDATE", "ClashZones", logParams, rowsAffected,
+                        rowsAffected > 0 ? $"✅ Updated SleeveInstanceId={sleeveInstanceId} for zone {clashZoneGuid}"
+                                         : (rowExists ? $"⚠️ UPDATE failed for zone {clashZoneGuid} (row exists but UPDATE returned 0 rows)"
                                                       : $"⚠️ No rows updated for zone {clashZoneGuid} (row does not exist yet, will be created in batch persistence)"));
                 }
-                
+
                 if (rowsAffected == 0 && !DeploymentConfiguration.DeploymentMode)
                 {
                     if (rowExists)
@@ -6029,7 +6041,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     _logger($"[SQLite] ✅ UpdateSleeveInstanceId: Updated {rowsAffected} row(s) in ClashZones for GUID {clashZoneGuid} with SleeveInstanceId={sleeveInstanceId}");
                 }
             }
-            
+
             // ✅ CRITICAL FIX: Also update SleeveSnapshots table to keep SleeveInstanceId in sync
             // This ensures parameter transfer works after sleeve regeneration/recreation
             using (var snapshotCmd = _context.Connection.CreateCommand())
@@ -6043,7 +6055,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                 snapshotCmd.Parameters.AddWithValue("@ClashZoneGuid", clashZoneGuid.ToString());
                 snapshotCmd.Parameters.AddWithValue("@SleeveInstanceId", sleeveInstanceId > 0 ? (object)sleeveInstanceId : DBNull.Value);
-                
+
                 var snapshotRowsAffected = snapshotCmd.ExecuteNonQuery();
                 if (snapshotRowsAffected > 0 && !DeploymentConfiguration.DeploymentMode)
                 {
@@ -6056,18 +6068,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             }
         }
 
-        public void LogSleeveEvent(int clashZoneId, string eventType, string? payload = null)
-                {
-                    using (var cmd = _context.Connection.CreateCommand())
-                    {
-                        cmd.CommandText = @"
+        public void LogSleeveEvent(int clashZoneId, string eventType, string payload = null)
+        {
+            using (var cmd = _context.Connection.CreateCommand())
+            {
+                cmd.CommandText = @"
                     INSERT INTO SleeveEvents (ClashZoneId, EventType, Payload, CreatedAt)
                     VALUES (@ClashZoneId, @EventType, @Payload, CURRENT_TIMESTAMP)";
 
                 cmd.Parameters.AddWithValue("@ClashZoneId", clashZoneId);
                 cmd.Parameters.AddWithValue("@EventType", eventType);
                 cmd.Parameters.AddWithValue("@Payload", (object)payload ?? DBNull.Value);
-                            cmd.ExecuteNonQuery();
+                cmd.ExecuteNonQuery();
             }
         }
 
@@ -6122,7 +6134,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                 cmd.Parameters.AddWithValue("@Category", category);
                 var duplicateGuids = Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
-                
+
                 // Check for duplicate MEP+Host+Point combinations
                 cmd.CommandText = @"
                     SELECT COUNT(*) - COUNT(DISTINCT MepElementId || '|' || HostElementId || '|' || CAST(IntersectionX AS TEXT) || '|' || CAST(IntersectionY AS TEXT) || '|' || CAST(IntersectionZ AS TEXT)) as DuplicatePoints
@@ -6130,9 +6142,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     INNER JOIN FileCombos fc ON cz.ComboId = fc.ComboId
                     INNER JOIN Filters f ON fc.FilterId = f.FilterId
                     WHERE f.Category = @Category";
-                
+
                 var duplicatePoints = Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
-                
+
                 // Check for duplicate SleeveInstanceIds (same sleeve ID in multiple clash zones)
                 cmd.CommandText = @"
                     SELECT COUNT(*) - COUNT(DISTINCT SleeveInstanceId) as DuplicateSleeveIds
@@ -6140,9 +6152,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     INNER JOIN FileCombos fc ON cz.ComboId = fc.ComboId
                     INNER JOIN Filters f ON fc.FilterId = f.FilterId
                     WHERE f.Category = @Category AND SleeveInstanceId > 0";
-                
+
                 var duplicateSleeveIds = Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
-                
+
                 return (duplicateGuids, duplicatePoints, duplicateSleeveIds);
             }
         }
@@ -6177,9 +6189,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             GetInt(reader, "ClusterResolved", 0),
                             GetInt(reader, "Unresolved", 0)
                             );
-                        }
                     }
                 }
+            }
 
             return (0, 0, 0, 0);
         }
@@ -6201,7 +6213,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                       AND ABS(IntersectionZ - @IntersectionZ) < @Tolerance
                       AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL
                     LIMIT 1";
-                
+
                 cmd.Parameters.AddWithValue("@MepElementId", mepElementId);
                 cmd.Parameters.AddWithValue("@HostElementId", hostElementId);
                 cmd.Parameters.AddWithValue("@IntersectionX", intersectionX);
@@ -6213,9 +6225,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 if (result != null && Guid.TryParse(result.ToString(), out var guid))
                 {
                     return guid;
-        }
+                }
             }
-            
+
             return null;
         }
 
@@ -6230,16 +6242,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             {
                 return existingGuid.Value;
             }
-            
+
             // Generate deterministic GUID
             var guid = generateDeterministicGuid(mepElementId, hostElementId, intersectionX, intersectionY, intersectionZ, tolerance);
-            
+
             // Note: The GUID will be stored when the clash zone is inserted via InsertOrUpdateClashZones
             // This method is mainly for pre-checking/lookup purposes
-            
+
             return guid;
         }
-        
+
         /// <summary>
         /// ✅ INTERFACE IMPLEMENTATION: Simplified batch update for interface compliance
         /// Delegates to full implementation with default values for optional parameters
@@ -6248,7 +6260,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         {
             if (updates == null || updates.Count == 0)
                 return;
-            
+
             // Convert to full signature with default values for optional parameters
             var fullUpdates = updates.Select(u => (
                 ClashZoneId: u.ClashZoneId,
@@ -6268,11 +6280,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 AfterClusterSleeveId: 0,
                 IsClusteredFlag: (bool?)null
             ));
-            
+
             // Delegate to full implementation
             BatchUpdateFlags(fullUpdates);
         }
-        
+
         /// <summary>
         /// ✅ DATABASE FLAG MANAGEMENT: Batch update flags for multiple clash zones (full signature)
         /// Updates IsResolvedFlag, IsClusterResolvedFlag, SleeveInstanceId, and ClusterInstanceId
@@ -6282,11 +6294,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         {
             if (updates == null)
                 return;
-                
+
             var updatesList = updates.ToList();
             if (updatesList.Count == 0)
                 return;
-            
+
             // ✅ LOG: Batch flag update operation
             DatabaseOperationLogger.LogOperation(
                 "UPDATE",
@@ -6298,7 +6310,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 },
                 rowsAffected: -1,
                 additionalInfo: $"Batch updating flags for {updatesList.Count} clash zones");
-            
+
             using (var transaction = _context.Connection.BeginTransaction())
             {
                 try
@@ -6308,12 +6320,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     // 🚀 PERFORMANCE OPTIMIZATION: Use temp table + single UPDATE instead of N individual UPDATEs
                     // Old approach: 68 individual UPDATEs = 897ms
                     // New approach: 1 temp table INSERT + 1 UPDATE JOIN = ~10-50ms
-                    
+
                     // Step 1: Create temp table for batch data
-                        using (var tempCmd = _context.Connection.CreateCommand())
-                        {
-                            tempCmd.Transaction = transaction;
-                            tempCmd.CommandText = @"
+                    using (var tempCmd = _context.Connection.CreateCommand())
+                    {
+                        tempCmd.Transaction = transaction;
+                        tempCmd.CommandText = @"
                                 CREATE TEMP TABLE IF NOT EXISTS TempFlagUpdates (
                                     ClashZoneGuid TEXT,
                                     IsResolvedFlag INTEGER,
@@ -6332,14 +6344,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     AfterClusterSleeveId INTEGER,
                                     IsClusteredFlag INTEGER
                                 )";
-                            tempCmd.ExecuteNonQuery();
-                        }
-                        
-                        // Step 2: Bulk insert all updates into temp table
-                        using (var insertCmd = _context.Connection.CreateCommand())
-                        {
-                            insertCmd.Transaction = transaction;
-                            insertCmd.CommandText = @"
+                        tempCmd.ExecuteNonQuery();
+                    }
+
+                    // Step 2: Bulk insert all updates into temp table
+                    using (var insertCmd = _context.Connection.CreateCommand())
+                    {
+                        insertCmd.Transaction = transaction;
+                        insertCmd.CommandText = @"
                                 INSERT INTO TempFlagUpdates (
                                     ClashZoneGuid, IsResolvedFlag, IsClusterResolvedFlag, 
                                     SleeveInstanceId, ClusterInstanceId,
@@ -6357,54 +6369,54 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     @MarkedForClusterProcess, @AfterClusterSleeveId, @IsClusteredFlag,
                                     @IsCombinedResolved
                                 )";
-                            
-                            var guidParam = insertCmd.Parameters.Add("@ClashZoneGuid", System.Data.DbType.String);
-                            var isResolvedParam = insertCmd.Parameters.Add("@IsResolvedFlag", System.Data.DbType.Int32);
-                            var isClusterResolvedParam = insertCmd.Parameters.Add("@IsClusterResolvedFlag", System.Data.DbType.Int32);
-                            var isCombinedResolvedParam = insertCmd.Parameters.Add("@IsCombinedResolved", System.Data.DbType.Int32);
-                            var sleeveIdParam = insertCmd.Parameters.Add("@SleeveInstanceId", System.Data.DbType.Int32);
-                            var clusterIdParam = insertCmd.Parameters.Add("@ClusterInstanceId", System.Data.DbType.Int32);
-                            var oldSleeveIdParam = insertCmd.Parameters.Add("@OldSleeveInstanceId", System.Data.DbType.Int32);
-                            var oldClusterIdParam = insertCmd.Parameters.Add("@OldClusterInstanceId", System.Data.DbType.Int32);
-                            var mepIdParam = insertCmd.Parameters.Add("@MepElementId", System.Data.DbType.Int32);
-                            var hostIdParam = insertCmd.Parameters.Add("@HostElementId", System.Data.DbType.Int32);
-                            var intersectionXParam = insertCmd.Parameters.Add("@IntersectionX", System.Data.DbType.Double);
-                            var intersectionYParam = insertCmd.Parameters.Add("@IntersectionY", System.Data.DbType.Double);
-                            var intersectionZParam = insertCmd.Parameters.Add("@IntersectionZ", System.Data.DbType.Double);
-                            var markedForClusterParam = insertCmd.Parameters.Add("@MarkedForClusterProcess", System.Data.DbType.Int32);
-                            var afterClusterSleeveIdParam = insertCmd.Parameters.Add("@AfterClusterSleeveId", System.Data.DbType.Int32);
-                            var isClusteredFlagParam = insertCmd.Parameters.Add("@IsClusteredFlag", System.Data.DbType.Int32);
-                            
-                            insertCmd.Prepare();
-                            
-                            foreach (var update in updatesList)
-                            {
-                                guidParam.Value = update.ClashZoneId.ToString().ToUpperInvariant();
-                                isResolvedParam.Value = update.IsResolved ? 1 : 0;
-                                isClusterResolvedParam.Value = update.IsClusterResolved ? 1 : 0;
-                                isCombinedResolvedParam.Value = update.IsCombinedResolved ? 1 : 0;
-                                sleeveIdParam.Value = update.SleeveInstanceId > 0 ? (object)update.SleeveInstanceId : DBNull.Value;
-                                clusterIdParam.Value = update.ClusterInstanceId > 0 ? (object)update.ClusterInstanceId : DBNull.Value;
-                                oldSleeveIdParam.Value = update.OldSleeveInstanceId > 0 ? (object)update.OldSleeveInstanceId : DBNull.Value;
-                                oldClusterIdParam.Value = update.OldClusterInstanceId > 0 ? (object)update.OldClusterInstanceId : DBNull.Value;
-                                mepIdParam.Value = update.MepElementId;
-                                hostIdParam.Value = update.StructuralElementId;
-                                intersectionXParam.Value = update.IntersectionPointX;
-                                intersectionYParam.Value = update.IntersectionPointY;
-                                intersectionZParam.Value = update.IntersectionPointZ;
-                                markedForClusterParam.Value = update.MarkedForClusterProcess.HasValue ? (object)(update.MarkedForClusterProcess.Value ? 1 : 0) : DBNull.Value;
-                                afterClusterSleeveIdParam.Value = update.AfterClusterSleeveId > 0 ? (object)update.AfterClusterSleeveId : DBNull.Value;
-                                isClusteredFlagParam.Value = update.IsClusteredFlag.HasValue ? (object)(update.IsClusteredFlag.Value ? 1 : 0) : DBNull.Value;
-                                
-                                insertCmd.ExecuteNonQuery();
-                            }
-                        }
-                        
-                        // Step 3: Single UPDATE with JOIN to temp table (1 SQL statement for all updates)
-                        using (var bulkUpdateCmd = _context.Connection.CreateCommand())
+
+                        var guidParam = insertCmd.Parameters.Add("@ClashZoneGuid", System.Data.DbType.String);
+                        var isResolvedParam = insertCmd.Parameters.Add("@IsResolvedFlag", System.Data.DbType.Int32);
+                        var isClusterResolvedParam = insertCmd.Parameters.Add("@IsClusterResolvedFlag", System.Data.DbType.Int32);
+                        var isCombinedResolvedParam = insertCmd.Parameters.Add("@IsCombinedResolved", System.Data.DbType.Int32);
+                        var sleeveIdParam = insertCmd.Parameters.Add("@SleeveInstanceId", System.Data.DbType.Int32);
+                        var clusterIdParam = insertCmd.Parameters.Add("@ClusterInstanceId", System.Data.DbType.Int32);
+                        var oldSleeveIdParam = insertCmd.Parameters.Add("@OldSleeveInstanceId", System.Data.DbType.Int32);
+                        var oldClusterIdParam = insertCmd.Parameters.Add("@OldClusterInstanceId", System.Data.DbType.Int32);
+                        var mepIdParam = insertCmd.Parameters.Add("@MepElementId", System.Data.DbType.Int32);
+                        var hostIdParam = insertCmd.Parameters.Add("@HostElementId", System.Data.DbType.Int32);
+                        var intersectionXParam = insertCmd.Parameters.Add("@IntersectionX", System.Data.DbType.Double);
+                        var intersectionYParam = insertCmd.Parameters.Add("@IntersectionY", System.Data.DbType.Double);
+                        var intersectionZParam = insertCmd.Parameters.Add("@IntersectionZ", System.Data.DbType.Double);
+                        var markedForClusterParam = insertCmd.Parameters.Add("@MarkedForClusterProcess", System.Data.DbType.Int32);
+                        var afterClusterSleeveIdParam = insertCmd.Parameters.Add("@AfterClusterSleeveId", System.Data.DbType.Int32);
+                        var isClusteredFlagParam = insertCmd.Parameters.Add("@IsClusteredFlag", System.Data.DbType.Int32);
+
+                        insertCmd.Prepare();
+
+                        foreach (var update in updatesList)
                         {
-                            bulkUpdateCmd.Transaction = transaction;
-                            bulkUpdateCmd.CommandText = @"
+                            guidParam.Value = update.ClashZoneId.ToString().ToUpperInvariant();
+                            isResolvedParam.Value = update.IsResolved ? 1 : 0;
+                            isClusterResolvedParam.Value = update.IsClusterResolved ? 1 : 0;
+                            isCombinedResolvedParam.Value = update.IsCombinedResolved ? 1 : 0;
+                            sleeveIdParam.Value = update.SleeveInstanceId > 0 ? (object)update.SleeveInstanceId : DBNull.Value;
+                            clusterIdParam.Value = update.ClusterInstanceId > 0 ? (object)update.ClusterInstanceId : DBNull.Value;
+                            oldSleeveIdParam.Value = update.OldSleeveInstanceId > 0 ? (object)update.OldSleeveInstanceId : DBNull.Value;
+                            oldClusterIdParam.Value = update.OldClusterInstanceId > 0 ? (object)update.OldClusterInstanceId : DBNull.Value;
+                            mepIdParam.Value = update.MepElementId;
+                            hostIdParam.Value = update.StructuralElementId;
+                            intersectionXParam.Value = update.IntersectionPointX;
+                            intersectionYParam.Value = update.IntersectionPointY;
+                            intersectionZParam.Value = update.IntersectionPointZ;
+                            markedForClusterParam.Value = update.MarkedForClusterProcess.HasValue ? (object)(update.MarkedForClusterProcess.Value ? 1 : 0) : DBNull.Value;
+                            afterClusterSleeveIdParam.Value = update.AfterClusterSleeveId > 0 ? (object)update.AfterClusterSleeveId : DBNull.Value;
+                            isClusteredFlagParam.Value = update.IsClusteredFlag.HasValue ? (object)(update.IsClusteredFlag.Value ? 1 : 0) : DBNull.Value;
+
+                            insertCmd.ExecuteNonQuery();
+                        }
+                    }
+
+                    // Step 3: Single UPDATE with JOIN to temp table (1 SQL statement for all updates)
+                    using (var bulkUpdateCmd = _context.Connection.CreateCommand())
+                    {
+                        bulkUpdateCmd.Transaction = transaction;
+                        bulkUpdateCmd.CommandText = @"
                                 UPDATE ClashZones
                                 SET 
                                     IsResolvedFlag = t.IsResolvedFlag,
@@ -6446,34 +6458,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                      LIMIT 1),
                                     NULL
                                 )";
-                            rowsAffectedTotal = bulkUpdateCmd.ExecuteNonQuery();
-                        }
-                        
-                        // Step 4: Cleanup temp table
-                        using (var dropCmd = _context.Connection.CreateCommand())
-                        {
-                            dropCmd.Transaction = transaction;
-                            dropCmd.CommandText = "DROP TABLE IF EXISTS TempFlagUpdates";
-                            dropCmd.ExecuteNonQuery();
-                        }
-                        
-                        int updateCount = updatesList.Count;
-                        int notFoundCount = updateCount - rowsAffectedTotal;
-                        int multipleRowsCount = 0; // Can't track this in bulk mode
-                        
-                        // ✅ Old per-row loop completely removed - replaced with bulk temp table approach above
+                        rowsAffectedTotal = bulkUpdateCmd.ExecuteNonQuery();
+                    }
 
-                        // ✅ FALLBACK: If bulk update missed rows, try individual updates for reliability
-                        if (rowsAffectedTotal < updateCount)
+                    // Step 4: Cleanup temp table
+                    using (var dropCmd = _context.Connection.CreateCommand())
+                    {
+                        dropCmd.Transaction = transaction;
+                        dropCmd.CommandText = "DROP TABLE IF EXISTS TempFlagUpdates";
+                        dropCmd.ExecuteNonQuery();
+                    }
+
+                    int updateCount = updatesList.Count;
+                    int notFoundCount = updateCount - rowsAffectedTotal;
+                    int multipleRowsCount = 0; // Can't track this in bulk mode
+
+                    // ✅ Old per-row loop completely removed - replaced with bulk temp table approach above
+
+                    // ✅ FALLBACK: If bulk update missed rows, try individual updates for reliability
+                    if (rowsAffectedTotal < updateCount)
+                    {
+                        _logger($"[SQLite] ⚠️ Bulk update affected {rowsAffectedTotal} rows but {updateCount} were expected. Attempting {updateCount} individual updates as fallback.");
+
+                        foreach (var update in updatesList)
                         {
-                            _logger($"[SQLite] ⚠️ Bulk update affected {rowsAffectedTotal} rows but {updateCount} were expected. Attempting {updateCount} individual updates as fallback.");
-                            
-                            foreach (var update in updatesList)
+                            using (var indUpdateCmd = _context.Connection.CreateCommand())
                             {
-                                using (var indUpdateCmd = _context.Connection.CreateCommand())
-                                {
-                                    indUpdateCmd.Transaction = transaction;
-                                    indUpdateCmd.CommandText = @"
+                                indUpdateCmd.Transaction = transaction;
+                                indUpdateCmd.CommandText = @"
                                         UPDATE ClashZones
                                         SET 
                                             IsResolvedFlag = @IsResolvedFlag,
@@ -6490,30 +6502,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                             END,
                                             UpdatedAt = datetime('now', '+5 hours', '+30 minutes')
                                         WHERE UPPER(ClashZoneGuid) = @ClashZoneGuid";
-                                    
-                                    indUpdateCmd.Parameters.AddWithValue("@ClashZoneGuid", update.ClashZoneId.ToString().ToUpperInvariant());
-                                    indUpdateCmd.Parameters.AddWithValue("@IsResolvedFlag", update.IsResolved ? 1 : 0);
-                                    indUpdateCmd.Parameters.AddWithValue("@IsClusterResolvedFlag", update.IsClusterResolved ? 1 : 0);
-                                    indUpdateCmd.Parameters.AddWithValue("@IsCombinedResolved", update.IsCombinedResolved ? 1 : 0);
-                                    indUpdateCmd.Parameters.AddWithValue("@SleeveInstanceId", update.SleeveInstanceId > 0 ? (object)update.SleeveInstanceId : DBNull.Value);
-                                    indUpdateCmd.Parameters.AddWithValue("@ClusterInstanceId", update.ClusterInstanceId > 0 ? (object)update.ClusterInstanceId : DBNull.Value);
-                                    indUpdateCmd.Parameters.AddWithValue("@MarkedForClusterProcess", update.MarkedForClusterProcess.HasValue ? (object)(update.MarkedForClusterProcess.Value ? 1 : 0) : DBNull.Value);
-                                    indUpdateCmd.Parameters.AddWithValue("@AfterClusterSleeveId", update.AfterClusterSleeveId > 0 ? (object)update.AfterClusterSleeveId : DBNull.Value);
-                                    indUpdateCmd.Parameters.AddWithValue("@IsClusteredFlag", update.IsClusteredFlag.HasValue ? (object)(update.IsClusteredFlag.Value ? 1 : 0) : DBNull.Value);
-                                    
-                                    indUpdateCmd.ExecuteNonQuery();
-                                }
-                            }
-                            _logger($"[SQLite] ✅ Fallback individual updates completed.");
-                        }
 
-                        transaction.Commit();
-                        _logger($"[SQLite] ✅ 🚀 BATCH UPDATE COMPLETED: {updateCount} items processed (with fallback capability).");
-                        
-                        if (multipleRowsCount > 0)
-                        {
-                            _logger($"[SQLite] ⚠️⚠️⚠️ WARNING: {multipleRowsCount} updates matched multiple rows! This indicates duplicate entries in the database. Expected: 1 row per update. Actual: {rowsAffectedTotal} rows for {updateCount} updates.");
+                                indUpdateCmd.Parameters.AddWithValue("@ClashZoneGuid", update.ClashZoneId.ToString().ToUpperInvariant());
+                                indUpdateCmd.Parameters.AddWithValue("@IsResolvedFlag", update.IsResolved ? 1 : 0);
+                                indUpdateCmd.Parameters.AddWithValue("@IsClusterResolvedFlag", update.IsClusterResolved ? 1 : 0);
+                                indUpdateCmd.Parameters.AddWithValue("@IsCombinedResolved", update.IsCombinedResolved ? 1 : 0);
+                                indUpdateCmd.Parameters.AddWithValue("@SleeveInstanceId", update.SleeveInstanceId > 0 ? (object)update.SleeveInstanceId : DBNull.Value);
+                                indUpdateCmd.Parameters.AddWithValue("@ClusterInstanceId", update.ClusterInstanceId > 0 ? (object)update.ClusterInstanceId : DBNull.Value);
+                                indUpdateCmd.Parameters.AddWithValue("@MarkedForClusterProcess", update.MarkedForClusterProcess.HasValue ? (object)(update.MarkedForClusterProcess.Value ? 1 : 0) : DBNull.Value);
+                                indUpdateCmd.Parameters.AddWithValue("@AfterClusterSleeveId", update.AfterClusterSleeveId > 0 ? (object)update.AfterClusterSleeveId : DBNull.Value);
+                                indUpdateCmd.Parameters.AddWithValue("@IsClusteredFlag", update.IsClusteredFlag.HasValue ? (object)(update.IsClusteredFlag.Value ? 1 : 0) : DBNull.Value);
+
+                                indUpdateCmd.ExecuteNonQuery();
+                            }
                         }
+                        _logger($"[SQLite] ✅ Fallback individual updates completed.");
+                    }
+
+                    transaction.Commit();
+                    _logger($"[SQLite] ✅ 🚀 BATCH UPDATE COMPLETED: {updateCount} items processed (with fallback capability).");
+
+                    if (multipleRowsCount > 0)
+                    {
+                        _logger($"[SQLite] ⚠️⚠️⚠️ WARNING: {multipleRowsCount} updates matched multiple rows! This indicates duplicate entries in the database. Expected: 1 row per update. Actual: {rowsAffectedTotal} rows for {updateCount} updates.");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -6602,7 +6614,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 UpdatedAt = datetime('now', '+5 hours', '+30 minutes')
                             FROM TempFlagUpdatesCurrentClash t
                             WHERE UPPER(ClashZones.ClashZoneGuid) = UPPER(t.ClashZoneGuid)";
-                        
+
                         int rows = bulkUpdateCmd.ExecuteNonQuery();
                         _logger($"[SQLite] ✅ BATCH UPDATE (CurrentClash): Updated {rows} rows from {updatesList.Count} requests");
                     }
@@ -6757,7 +6769,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// ✅ CRITICAL SAFETY: Verify that all placed sleeves have snapshots saved in database
         /// </summary>
         private (bool Success, string Message, List<int> MissingSleeveIds) VerifySnapshotCompleteness(
-            List<ClashZone> placedZones, 
+            List<ClashZone> placedZones,
             SQLiteTransaction transaction)
         {
             var missingSleeveIds = new List<int>();
@@ -6777,7 +6789,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     cmd.Transaction = transaction;
                     var placeholders = string.Join(",", sleeveIds.Select((_, i) => $"@Id{i}"));
                     cmd.CommandText = $"SELECT SleeveInstanceId FROM SleeveSnapshots WHERE SleeveInstanceId IN ({placeholders})";
-                    
+
                     for (int i = 0; i < sleeveIds.Count; i++)
                     {
                         cmd.Parameters.AddWithValue($"@Id{i}", sleeveIds[i]);
@@ -6793,7 +6805,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     }
 
                     missingSleeveIds = sleeveIds.Where(id => !savedIds.Contains(id)).ToList();
-                    
+
                     if (missingSleeveIds.Count > 0)
                     {
                         return (false, $"{missingSleeveIds.Count}/{sleeveIds.Count} sleeves missing snapshots", missingSleeveIds);
@@ -6824,10 +6836,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             var criticalMepParams = new[] { "Size", "System Type", "System Name" };
             foreach (var paramName in criticalMepParams)
             {
-                var hasParam = mepParams.Any(kvp => 
+                var hasParam = mepParams.Any(kvp =>
                     string.Equals(kvp.Key, paramName, StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(kvp.Key, "MEP " + paramName, StringComparison.OrdinalIgnoreCase));
-                
+
                 if (!hasParam)
                 {
                     missingCritical.Add(paramName);
@@ -6935,7 +6947,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             if (ids == null || ids.Count == 0) return new List<ClashZone>();
 
             var zones = new List<ClashZone>();
-            
+
             try
             {
                 var idString = string.Join(",", ids);
@@ -6948,7 +6960,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         FROM ClashZones 
                         WHERE SleeveInstanceId IN ({idString}) 
                            OR ClusterInstanceId IN ({idString})";
-                    
+
                     using (var reader = cmd.ExecuteReader())
                     {
                         while (reader.Read())
@@ -6961,7 +6973,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         }
                     }
                 }
-                
+
                 // IMPORTANT: Populate parameters if needed? 
                 // Currently CombinedClusterFormationService works on geometry fields (ClusterSleeveBoundingBoxMinX etc)
                 // which MapClashZone should populate.
@@ -6994,7 +7006,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             SET MepCategory = @category,
                                 UpdatedAt = CURRENT_TIMESTAMP
                             WHERE ClashZoneGuid = @guid";
-                        
+
                         cmd.Parameters.AddWithValue("@guid", clashZoneGuid.ToString());
                         cmd.Parameters.AddWithValue("@category", category);
 
@@ -7039,7 +7051,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             {
                                 int id = Convert.ToInt32(reader["SleeveInstanceId"]);
                                 string category = reader["MepCategory"]?.ToString();
-                                
+
                                 if (!result.ContainsKey(id) && !string.IsNullOrEmpty(category))
                                 {
                                     result[id] = category;
@@ -7064,6 +7076,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// </summary>
         public List<ClusterSleeve> GetClusterSleevesByInstanceIds(IEnumerable<int> instanceIds)
         {
+            // SOLID Refactoring: Delegate to specialized repository if enabled
+            if (OptimizationFlags.UseSolidRefactoredRepositories)
+            {
+                // Use ClusterSleeveData from _clusterRepo and map to ClusterSleeve
+                var dataList = _clusterRepo.GetClusterSleevesByInstanceIds(instanceIds);
+                return dataList?.Select(MapClusterSleeve).ToList() ?? new List<ClusterSleeve>();
+            }
+
             var results = new List<ClusterSleeve>();
             var ids = instanceIds?.ToList();
             if (ids == null || ids.Count == 0) return results;
@@ -7077,7 +7097,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         SELECT * 
                         FROM ClusterSleeves 
                         WHERE ClusterInstanceId IN ({idString})";
-                    
+
                     using (var reader = cmd.ExecuteReader())
                     {
                         while (reader.Read())
@@ -7099,14 +7119,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// </summary>
         public List<ClusterSleeve> GetAllClusterSleeves()
         {
+            // SOLID Refactoring: Delegate to specialized repository if enabled
+            if (OptimizationFlags.UseSolidRefactoredRepositories)
+            {
+                // Use ClusterSleeveData from _clusterRepo and map to ClusterSleeve
+                var dataList = _clusterRepo.GetAllClusterSleeves();
+                return dataList?.Select(MapClusterSleeve).ToList() ?? new List<ClusterSleeve>();
+            }
+
             var results = new List<ClusterSleeve>();
-            
+
             try
             {
                 using (var cmd = _context.Connection.CreateCommand())
                 {
                     cmd.CommandText = "SELECT * FROM ClusterSleeves";
-                    
+
                     using (var reader = cmd.ExecuteReader())
                     {
                         while (reader.Read())
@@ -7115,7 +7143,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         }
                     }
                 }
-                
+
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     DebugLogger.Info($"[ClashZoneRepository] Retrieved {results.Count} cluster sleeves from database");
@@ -7125,8 +7153,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             {
                 _logger($"[SQLite] ❌ Error in GetAllClusterSleeves: {ex.Message}");
             }
-            
+
             return results;
+        }
+
+        private ClusterSleeve MapClusterSleeve(ClusterSleeveData data)
+        {
+            if (data == null) return null;
+
+            return new ClusterSleeve
+            {
+                // ClusterSleeveId not present in ClusterSleeveData, defaulting to 0 or -1 appropriate for non-persisted ID
+                ClusterSleeveId = 0, 
+                ClusterInstanceId = data.ClusterInstanceId,
+                Category = data.Category,
+                // ClusterSleeveData has double, ClusterSleeve likely has double?. Mapping directly.
+                Corner1X = data.Corner1X,
+                Corner1Y = data.Corner1Y,
+                Corner1Z = data.Corner1Z,
+                Corner2X = data.Corner2X,
+                Corner2Y = data.Corner2Y,
+                Corner2Z = data.Corner2Z,
+                Corner3X = data.Corner3X,
+                Corner3Y = data.Corner3Y,
+                Corner3Z = data.Corner3Z,
+                Corner4X = data.Corner4X,
+                Corner4Y = data.Corner4Y,
+                Corner4Z = data.Corner4Z,
+                RotationAngleDeg = data.RotationAngleDeg,
+                HostType = data.HostType,
+                HostOrientation = data.HostOrientation
+            };
         }
 
         private ClusterSleeve MapClusterSleeve(System.Data.SQLite.SQLiteDataReader reader)
@@ -7149,7 +7206,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 Corner4Y = reader.IsDBNull(reader.GetOrdinal("Corner4Y")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("Corner4Y")),
                 Corner4Z = reader.IsDBNull(reader.GetOrdinal("Corner4Z")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("Corner4Z")),
                 RotationAngleDeg = reader.IsDBNull(reader.GetOrdinal("RotationAngleDeg")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("RotationAngleDeg")),
-                
+
                 // Map Host Info
                 HostType = reader.IsDBNull(reader.GetOrdinal("HostType")) ? string.Empty : reader.GetString(reader.GetOrdinal("HostType")),
                 HostOrientation = reader.IsDBNull(reader.GetOrdinal("HostOrientation")) ? string.Empty : reader.GetString(reader.GetOrdinal("HostOrientation"))
@@ -7164,9 +7221,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     FROM ClashZones cz
                     INNER JOIN FileCombos fc ON cz.ComboId = fc.ComboId
                     WHERE cz.ClashZoneId = @Id";
-                
+
                 cmd.Parameters.AddWithValue("@Id", clashZoneId.ToString());
-                
+
                 using (var reader = cmd.ExecuteReader())
                 {
                     if (reader.Read())
@@ -7201,7 +7258,69 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             }
             return results;
         }
+
+        /// <summary>
+        /// Updates resolution flags for zones that are part of a combined sleeve.
+        /// Sets IsCombinedResolved=true, IsResolved=false, IsClusterResolved=false, 
+        /// and links to the combined sleeve ID.
+        /// </summary>
+        public void UpdateCombinedResolutionFlags(IEnumerable<Guid> zoneGuids, int combinedSleeveId)
+        {
+            // SOLID Refactoring: Delegate to specialized repository if enabled
+            if (OptimizationFlags.UseSolidRefactoredRepositories)
+            {
+                var constituents = zoneGuids.Select(g => new SleeveConstituent 
+                { 
+                    Type = ConstituentType.Individual, 
+                    ClashZoneGuid = g 
+                }).ToList();
+                
+                _combinedRepo.MarkConstituentsAsResolved(constituents, combinedSleeveId);
+                return;
+            }
+
+            var guidsList = zoneGuids.ToList();
+            if (guidsList.Count == 0) return;
+
+            try
+            {
+                var guidString = string.Join(",", guidsList.Select(g => $"'{g.ToString().ToUpperInvariant()}'"));
+
+                using (var transaction = _context.Connection.BeginTransaction())
+                {
+                    using (var cmd = _context.Connection.CreateCommand())
+                    {
+                        cmd.Transaction = transaction;
+                        cmd.CommandText = $@"
+                            UPDATE ClashZones 
+                            SET IsCombinedResolved = 1,
+                                IsResolvedFlag = 0,
+                                IsClusterResolvedFlag = 0,
+                                CombinedClusterSleeveInstanceId = @CombinedSleeveId,
+                                UpdatedAt = CURRENT_TIMESTAMP
+                            WHERE UPPER(ClashZoneGuid) IN ({guidString})";
+
+                        cmd.Parameters.AddWithValue("@CombinedSleeveId", combinedSleeveId);
+                        
+                        int rows = cmd.ExecuteNonQuery();
+                        if (!OptimizationFlags.DisableVerboseLogging)
+                        {
+                            _logger($"[SQLite] Updated {rows} zones for combined sleeve ID {combinedSleeveId}");
+                        }
+                    }
+                    transaction.Commit();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ❌ Error in UpdateCombinedResolutionFlags: {ex.Message}");
+                throw;
+            }
+        }
+
+
     }
 }
+
 
 

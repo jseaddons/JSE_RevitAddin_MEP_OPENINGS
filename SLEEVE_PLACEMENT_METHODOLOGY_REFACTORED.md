@@ -1088,7 +1088,7 @@ The clustering system is now organized into 10 distinct service phases, each wit
 
 ### 7.3 Flag Management
 
-**Service:** `FlagManager`
+**Service:** `FlagManager` & `ClashZoneRepository`
 
 **Database-First Operations:**
 - **READ**: Load flags from `ClashZones` table (PRIMARY)
@@ -1098,8 +1098,10 @@ The clustering system is now organized into 10 distinct service phases, each wit
 **Flags Managed:**
 - `IsResolved` - Individual sleeve placed (checks if element exists in Revit)
 - `IsClusterResolved` - Cluster sleeve placed (checks if element exists in Revit)
+- `IsCombinedResolved` - Combined sleeve placed (resolves underlying individual/cluster zones)
 - `SleeveInstanceId` - Individual sleeve ElementId
 - `ClusterSleeveInstanceId` - Cluster sleeve ElementId
+- `CombinedClusterSleeveInstanceId` - Combined sleeve ElementId (virtual ID or mapped ID)
 
 **Important:** Flags are NOT used to skip clustering calculation. They only verify if sleeve elements still exist in Revit (for flag reset if deleted).
 
@@ -1107,6 +1109,61 @@ The clustering system is now organized into 10 distinct service phases, each wit
 - **PATH 1:** Checks flags before placement (if sleeve exists → skip), updates flags after placement
 - **PATH 2:** No flag check before placement, updates flags after placement (`IsResolved = true`, `SleeveInstanceId`)
 - **PATH 3 Invalidated:** Resets flags for deleted sleeves (`IsResolved = true` to prevent re-placement), updates flags for placed sleeves (`IsResolved = true`, `SleeveInstanceId`)
+
+#### 7.3.1 Combined Sleeve Flag Strategy (CRITICAL)
+
+**Objective:**
+Ensure that placing a combined sleeve correctly marks the *constituent* individual clash zones as resolved, preventing double placement, without creating new database rows or losing the connection to the original detection data.
+
+**Core Principle:**
+**"Update Existing, Do Not Create New"** - Combined sleeves are virtual entities that "consume" existing clash zones. The database operation must always be an `UPDATE` on the existing `ClashZoneGuid` rows, never an `INSERT`.
+
+**Detailed Workflow:**
+
+1.  **Identification**:
+    *   The system uses `ClashZoneGuid` to deterministically identify the original individual clash zones that will form the combined sleeve.
+    *   These IDs are collected during the combined sleeve candidates formation phase.
+
+2.  **State Updates (The "Consumption" Logic)**:
+    *   When a combined sleeve is successfully placed, the `CombinedClusterPersistenceService` must update the *existing* rows for all constituent zones with the following state:
+        *   `IsCombinedResolved = 1` (TRUE) - **PRIMARY FLAG**: This zone is now resolved by a combined sleeve.
+        *   `IsResolved = 0` (FALSE) - Reset individual resolution (it's no longer individually resolved).
+        *   `IsClusterResolved = 0` (FALSE) - Reset cluster resolution (it's no longer cluster resolved).
+        *   `SleeveInstanceId = -1` - Reset individual sleeve ID.
+        *   `ClusterSleeveInstanceId = -1` - Reset cluster sleeve ID.
+        *   `CombinedClusterSleeveInstanceId = [NewCombinedSleeveId]` - Link to the new combined sleeve.
+
+3.  **Persistence Mechanism**:
+    *   **Service**: `CombinedClusterPersistenceService.PersistCombinedCluster`
+    *   **Operation**: Calls `ClashZoneRepository.UpdateCombinedResolutionFlags(List<Guid> zoneGuids, int combinedSleeveId)`
+    *   **SQL Logic**:
+        ```sql
+        UPDATE ClashZones
+        SET IsCombinedResolved = 1,
+            IsResolvedFlag = 0,
+            IsClusterResolvedFlag = 0,
+            SleeveInstanceId = -1,
+            ClusterInstanceId = -1,
+            CombinedClusterSleeveInstanceId = @CombinedSleeveId,
+            UpdatedAt = CURRENT_TIMESTAMP
+        WHERE ClashZoneGuid IN (@Guids)
+        ```
+
+4.  **Re-Placement Prevention**:
+    *   **Orchestrator Check**: `OpeningCommandOrchestrator` and `CombinedSleeveManager` must filter out zones where `IsCombinedResolved = 1`.
+    *   **Query**: `SELECT * FROM ClashZones WHERE IsCombinedResolved = 0 ...`
+    *   This ensures that once a zone is part of a combined sleeve, it is invisible to the individual and cluster placement logic.
+
+5.  **Deletion & Release Handling**:
+    *   When a combined sleeve is deleted from Revit (detected during Refresh or Flag Sync):
+    *   **Service**: `ClashZoneRepository.VerifyExistingSleevesAndResetFlags`
+    *   **Action**:
+        *   identify missing combined sleeves.
+        *   "Release" the constituent zones back to the pool.
+    *   **State Update**:
+        *   `IsCombinedResolved = 0`
+        *   `CombinedClusterSleeveInstanceId = -1`
+        *   (Crucially, `IsResolved` and `IsClusterResolved` remain `0`, making the zone eligible for individual/cluster placement again).
 
 ---
 

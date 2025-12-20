@@ -1101,12 +1101,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
                 foreach (var familySymbol in openingFamilies)
                 {
+                    // 1. Get Type Parameters
                     foreach (Parameter param in familySymbol.Parameters)
                     {
                         if (param.Definition != null && !string.IsNullOrEmpty(param.Definition.Name))
                         {
                             allParams.Add(param.Definition.Name);
                         }
+                    }
+
+                    // 2. Get Instance Parameters (try to find one instance)
+                    // We need to check if there are any instances of this symbol placed in the model
+                    try 
+                    {
+                        var filter = new FamilyInstanceFilter(_document, familySymbol.Id);
+                        var instance = new FilteredElementCollector(_document)
+                            .WherePasses(filter)
+                            .FirstOrDefault();
+
+                        if (instance != null)
+                        {
+                            foreach (Parameter param in instance.Parameters)
+                            {
+                                if (param.Definition != null && !string.IsNullOrEmpty(param.Definition.Name))
+                                {
+                                    allParams.Add(param.Definition.Name);
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception instEx)
+                    {
+                        DebugLogger.Warning($"[ParameterServiceDialogV2] Error getting instance params for {familySymbol.Name}: {instEx.Message}");
                     }
                 }
                 
