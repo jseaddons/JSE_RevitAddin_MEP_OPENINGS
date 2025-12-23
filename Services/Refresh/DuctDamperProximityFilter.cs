@@ -58,49 +58,121 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             if (allIntersections == null || allIntersections.Count == 0)
                 return allIntersections;
 
-            logger("[DUCT-DAMPER-FILTER] Starting duct-damper proximity filtering...");
+            logger("[DUCT-DAMPER-FILTER] Starting optimized duct-damper proximity filtering...");
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+
+            // ✅ OPTIMIZATION: Collect ALL dampers ONCE instead of for every duct
+            var allDampersInModel = CollectAllDampers(doc, logger);
+            logger($"[DUCT-DAMPER-FILTER] Pre-collected {allDampersInModel.Count} total dampers in host + linked documents");
 
             // ✅ STEP 1: Separate ducts from dampers in intersections
             var ducts = allIntersections
                 .Where(i => !IsDamper(i.mepElement))
                 .ToList();
 
-            var dampers = allIntersections
+            var dampersInIntersections = allIntersections
                 .Where(i => IsDamper(i.mepElement))
                 .ToList();
 
-            logger($"[DUCT-DAMPER-FILTER] Found {ducts.Count} ducts and {dampers.Count} dampers in intersections");
+            logger($"[DUCT-DAMPER-FILTER] Found {ducts.Count} ducts and {dampersInIntersections.Count} dampers in intersections");
 
-            // ✅ STEP 2: Filter ducts - check if damper is near duct end point (reuse existing CheckForDamperNearPoint logic)
-            // This is much simpler than collecting all dampers - just check each duct intersection for nearby dampers
+            // ✅ STEP 2: Filter ducts - check if any pre-collected damper is near duct end point
             var filteredDucts = new List<(Element mepElement, Element hostElement, BoundingBoxXYZ damperBBox, XYZ intersectionPoint)>();
 
             foreach (var duct in ducts)
             {
-                // ✅ SIMPLE CHECK: Is there a damper near the duct end point (nearest to intersection)?
-                // Reuses the same logic as CheckForDamperNearPoint - no need to collect all dampers separately
-                if (!IsDuctNearDamperAtEndPoint(duct, doc, logger))
+                if (!IsDuctNearCachedDamper(duct, allDampersInModel, doc, logger))
                 {
                     filteredDucts.Add(duct);
                 }
             }
 
-            // ✅ STEP 3: Combine filtered ducts with all dampers
+            // ✅ STEP 3: Combine filtered ducts with all dampers from intersections
             var result = filteredDucts;
-            result.AddRange(dampers);
+            result.AddRange(dampersInIntersections);
 
-            logger($"[DUCT-DAMPER-FILTER] ✅ Filtering complete: Removed {ducts.Count - filteredDucts.Count} ducts near dampers, keeping {filteredDucts.Count} ducts + {dampers.Count} dampers = {result.Count} total zones");
+            sw.Stop();
+            logger($"[DUCT-DAMPER-FILTER] ✅ Filtering complete in {sw.ElapsedMilliseconds}ms: Removed {ducts.Count - filteredDucts.Count} ducts near dampers, keeping {filteredDucts.Count} ducts + {dampersInIntersections.Count} dampers = {result.Count} total zones");
 
             return result;
         }
 
         /// <summary>
-        /// ✅ SIMPLIFIED: Check if a duct has a damper near its end point (nearest to intersection).
-        /// Reuses the same logic as CheckForDamperNearPoint - searches for dampers near the duct end point.
-        /// Returns true if duct should be SKIPPED (i.e., damper found nearby).
+        /// ✅ OPTIMIZED: Collect all dampers in host and linked documents once.
         /// </summary>
-        private bool IsDuctNearDamperAtEndPoint(
+        private List<(Element Damper, XYZ NormalizedLocation)> CollectAllDampers(Document document, Action<string> logger)
+        {
+            var result = new List<(Element Damper, XYZ NormalizedLocation)>();
+            
+            try
+            {
+                // Host document
+                var hostCollector = new FilteredElementCollector(document);
+                var hostDampers = hostCollector
+                    .OfCategory(BuiltInCategory.OST_DuctAccessory)
+                    .WhereElementIsNotElementType()
+                    .ToElements()
+                    .Where(d => IsDamper(d));
+
+                foreach (var d in hostDampers)
+                {
+                    XYZ location = GetElementLocation(d);
+                    if (location != null) result.Add((d, location));
+                }
+
+                // Linked documents
+                var links = new FilteredElementCollector(document)
+                    .OfClass(typeof(RevitLinkInstance))
+                    .Cast<RevitLinkInstance>();
+
+                foreach (var link in links)
+                {
+                    try
+                    {
+                        var linkDoc = link.GetLinkDocument();
+                        if (linkDoc == null) continue;
+
+                        var transform = link.GetTotalTransform();
+                        var linkedCollector = new FilteredElementCollector(linkDoc);
+                        var linkedDampers = linkedCollector
+                            .OfCategory(BuiltInCategory.OST_DuctAccessory)
+                            .WhereElementIsNotElementType()
+                            .ToElements()
+                            .Where(d => IsDamper(d));
+
+                        foreach (var d in linkedDampers)
+                        {
+                            XYZ location = GetElementLocation(d);
+                            if (location != null) result.Add((d, transform.OfPoint(location)));
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger($"[DUCT-DAMPER-FILTER] ⚠️ Error searching link: {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger($"[DUCT-DAMPER-FILTER] ⚠️ Error pre-collecting dampers: {ex.Message}");
+            }
+            
+            return result;
+        }
+
+        private XYZ GetElementLocation(Element element)
+        {
+            if (element.Location is LocationPoint lp) return lp.Point;
+            if (element.Location is LocationCurve lc) return lc.Curve.Evaluate(0.5, true);
+            return null;
+        }
+
+        /// <summary>
+        /// ✅ OPTIMIZED: Check if a duct has a cached damper near its end point.
+        /// </summary>
+        private bool IsDuctNearCachedDamper(
             (Element mepElement, Element hostElement, BoundingBoxXYZ hostBBox, XYZ intersectionPoint) ductInfo,
+            List<(Element Damper, XYZ NormalizedLocation)> cachedDampers,
             Document doc,
             Action<string> logger)
         {
@@ -108,43 +180,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             {
                 var (ductElement, wallElement, hostBBox, ductIntersectionPoint) = ductInfo;
 
-                if (!(ductElement is Autodesk.Revit.DB.Mechanical.Duct duct))
-                {
-                    return false; // Not a duct
-                }
+                if (!(ductElement is Duct duct)) return false;
 
-                // ✅ SOLID: Get duct end points using helper method
                 var ductEndPoints = GetDuctEndPoints(ductElement);
-                if (ductEndPoints == null || ductEndPoints.Count == 0)
-                {
-                    logger($"[DUCT-DAMPER-FILTER] ⚠️ Duct {ductElement.Id} has no valid end points - cannot check damper proximity, keeping duct");
-                    return false;
-                }
+                if (ductEndPoints.Count == 0) return false;
 
-                // ✅ CRITICAL: Find the duct end point NEAREST to the intersection point
                 XYZ nearestEndPoint = ductEndPoints
                     .OrderBy(ep => ep.DistanceTo(ductIntersectionPoint))
                     .First();
                 
-                double distanceToNearestEnd = nearestEndPoint.DistanceTo(ductIntersectionPoint);
-                logger($"[DUCT-DAMPER-FILTER] 📍 Duct {ductElement.Id}: Nearest end point is {distanceToNearestEnd:F4}ft from intersection");
+                // Use 0.5ft tolerance (approx 150mm) as per system requirement
+                const double searchRadius = 0.5;
 
-                // ✅ REUSE EXISTING LOGIC: Check if there's a damper near the duct end point
-                // This uses the same approach as CheckForDamperNearPoint - searches all documents
-                bool hasDamperNearEnd = CheckForDamperNearPoint(doc, nearestEndPoint, logger);
-                
-                if (hasDamperNearEnd)
+                foreach (var damper in cachedDampers)
                 {
-                    logger($"[DUCT-DAMPER-FILTER] ✓ SKIP DUCT: Damper found near duct end point (tolerance: 0.5ft = 150mm) → DAMPER AT DUCT END");
-                    return true;
+                    if (damper.NormalizedLocation.DistanceTo(nearestEndPoint) < searchRadius)
+                    {
+                        // Found a damper near the duct end point
+                        return true;
+                    }
                 }
 
-                logger($"[DUCT-DAMPER-FILTER] ✗ KEEP DUCT: {ductElement.Id} - no damper found near end point");
                 return false;
             }
-            catch (Exception ex)
+            catch
             {
-                logger($"[DUCT-DAMPER-FILTER] ⚠️ Error checking duct-damper proximity: {ex.Message} - keeping duct");
                 return false;
             }
         }

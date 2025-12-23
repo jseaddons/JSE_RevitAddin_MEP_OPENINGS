@@ -1,57 +1,79 @@
-# IMPLEMENATION PLAN: Combined Sleeve Parameter Transfer & Integrity
+# IMPLEMENTATION PLAN: Combined Sleeve Parameter Transfer (Database-Driven)
 
 ## Overview
-This plan outlines the steps to enable the "Transfer Parameters" feature for Combined Sleeves by aggregating data from their constituent sleeves (Individual and Cluster). It also enforces database integrity for Combined Sleeves using deterministic GUIDs to prevent duplicates.
+This plan outlines the architecture for transferring parameters to Combined Sleeves. The process is strictly database-driven, relying on `SleeveSnapshots` and `CombinedSleeveConstituents` tables, avoiding live geometric intersection checks during the transfer phase.
 
-## Phase 1: Database Integrity (Deterministic GUID)
+**Core Concept:**
+A Combined Sleeve in Revit (`CombinedInstanceId`) is linked to multiple constituent sleeves (Individual or Cluster) in the database. Parameter transfer works by aggregating the data stored in the snapshots of these constituents.
 
-**Objective:** Prevent duplicate rows in the `CombinedSleeves` table by using a deterministic identifier derived from the constituent elements.
+## Data Flow Architecture
 
-### 1. Model Update
-- [x] **CombinedSleeve.cs**: added `public string DeterministicGuid { get; set; }`.
+### 1. Source of Truth
+*   **Individual Sleeves**: Data stored in `SleeveSnapshots` table.
+    *   **Key**: `ClashZoneGuid` (Primary & Deterministic) OR `SleeveInstanceId`.
+*   **Cluster Sleeves**: Data stored in `SleeveSnapshots` table.
+    *   **Key**: `ClusterInstanceId`.
+*   **Combined Sleeves**: Structure stored in `CombinedSleeves` and `CombinedSleeveConstituents` tables.
+    *   **Key**: `CombinedInstanceId` (Revit Element ID).
 
-### 2. Database Schema Update
-- [ ] **SleeveDbContext.cs**: 
-    - Update `CreateTables` to include `DeterministicGuid` column in `CombinedSleeves` table definition.
-    - Add migration logic to add the column if it's missing in existing databases.
-    - Create a `UNIQUE INDEX` on the `DeterministicGuid` column to enforce uniqueness at the database level.
+### 2. Lookup Sequence
+When `ParameterTransferService` processes a Combined Sleeve:
 
-### 3. Repository Update
-- [ ] **CombinedSleeveRepository.cs**:
-    - **GUID Generation**: Implement `GenerateDeterministicGuid(List<ClashZone> constituents)`.
-        - Logic: Sort constituent ClashZone GUIDs alphabetically, join them with a separator, and hash the result (SHA256) to produce a consistent unique ID for that specific combination of sleeves.
-    - **Save Logic**: Update `SaveCombinedSleeve`:
-        - Generate the GUID before checking/saving.
-        - Check if a row with this GUID already exists (`SELECT CombinedInstanceId FROM CombinedSleeves WHERE DeterministicGuid = @Guid`).
-        - **If exists:** Update the existing row (or simply return the existing ID if no update is needed).
-        - **If new:** Insert the new row.
+1.  **Identify**: The service receives a Revit Element (`FamilyInstance`) which is identified as a Combined Sleeve.
+2.  **Retrieve Structure**:
+    *   Use `CombinedInstanceId` (Revit ID) to query the `CombinedSleeveConstituents` table.
+    *   This returns a list of constituents, each defined by:
+        *   `ConstituentType` (Individual or Cluster)
+        *   `ClashZoneGuid` (for Individual constituents)
+        *   `ClusterInstanceId` (for Cluster constituents)
+3.  **Fetch Constituent Snapshots**:
+    *   For **Individual Constituents**: Look up `SleeveSnapshots` using `ClashZoneGuid`.
+        *   *Critical*: Do NOT rely on `SleeveInstanceId` for this step, as the constituent acts as a data reference via its stable definition (Guid).
+    *   For **Cluster Constituents**: Look up `SleeveSnapshots` using `ClusterInstanceId`.
+4.  **Aggregate**:
+    *   Collect values for each target parameter (e.g., "System Name", "Service Type") from all found snapshots.
+    *   Deduplicate values (Case-insensitive).
+    *   Join distinct values with a separator (e.g., ", ").
+5.  **Apply**:
+    *   Write the aggregated string to the Combined Sleeve parameter in Revit.
 
-## Phase 2: Parameter Transfer Logic
+## Detailed Implementation Steps
 
-**Objective:** Allow `ParameterTransferService` to handle Combined Sleeves by aggregating parameters from the `SleeveSnapshots` of their constituents.
+### Phase 1: Snapshot Indexing (SleeveSnapshotRepository)
+*   [x] **Load Constituents**: Update `LoadSnapshotIndex` to populate `ByCombined` dictionary.
+    *   `Dictionary<int, List<SleeveConstituentSnapshotReference>> ByCombined`
+    *   Key: `CombinedInstanceId`
+    *   Value: List of objects containing `{ Type, ClashZoneGuid, ClusterInstanceId }`.
+*   [x] **Index by Guid**: Update `LoadSnapshotIndex` to populate `ByClashZoneGuid` dictionary.
+    *   Ensures fast O(1) retrieval of snapshots by GUID.
 
-### 1. Service Update
-- [ ] **ParameterTransferService.cs**:
-    - Update `ExecuteTransferConfigurationInTransaction` or `TransferFromElementsWithSnapshot`.
-    - **Detection**: Identify if a target sleeve is a Combined Sleeve (e.g., check `MEP_Category` param is "Multi-Service" or check internal DB).
-    - **Constituent Lookup**:
-        - Query `ClashZones` table where `CombinedClusterSleeveInstanceId` matches the Combined Sleeve's Instance ID.
-    - **Snapshot Retrieval**:
-        - For each constituent ClashZone found:
-            - If it's an **Individual Sleeve**, use `SleeveInstanceId` to look up the snapshot from `SleeveSnapshots`.
-            - If it's a **Cluster Sleeve**, use `ClusterInstanceId` to look up the snapshot.
-    - **Aggregation**:
-        - Collecting values: For a requested parameter (e.g., "System Name"), collect values from all constituent snapshots.
-        - Processing: Distinct and Join (e.g., "Sanitary, Vent").
-    - **Application**:
-        - Apply the final aggregated value to the Combined Sleeve element in Revit.
+### Phase 2: Parameter Aggregation (ParameterTransferService)
+*   [x] **Update `TransferFromElementsWithSnapshot`**:
+    *   Detect if the element is a Combined Sleeve (check `snapshotIndex.TryGetByCombined`).
+    *   If yes, call `AggregateCombinedParameters`.
+*   [x] **Implement `AggregateCombinedParameters`**:
+    *   Input: List of `SleeveConstituentSnapshotReference`.
+    *   Loop through constituents:
+        *   If `Type == Individual` && `ClashZoneGuid` has value -> `snapshotIndex.TryGetByClashZoneGuid`.
+        *   If `Type == Cluster` && `ClusterInstanceId` has value -> `snapshotIndex.TryGetByCluster`.
+    *   Collect and Aggregate parameter values.
+    *   Return a `Dictionary<string, string>` representing the "virtual" combined snapshot.
 
-## Phase 3: Verification Strategy
+### Phase 3: Diagnostics & Fallbacks
+*   [ ] **Diagnostic Logging**:
+    *   Log how many constituents were found for each combined sleeve.
+    *   Log which specific snapshots (GUIDs/IDs) were successfully retrieved.
+    *   Log the final aggregated string for key parameters ("Size", "System Name").
+*   [x] **Fallback Implementation**:
+    *   If a constituent snapshot is missing, skip it gracefully but log a warning.
+    *   Ensure at least one constituent contributes data, otherwise log "No Data Source".
 
-- [ ] **Test Deterministic GUID**: 
-    - Attempt to place the same combined sleeve configuration twice.
-    - Verify that the number of rows in `CombinedSleeves` does not increase.
-- [ ] **Test Parameter Transfer**:
-    - Place a Combined Sleeve.
-    - Run "Transfer Parameters" (Standard/MEP).
-    - detailed verification: Check that parameters like "MEP_System_Name" on the Combined Sleeve contain the comma-separated values from its constituents.
+## Verification Checklist
+1.  **Place Combined Sleeve**: Create a combined sleeve from 2+ pipes/ducts.
+2.  **Verify DB**: Confirm `CombinedSleeveConstituents` table has correct rows linking `CombinedInstanceId` to `ClashZoneGuid`s.
+3.  **Run Transfer**: Execute Parameter Transfer.
+4.  **Check Revit**: Verify the Combined Sleeve parameter (e.g., "Comments" or "System Name") contains the merged text (e.g., "Sanitary, Vent").
+5.  **Check Logs**: `transfer_debug.log` should show:
+    *   `[PARAM_TRANSFER] ✅ Matched Combined Sleeve {Id}...`
+    *   `[AGGREGATE] Processing X constituents...`
+    *   `[AGGREGATE] ✅ Found snapshot via ClashZoneGuid: ...`

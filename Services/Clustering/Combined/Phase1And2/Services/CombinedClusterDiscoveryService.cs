@@ -3,10 +3,13 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Interfaces;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Repository;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Geometry;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Services
 {
@@ -59,8 +62,45 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Se
                 
                 try
                 {
-                    // ✅ STEP 2: Get all sleeves in section box from Revit
-                    var sectionBoxBounds = JSE_RevitAddin_MEP_OPENINGS.Helpers.SectionBoxHelper.GetSectionBoxBounds(uiDoc.ActiveView as Autodesk.Revit.DB.View3D);
+                    // ✅ SECTION BOX FILTERING: Get cached section box bounds if available
+                    BoundingBoxXYZ sectionBoxBounds = null;
+                    
+                    // ✅ OPTIMIZATION: Use cached section box if flag is enabled
+                    if (OptimizationFlags.UseSectionBoxFilterForParameterTransfer)
+                    {
+                        // Try to get cached section box bounds from database
+                        try
+                        {
+                            using (var dbContext = new SleeveDbContext(uiDoc.Document, msg => { }))
+                            {
+                                var sectionBoxService = new SectionBoxService();
+                                sectionBoxBounds = sectionBoxService.GetSectionBoxBounds(dbContext.Connection);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Warning($"[CombinedDiscovery] Failed to get cached section box bounds: {ex.Message}");
+                            }
+                        }
+                        
+                        if (sectionBoxBounds != null && !DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[CombinedDiscovery] Using cached section box bounds for filtering");
+                        }
+                    }
+                    
+                    // ✅ FALLBACK: If no cached section box, try live Revit API
+                    if (sectionBoxBounds == null && uiDoc.ActiveView is Autodesk.Revit.DB.View3D view3D && view3D.IsSectionBoxActive)
+                    {
+                        sectionBoxBounds = JSE_RevitAddin_MEP_OPENINGS.Helpers.SectionBoxHelper.GetSectionBoxBounds(view3D);
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[CombinedDiscovery] Using live Revit section box bounds (cache not available)");
+                        }
+                    }
+                    
                     if (sectionBoxBounds != null)
                     {
                         var outline = new Autodesk.Revit.DB.Outline(sectionBoxBounds.Min, sectionBoxBounds.Max);

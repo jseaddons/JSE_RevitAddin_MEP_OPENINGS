@@ -160,7 +160,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Log whitelist for all elements to help diagnose parameter capture issues
             bool shouldLogDetails = !DeploymentConfiguration.DeploymentMode && whitelist.Count > 0;
             
-            if (shouldLogDetails)
+            if (shouldLogDetails && OptimizationFlags.UseDiagnosticMode)
             {
                 var whitelistSample = string.Join(", ", whitelist.Take(15));
                 var moreCount = whitelist.Count > 15 ? $" (+{whitelist.Count - 15} more)" : "";
@@ -169,19 +169,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             
             // DEBUG: Log all available parameters for duct accessories
-            if (element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
+            if (element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory && OptimizationFlags.UseDiagnosticMode)
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
+                if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: Starting parameter capture\n");
                 
                 var allParams = element.Parameters.Cast<Parameter>().Where(p => p != null && !string.IsNullOrEmpty(p.Definition?.Name)).ToList();
-                                if (!DeploymentConfiguration.DeploymentMode)
+                if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: Found {allParams.Count} total parameters\n");
                 
                 foreach (var param in allParams.Take(10)) // Log first 10 parameters
                 {
                     var paramValue = ConvertParameterToStringLegacy(element, param);
-                                        if (!DeploymentConfiguration.DeploymentMode)
+                    if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: Parameter '{param.Definition.Name}' = '{paramValue}'\n");
                 }
             }
@@ -282,15 +282,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         element.LookupParameter("Abbr");
                     
                     // DEBUG: Log System Abbreviation search for duct accessories
-                    if (element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
+                    if (element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory && OptimizationFlags.UseDiagnosticMode)
                     {
-                                                if (!DeploymentConfiguration.DeploymentMode)
+                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: System Abbreviation fallback search - Parameter found: {p != null}\n");
                         
                         if (p != null)
                         {
                             var testValue = ConvertParameterToStringLegacy(element, p);
-                                                        if (!DeploymentConfiguration.DeploymentMode)
+                            if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: System Abbreviation value = '{testValue}'\n");
                         }
                     }
@@ -306,7 +306,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         element.LookupParameter("Schedule Level") ??
                         element.LookupParameter("Elevation from Level");
                     
-                    if (!DeploymentConfiguration.DeploymentMode && p != null)
+                    if (!DeploymentConfiguration.DeploymentMode && p != null && OptimizationFlags.UseDiagnosticMode)
                     {
                         var testValue = ConvertParameterToStringLegacy(element, p);
                         DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Schedule of Level fallback found, value = '{testValue}'\n");
@@ -348,7 +348,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         catch { /* Ignore errors when accessing linked document */ }
                     }
                     
-                    if (!DeploymentConfiguration.DeploymentMode && p != null)
+                    if (!DeploymentConfiguration.DeploymentMode && p != null && OptimizationFlags.UseDiagnosticMode)
                     {
                         var testValue = ConvertParameterToStringLegacy(element, p);
                         DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Reference Level fallback found, value = '{testValue}'\n");
@@ -374,7 +374,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     else
                     {
                         // DEBUG: Log missing non-essential parameters
-                        if (!DeploymentConfiguration.DeploymentMode)
+                        if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
                             DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Parameter '{actualKey}' (mapped from '{key}') not found\n");
                     }
                     continue;
@@ -426,7 +426,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     else
                     {
                         // ✅ ENHANCED LOGGING: Log empty non-essential parameter values with details
-                        if (!DeploymentConfiguration.DeploymentMode)
+                        if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
                             DebugLogger.Info($"[{DateTime.Now}] [PARAM-CAPTURE] Element {element.Id} ({element.Category?.Name}): Parameter '{key}' found but value is empty - {paramDetails}\n");
                     }
                     continue;
@@ -457,7 +457,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                    actualKey.Equals("Schedule of Level", StringComparison.OrdinalIgnoreCase) ||
                                    actualKey.Equals("Schedule Level", StringComparison.OrdinalIgnoreCase)))
                 {
-                    if (!DeploymentConfiguration.DeploymentMode)
+                    if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
                     {
                         string logKey = key.Equals(actualKey) ? actualKey : $"{actualKey} (from '{key}')";
                         DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] ✅ CAPTURED: Element {element.Id} ({element.Category?.Name}): '{logKey}' = '{value}'\n");
@@ -465,15 +465,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 
                 // DEBUG: Log successful parameter capture (only in non-deployment mode)
-                if (!DeploymentConfiguration.DeploymentMode)
+                if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Captured '{key}' = '{value}'\n");
+                    DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Captured '{key}' = '{value}'\n");
                 }
             }
 
             // ✅ ENHANCED LOGGING: Summary of captured parameters
-            if (!DeploymentConfiguration.DeploymentMode && result.Count > 0)
+            if (!DeploymentConfiguration.DeploymentMode && result.Count > 0 && OptimizationFlags.UseDiagnosticMode)
             {
                 var capturedKeys = string.Join(", ", result.Select(kv => kv.Key).Take(10));
                 var moreCount = result.Count > 10 ? $" (+{result.Count - 10} more)" : "";
@@ -639,6 +638,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         // === Learned Keys (Project-level Persistence) ===
+        private static List<string>? _learnedKeysCache = null;
+
         private static string GetLearnedKeysFilePath()
         {
             // Use null for document since this is a static method - will use default path
@@ -649,10 +650,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         public static IEnumerable<string> LoadLearnedKeysFromDisk()
         {
+            // ✅ OPTIMIZATION: Return cache if available to avoid redundant disk I/O
+            if (_learnedKeysCache != null) return _learnedKeysCache;
+
             try
             {
                 var file = GetLearnedKeysFilePath();
-                if (!File.Exists(file)) return Enumerable.Empty<string>();
+                if (!File.Exists(file)) 
+                {
+                    _learnedKeysCache = new List<string>();
+                    return _learnedKeysCache;
+                }
 
                 var doc = new System.Xml.XmlDocument();
                 doc.Load(file);
@@ -666,14 +674,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!string.IsNullOrEmpty(v)) list.Add(v);
                     }
                 }
+                _learnedKeysCache = list;
                 return list;
             }
-            catch { return Enumerable.Empty<string>(); }
+            catch 
+            { 
+                _learnedKeysCache = new List<string>();
+                return _learnedKeysCache; 
+            }
         }
 
         private static partial void AddLearnedKeyLegacy(string key)
         {
             if (string.IsNullOrWhiteSpace(key)) return;
+            
+            // ✅ OPTIMIZATION: Check cache first to avoid redundant disk writes if key already learned
+            if (_learnedKeysCache != null && _learnedKeysCache.Contains(key, StringComparer.OrdinalIgnoreCase)) return;
+
             try
             {
                 var file = GetLearnedKeysFilePath();
@@ -694,19 +711,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
 
-                if (!keys.Contains(key)) keys.Add(key);
-
-                // Write out
-                var xml = new System.Xml.XmlDocument();
-                var root = xml.CreateElement("LearnedParameterKeys");
-                xml.AppendChild(root);
-                foreach (var k in keys.OrderBy(s => s, StringComparer.OrdinalIgnoreCase))
+                if (!keys.Contains(key))
                 {
-                    var e = xml.CreateElement("Key");
-                    e.InnerText = k;
-                    root.AppendChild(e);
+                    keys.Add(key);
+                    // Update cache
+                    _learnedKeysCache = keys.ToList();
+
+                    // Write out
+                    var xml = new System.Xml.XmlDocument();
+                    var root = xml.CreateElement("LearnedParameterKeys");
+                    xml.AppendChild(root);
+                    foreach (var k in keys.OrderBy(s => s, StringComparer.OrdinalIgnoreCase))
+                    {
+                        var e = xml.CreateElement("Key");
+                        e.InnerText = k;
+                        root.AppendChild(e);
+                    }
+                    xml.Save(file);
                 }
-                xml.Save(file);
             }
             catch { /* non-fatal */ }
         }

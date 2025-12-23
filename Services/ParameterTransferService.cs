@@ -19,6 +19,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly ParameterMappingService _mappingService;
         private readonly ServiceTypeAbbreviationService _abbreviationService;
         private readonly MepElementAnalysisService _mepAnalysisService;
+        private readonly ISectionBoxService _sectionBoxService;
         
         public ParameterTransferService()
         {
@@ -26,6 +27,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _mappingService = new ParameterMappingService();
             _abbreviationService = new ServiceTypeAbbreviationService();
             _mepAnalysisService = new MepElementAnalysisService();
+            _sectionBoxService = new SectionBoxService();
         }
         
         /// <summary>
@@ -3076,11 +3078,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             try
             {
-                // ✅ SECTION BOX FILTERING: Get section box bounds if available
+                // ✅ SECTION BOX FILTERING: Get cached section box bounds if available
                 BoundingBoxXYZ sectionBoxBounds = null;
-                if (uiDoc != null && uiDoc.ActiveView is View3D view3D && view3D.IsSectionBoxActive)
+                
+                // ✅ OPTIMIZATION: Use cached section box if flag is enabled
+                if (Services.OptimizationFlags.UseSectionBoxFilterForParameterTransfer)
+                {
+                    // Try to get cached section box bounds from database
+                    // We need to get the database connection from the document
+                    try
+                    {
+                        using (var dbContext = new SleeveDbContext(doc, msg => { }))
+                        {
+                            sectionBoxBounds = _sectionBoxService.GetSectionBoxBounds(dbContext.Connection);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Warning($"[PARAM_TRANSFER] Failed to get cached section box bounds: {ex.Message}");
+                        }
+                    }
+                    
+                    if (sectionBoxBounds != null && !DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[PARAM_TRANSFER] Using cached section box bounds for filtering");
+                    }
+                }
+                
+                // ✅ FALLBACK: If no cached section box, try live Revit API
+                if (sectionBoxBounds == null && uiDoc != null && uiDoc.ActiveView is View3D view3D && view3D.IsSectionBoxActive)
                 {
                     sectionBoxBounds = Helpers.SectionBoxHelper.GetSectionBoxBounds(view3D);
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[PARAM_TRANSFER] Using live Revit section box bounds (cache not available)");
+                    }
                 }
                 
                 // 1) MEPCurve sources (ducts, pipes, trays)
@@ -3901,5 +3935,3 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
     }
 }
-
-

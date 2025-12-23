@@ -208,7 +208,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 // STEP 3: Find intersections
-                var intersections = FindIntersectionsInternal(mepElements, wallElements, document, optimizationService);
+                var intersections = FindIntersectionsInternal(mepElements, wallElements, document, view3D, optimizationService);
 
                 // Enforce section box bounds using oriented-box test (view's local coords)
                 Transform invSection = sectionTransform.Inverse;
@@ -871,6 +871,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             List<Element> mepElements, 
             List<Element> wallElements, 
             Document doc,
+            View3D view3D = null,
             IntersectionOptimizationService optimizationService = null)
         {
             _logger($"Using optimized MepIntersectionService.FindIntersectionsBatch with {mepElements.Count} MEP elements...");
@@ -924,13 +925,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             // ✅ PHASE 2 OPTIMIZATION: Use batch processing with spatial hash grid and curve-in-bbox test
             // ✅ NICE3POINT TEMPLATE PATTERN: Use factory to get version-specific implementation
+            // ✅ RAY CASTING: Pass view3D to enable Ray Casting optimization for linear elements
             _logger($"[PHASE2] Calling MepIntersectionService.FindIntersectionsBatch with {mepElementsWithTransforms.Count} MEP and {structuralElementsWithTransforms.Count} structural elements");
             var intersectionService = GetMepIntersectionService();
             var intersections = intersectionService.FindIntersectionsBatch(
                 mepElementsWithTransforms,
                 structuralElementsWithTransforms,
                 _logger,
-                null, // View3D (nullable)
+                view3D, // ✅ CRITICAL: Pass view3D to enable Ray Casting (was null before, causing 41s bottleneck)
                 optimizationService?.KnownValidPairs,
                 optimizationService?.ShouldSkipKnownPairsGeometryCheck ?? false);
             

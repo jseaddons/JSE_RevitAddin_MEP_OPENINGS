@@ -6,6 +6,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Refresh;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -24,12 +25,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly string? _refreshLogName;
         private SleeveDbContext? _sqliteContext;
         private IClashZoneRepository? _sqliteRepository;
+        private readonly PerformanceMonitor? _performanceMonitor;
 
-        public ClashZonePersistenceService(Document document, GuidManager guidManager, string? refreshLogName = null)
+        public ClashZonePersistenceService(Document document, GuidManager guidManager, string? refreshLogName = null, PerformanceMonitor? performanceMonitor = null)
         {
             _document = document ?? throw new ArgumentNullException(nameof(document));
             _guidManager = guidManager ?? throw new ArgumentNullException(nameof(guidManager));
             _refreshLogName = refreshLogName ?? "refresh.log";
+            _performanceMonitor = performanceMonitor;
             
             // ✅ PHASE SQLITE-2: Initialize SQLite context as PRIMARY data store
             // SQLite is the operational store; XML is optional/backup (Global XML still used for flags)
@@ -53,7 +56,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[SQLite] {msg}");
                     SafeFileLogger.SafeAppendText(_refreshLogName, $"[{DateTime.Now}] [SQLite] {msg}\n");
-                });
+                }, _performanceMonitor);
                 
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info("[CLASH-ZONE-PERSISTENCE] ✅ SQLite dual-write enabled");

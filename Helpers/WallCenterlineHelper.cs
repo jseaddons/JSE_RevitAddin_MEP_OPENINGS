@@ -12,25 +12,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
         /// </summary>
         public static XYZ GetWallCenterlinePointFromBbox(Wall wall, XYZ intersectionPoint, Document hostDocument = null)
         {
-            DebugLogger.Log($"[CENTERLINE-DEBUG] ===== WALL CENTERLINE FROM BBOX (SIMPLE METHOD) =====");
-            DebugLogger.Log($"[CENTERLINE-DEBUG] Wall ID: {wall?.Id?.IntegerValue}");
-            DebugLogger.Log($"[CENTERLINE-DEBUG] Input intersectionPoint: {intersectionPoint}");
+            if (OptimizationFlags.UseDiagnosticMode)
+            {
+                DebugLogger.Log($"[CENTERLINE-DEBUG] ===== WALL CENTERLINE FROM BBOX (SIMPLE METHOD) =====");
+                DebugLogger.Log($"[CENTERLINE-DEBUG] Wall ID: {wall?.Id?.IntegerValue}");
+                DebugLogger.Log($"[CENTERLINE-DEBUG] Input intersectionPoint: {intersectionPoint}");
+            }
             
             if (wall == null)
             {
-                DebugLogger.Log($"[CENTERLINE-DEBUG] Wall is null, returning input point");
+                if (OptimizationFlags.UseDiagnosticMode) DebugLogger.Log($"[CENTERLINE-DEBUG] Wall is null, returning input point");
                 return intersectionPoint;
             }
             
             try
             {
                 // ✅ STEP 1: Get wall bounding box
-                // ✅ NOTE: If wall is from linked document, caller should transform bbox BEFORE calling this method (like damper code does)
-                // This keeps the helper simple and matches the working damper pattern
                 BoundingBoxXYZ wallBbox = wall.get_BoundingBox(null);
                 if (wallBbox == null)
                 {
-                    DebugLogger.Log($"[CENTERLINE-DEBUG] Wall has no bounding box, returning input point");
+                    if (OptimizationFlags.UseDiagnosticMode) DebugLogger.Log($"[CENTERLINE-DEBUG] Wall has no bounding box, returning input point");
                     return intersectionPoint;
                 }
                 
@@ -41,14 +42,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                     (wallBbox.Min.Z + wallBbox.Max.Z) / 2.0
                 );
                 
-                DebugLogger.Log($"[CENTERLINE-DEBUG] Wall bbox: Min=({wallBbox.Min.X:F6}ft, {wallBbox.Min.Y:F6}ft, {wallBbox.Min.Z:F6}ft), Max=({wallBbox.Max.X:F6}ft, {wallBbox.Max.Y:F6}ft, {wallBbox.Max.Z:F6}ft)");
-                DebugLogger.Log($"[CENTERLINE-DEBUG] Wall bbox center (centerline): ({wallBboxCenter.X:F6}ft, {wallBboxCenter.Y:F6}ft, {wallBboxCenter.Z:F6}ft)");
+                if (OptimizationFlags.UseDiagnosticMode)
+                {
+                    DebugLogger.Log($"[CENTERLINE-DEBUG] Wall bbox: Min=({wallBbox.Min.X:F6}ft, {wallBbox.Min.Y:F6}ft, {wallBbox.Min.Z:F6}ft), Max=({wallBbox.Max.X:F6}ft, {wallBbox.Max.Y:F6}ft, {wallBbox.Max.Z:F6}ft)");
+                    DebugLogger.Log($"[CENTERLINE-DEBUG] Wall bbox center (centerline): ({wallBboxCenter.X:F6}ft, {wallBboxCenter.Y:F6}ft, {wallBboxCenter.Z:F6}ft)");
+                }
                 
                 // ✅ STEP 3: Get wall direction to determine orientation
                 var locationCurve = wall.Location as LocationCurve;
                 if (locationCurve == null || locationCurve.Curve == null)
                 {
-                    DebugLogger.Log($"[CENTERLINE-DEBUG] Wall has no location curve, using bbox center directly");
+                    if (OptimizationFlags.UseDiagnosticMode) DebugLogger.Log($"[CENTERLINE-DEBUG] Wall has no location curve, using bbox center directly");
                     return wallBboxCenter;
                 }
                 
@@ -72,37 +76,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                 bool isYWall = absY > absX;
                 
                 // ✅ STEP 5: Merge coordinates based on wall orientation
-                // For X-walls: Use bbox center Y (centerline perpendicular to wall), keep intersection X and Z (along wall length and height)
-                // For Y-walls: Use bbox center X (centerline perpendicular to wall), keep intersection Y and Z (along wall length and height)
                 XYZ centerlinePoint;
                 if (isXWall)
                 {
                     centerlinePoint = new XYZ(intersectionPoint.X, wallBboxCenter.Y, intersectionPoint.Z);
-                    DebugLogger.Log($"[CENTERLINE-DEBUG] X-wall detected: Using bbox center Y={wallBboxCenter.Y:F6}ft, keeping intersection X={intersectionPoint.X:F6}ft, Z={intersectionPoint.Z:F6}ft");
+                    if (OptimizationFlags.UseDiagnosticMode) DebugLogger.Log($"[CENTERLINE-DEBUG] X-wall detected: Using bbox center Y={wallBboxCenter.Y:F6}ft, keeping intersection X={intersectionPoint.X:F6}ft, Z={intersectionPoint.Z:F6}ft");
                 }
                 else if (isYWall)
                 {
                     centerlinePoint = new XYZ(wallBboxCenter.X, intersectionPoint.Y, intersectionPoint.Z);
-                    DebugLogger.Log($"[CENTERLINE-DEBUG] Y-wall detected: Using bbox center X={wallBboxCenter.X:F6}ft, keeping intersection Y={intersectionPoint.Y:F6}ft, Z={intersectionPoint.Z:F6}ft");
+                    if (OptimizationFlags.UseDiagnosticMode) DebugLogger.Log($"[CENTERLINE-DEBUG] Y-wall detected: Using bbox center X={wallBboxCenter.X:F6}ft, keeping intersection Y={intersectionPoint.Y:F6}ft, Z={intersectionPoint.Z:F6}ft");
                 }
                 else
                 {
-                    // Unknown orientation: Use bbox center directly
                     centerlinePoint = wallBboxCenter;
-                    DebugLogger.Log($"[CENTERLINE-DEBUG] Unknown wall orientation: Using bbox center directly");
+                    if (OptimizationFlags.UseDiagnosticMode) DebugLogger.Log($"[CENTERLINE-DEBUG] Unknown wall orientation: Using bbox center directly");
                 }
                 
-                XYZ offset = centerlinePoint - intersectionPoint;
-                double offsetDistance = offset.GetLength();
-                DebugLogger.Log($"[CENTERLINE-DEBUG] Final centerline point: ({centerlinePoint.X:F6}ft, {centerlinePoint.Y:F6}ft, {centerlinePoint.Z:F6}ft)");
-                DebugLogger.Log($"[CENTERLINE-DEBUG] Offset from input: ({offset.X:F6}ft, {offset.Y:F6}ft, {offset.Z:F6}ft), distance: {UnitUtils.ConvertFromInternalUnits(offsetDistance, UnitTypeId.Millimeters):F1}mm");
-                DebugLogger.Log($"[CENTERLINE-DEBUG] ===== END WALL CENTERLINE FROM BBOX =====");
+                if (OptimizationFlags.UseDiagnosticMode)
+                {
+                    XYZ offset = centerlinePoint - intersectionPoint;
+                    double offsetDistance = offset.GetLength();
+                    DebugLogger.Log($"[CENTERLINE-DEBUG] Final centerline point: ({centerlinePoint.X:F6}ft, {centerlinePoint.Y:F6}ft, {centerlinePoint.Z:F6}ft)");
+                    DebugLogger.Log($"[CENTERLINE-DEBUG] Offset from input: ({offset.X:F6}ft, {offset.Y:F6}ft, {offset.Z:F6}ft), distance: {UnitUtils.ConvertFromInternalUnits(offsetDistance, UnitTypeId.Millimeters):F1}mm");
+                    DebugLogger.Log($"[CENTERLINE-DEBUG] ===== END WALL CENTERLINE FROM BBOX =====");
+                }
                 
                 return centerlinePoint;
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[CENTERLINE-DEBUG] Exception in GetWallCenterlinePointFromBbox: {ex.Message}");
+                if (OptimizationFlags.UseDiagnosticMode) DebugLogger.Log($"[CENTERLINE-DEBUG] Exception in GetWallCenterlinePointFromBbox: {ex.Message}");
                 return intersectionPoint;
             }
         }

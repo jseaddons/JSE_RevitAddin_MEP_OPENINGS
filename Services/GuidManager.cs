@@ -21,6 +21,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             _document = document ?? throw new ArgumentNullException(nameof(document));
         }
+
+        /// <summary>
+        /// ✅ BATCH OPTIMIZATION: Fetches existing GUIDs for a collection of intersections using database-first approach.
+        /// Returns a dictionary mapping (MepId, HostId, PointKey) -> Guid.
+        /// </summary>
+        public Dictionary<(int MepId, int HostId, string PointKey), Guid> BatchFetchGuidsDatabaseFirst(
+            IEnumerable<(int MepId, int HostId, double X, double Y, double Z)> targets, 
+            double tolerance = 0.1)
+        {
+            var results = new Dictionary<(int MepId, int HostId, string PointKey), Guid>();
+            if (targets == null || !targets.Any()) return results;
+
+            try
+            {
+                using (var context = new SleeveDbContext(_document, msg =>
+                {
+                    if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
+                        DebugLogger.Info($"[GUID-MANAGER][SQLite] {msg}");
+                }))
+                {
+                    var repository = new ClashZoneRepository(context, msg =>
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
+                            DebugLogger.Info($"[GUID-MANAGER][SQLite] {msg}");
+                    });
+
+                    return repository.FindGuidsByMepHostAndPointsBulk(targets, tolerance);
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[GUID-MANAGER] ⚠️ Batch database lookup failed: {ex.Message}");
+                
+                // Fallback: Generate deterministic GUIDs individually if database fails
+                foreach (var target in targets)
+                {
+                    string pointKey = $"{Math.Round(target.X, 4)}_{Math.Round(target.Y, 4)}_{Math.Round(target.Z, 4)}";
+                    results[(target.MepId, target.HostId, pointKey)] = GenerateDeterministicGuid(target.MepId, target.HostId, target.X, target.Y, target.Z, tolerance);
+                }
+            }
+            return results;
+        }
         
         /// <summary>
         /// ✅ DATABASE-FIRST GUID MANAGEMENT: Gets or creates deterministic GUID using database-first approach.

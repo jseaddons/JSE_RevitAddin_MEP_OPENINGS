@@ -90,7 +90,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             List<string> selectedHostCategories,
             List<string>? selectedReferenceFiles = null,
             BoundingBoxXYZ? sectionBox = null,
-            List<ClashZone>? existingClashZones = null)
+            List<ClashZone>? existingClashZones = null,
+            HashSet<string>? openingPointKeys = null)
         {
             _logger("[DamperProcessing] Starting separate damper processing...");
 
@@ -150,6 +151,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 int processedCount = 0;
                 int createdCount = 0;
                 int skippedCount = 0;
+
+                // ✅ OPTIMIZATION: Batch parameter capture for all dampers and walls BEFORE loop
+                Dictionary<int, Dictionary<string, string>>? damperParamsCache = null;
+                Dictionary<int, Dictionary<string, string>>? wallParamsCache = null;
+
+                if (OptimizationFlags.UseBatchDamperParameterCapture)
+                {
+                    damperParamsCache = new Dictionary<int, Dictionary<string, string>>();
+                    wallParamsCache = new Dictionary<int, Dictionary<string, string>>();
+
+                    // Capture parameters for ALL dampers
+                    foreach (var (damper, _, _) in collectedDampers)
+                    {
+                        var damperParams = CaptureMepParametersWithSmartLevel(damper);
+                        damperParamsCache[damper.Id.IntegerValue] = damperParams;
+                    }
+
+                    // Capture parameters for ALL unique walls
+                    var uniqueWalls = walls.Select(w => w.Item1).Distinct(new ElementIdComparer()).ToList();
+                    foreach (var wall in uniqueWalls)
+                    {
+                        var wallParams = CaptureHostParametersRestricted(wall);
+                        wallParamsCache[wall.Id.IntegerValue] = wallParams;
+                    }
+
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        _logger($"[DamperProcessing] [BATCH-PARAMS] ✅ Pre-captured parameters for {damperParamsCache.Count} dampers and {wallParamsCache.Count} walls");
+                    }
+                }
 
                 using (var processTrackerRaw = _performanceMonitor?.TrackOperation("Process Dampers (Find Intersections + Create ClashZones)"))
                 {
@@ -213,7 +244,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                             {
                                 // ✅ CRITICAL FIX: Check if zone already exists for this MEP+Host pair before creating new one
                                 // This prevents duplicate zones with new GUIDs and preserves existing flags
-                                clashZone = FindOrCreateClashZoneForDamper(damper, intersectingWall, placementPoint, transform, wallTransform, existingClashZones, results);
+                                clashZone = FindOrCreateClashZoneForDamper(
+                                    damper, 
+                                    intersectingWall, 
+                                    placementPoint, 
+                                    transform, 
+                                    wallTransform, 
+                                    existingClashZones, 
+                                    results,
+                                    damperParamsCache,
+                                    wallParamsCache,
+                                    openingPointKeys);
                                 // ✅ FIX: Cast to OperationTracker to access SetItemCount
                                 if (createTrackerRaw is PerformanceMonitor.OperationTracker createTracker)
                                 {
@@ -845,7 +886,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             Transform? damperTransform,
             Transform? wallTransform = null,
             List<ClashZone>? existingClashZones = null,
-            List<ClashZone>? currentResults = null)
+            List<ClashZone>? currentResults = null,
+            Dictionary<int, Dictionary<string, string>>? damperParamsCache = null,
+            Dictionary<int, Dictionary<string, string>>? wallParamsCache = null,
+            HashSet<string>? openingPointKeys = null)
         {
             int mepIdValue = damper.Id.IntegerValue;
             int structuralIdValue = wall.Id.IntegerValue;
@@ -871,7 +915,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     }
                     
                     // Update zone properties with fresh data from damper processing
-                    var updatedZone = CreateClashZoneForDamper(damper, wall, placementPoint, damperTransform, wallTransform);
+                    var updatedZone = CreateClashZoneForDamper(damper, wall, placementPoint, damperTransform, wallTransform, damperParamsCache, wallParamsCache);
                     if (updatedZone != null)
                     {
                         // Preserve existing GUID and flags
@@ -914,7 +958,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     }
                     
                     // Create new zone but reuse the GUID from existing zone
-                    var newZone = CreateClashZoneForDamper(damper, wall, placementPoint, damperTransform, wallTransform);
+                    var newZone = CreateClashZoneForDamper(damper, wall, placementPoint, damperTransform, wallTransform, damperParamsCache, wallParamsCache, openingPointKeys);
                     if (newZone != null)
                     {
                         // Reuse GUID from existing zone at same location
@@ -935,7 +979,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             }
             
             // ✅ STEP 3: No existing zone found - create new one
-            return CreateClashZoneForDamper(damper, wall, placementPoint, damperTransform, wallTransform);
+            return CreateClashZoneForDamper(damper, wall, placementPoint, damperTransform, wallTransform, damperParamsCache, wallParamsCache, openingPointKeys);
         }
         
         private ClashZone? CreateClashZoneForDamper(
@@ -943,7 +987,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             Element wall,
             XYZ placementPoint,
             Transform? damperTransform,
-            Transform? wallTransform = null)
+            Transform? wallTransform = null,
+            Dictionary<int, Dictionary<string, string>>? damperParamsCache = null,
+            Dictionary<int, Dictionary<string, string>>? wallParamsCache = null,
+            HashSet<string>? openingPointKeys = null)
         {
             try
             {
@@ -1046,13 +1093,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     _logger($"[DamperProcessing] 🔍 IntersectionBbox: Min={intersectionBbox.Min}, Max={intersectionBbox.Max}, Center={BoundingBoxService.GetBoundingBoxCenter(intersectionBbox)}");
                 }
 
-                // ✅ STEP 1: Capture MEP parameters with smart level parameter logic
-                // Priority: Reference Level > other level params > restrict to Reference Level only
-                var mepParameters = CaptureMepParametersWithSmartLevel(damper);
-                
-                // ✅ STEP 2: Capture Host parameters (restricted to Level and Fire Rating only)
-                var hostParameters = CaptureHostParametersRestricted(wall);
+                // ✅ STEP 1: Capture MEP parameters (use cached if available)
+                Dictionary<string, string> mepParameters;
+                if (damperParamsCache != null && damperParamsCache.TryGetValue(damper.Id.IntegerValue, out var cachedMepParams))
+                {
+                    mepParameters = cachedMepParams;
+                }
+                else
+                {
+                    mepParameters = CaptureMepParametersWithSmartLevel(damper);
+                }
 
+                // ✅ STEP 2: Capture Host parameters (use cached if available)
+                Dictionary<string, string> hostParameters;
+                if (wallParamsCache != null && wallParamsCache.TryGetValue(wall.Id.IntegerValue, out var cachedHostParams))
+                {
+                    hostParameters = cachedHostParams;
+                }
+                else
+                {
+                    hostParameters = CaptureHostParametersRestricted(wall);
+                }
+                
                 // ✅ STEP 3: Extract damper dimensions (Width and Height) - CRITICAL for placement sizing
                 // Use same logic as DamperPlacementStrategy.GetMepElementSize
                 double damperWidth = 0.0;
@@ -1668,6 +1730,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     DocumentPath = hostDoc?.PathName ?? string.Empty,
                     StructuralElementDocumentTitle = wallDoc?.Title ?? string.Empty,
                     
+                    // ✅ O(1) EXISTENCE CHECK: Set IsResolved if sleeve exists at this location
+                    // This eliminates the need for expensive CheckForExistingSleeve calls
+                    IsSleeveCreated = openingPointKeys != null && openingPointKeys.Contains($"{Math.Round(sleevePlacementPoint.X, 3)}_{Math.Round(sleevePlacementPoint.Y, 3)}_{Math.Round(sleevePlacementPoint.Z, 3)}"),
+                    
                     // ✅ CRITICAL FIX: Set Size parameter value for database column
                     // This was missing, causing the 'Size' column in DB to be empty even if parameter was captured in JSON
                     MepElementSizeParameterValue = GetSizeParameterValue(mepParameters)
@@ -1926,6 +1992,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 }
                 return "Unknown";
             }
+        }
+    }
+
+    /// <summary>
+    /// Helper class to compare elements by their ElementId for Distinct() operations
+    /// </summary>
+    internal class ElementIdComparer : IEqualityComparer<Element>
+    {
+        public bool Equals(Element x, Element y)
+        {
+            if (x == null && y == null) return true;
+            if (x == null || y == null) return false;
+            return x.Id.IntegerValue == y.Id.IntegerValue;
+        }
+
+        public int GetHashCode(Element obj)
+        {
+            return obj?.Id?.IntegerValue.GetHashCode() ?? 0;
         }
     }
 }

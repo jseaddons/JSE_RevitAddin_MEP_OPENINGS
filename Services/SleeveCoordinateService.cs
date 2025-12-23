@@ -8,6 +8,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Refresh;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -622,7 +623,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ STEP 4: Use ClashZonePersistenceService to save updated clash zones
                 // This ensures tree structure is maintained correctly
                 var guidManager = new GuidManager(_doc);
-                var persistenceService = new ClashZonePersistenceService(_doc, guidManager);
+                var persistenceService = new ClashZonePersistenceService(_doc, guidManager, null, null);
                 persistenceService.SaveClashZones(allClashZones, baseFilterName, filter, allowStructuralUpdates: false);
                 
                 // ✅ STEP 5: Save Filter XML file using FilterManagementService

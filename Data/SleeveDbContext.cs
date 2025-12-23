@@ -403,6 +403,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     EnsureCategoryProcessingMarkersTable(transaction);
                     EnsureClusterSleevesTable(transaction);
                     EnsureCombinedSleevesTables(transaction);
+                    EnsureSessionContextTable(transaction); // ✅ SESSION CONTEXT: Store section box bounds and session data
                     
                     // ✅ R-TREE: Create R-tree virtual table for spatial indexing (if enabled)
                     EnsureRTreeTable(transaction);
@@ -1606,6 +1607,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
             ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_const_combined_id ON CombinedSleeveConstituents(CombinedSleeveId)", transaction);
             ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_const_clash_zone ON CombinedSleeveConstituents(ClashZoneId)", transaction);
             ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_const_cluster_id ON CombinedSleeveConstituents(ClusterSleeveId)", transaction);
+        }
+
+        /// <summary>
+        /// ✅ SESSION CONTEXT: Create SessionContext table for storing session-level data
+        /// Stores section box bounds and other session data for "dump once, use many times" pattern
+        /// Simple key-value store for one-time session data (not bulk operations)
+        /// </summary>
+        private void EnsureSessionContextTable(SQLiteTransaction transaction)
+        {
+            ExecuteCommand(@"
+                CREATE TABLE IF NOT EXISTS SessionContext (
+                    Key TEXT PRIMARY KEY,
+                    Value TEXT,
+                    UpdatedAt DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes'))
+                )", transaction);
+
+            _logger("[SQLite] ✅ SessionContext table ready (stores section box bounds and session data)");
         }
 
         /// <summary>

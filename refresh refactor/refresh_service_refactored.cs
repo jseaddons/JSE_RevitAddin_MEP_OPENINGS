@@ -516,7 +516,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var persistenceService = new ClashZonePersistenceService(
                 _document, 
                 new GuidManager(_document), 
-                context.RefreshLogName);
+                context.RefreshLogName,
+                context.PerformanceMonitor);
             
             // ✅ MIMIC OLD REFRESHSERVICE: Call SaveClashZones ONCE with ALL clash zones (same as old RefreshService line 3621)
             // SaveClashZones internally groups by category and creates filter groups for each category
@@ -545,27 +546,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // New zones detected in current refresh will have IsCurrentClash=1 set when created
             try
             {
-                using (var dbContext = new Data.SleeveDbContext(_document, msg =>
+                using (var resetOp = context.PerformanceMonitor.TrackOperation("9a0. Reset IsCurrentClash") as PerformanceMonitor.OperationTracker)
                 {
-                    if (!context.IsDeploymentMode)
-                        DebugLogger.Info($"[REFRESH-REFACTORED][SQLite] {msg}");
-                }))
-                {
-                    var repository = new Data.Repositories.ClashZoneRepository(dbContext, msg =>
+                    using (var dbContext = new Data.SleeveDbContext(_document, msg =>
                     {
                         if (!context.IsDeploymentMode)
                             DebugLogger.Info($"[REFRESH-REFACTORED][SQLite] {msg}");
-                    });
-                    
-                    int resetCount = repository.ResetIsCurrentClashFlag(
-                        context.SelectedFilterNames ?? new List<string>(),
-                        context.SelectedMepCategories ?? new List<string>());
-                    
-                    if (!context.IsDeploymentMode)
+                    }))
                     {
-                        DebugLogger.Info($"[REFRESH-REFACTORED] [ISCURRENTCLASH-RESET] ✅ Reset IsCurrentClashFlag=0 for {resetCount} zones before SaveClashZones");
-                        SafeFileLogger.SafeAppendText(context.RefreshLogName,
-                            $"[{DateTime.Now}] [ISCURRENTCLASH-RESET] ✅ Reset IsCurrentClashFlag=0 for {resetCount} zones\n");
+                        var repository = new Data.Repositories.ClashZoneRepository(dbContext, msg =>
+                        {
+                            if (!context.IsDeploymentMode)
+                                DebugLogger.Info($"[REFRESH-REFACTORED][SQLite] {msg}");
+                        });
+                        
+                        int resetCount = repository.ResetIsCurrentClashFlag(
+                            context.SelectedFilterNames ?? new List<string>(),
+                            context.SelectedMepCategories ?? new List<string>());
+                        
+                        resetOp?.SetItemCount(resetCount);
+                        
+                        if (!context.IsDeploymentMode)
+                        {
+                            DebugLogger.Info($"[REFRESH-REFACTORED] [ISCURRENTCLASH-RESET] ✅ Reset IsCurrentClashFlag=0 for {resetCount} zones before SaveClashZones");
+                            SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                $"[{DateTime.Now}] [ISCURRENTCLASH-RESET] ✅ Reset IsCurrentClashFlag=0 for {resetCount} zones\n");
+                        }
                     }
                 }
             }
@@ -590,11 +596,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     DebugLogger.Info($"[REFRESH-REFACTORED] [MERGE-SAVE] Using allowStructuralUpdates={allowStructuralUpdates} from {context.PathStrategy?.PathName ?? "default"}");
                 }
                 
-                persistenceService.SaveClashZones(
-                    context.AllClashZones ?? new List<ClashZone>(),
-                    normalizedBaseName,
-                    enabledFilter,
-                    allowStructuralUpdates: allowStructuralUpdates);
+                using (var dbSaveOp = context.PerformanceMonitor.TrackOperation("9a. Database/XML Save") as PerformanceMonitor.OperationTracker)
+                {
+                    persistenceService.SaveClashZones(
+                        context.AllClashZones ?? new List<ClashZone>(),
+                        normalizedBaseName,
+                        enabledFilter,
+                        allowStructuralUpdates: allowStructuralUpdates);
+                    dbSaveOp?.SetItemCount(context.AllClashZones?.Count ?? 0);
+                }
                 
                 DebugLogger.Info($"[REFRESH-REFACTORED] [MERGE-SAVE] ✅ SaveClashZones completed successfully");
                 SafeFileLogger.SafeAppendText(context.RefreshLogName, 
@@ -608,91 +618,96 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     try
                     {
-                        using (var dbContext = new Data.SleeveDbContext(_document, msg =>
+                        using (var flagOp = context.PerformanceMonitor.TrackOperation("9b. Set ReadyForPlacement Flags") as PerformanceMonitor.OperationTracker)
                         {
-                            if (!context.IsDeploymentMode)
-                                DebugLogger.Info($"[REFRESH-REFACTORED][SQLite] {msg}");
-                        }))
-                        {
-                            var repository = new Data.Repositories.ClashZoneRepository(dbContext, msg =>
+                            using (var dbContext = new Data.SleeveDbContext(_document, msg =>
                             {
                                 if (!context.IsDeploymentMode)
                                     DebugLogger.Info($"[REFRESH-REFACTORED][SQLite] {msg}");
-                            });
-
-                            // Get section box bounds
-                            BoundingBoxXYZ? sectionBoxNullable = null;
-                            if (_document.ActiveView is View3D view3D && view3D.IsSectionBoxActive)
+                            }))
                             {
-                                sectionBoxNullable = Helpers.SectionBoxHelper.GetSectionBoxBounds(view3D);
-                                if (sectionBoxNullable != null && !context.IsDeploymentMode)
+                                var repository = new Data.Repositories.ClashZoneRepository(dbContext, msg =>
+                                {
+                                    if (!context.IsDeploymentMode)
+                                        DebugLogger.Info($"[REFRESH-REFACTORED][SQLite] {msg}");
+                                });
+
+                                // Get section box bounds
+                                BoundingBoxXYZ? sectionBoxNullable = null;
+                                if (_document.ActiveView is View3D view3D && view3D.IsSectionBoxActive)
+                                {
+                                    sectionBoxNullable = Helpers.SectionBoxHelper.GetSectionBoxBounds(view3D);
+                                    if (sectionBoxNullable != null && !context.IsDeploymentMode)
+                                    {
+                                        BoundingBoxXYZ sb = sectionBoxNullable;
+                                        DebugLogger.Info($"[REFRESH-REFACTORED] Section box active: Min=({sb.Min.X:F2}, {sb.Min.Y:F2}, {sb.Min.Z:F2}), Max=({sb.Max.X:F2}, {sb.Max.Y:F2}, {sb.Max.Z:F2})");
+                                    }
+                                }
+
+                                // ✅ FORCE DETECTION MODE: Check if force detection mode is enabled
+                                // If enabled, reset all flags to false (preserving GUIDs) before detection
+                                bool forceDetectionMode = false;
+                                try
+                                {
+                                    var settings = _appProfileService?.GetCurrentSettings();
+                                    forceDetectionMode = settings?.ForceDetectionMode ?? false;
+                                }
+                                catch { }
+
+                                if (forceDetectionMode)
+                                {
+                                    if (!context.IsDeploymentMode)
+                                    {
+                                        try
+                                        {
+                                            DebugLogger.Info($"[REFRESH-REFACTORED] [FORCE-DETECTION] ⚡ Force Detection Mode enabled - resetting all flags (preserving GUIDs)");
+                                            SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                                $"[{DateTime.Now}] [REFRESH-REFACTORED] [FORCE-DETECTION] ⚡ Force Detection Mode enabled - resetting all flags (preserving GUIDs)\n");
+                                        }
+                                        catch { }
+                                    }
+
+                                    int zonesReset = repository.ResetAllFlagsForForceDetectionMode(
+                                        context.SelectedFilterNames,
+                                        context.SelectedMepCategories);
+
+                                    if (!context.IsDeploymentMode)
+                                    {
+                                        try
+                                        {
+                                            DebugLogger.Info($"[REFRESH-REFACTORED] [FORCE-DETECTION] ✅ Reset all flags for {zonesReset} zones (IsResolved=0, IsClusterResolved=0, SleeveId=0, ClusterId=0, ReadyForPlacement=1) - GUIDs preserved");
+                                            SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                                $"[{DateTime.Now}] [REFRESH-REFACTORED] [FORCE-DETECTION] ✅ Reset all flags for {zonesReset} zones - GUIDs preserved\n");
+                                        }
+                                        catch { }
+                                    }
+                                }
+                                
+                                // ✅ CRITICAL: Section box filtering AFTER SaveClashZones
+                                // This ensures zones exist in database before we try to filter them
+                                // Reuse section box bounds from above (already declared at line 584)
+                                if (!context.IsDeploymentMode && sectionBoxNullable != null)
                                 {
                                     BoundingBoxXYZ sb = sectionBoxNullable;
-                                    DebugLogger.Info($"[REFRESH-REFACTORED] Section box active: Min=({sb.Min.X:F2}, {sb.Min.Y:F2}, {sb.Min.Z:F2}), Max=({sb.Max.X:F2}, {sb.Max.Y:F2}, {sb.Max.Z:F2})");
+                                    DebugLogger.Info($"[MERGE-SAVE] ✅ SECTION BOX ACTIVE: Min=({sb.Min.X:F2}, {sb.Min.Y:F2}, {sb.Min.Z:F2}), Max=({sb.Max.X:F2}, {sb.Max.Y:F2}, {sb.Max.Z:F2})");
+                                    SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                        $"[{DateTime.Now}] [MERGE-SAVE] ✅ SECTION BOX ACTIVE: Min=({sb.Min.X:F2}, {sb.Min.Y:F2}, {sb.Min.Z:F2}), Max=({sb.Max.X:F2}, {sb.Max.Y:F2}, {sb.Max.Z:F2})\n");
                                 }
-                            }
-
-                            // ✅ FORCE DETECTION MODE: Check if force detection mode is enabled
-                            // If enabled, reset all flags to false (preserving GUIDs) before detection
-                            bool forceDetectionMode = false;
-                            try
-                            {
-                                var settings = _appProfileService?.GetCurrentSettings();
-                                forceDetectionMode = settings?.ForceDetectionMode ?? false;
-                            }
-                            catch { }
-
-                            if (forceDetectionMode)
-                            {
+                                
+                                // Set ReadyForPlacementFlag=1 for unresolved zones within section box
+                                int markedCount = repository.SetReadyForPlacementForUnresolvedZonesInSectionBox(
+                                    context.SelectedFilterNames ?? new List<string>(),
+                                    context.SelectedMepCategories ?? new List<string>(),
+                                    sectionBoxNullable);
+                                
+                                flagOp?.SetItemCount(markedCount);
+                                
                                 if (!context.IsDeploymentMode)
                                 {
-                                    try
-                                    {
-                                        DebugLogger.Info($"[REFRESH-REFACTORED] [FORCE-DETECTION] ⚡ Force Detection Mode enabled - resetting all flags (preserving GUIDs)");
-                                        SafeFileLogger.SafeAppendText(context.RefreshLogName,
-                                            $"[{DateTime.Now}] [REFRESH-REFACTORED] [FORCE-DETECTION] ⚡ Force Detection Mode enabled - resetting all flags (preserving GUIDs)\n");
-                                    }
-                                    catch { }
+                                    DebugLogger.Info($"[MERGE-SAVE] [SECTION-BOX-FILTER] ✅ Set ReadyForPlacementFlag=1 for {markedCount} unresolved zones within section box");
+                                    SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                        $"[{DateTime.Now}] [MERGE-SAVE] [SECTION-BOX-FILTER] ✅ Set ReadyForPlacementFlag=1 for {markedCount} zones\n");
                                 }
-
-                                int zonesReset = repository.ResetAllFlagsForForceDetectionMode(
-                                    context.SelectedFilterNames,
-                                    context.SelectedMepCategories);
-
-                                if (!context.IsDeploymentMode)
-                                {
-                                    try
-                                    {
-                                        DebugLogger.Info($"[REFRESH-REFACTORED] [FORCE-DETECTION] ✅ Reset all flags for {zonesReset} zones (IsResolved=0, IsClusterResolved=0, SleeveId=0, ClusterId=0, ReadyForPlacement=1) - GUIDs preserved");
-                                        SafeFileLogger.SafeAppendText(context.RefreshLogName,
-                                            $"[{DateTime.Now}] [REFRESH-REFACTORED] [FORCE-DETECTION] ✅ Reset all flags for {zonesReset} zones - GUIDs preserved\n");
-                                    }
-                                    catch { }
-                                }
-                            }
-                            
-                            // ✅ CRITICAL: Section box filtering AFTER SaveClashZones
-                            // This ensures zones exist in database before we try to filter them
-                            // Reuse section box bounds from above (already declared at line 584)
-                            if (!context.IsDeploymentMode && sectionBoxNullable != null)
-                            {
-                                BoundingBoxXYZ sb = sectionBoxNullable;
-                                DebugLogger.Info($"[MERGE-SAVE] ✅ SECTION BOX ACTIVE: Min=({sb.Min.X:F2}, {sb.Min.Y:F2}, {sb.Min.Z:F2}), Max=({sb.Max.X:F2}, {sb.Max.Y:F2}, {sb.Max.Z:F2})");
-                                SafeFileLogger.SafeAppendText(context.RefreshLogName,
-                                    $"[{DateTime.Now}] [MERGE-SAVE] ✅ SECTION BOX ACTIVE: Min=({sb.Min.X:F2}, {sb.Min.Y:F2}, {sb.Min.Z:F2}), Max=({sb.Max.X:F2}, {sb.Max.Y:F2}, {sb.Max.Z:F2})\n");
-                            }
-                            
-                            // Set ReadyForPlacementFlag=1 for unresolved zones within section box
-                            int markedCount = repository.SetReadyForPlacementForUnresolvedZonesInSectionBox(
-                                context.SelectedFilterNames ?? new List<string>(),
-                                context.SelectedMepCategories ?? new List<string>(),
-                                sectionBoxNullable);
-                            
-                            if (!context.IsDeploymentMode)
-                            {
-                                DebugLogger.Info($"[MERGE-SAVE] [SECTION-BOX-FILTER] ✅ Set ReadyForPlacementFlag=1 for {markedCount} unresolved zones within section box");
-                                SafeFileLogger.SafeAppendText(context.RefreshLogName,
-                                    $"[{DateTime.Now}] [MERGE-SAVE] [SECTION-BOX-FILTER] ✅ Set ReadyForPlacementFlag=1 for {markedCount} zones\n");
                             }
                         }
                     }
@@ -801,6 +816,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     };
                     enabledFilter.ClashZoneStorage.Filters ??= new List<FilterGroupForStorage>();
                     
+                    // ✅ DATABASE-ONLY MODE: XML filter group creation DISABLED
+                    // This code was creating duplicate filter entries like "Ventilation_ducts" in the database
+                    // Zones are saved with base filter name only (e.g., "Ventilation" + category)
+                    /*
                     // ✅ CREATE EMPTY FILTER GROUPS: For categories that don't have filter groups yet
                     foreach (var category in categoriesToSave)
                     {
@@ -838,6 +857,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 $"[{DateTime.Now}] [REFRESH-REFACTORED] Created empty filter group for category '{category}': '{expectedGroupName}'\n");
                         }
                     }
+                    */
+                    
                     
                     // Now save all filter groups (including empty ones)
                     if (enabledFilter.ClashZoneStorage?.Filters != null)
@@ -1205,6 +1226,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 loadOp?.SetItemCount(context.ExistingClashZones?.Count ?? 0);
             }
+            
+            // ✅ SECTION BOX CAPTURE: Capture and store section box bounds during refresh
+            CaptureAndStoreSectionBox(context);
         }
 
         private void DetermineRefreshPath(RefreshContext context)
@@ -1822,6 +1846,67 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             if (_refreshButton != null)
                 _refreshButton.Enabled = true;
+        }
+
+        /// <summary>
+        /// ✅ SECTION BOX CAPTURE: Capture and store section box bounds during refresh
+        /// This implements the "Dump Once, Use Many Times" architecture from SECTION_BOX_STORAGE_PLAN.md
+        /// </summary>
+        private void CaptureAndStoreSectionBox(RefreshContext context)
+        {
+            try
+            {
+                if (!context.IsDeploymentMode)
+                {
+                    DebugLogger.Info("[REFRESH-REFACTORED] [SECTION-BOX] Capturing section box bounds for caching...");
+                }
+                SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                    $"[{DateTime.Now}] [SECTION-BOX] Capturing section box bounds for caching...\n");
+
+                // Create SectionBoxService instance
+                var sectionBoxService = new SectionBoxService();
+
+                // Get active 3D view with section box
+                if (_uiDocument?.ActiveView is View3D view3D && view3D.IsSectionBoxActive)
+                {
+                    // Create database context for storing section box
+                    using (var dbContext = new Data.SleeveDbContext(_document, msg =>
+                    {
+                        if (!context.IsDeploymentMode)
+                            DebugLogger.Info($"[REFRESH-REFACTORED][SQLite] {msg}");
+                    }))
+                    {
+                        // Capture and store section box bounds
+                        sectionBoxService.CaptureAndStore(view3D, dbContext.Connection);
+
+                        if (!context.IsDeploymentMode)
+                        {
+                            DebugLogger.Info("[REFRESH-REFACTORED] [SECTION-BOX] ✅ Section box bounds captured and stored successfully");
+                        }
+                        SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                            $"[{DateTime.Now}] [SECTION-BOX] ✅ Section box bounds captured and stored successfully\n");
+                    }
+                }
+                else
+                {
+                    if (!context.IsDeploymentMode)
+                    {
+                        DebugLogger.Info("[REFRESH-REFACTORED] [SECTION-BOX] ⚠️ No active 3D section box found - section box caching skipped");
+                    }
+                    SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                        $"[{DateTime.Now}] [SECTION-BOX] ⚠️ No active 3D section box found - section box caching skipped\n");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!context.IsDeploymentMode)
+                {
+                    DebugLogger.Warning($"[REFRESH-REFACTORED] [SECTION-BOX] ⚠️ Failed to capture section box: {ex.Message}");
+                }
+                SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                    $"[{DateTime.Now}] [SECTION-BOX] ⚠️ Failed to capture section box: {ex.Message}\n");
+                // Continue with refresh even if section box capture fails (non-blocking)
+            }
         }
     }
 }

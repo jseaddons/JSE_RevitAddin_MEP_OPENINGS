@@ -146,7 +146,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             // This intersection processor does NOT process duct accessories to avoid duplicate code
             // Duct accessories are processed in refresh_service_refactored.cs via DamperProcessingService
             // Do NOT include OST_DuctAccessory in MEP category filters here
-            var newClashZones = RunDetectionWithCollectorLevelFilters();
+            
+            // ✅ PERFORMANCE BREAKDOWN: Track sub-operations
+            List<ClashZone> newClashZones;
+            newClashZones = RunDetectionWithCollectorLevelFilters();
 
             // ✅ CRITICAL FIX: Ensure IsCurrentClash is set to true for all new zones
             if (newClashZones != null)
@@ -238,7 +241,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             }
 
             // ✅ STEP 1: Get section box outline for filtering
-            Outline sectionBoxOutline = GetSectionBoxOutline(view3D);
+            Outline sectionBoxOutline;
+            using (var sectionBoxOp = _performanceMonitor?.TrackOperation("6a1. Section Box Outline") as PerformanceMonitor.OperationTracker)
+            {
+                sectionBoxOutline = GetSectionBoxOutline(view3D);
+            }
 
             // ✅ STEP 2: Build category filters
             // ✅ IMPORTANT: Duct Accessories are excluded here - they are handled separately by DamperProcessingService
@@ -257,22 +264,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
 
             // ✅ STEP 3: Collect MEP elements with ALL filters at collector level
             _logger("[INTERSECTION-PROCESSOR] Collecting MEP elements with collector-level filters...");
-            var mepElements = CollectMepElementsWithFilters(
-                _context.Document,
-                sectionBoxOutline,
-                mepCategoryFilters,
-                _context.SelectedReferenceFiles);
+            List<Element> mepElements;
+            using (var mepCollectOp = _performanceMonitor?.TrackOperation("6a. MEP Element Collection") as PerformanceMonitor.OperationTracker)
+            {
+                mepElements = CollectMepElementsWithFilters(
+                    _context.Document,
+                    sectionBoxOutline,
+                    mepCategoryFilters,
+                    _context.SelectedReferenceFiles);
+                mepCollectOp?.SetItemCount(mepElements.Count);
+            }
 
             _logger($"[INTERSECTION-PROCESSOR] ✅ Collected {mepElements.Count} MEP elements (pre-filtered at collector level)");
 
             // ✅ STEP 4: Collect host elements with ALL filters at collector level
             _logger("[INTERSECTION-PROCESSOR] Collecting host elements with collector-level filters...");
-            var hostElements = CollectHostElementsWithFilters(
-                _context.Document,
-                sectionBoxOutline,
-                hostCategoryFilters,
-                _context.SelectedHostFiles,
-                _context.SelectedHostTypes);
+            List<Element> hostElements;
+            using (var hostCollectOp = _performanceMonitor?.TrackOperation("6b. Host Element Collection") as PerformanceMonitor.OperationTracker)
+            {
+                hostElements = CollectHostElementsWithFilters(
+                    _context.Document,
+                    sectionBoxOutline,
+                    hostCategoryFilters,
+                    _context.SelectedHostFiles,
+                    _context.SelectedHostTypes);
+                hostCollectOp?.SetItemCount(hostElements.Count);
+            }
 
             _logger($"[INTERSECTION-PROCESSOR] ✅ Collected {hostElements.Count} host elements (pre-filtered at collector level)");
 
@@ -290,11 +307,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             var mepElementsWithTransforms = mepElements.Select(e => (e, (Transform?)null)).ToList();
             var hostElementsWithTransforms = hostElements.Select(e => (e, (Transform?)null)).ToList();
             
-            var intersections = MepIntersectionService.FindIntersectionsBatch(
-                mepElementsWithTransforms,
-                hostElementsWithTransforms,
-                msg => _logger(msg),
-                view3D);
+            List<(Element, Element, BoundingBoxXYZ, XYZ)> intersections;
+            using (var raycastOp = _performanceMonitor?.TrackOperation("6c. Intersection Detection (Ray Casting)") as PerformanceMonitor.OperationTracker)
+            {
+                intersections = MepIntersectionService.FindIntersectionsBatch(
+                    mepElementsWithTransforms,
+                    hostElementsWithTransforms,
+                    msg => _logger(msg),
+                    view3D);
+            }
 
             _logger($"[INTERSECTION-PROCESSOR] Found {intersections.Count} intersections from {mepElements.Count} MEP + {hostElements.Count} host elements");
 
@@ -318,8 +339,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             
             _logger($"[INTERSECTION-PROCESSOR] After MEP intersection filtering: {filteredIntersections.Count} intersections (removed {intersections.Count - filteredIntersections.Count} elements)");
 
-            // ✅ STEP 6: Convert intersections to ClashZones using ClashZoneService (Legacy)
-            // Note: Using legacy ClashZoneService from ClashZoneService_Legacy.cs
+            // ✅ STEP 6: Convert intersections to ClashZones using ClashZoneService
+            // Note: Empty cache is correct - we're only detecting NEW intersections here
             var clashZoneService = new ClashZoneService(
                 new ClashZoneStorage(),
                 msg => _logger($"[CLASH-ZONE-SERVICE] {msg}"),
@@ -353,11 +374,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 }
             }
             
-            var newClashZones = clashZoneService.DetectNewClashZones(
-                filteredIntersections,
-                _context.Document,
-                _context.ClearanceSettings,
-                _context.SelectedMepCategories);
+            List<ClashZone> newClashZones;
+            using (var createOp = _performanceMonitor?.TrackOperation("6d. Clash Zone Creation") as PerformanceMonitor.OperationTracker)
+            {
+                newClashZones = clashZoneService.DetectNewClashZones(
+                    filteredIntersections,
+                    _context.Document,
+                    _context.ClearanceSettings,
+                    _context.SelectedMepCategories);
+            }
 
             _logger($"[INTERSECTION-PROCESSOR] ✅ Converted {filteredIntersections.Count} intersections to {newClashZones.Count} clash zones");
             
@@ -1230,6 +1255,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         /// </summary>
         private List<ClashZone> CombineExistingAndNew(List<ClashZone> existing, List<ClashZone> newZones)
         {
+            // ✅ CRITICAL FIX: Keep ALL zones - don't filter out re-detected ones
+            // The issue was: line 1282 filtered out newZones that matched existing IDs,
+            // causing 888 detected zones to shrink to only ~50 truly new ones
+            
             var combined = new List<ClashZone>();
 
             if (existing != null)
@@ -1237,10 +1266,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
 
             if (newZones != null)
             {
-                // Remove duplicates by ID but MARK existing as current if they are in newZones
+                // Build set of existing IDs for O(1) lookup
                 var existingIds = new HashSet<string>(existing?.Select(z => z.Id.ToString()) ?? new List<string>());
                 
-                // ✅ CRITICAL FIX: Update existing zones to IsCurrentClash=true if they were re-detected
+                // ✅ CRITICAL FIX: Mark existing zones as IsCurrentClash=true if they were re-detected
                 // Existing zones have IsCurrentClash=0 from the reset at start of refresh
                 if (existing != null)
                 {
@@ -1254,6 +1283,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     }
                 }
 
+                // ✅ CRITICAL FIX: Only add TRULY NEW zones (not re-detected ones)
+                // Re-detected zones are already in 'existing' list with IsCurrentClash=true set above
                 var uniqueNew = newZones.Where(z => !existingIds.Contains(z.Id.ToString())).ToList();
                 combined.AddRange(uniqueNew);
             }

@@ -171,5 +171,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Updates resolution flags for all zones belonging to the specified cluster instance IDs.
         /// </summary>
         void UpdateCombinedResolutionFlagsByClusterIds(IEnumerable<int> clusterInstanceIds, int combinedSleeveId);
+
+        /// <summary>
+        /// ✅ BATCH OPTIMIZATION: Finds existing GUIDs for a collection of MEP+Host+Point triples.
+        /// Returns a dictionary mapping (MepId, HostId, RoundedPoint) -> Guid.
+        /// </summary>
+        System.Collections.Generic.Dictionary<(int MepId, int HostId, string PointKey), System.Guid> FindGuidsByMepHostAndPointsBulk(
+            System.Collections.Generic.IEnumerable<(int MepId, int HostId, double X, double Y, double Z)> targets, 
+            double tolerance = 0.001);
     }
 }
