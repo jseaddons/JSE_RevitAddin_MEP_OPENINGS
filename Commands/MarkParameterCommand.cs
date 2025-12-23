@@ -92,7 +92,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 
                             var markService = new MarkParameterService();
                             var numberFormat = _markPrefixes?.NumberFormat ?? "000";
-                            var (processedCount, errorCount) = markService.ApplyMepMarkToClusters(
+                            // ✅ OPTIMIZED: Use Batch Transfer (Read-Calculate-Write)
+                            // ApplyMepMarkToClustersBatch detects doc.IsModifiable and reuses the existing transaction for "All Categories".
+                            var (processedCount, errorCount) = markService.ApplyMepMarkToClustersBatch(
                                 doc, category, _projectPrefix, disciplinePrefix, remarkFlag, numberFormat, _markPrefixes);
 
                             totalProcessed += processedCount;
@@ -100,6 +102,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 
                             DebugLogger.Info($"[MarkParameterCommand] ✓ MEPMARK complete for {category}: {processedCount} clusters processed, {errorCount} errors");
                             DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Category {category}: {processedCount} processed, {errorCount} errors\n");
+                        }
+                        
+                        // ✅ COMBINED SLEEVES: Separate optimized flow (NO category check, NO GetClashZoneByCategory)
+                        {
+                            var combinedMarkService = new MarkParameterService();
+                            var combinedSleeves = combinedMarkService.GetAllCombinedSleeves(doc);
+                            
+                            if (combinedSleeves.Count > 0)
+                            {
+                                var numberFormat = _markPrefixes?.NumberFormat ?? "000";
+                                int startNumber = 1; // Combined sleeves start from 1
+                                bool remarkAll = _markPrefixes?.RemarkAll ?? _remarkAll;
+                                
+                                // Calculate marks (MEP prefix hardcoded)
+                                var markAssignments = combinedMarkService.CalculateCombinedSleeveMarks(
+                                    doc, combinedSleeves, _projectPrefix, numberFormat, startNumber, remarkAll);
+                                
+                                // Apply marks (uses existing transaction)
+                                var (combinedSuccess, combinedFailed) = combinedMarkService.ApplyCombinedSleeveMarksBatch(
+                                    doc, markAssignments);
+                                
+                                DebugLogger.Info($"[MarkParameterCommand] ✓ Combined Sleeves: {combinedSuccess} marked, {combinedFailed} failed");
+                            }
                         }
                         
                         // ✅ BIM 360 OPTIMIZATION: Single commit for all categories
@@ -122,8 +147,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 
                             var markService = new MarkParameterService();
                             var numberFormat = _markPrefixes?.NumberFormat ?? "000";
-                            var (processedCount, errorCount) = markService.ApplyMepMarkToClusters(
+                            // ✅ OPTIMIZED: Use Batch Transfer (Read-Calculate-Write)
+                            // We are inside a transaction, so it will reuse it.
+                            var (processedCount, errorCount) = markService.ApplyMepMarkToClustersBatch(
                                 doc, _targetCategory, _projectPrefix, _disciplinePrefix, remarkFlag, numberFormat, _markPrefixes);
+
+                            // ✅ COMBINED SLEEVES: Also process in single category mode
+                            var combinedSleeves = markService.GetAllCombinedSleeves(doc);
+                            if (combinedSleeves.Count > 0)
+                            {
+                                int startNumber = 1;
+                                bool remarkCombined = _markPrefixes?.RemarkAll ?? _remarkAll;
+                                
+                                var markAssignments = markService.CalculateCombinedSleeveMarks(
+                                    doc, combinedSleeves, _projectPrefix, numberFormat, startNumber, remarkCombined);
+                                
+                                var (combinedSuccess, combinedFailed) = markService.ApplyCombinedSleeveMarksBatch(
+                                    doc, markAssignments);
+                                
+                                DebugLogger.Info($"[MarkParameterCommand] ✓ Combined Sleeves: {combinedSuccess} marked, {combinedFailed} failed");
+                            }
 
                             tx.Commit();
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
@@ -34,7 +35,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             ISleevePlacementStrategy strategy,
             IDictionary<string, double> clearanceSettings,
             SleevePlacementPath requestedPath,
-            FlagManager flagManager = null,
+            JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor.IFlagManager flagManager = null,
             string uiOverridesFingerprint = null,
             string globalConfigurationFingerprint = null,
             bool isForceDetectionMode = false)
@@ -63,7 +64,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public ISleevePlacementStrategy Strategy { get; }
         public Dictionary<string, double> ClearanceSettings { get; }
         public SleevePlacementPath RequestedPath { get; }
-        public FlagManager FlagManager { get; }
+        public JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor.IFlagManager FlagManager { get; }
         public string UiOverridesFingerprint { get; }
         public string GlobalConfigurationFingerprint { get; }
         public bool IsForceDetectionMode { get; }

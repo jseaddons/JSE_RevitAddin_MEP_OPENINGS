@@ -119,8 +119,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     _logger?.Invoke($"[SQLite] ✅ Added to ByCluster: SnapshotId={view.SnapshotId}, ClusterInstanceId={view.ClusterInstanceId.Value}");
                                 }
                             }
+                            
+                            // ✅ NEW: Index by ClashZoneGuid (MUST be outside try-catch killer block)
+                            if (!string.IsNullOrEmpty(view.ClashZoneGuid))
                             {
-                                index.ByCluster[view.ClusterInstanceId.Value] = view;
+                                index.ByClashZoneGuid[view.ClashZoneGuid] = view;
                             }
                             
                             // ✅ DIAGNOSTIC: Log all snapshots loaded, especially for debugging missing sleeves
@@ -137,6 +140,79 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         }
                     }
                 }
+            }
+
+            // ✅ NEW: Load SleeveInstanceId -> ClashZoneGuid mapping from ClashZones table
+            // This is critical for finding snapshots when SleeveSnapshots table has missing/stale SleeveInstanceId
+            // but ClashZones table has the correct link.
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = @"
+                        SELECT SleeveInstanceId, ClashZoneGuid 
+                        FROM ClashZones 
+                        WHERE SleeveInstanceId > 0 AND ClashZoneGuid IS NOT NULL AND ClashZoneGuid != ''";
+                    
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            var sleeveId = reader.GetInt32(0);
+                            var guid = reader.GetString(1);
+                            index.SleeveIdToClashZoneGuid[sleeveId] = guid;
+                        }
+                    }
+                }
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger?.Invoke($"[SQLite] ✅ Loaded {index.SleeveIdToClashZoneGuid.Count} SleeveId->GUID mappings for fallback lookup");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.Invoke($"[SQLite] ⚠️ Failed to load SleeveId->GUID mapping: {ex.Message}");
+            }
+            
+            // ✅ LOAD COMBINED SLEEVE CONSTITUENTS
+            // We need to map CombinedInstanceId -> List of Constituents to aggregate their parameters
+            try 
+            {
+                 using (var cmd = _context.Connection.CreateCommand())
+                 {
+                     cmd.CommandText = @"
+                        SELECT 
+                            cs.CombinedInstanceId,
+                            csc.ConstituentType,
+                            csc.ClashZoneGuid,
+                            csc.ClusterInstanceId
+                        FROM CombinedSleeveConstituents csc
+                        INNER JOIN CombinedSleeves cs ON csc.CombinedSleeveId = cs.CombinedSleeveId";
+                     
+                     using (var reader = cmd.ExecuteReader())
+                     {
+                         while (reader.Read())
+                         {
+                             var combinedId = reader.GetInt32(0);
+                             if (!index.ByCombined.ContainsKey(combinedId))
+                             {
+                                 index.ByCombined[combinedId] = new List<SleeveConstituentSnapshotReference>();
+                             }
+                             
+                             index.ByCombined[combinedId].Add(new SleeveConstituentSnapshotReference
+                             {
+                                 SourceType = SafeGetString(reader, "ConstituentType"),
+                                 ClashZoneGuid = SafeGetString(reader, "ClashZoneGuid"),
+                                 ClusterInstanceId = reader.IsDBNull(3) ? (int?)null : reader.GetInt32(3)
+                             });
+                         }
+                     }
+                 }
+                 _logger?.Invoke($"[SQLite] ✅ Loaded {index.ByCombined.Count} combined sleeve definitions for parameter transfer");
+            }
+            catch (Exception ex)
+            {
+                _logger?.Invoke($"[SQLite] ⚠️ Failed to load combined sleeve constituents: {ex.Message}");
             }
 
             _logger?.Invoke($"[SQLite] ✅ Loaded {index.BySleeve.Count} individual and {index.ByCluster.Count} cluster snapshots");
@@ -220,6 +296,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         public Dictionary<int, SleeveSnapshotView> BySleeve { get; } = new Dictionary<int, SleeveSnapshotView>();
         public Dictionary<int, SleeveSnapshotView> ByCluster { get; } = new Dictionary<int, SleeveSnapshotView>();
 
+        public Dictionary<int, List<SleeveConstituentSnapshotReference>> ByCombined { get; } = new Dictionary<int, List<SleeveConstituentSnapshotReference>>();
+        public Dictionary<string, SleeveSnapshotView> ByClashZoneGuid { get; } = new Dictionary<string, SleeveSnapshotView>(StringComparer.OrdinalIgnoreCase);
+        // ✅ NEW: Map SleeveInstanceId to ClashZoneGuid for fallback lookup
+        public Dictionary<int, string> SleeveIdToClashZoneGuid { get; } = new Dictionary<int, string>();
+
+        public bool IsEmpty => BySleeve.Count == 0 && ByCluster.Count == 0;
+
         public bool TryGetBySleeve(int sleeveInstanceId, out SleeveSnapshotView view)
         {
             return BySleeve.TryGetValue(sleeveInstanceId, out view);
@@ -229,6 +312,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         {
             return ByCluster.TryGetValue(clusterInstanceId, out view);
         }
+        
+        public bool TryGetByCombined(int combinedInstanceId, out List<SleeveConstituentSnapshotReference> constituents)
+        {
+            return ByCombined.TryGetValue(combinedInstanceId, out constituents);
+        }
+
+        public bool TryGetByClashZoneGuid(string guid, out SleeveSnapshotView view)
+        {
+            return ByClashZoneGuid.TryGetValue(guid, out view);
+        }
+    }
+
+    public class SleeveConstituentSnapshotReference
+    {
+        public string SourceType { get; set; }
+        public string ClashZoneGuid { get; set; }
+        public int? ClusterInstanceId { get; set; }
     }
 
     public class SleeveSnapshotView

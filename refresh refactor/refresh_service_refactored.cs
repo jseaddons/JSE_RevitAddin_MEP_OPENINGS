@@ -444,7 +444,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (context.ExistingClashZones == null || context.ExistingClashZones.Count == 0)
                 return;
             
-            var flagManager = new FlagManager(_document);
+            var flagManager = Services.FlagManagement.FlagManagerFactory.CreateAdapter(_document);
             
             var byCategory = context.ExistingClashZones
                 .GroupBy(cz => cz.MepElementCategory)
@@ -1252,7 +1252,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ DEPLOYMENT MODE ON: Run validation based on path strategy
                 if (context.PathStrategy.EnableThreePointValidation)
                 {
-                    var validationService = new ValidationService(context, new FlagManager(_document));
+                    var validationService = new ValidationService(context, Services.FlagManagement.FlagManagerFactory.CreateAdapter(_document));
                     var validationResult = validationService.ValidateClashZones(context.ExistingClashZones);
                     
                     var processedZones = context.PathStrategy.ProcessZonesAfterValidation(
@@ -1406,7 +1406,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 UpdateProgress(45, "Resetting flags for deleted sleeves...");
                 using (context.PerformanceMonitor.TrackOperation("5B. Flag Reset"))
                 {
-                    var flagManager = new FlagManager(_document);
+                    var flagManager = Services.FlagManagement.FlagManagerFactory.CreateAdapter(_document);
                     var categoriesToCheck = context.ExistingClashZones?
                         .Where(cz => !string.IsNullOrWhiteSpace(cz.MepElementCategory))
                         .Select(cz => cz.MepElementCategory)
@@ -1421,11 +1421,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             ?? new Dictionary<string, List<ClashZone>>();
                         
                         var resetCount = flagManager.ResetFlagsForDeletedSleeves(
+                            context.ExistingClashZones,
                             categoriesToCheck,
-                            clashZonesByCategory,
-                            context.RefreshLogName,
-                            sectionBoxNullable,
-                            context.SelectedFilterNames);
+                            context.RefreshLogName);
                         
                         context.PathStrategy.ResetInstanceIdsForDeletedSleeves(
                             context,
@@ -1452,7 +1450,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             using (var intersectionOp = context.PerformanceMonitor.TrackOperation("6. Intersection Processing") as PerformanceMonitor.OperationTracker)
             {
                 var xmlManager = new XmlCacheManager(_document, context.RefreshLogName);
-                var validationService = new ValidationService(context, new FlagManager(_document));
+                var validationService = new ValidationService(context, Services.FlagManagement.FlagManagerFactory.CreateAdapter(_document));
                 var paramService = new ParameterCaptureService(context);
                 
                 var logger = new Action<string>(msg => 

@@ -20,7 +20,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
     public class FlagManagerAdapter : IFlagManager
     {
         private readonly IFlagManager _refactoredService;
-        private readonly FlagManager _legacyService;
         private readonly bool _useRefactored;
         
         /// <summary>
@@ -28,106 +27,62 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
         /// </summary>
         /// <param name="document">Revit document</param>
         /// <param name="refactoredService">Refactored flag manager service (can be null)</param>
-        /// <param name="legacyService">Legacy flag manager (can be null)</param>
         public FlagManagerAdapter(
             Document document,
-            IFlagManager refactoredService = null,
-            FlagManager legacyService = null)
+            IFlagManager refactoredService = null)
         {
             _useRefactored = OptimizationFlags.UseRefactoredClashZoneFlagServices;
-            
-            if (_useRefactored && refactoredService != null)
-            {
-                _refactoredService = refactoredService;
-            }
-            else
-            {
-                // Use legacy service
-                _legacyService = legacyService ?? new FlagManager(document);
-            }
+            _refactoredService = refactoredService;
         }
         
         /// <summary>
         /// Resets flags for deleted sleeves.
-        /// Delegates to refactored service or legacy service based on feature flag.
+        /// Delegates to refactored service.
         /// </summary>
         public int ResetFlagsForDeletedSleeves(
             List<ClashZone> clashZones, 
             List<string> categories,
             string refreshLogName = null)
         {
-            if (_useRefactored && _refactoredService != null)
+            if (_refactoredService != null)
             {
                 return _refactoredService.ResetFlagsForDeletedSleeves(clashZones, categories, refreshLogName);
             }
-            else
-            {
-                // Legacy service signature is different - convert clashZones to clashZonesByCategory
-                Dictionary<string, List<ClashZone>> clashZonesByCategory = null;
-                if (clashZones != null && clashZones.Count > 0 && categories != null)
-                {
-                    clashZonesByCategory = new Dictionary<string, List<ClashZone>>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var category in categories)
-                    {
-                        var zonesForCategory = clashZones
-                            .Where(cz => string.Equals(cz.MepElementCategory, category, StringComparison.OrdinalIgnoreCase))
-                            .ToList();
-                        if (zonesForCategory.Count > 0)
-                        {
-                            clashZonesByCategory[category] = zonesForCategory;
-                        }
-                    }
-                }
-                
-                return _legacyService.ResetFlagsForDeletedSleeves(categories, clashZonesByCategory, refreshLogName);
-            }
+            return 0;
         }
         
         /// <summary>
         /// Resets instance IDs for deleted sleeves.
-        /// Delegates to refactored service or legacy service based on feature flag.
+        /// Delegates to refactored service.
         /// </summary>
         public int ResetInstanceIdsForDeletedSleeves(
             List<string> categories,
             Dictionary<string, List<ClashZone>> clashZonesByCategory = null,
             string refreshLogName = null)
         {
-            if (_useRefactored && _refactoredService != null)
+            if (_refactoredService != null)
             {
                 return _refactoredService.ResetInstanceIdsForDeletedSleeves(categories, clashZonesByCategory, refreshLogName);
             }
-            else
-            {
-                return _legacyService.ResetInstanceIdsForDeletedSleeves(categories, clashZonesByCategory, refreshLogName);
-            }
+            return 0;
         }
         
         /// <summary>
         /// Updates flags after sleeve placement.
-        /// Delegates to refactored service or legacy service based on feature flag.
+        /// Delegates to refactored service.
         /// </summary>
         public void UpdateFlagsAfterPlacement(
             List<(Guid clashZoneId, int sleeveInstanceId, bool isCluster)> placedSleeves)
         {
-            if (_useRefactored && _refactoredService != null)
+            if (_refactoredService != null)
             {
                 _refactoredService.UpdateFlagsAfterPlacement(placedSleeves);
-            }
-            else
-            {
-                // Legacy service doesn't have this method - convert to BatchUpdateFlagsForPlacement format
-                // This requires loading ClashZone objects, which is complex
-                // For now, log a warning - callers should use BatchUpdateFlagsForPlacement directly
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    DebugLogger.Warning("[FlagManagerAdapter] UpdateFlagsAfterPlacement not fully supported in legacy mode - use BatchUpdateFlagsForPlacement instead");
-                }
             }
         }
         
         /// <summary>
         /// Batch update flags for placement.
-        /// Delegates to refactored service or legacy service based on feature flag.
+        /// Delegates to refactored service.
         /// </summary>
         public void BatchUpdateFlagsForPlacement(
             List<(ClashZone clashZone, int sleeveId)> clashZones, 
@@ -135,13 +90,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
             string category, 
             string filterName = null)
         {
-            if (_useRefactored && _refactoredService != null)
+            if (_refactoredService != null)
             {
                 _refactoredService.BatchUpdateFlagsForPlacement(clashZones, isCluster, category, filterName);
-            }
-            else
-            {
-                _legacyService.BatchUpdateFlagsForPlacement(clashZones, isCluster, category, filterName);
             }
         }
         
@@ -149,9 +100,98 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
         /// Get legacy FlagManager instance (for compatibility with services that require FlagManager directly).
         /// Returns null if using refactored service.
         /// </summary>
-        public FlagManager? GetLegacyFlagManager()
+        public object? GetLegacyFlagManager()
         {
-            return _legacyService;
+            return null;
+        }
+        /// <summary>
+        /// Deletes a sleeve when its intersection point has changed significantly.
+        /// Delegates to refactored service.
+        /// </summary>
+        public void DeleteSleeveForIntersectionPointChange(
+            ClashZone zone, 
+            string category, 
+            double movementDistance)
+        {
+            if (_refactoredService != null)
+            {
+                _refactoredService.DeleteSleeveForIntersectionPointChange(zone, category, movementDistance);
+            }
+        }
+        /// <summary>
+        /// Syncs flags from database (single source of truth) to in-memory clash zones.
+        /// Delegates to refactored service.
+        /// </summary>
+        public void SyncFlagsFromGlobal(List<ClashZone> clashZones, string category)
+        {
+            if (_refactoredService != null)
+            {
+                _refactoredService.SyncFlagsFromGlobal(clashZones, category);
+            }
+        }
+        
+        /// <summary>
+        /// Verifies existing sleeves in model and resets flags for missing ones.
+        /// Delegates to refactored service.
+        /// </summary>
+        public int VerifyExistingSleevesAndResetFlags(Document doc, List<string> filterNames, List<string> categories)
+        {
+             if (_refactoredService != null)
+            {
+                return _refactoredService.VerifyExistingSleevesAndResetFlags(doc, filterNames, categories);
+            }
+            return 0;
+        }
+
+        public bool GetFlag(Guid clashZoneId, string flagName)
+        {
+             if (_refactoredService != null)
+            {
+                return _refactoredService.GetFlag(clashZoneId, flagName);
+            }
+            return false;
+        }
+
+        public void SetFlag(Guid clashZoneId, string flagName, bool value)
+        {
+             if (_refactoredService != null)
+            {
+                _refactoredService.SetFlag(clashZoneId, flagName, value);
+            }
+        }
+
+        public string GetFlagValue(Guid clashZoneId, string flagName)
+        {
+             if (_refactoredService != null)
+            {
+                return _refactoredService.GetFlagValue(clashZoneId, flagName);
+            }
+            return null;
+        }
+
+        public void SetFlagValue(Guid clashZoneId, string flagName, string value)
+        {
+             if (_refactoredService != null)
+            {
+                _refactoredService.SetFlagValue(clashZoneId, flagName, value);
+            }
+        }
+
+        public List<ClashZone> GetFlaggedClashZones(string flagName, string category)
+        {
+             if (_refactoredService != null)
+            {
+                return _refactoredService.GetFlaggedClashZones(flagName, category);
+            }
+            return new List<ClashZone>();
+        }
+
+        public void SetFlaggedClashZones(List<ClashZone> clashZones, string flagName, bool value)
+        {
+             if (_refactoredService != null)
+            {
+                _refactoredService.SetFlaggedClashZones(clashZones, flagName, value);
+            }
         }
     }
 }

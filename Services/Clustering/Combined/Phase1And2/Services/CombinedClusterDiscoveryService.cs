@@ -30,7 +30,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Se
                 return Array.Empty<ClusterSleeveInfo>();
             }
 
-            var zones = _repository.LoadClusteredZones(filterName, categories);
+            var zones = _repository.LoadClusteredZones(uiDoc.Document, filterName, categories);
             DebugLogger.Info($"[CombinedDiscovery] Loaded {zones?.Count ?? 0} zones from repository");
 
             if (zones == null || zones.Count == 0)
@@ -83,9 +83,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Se
                         
                         // ✅ STEP 3: Filter category-matched zones to only those with sleeves in section box
                         int beforeSectionBox = categoryFilteredZones.Count;
+                        
+                        // ✅ DIAGNOSTIC: Log each zone before filtering
+                        DebugLogger.Info($"[CombinedDiscovery] Section box contains {sleeveIdsInSectionBox.Count} sleeve IDs: [{string.Join(", ", sleeveIdsInSectionBox.Take(20))}]");
+                        foreach (var z in categoryFilteredZones)
+                        {
+                            bool individualMatch = z.SleeveInstanceId > 0 && sleeveIdsInSectionBox.Contains(z.SleeveInstanceId);
+                            bool clusterMatch = z.ClusterSleeveInstanceId > 0 && sleeveIdsInSectionBox.Contains(z.ClusterSleeveInstanceId);
+                            bool afterClusterMatch = z.AfterClusterSleevePlacedSleeveInstanceId > 0 && sleeveIdsInSectionBox.Contains(z.AfterClusterSleevePlacedSleeveInstanceId);
+                            bool combinedMatch = z.CombinedClusterSleeveInstanceId > 0 && sleeveIdsInSectionBox.Contains(z.CombinedClusterSleeveInstanceId);
+                            bool willPass = individualMatch || clusterMatch || afterClusterMatch || combinedMatch;
+                            DebugLogger.Info($"[CombinedDiscovery]   Zone {z.Id} ({z.MepElementCategory}): SleeveId={z.SleeveInstanceId}, ClusterId={z.ClusterSleeveInstanceId}, AfterClusterId={z.AfterClusterSleevePlacedSleeveInstanceId}, CombinedId={z.CombinedClusterSleeveInstanceId}, IndividualMatch={individualMatch}, ClusterMatch={clusterMatch}, AfterClusterMatch={afterClusterMatch}, CombinedMatch={combinedMatch}, WillPass={willPass}");
+                        }
+                        
+                        // ✅ FIX: Check all possible sleeve ID fields (Individual, Cluster, AfterCluster, Combined)
                         zones = categoryFilteredZones.Where(z => 
                             (z.SleeveInstanceId > 0 && sleeveIdsInSectionBox.Contains(z.SleeveInstanceId)) || 
-                            (z.ClusterSleeveInstanceId > 0 && sleeveIdsInSectionBox.Contains(z.ClusterSleeveInstanceId)))
+                            (z.ClusterSleeveInstanceId > 0 && sleeveIdsInSectionBox.Contains(z.ClusterSleeveInstanceId)) ||
+                            (z.AfterClusterSleevePlacedSleeveInstanceId > 0 && sleeveIdsInSectionBox.Contains(z.AfterClusterSleevePlacedSleeveInstanceId)) ||
+                            (z.CombinedClusterSleeveInstanceId > 0 && sleeveIdsInSectionBox.Contains(z.CombinedClusterSleeveInstanceId)))
                             .ToList();
                         
                         DebugLogger.Info($"[CombinedDiscovery] Section box filter: {beforeSectionBox} -> {zones.Count} zones have sleeves in section box");

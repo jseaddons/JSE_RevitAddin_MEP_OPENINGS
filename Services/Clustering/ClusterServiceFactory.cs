@@ -13,6 +13,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Geometry; // ✅ SOLID: For SleeveCor
 using JSE_RevitAddin_MEP_OPENINGS.Services.Placement; // ✅ SOLID: For SleeveParameterService dependency injection
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -46,7 +47,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         /// <returns>Fully-configured RefactoredClusterService with all Phase 6-11 services</returns>
         public static RefactoredClusterService CreateWithAllServices(
             Document doc,
-            FlagManager flagManager = null,
+            JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor.IFlagManager flagManager = null,
             FilterManagementService filterService = null,
             int timeoutLimitMs = 300000)
         {
@@ -238,7 +239,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         /// <returns>Fully-configured RefactoredClusterService with all Phase 1-10 services</returns>
         public static RefactoredClusterService CreateRefactored(
             Document doc,
-            FlagManager? flagManager = null,
+            JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor.IFlagManager? flagManager = null,
             FilterManagementService? filterService = null,
             int timeoutLimitMs = 300000)
         {
@@ -300,7 +301,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             Document doc, // ✅ SOLID: Required for SleeveParameterService dependency injection
             IClusterDataService dataService,
             IClusterRotationService rotationService,
-            FlagManager? flagManager,
+            JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor.IFlagManager? flagManager,
             Func<string, string?>? getFilterNameForCategory)
         {
             // ✅ Wire function delegates for PlacementService

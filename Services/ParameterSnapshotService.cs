@@ -53,7 +53,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             "System Abbreviation",
             "Reference Level",
             "Schedule of Level",
-            "Schedule Level" // alias for schedule of level
+            "Schedule Level", // alias for schedule of level
+            "Size",           // ✅ CRITICAL: Size must always be captured for MEP elements
+            "Service Type"    // ✅ CRITICAL: For Cable Trays
         };
 
         private static readonly ISet<string> _commonMepKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -571,6 +573,57 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 var sp = fi.Symbol?.LookupParameter(paramName);
                 if (sp != null) return sp;
+            }
+            
+            // ✅ SPECIAL HANDLING: For "Size" parameter, try multiple fallbacks
+            // Dampers may have Size as a calculated/formula parameter that needs different lookup
+            if (paramName.Equals("Size", StringComparison.OrdinalIgnoreCase))
+            {
+                // ✅ DEBUG: Log all parameter names for Duct Accessories to find Size
+                if (!DeploymentConfiguration.DeploymentMode && element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
+                {
+                    var allParamNames = element.Parameters.Cast<Parameter>()
+                        .Where(p => p?.Definition?.Name != null)
+                        .Select(p => p.Definition.Name)
+                        .Take(30)
+                        .ToList();
+                    
+                    SafeFileLogger.SafeAppendText("param_debug.log", 
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SIZE-LOOKUP] Element {element.Id} ALL PARAMS ({allParamNames.Count}): [{string.Join(", ", allParamNames)}]\n");
+                }
+                
+                // Try all parameters looking for exact match "Size" (without HasValue check for formula params)
+                foreach (Parameter param in element.Parameters)
+                {
+                    if (param?.Definition?.Name != null &&
+                        param.Definition.Name.Equals("Size", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // ✅ DEBUG: Log Size parameter found
+                        if (!DeploymentConfiguration.DeploymentMode && element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
+                        {
+                            SafeFileLogger.SafeAppendText("param_debug.log", 
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SIZE-FOUND] Element {element.Id}: Size param found! HasValue={param.HasValue}, StorageType={param.StorageType}\n");
+                        }
+                        return param; // Return regardless of HasValue - let conversion handle empty values
+                    }
+                }
+                
+                // Also check Type parameters (without HasValue check)
+                if (element is FamilyInstance fi2)
+                {
+                    var typeElem = fi2.Symbol;
+                    if (typeElem != null)
+                    {
+                        foreach (Parameter param in typeElem.Parameters)
+                        {
+                            if (param?.Definition?.Name != null &&
+                                param.Definition.Name.Equals("Size", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return param;
+                            }
+                        }
+                    }
+                }
             }
 
             return null;

@@ -81,7 +81,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                        ClusterWidth, ClusterHeight, ClusterDepth,
                                        RotationAngleDeg, IsRotated,
                                        PlacementX, PlacementY, PlacementZ,
-                                       HostType, HostOrientation, ClashZoneIdsJson
+                                       HostType, HostOrientation, ClashZoneIdsJson,
+                                       Corner1X, Corner1Y, Corner1Z,
+                                       Corner2X, Corner2Y, Corner2Z,
+                                       Corner3X, Corner3Y, Corner3Z,
+                                       Corner4X, Corner4Y, Corner4Z
                                 FROM ClusterSleeves";
 
                 using (var reader = cmd.ExecuteReader())
@@ -109,7 +113,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             PlacementY = GetDouble(reader, "PlacementY", 0.0),
                             PlacementZ = GetDouble(reader, "PlacementZ", 0.0),
                             HostType = GetString(reader, "HostType"),
-                            HostOrientation = GetString(reader, "HostOrientation")
+                            HostOrientation = GetString(reader, "HostOrientation"),
+                            Corner1X = GetDouble(reader, "Corner1X", 0.0),
+                            Corner1Y = GetDouble(reader, "Corner1Y", 0.0),
+                            Corner1Z = GetDouble(reader, "Corner1Z", 0.0),
+                            Corner2X = GetDouble(reader, "Corner2X", 0.0),
+                            Corner2Y = GetDouble(reader, "Corner2Y", 0.0),
+                            Corner2Z = GetDouble(reader, "Corner2Z", 0.0),
+                            Corner3X = GetDouble(reader, "Corner3X", 0.0),
+                            Corner3Y = GetDouble(reader, "Corner3Y", 0.0),
+                            Corner3Z = GetDouble(reader, "Corner3Z", 0.0),
+                            Corner4X = GetDouble(reader, "Corner4X", 0.0),
+                            Corner4Y = GetDouble(reader, "Corner4Y", 0.0),
+                            Corner4Z = GetDouble(reader, "Corner4Z", 0.0)
                         };
 
                         // Deserialize ClashZoneIds from JSON
@@ -156,7 +172,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                        ClusterWidth, ClusterHeight, ClusterDepth,
                                        RotationAngleDeg, IsRotated,
                                        PlacementX, PlacementY, PlacementZ,
-                                       HostType, HostOrientation, ClashZoneIdsJson
+                                       HostType, HostOrientation, ClashZoneIdsJson,
+                                       Corner1X, Corner1Y, Corner1Z,
+                                       Corner2X, Corner2Y, Corner2Z,
+                                       Corner3X, Corner3Y, Corner3Z,
+                                       Corner4X, Corner4Y, Corner4Z
                                 FROM ClusterSleeves
                                 WHERE ClusterInstanceId IN ({idString})";
 
@@ -185,7 +205,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             PlacementY = GetDouble(reader, "PlacementY", 0.0),
                             PlacementZ = GetDouble(reader, "PlacementZ", 0.0),
                             HostType = GetString(reader, "HostType"),
-                            HostOrientation = GetString(reader, "HostOrientation")
+                            HostOrientation = GetString(reader, "HostOrientation"),
+                            Corner1X = GetDouble(reader, "Corner1X", 0.0),
+                            Corner1Y = GetDouble(reader, "Corner1Y", 0.0),
+                            Corner1Z = GetDouble(reader, "Corner1Z", 0.0),
+                            Corner2X = GetDouble(reader, "Corner2X", 0.0),
+                            Corner2Y = GetDouble(reader, "Corner2Y", 0.0),
+                            Corner2Z = GetDouble(reader, "Corner2Z", 0.0),
+                            Corner3X = GetDouble(reader, "Corner3X", 0.0),
+                            Corner3Y = GetDouble(reader, "Corner3Y", 0.0),
+                            Corner3Z = GetDouble(reader, "Corner3Z", 0.0),
+                            Corner4X = GetDouble(reader, "Corner4X", 0.0),
+                            Corner4Y = GetDouble(reader, "Corner4Y", 0.0),
+                            Corner4Z = GetDouble(reader, "Corner4Z", 0.0)
                         };
 
                         // Deserialize ClashZoneIds from JSON

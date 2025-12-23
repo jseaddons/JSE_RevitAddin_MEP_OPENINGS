@@ -14,7 +14,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// Service for applying MEPMARK parameters to cluster sleeves
     /// Handles continuous numbering to avoid duplicates on re-runs
     /// </summary>
-    public class MarkParameterService
+    public partial class MarkParameterService
     {
         // ⚠️ PERFORMANCE: Cache clash zones to avoid O(n·m) XML deserialization
         private Dictionary<long, ClashZone>? _clashZoneCache;
@@ -156,13 +156,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ⚠️ CRITICAL: Ensure shared parameters are loaded into the project
                 EnsureSharedParametersLoaded(doc);
 
-                // ✅ UPDATED: Get BOTH cluster sleeves AND individual sleeves for this category
+                // ✅ SIMPLIFIED: Get ALL opening sleeves (individual + cluster + combined) for this category
+                // For marks, we only need project prefix + numbering, no need to separate by type
                 // ✅ BIM 360 OPTIMIZATION: Pass markPrefixes to enable active view filtering
-                var clusterSleeves = GetClusterSleevesForCategory(doc, category, markPrefixes);
-                var individualSleeves = GetIndividualSleevesForCategory(doc, category, markPrefixes);
-                var allSleeves = new List<FamilyInstance>();
-                allSleeves.AddRange(clusterSleeves);
-                allSleeves.AddRange(individualSleeves);
+                var allSleeves = GetAllSleevesForCategory(doc, category, markPrefixes);
                 
                 // ✅ DEBUG: Log sleeve distribution by host type (Wall vs Floor)
                 var sleevesByHostType = allSleeves.GroupBy(s => {
@@ -173,21 +170,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }).ToDictionary(g => g.Key, g => g.Count());
                 
                                 if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[MarkParameterService] Found {clusterSleeves.Count} cluster sleeves + {individualSleeves.Count} individual sleeves = {allSleeves.Count} total for category '{category}'");
+                    DebugLogger.Info($"[MarkParameterService] Found {allSleeves.Count} total sleeves (individual + cluster + combined) for category '{category}'");
                                 // ✅ DEPLOYMENT MODE: Skip file writes
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    File.AppendAllText(mepmarkLogPath, $"Found {clusterSleeves.Count} cluster sleeves for category '{category}'\n");
-                }
-                                // ✅ DEPLOYMENT MODE: Skip file writes
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    File.AppendAllText(mepmarkLogPath, $"Found {individualSleeves.Count} individual sleeves for category '{category}'\n");
-                }
-                                // ✅ DEPLOYMENT MODE: Skip file writes
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    File.AppendAllText(mepmarkLogPath, $"Total sleeves to mark: {allSleeves.Count}\n");
+                    File.AppendAllText(mepmarkLogPath, $"Found {allSleeves.Count} total sleeves (individual + cluster + combined) for category '{category}'\n");
                     File.AppendAllText(mepmarkLogPath, $"Sleeves by host type: {string.Join(", ", sleevesByHostType.Select(kvp => $"{kvp.Key}={kvp.Value}"))}\n");
                     File.AppendAllText(mepmarkLogPath, $"RemarkAll flag: {remarkAll}\n");
                 }
@@ -200,6 +187,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         File.AppendAllText(mepmarkLogPath, $"WARNING: No sleeves found for category '{category}'\n");
+                        
+                        // ✅ DIAGNOSTIC: Check if sleeves exist globally (if ActiveViewOnly was true)
+                        if (markPrefixes?.ActiveViewOnly == true)
+                        {
+                            var globalSleeves = GetAllSleevesForCategory(doc, category, null); // Pass null for markPrefixes to disable ActiveViewOnly
+                            if (globalSleeves.Count > 0)
+                            {
+                                File.AppendAllText(mepmarkLogPath, $"[DIAGNOSTIC] ⚠️ FOUND {globalSleeves.Count} SLEEVES GLOBALLY! They are hidden in the current view '{(doc.ActiveView?.Name ?? "Unknown")}' or excluded by Section Box.\n");
+                                File.AppendAllText(mepmarkLogPath, $"[DIAGNOSTIC] Suggestion: Disable 'Active View Only' or switch to a plan view where sleeves are visible.\n");
+                            }
+                            else
+                            {
+                                File.AppendAllText(mepmarkLogPath, $"[DIAGNOSTIC] Verified: 0 sleeves found globally for category '{category}' even outside active view.\n");
+                            }
+                        }
                     }
                     return (0, 0);
                 }
@@ -524,6 +526,149 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             
             return (processedCount, errorCount);
+        }
+        
+        /// <summary>
+        /// Find individual sleeves for a specific category (non-clustered sleeves)
+        
+        /// <summary>
+        /// Get ALL opening sleeves for a category (individual + cluster + combined)
+        /// ✅ SIMPLIFIED: For marks, we don't need to separate by type - just collect all opening families
+        /// ✅ BIM 360 OPTIMIZATION: Optionally filter by active view for per-sheet numbering
+        /// </summary>
+        private List<FamilyInstance> GetAllSleevesForCategory(Document doc, string category, MarkPrefixSettings? markPrefixes = null)
+        {
+            // ✅ BIM 360 OPTIMIZATION: Use active view collector if ActiveViewOnly is enabled
+            FilteredElementCollector collector;
+            if (markPrefixes?.ActiveViewOnly == true && doc.ActiveView != null)
+            {
+                collector = new FilteredElementCollector(doc, doc.ActiveView.Id);
+                string logPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    File.AppendAllText(logPath,
+                        $"[ACTIVE-VIEW-FILTER] ✅ Filtering by active view: {doc.ActiveView.Name} (ID: {doc.ActiveView.Id})\n");
+                }
+            }
+            else
+            {
+                collector = new FilteredElementCollector(doc);
+            }
+            
+            // Collect ALL opening family instances (individual + cluster + combined)
+            var allOpeningSleeves = collector
+                .OfClass(typeof(FamilyInstance))
+                .Cast<FamilyInstance>()
+                .Where(fi => {
+                    var famName = fi.Symbol?.Family?.Name ?? string.Empty;
+                    return famName.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0
+                        || famName.IndexOf("OpeningOnSlab", StringComparison.OrdinalIgnoreCase) >= 0;
+                })
+                .ToList();
+
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                string logPathDebug = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                File.AppendAllText(logPathDebug, $"[GetAllSleeves] RAW Collector found {allOpeningSleeves.Count} potential opening families in view '{(doc.ActiveView?.Name ?? "null")}'\n");
+            }
+            
+            // Filter by category using database lookup
+            var categorySleeves = new List<FamilyInstance>();
+            int rejectedCount = 0;
+            
+            foreach (var sleeve in allOpeningSleeves)
+            {
+                // Try to determine category from database
+                // For individual sleeves: check by MEP_ElementId
+                // For cluster sleeves: check by ClusterInstanceId
+                // For cluster sleeves: check by ClusterSleeveInstanceId
+                // For combined sleeves: check by CombinedInstanceId
+                
+                int sleeveId = sleeve.Id.IntegerValue;
+                bool matchesCategory = false;
+                
+                // 1. Try cluster lookup
+                var clashZone = GetClashZoneByClusterInstanceId(sleeveId, category, doc);
+                if (clashZone != null && clashZone.MepElementCategory == category)
+                {
+                    matchesCategory = true;
+                }
+                else
+                {
+                     // 2. ✅ Try Combined Sleeve lookup
+                     // If it's a Combined Sleeve, it has a CombinedInstanceId in DB
+                     var combinedRepo = new Data.Repositories.CombinedSleeveRepository(new Data.SleeveDbContext(doc, msg => {}));
+                     var combinedSleeve = combinedRepo.GetCombinedSleeveByInstanceId(sleeveId);
+                     
+                     if (combinedSleeve != null)
+                     {
+                         // ✅ USER REQUIREMENT: Combined Sleeves should ALWAYS be included
+                         // They get "MEP" prefix hardcoded, no category check needed
+                         // To avoid duplicate processing across category runs, we mark them once processed
+                         matchesCategory = true;
+                     }
+                     
+                     if (!matchesCategory)
+                     {
+                        // 3. Try individual sleeve lookup (by MEP_ElementId)
+                        var mepElementIdParam = sleeve.LookupParameter("MEP_ElementId");
+                        if (mepElementIdParam != null)
+                        {
+                            long mepId = 0;
+                            if (mepElementIdParam.StorageType == StorageType.Integer) mepId = mepElementIdParam.AsInteger();
+                            else if (mepElementIdParam.StorageType == StorageType.Double) mepId = (long)mepElementIdParam.AsDouble();
+                            else if (mepElementIdParam.StorageType == StorageType.String && long.TryParse(mepElementIdParam.AsString(), out long pVal)) mepId = pVal;
+
+                            if (mepId > 0)
+                            {
+                                var zone = GetClashZoneByMepElementId(mepId, doc);
+                                if (zone != null && zone.MepElementCategory == category)
+                                {
+                                    matchesCategory = true;
+                                }
+                            }
+                        }
+                     }
+                }
+                
+                // ✅ COMBINED SLEEVES: Also check if this is a combined sleeve
+                // Combined sleeves don't have ClashZones, but they have MEP_Category parameter
+                if (!matchesCategory)
+                {
+                    var mepCategoryParam = sleeve.LookupParameter("MEP_Category");
+                    if (mepCategoryParam != null && mepCategoryParam.AsString() == "Multi-Service")
+                    {
+                        // This is a combined sleeve - include it for all categories
+                        // Combined sleeves serve multiple categories, so they should appear in all category lists
+                        matchesCategory = true;
+                    }
+                }
+                
+                if (matchesCategory)
+                {
+                    categorySleeves.Add(sleeve);
+                }
+                else
+                {
+                    // Log first 10 rejections for debugging
+                    rejectedCount++;
+                    if (!DeploymentConfiguration.DeploymentMode && rejectedCount <= 10)
+                    {
+                         string logPathDebug = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                         string actualCat = clashZone?.MepElementCategory ?? "null";
+                         File.AppendAllText(logPathDebug, $"[GetAllSleeves] ❌ REJECT sleeve {sleeve.Id}: Requested='{category}', Found='{actualCat}' (MepID={(sleeve.LookupParameter("MEP_ElementId")?.AsInteger() ?? -1)})\n");
+                    }
+                }
+            }
+            
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                string logPathFinal = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                File.AppendAllText(logPathFinal, 
+                    $"[GetAllSleeves] Found {categorySleeves.Count} total sleeves (individual + cluster + combined) for category '{category}'\n");
+            }
+            
+            return categorySleeves;
         }
         
         /// <summary>
@@ -942,6 +1087,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         File.AppendAllText(mepmarkLogPath, 
                                             $"[CACHE-INIT] ✓ Loaded {categoryCount} clash zones from database for category '{category}'\n");
                                     }
+                                }
+                            }
+                            if (totalClashZones == 0)
+                            {
+                                // ✅ FALLBACK: Direct query to ClashZones table if category-based query returned empty
+                                File.AppendAllText(mepmarkLogPath, 
+                                    $"[CACHE-INIT] ⚠️ GetClashZonesByCategory returned 0 zones, trying direct query...\n");
+                                
+                                using (var directCmd = context.Connection.CreateCommand())
+                                {
+                                    directCmd.CommandText = @"
+                                        SELECT * FROM ClashZones 
+                                        WHERE MepElementId > 0 
+                                        AND MepCategory IS NOT NULL 
+                                        AND MepCategory != ''";
+                                    
+                                    using (var reader = directCmd.ExecuteReader())
+                                    {
+                                        while (reader.Read())
+                                        {
+                                            try
+                                            {
+                                                var clashZone = repository.GetType()
+                                                    .GetMethod("MapClashZone", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                                                    ?.Invoke(repository, new object[] { reader }) as ClashZone;
+                                                
+                                                if (clashZone != null && clashZone.MepElementIdValue > 0)
+                                                {
+                                                    long key = clashZone.MepElementIdValue;
+                                                    if (!_clashZoneCache.ContainsKey(key))
+                                                    {
+                                                        clashZone.EnsureSleevePlacementPointReconstructed();
+                                                        _clashZoneCache[key] = clashZone;
+                                                        totalClashZones++;
+                                                    }
+                                                }
+                                            }
+                                            catch { /* Skip malformed rows */ }
+                                        }
+                                    }
+                                }
+                                
+                                if (totalClashZones > 0)
+                                {
+                                    File.AppendAllText(mepmarkLogPath, 
+                                        $"[CACHE-INIT] ✓ Direct query loaded {totalClashZones} clash zones\n");
                                 }
                             }
                             
@@ -1433,16 +1624,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         private string ResolveDisciplinePrefixForElement(string category, string defaultPrefix, MarkPrefixSettings markPrefixes, ClashZone clashZone)
         {
+            // ✅ CRITICAL: Extract System Type and Service Type from clash zone
+            string systemType = GetClashParameterValue(clashZone, "System Type", "MEP System Type", "System Classification");
+            string serviceType = GetClashParameterValue(clashZone, "Service Type", "System Abbreviation", "MEP System Type");
+
+            return ResolveDisciplinePrefixFromStrings(category, defaultPrefix, markPrefixes, systemType, serviceType);
+        }
+
+        private string ResolveDisciplinePrefixFromStrings(string category, string defaultPrefix, MarkPrefixSettings markPrefixes, string systemType, string serviceType)
+        {
             string fallbackPrefix = !string.IsNullOrWhiteSpace(defaultPrefix)
                 ? defaultPrefix
                 : markPrefixes?.GetDisciplinePrefix(category) ?? defaultPrefix ?? string.Empty;
 
             if (markPrefixes == null)
                 return fallbackPrefix;
-
-            // ✅ CRITICAL: Extract System Type and Service Type from clash zone
-            string systemType = GetClashParameterValue(clashZone, "System Type", "MEP System Type", "System Classification");
-            string serviceType = GetClashParameterValue(clashZone, "Service Type", "System Abbreviation", "MEP System Type");
 
             // ✅ CACHE: Reuse resolved prefix for identical category/system/service combos
             string cacheKey = $"{category}|{systemType ?? string.Empty}|{serviceType ?? string.Empty}";
@@ -1999,6 +2195,315 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             return (s ?? string.Empty).ToLowerInvariant().Replace(" ", string.Empty).Replace("_", string.Empty).Trim();
         }
+
+        #region Combined Sleeve Apply Marks - Optimized Flow
+
+        /// <summary>
+        /// Gets ALL combined sleeves from DB then retrieves elements from Revit.
+        /// DB-FIRST approach: Query CombinedSleeves table for instance IDs.
+        /// </summary>
+        public List<FamilyInstance> GetAllCombinedSleeves(Document doc)
+        {
+            var combinedSleeves = new List<FamilyInstance>();
+            
+            try
+            {
+                // ✅ DB-FIRST: Get combined sleeve instance IDs from database
+                var combinedInstanceIds = new List<int>();
+                
+                using (var context = new SleeveDbContext(doc))
+                {
+                    using (var cmd = context.Connection.CreateCommand())
+                    {
+                        cmd.CommandText = "SELECT DISTINCT CombinedInstanceId FROM CombinedSleeves WHERE CombinedInstanceId > 0";
+                        using (var reader = cmd.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                combinedInstanceIds.Add(reader.GetInt32(0));
+                            }
+                        }
+                    }
+                }
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    string logPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                    File.AppendAllText(logPath, 
+                        $"[COMBINED-MARKS] DB query returned {combinedInstanceIds.Count} combined sleeve instance IDs\n");
+                }
+                
+                // ✅ Get elements from Revit by ID (fast - no collector needed)
+                foreach (var instanceId in combinedInstanceIds)
+                {
+                    var element = doc.GetElement(new ElementId(instanceId));
+                    if (element is FamilyInstance fi)
+                    {
+                        combinedSleeves.Add(fi);
+                        
+                        if (!DeploymentConfiguration.DeploymentMode && combinedSleeves.Count <= 3)
+                        {
+                            string logPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                            File.AppendAllText(logPath, 
+                                $"[COMBINED-MARKS] ✅ Found combined sleeve: ID={instanceId}, Family='{fi.Symbol?.Family?.Name}'\n");
+                        }
+                    }
+                }
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    string logPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                    File.AppendAllText(logPath, 
+                        $"[COMBINED-MARKS] Found {combinedSleeves.Count} combined sleeves from DB lookup\n");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    string logPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                    File.AppendAllText(logPath, $"[COMBINED-MARKS] Error getting combined sleeves: {ex.Message}\n");
+                }
+            }
+            
+            return combinedSleeves;
+        }
+
+        /// <summary>
+        /// Detects if a FamilyInstance is a Combined Sleeve.
+        /// Uses Revit parameters ONLY - no DB lookup required.
+        /// </summary>
+        public bool IsCombinedSleeve(FamilyInstance sleeve)
+        {
+            if (sleeve == null) return false;
+            
+            try
+            {
+                // Method 1: Check "Combined Sleeve Instance ID" parameter
+                var combinedIdParam = sleeve.LookupParameter("Combined Sleeve Instance ID");
+                if (combinedIdParam != null && combinedIdParam.AsInteger() > 0)
+                    return true;
+                
+                // Method 2: Check MEP_Category = "Multi-Service" or "Combined"
+                var categoryParam = sleeve.LookupParameter("MEP_Category");
+                if (categoryParam != null)
+                {
+                    var val = categoryParam.AsString() ?? "";
+                    if (val.Contains("Multi", StringComparison.OrdinalIgnoreCase) ||
+                        val.Contains("Combined", StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+                
+                // Method 3: Check family name contains "Combined"
+                var familyName = sleeve.Symbol?.Family?.Name ?? "";
+                if (familyName.Contains("Combined", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            catch { /* Ignore parameter access errors */ }
+            
+            return false;
+        }
+
+        /// <summary>
+        /// Calculates marks for combined sleeves.
+        /// - Discipline prefix: HARDCODED to "MEP"
+        /// - Project prefix: From UI settings
+        /// - Number format: From UI settings (e.g., "000" for 3 digits)
+        /// </summary>
+        public List<(ElementId SleeveId, string Mark)> CalculateCombinedSleeveMarks(
+            Document doc,
+            List<FamilyInstance> combinedSleeves,
+            string projectPrefix,
+            string numberFormat,
+            int startNumber,
+            bool remarkAll)
+        {
+            const string DISCIPLINE_PREFIX = "MEP"; // ✅ HARDCODED
+            
+            var results = new List<(ElementId, string)>();
+            if (combinedSleeves == null || combinedSleeves.Count == 0) return results;
+            
+            // 1. Sort sleeves (determines numbering order)
+            var sortedSleeves = combinedSleeves
+                .OrderBy(s => GetLevelNameForSorting(s, doc))
+                .ThenByDescending(s => GetLocationForSorting(s).Y)
+                .ThenBy(s => GetLocationForSorting(s).X)
+                .ToList();
+            
+            // 2. Get existing marks if remarkAll = false
+            var existingMarkNumbers = new HashSet<int>();
+            if (!remarkAll)
+            {
+                foreach (var sleeve in sortedSleeves)
+                {
+                    var existing = sleeve.LookupParameter("MEP Mark")?.AsString();
+                    if (!string.IsNullOrEmpty(existing))
+                    {
+                        var num = ExtractNumberFromMark(existing, new[] { DISCIPLINE_PREFIX, "MEP_", projectPrefix + DISCIPLINE_PREFIX });
+                        if (num.HasValue) existingMarkNumbers.Add(num.Value);
+                    }
+                }
+            }
+            
+            // 3. Find starting number (max of startNumber and existing max + 1)
+            int nextNumber = startNumber;
+            if (existingMarkNumbers.Count > 0)
+            {
+                nextNumber = Math.Max(nextNumber, existingMarkNumbers.Max() + 1);
+            }
+            
+            // 4. Assign numbers
+            foreach (var sleeve in sortedSleeves)
+            {
+                if (!remarkAll)
+                {
+                    var existing = sleeve.LookupParameter("MEP Mark")?.AsString();
+                    if (!string.IsNullOrEmpty(existing))
+                    {
+                        // Keep existing - don't add to results
+                        continue;
+                    }
+                }
+                
+                // Find next unused number
+                while (existingMarkNumbers.Contains(nextNumber)) nextNumber++;
+                existingMarkNumbers.Add(nextNumber);
+                
+                // Build mark string: [ProjectPrefix][DisciplinePrefix][Number]
+                // Example: "SLEEVE_MEP001" or "MEP001"
+                string mark = $"{projectPrefix}{DISCIPLINE_PREFIX}{nextNumber.ToString(numberFormat)}";
+                
+                results.Add((sleeve.Id, mark));
+                nextNumber++;
+            }
+            
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                string logPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                File.AppendAllText(logPath, 
+                    $"[COMBINED-MARKS] Calculated {results.Count} marks (format: {projectPrefix}{DISCIPLINE_PREFIX}{{number:{numberFormat}}})\n");
+            }
+            
+            return results;
+        }
+
+        /// <summary>
+        /// Applies calculated marks to combined sleeves in a single transaction.
+        /// Optimized for BIM 360 by minimizing sync overhead.
+        /// </summary>
+        public (int Success, int Failed) ApplyCombinedSleeveMarksBatch(
+            Document doc,
+            List<(ElementId SleeveId, string Mark)> markAssignments)
+        {
+            if (markAssignments == null || markAssignments.Count == 0) 
+                return (0, 0);
+            
+            int successCount = 0;
+            int failedCount = 0;
+            
+            // Use existing transaction if available (for "Mark All" flow)
+            bool localTransaction = !doc.IsModifiable;
+            Transaction t = null;
+            
+            try
+            {
+                if (localTransaction)
+                {
+                    t = new Transaction(doc, "Apply MEP Marks (Combined Sleeves)");
+                    t.Start();
+                    
+                    var opts = t.GetFailureHandlingOptions();
+                    opts.SetFailuresPreprocessor(new Models.ParameterTransferWarningSwallower());
+                    t.SetFailureHandlingOptions(opts);
+                }
+                
+                foreach (var (sleeveId, mark) in markAssignments)
+                {
+                    try
+                    {
+                        var sleeve = doc.GetElement(sleeveId) as FamilyInstance;
+                        if (sleeve == null)
+                        {
+                            failedCount++;
+                            continue;
+                        }
+                        
+                        var markParam = sleeve.LookupParameter("MEP Mark") 
+                                     ?? sleeve.LookupParameter("MEP_Mark")
+                                     ?? sleeve.LookupParameter("Mark");
+                        
+                        if (markParam != null && !markParam.IsReadOnly)
+                        {
+                            markParam.Set(mark);
+                            successCount++;
+                        }
+                        else
+                        {
+                            failedCount++;
+                        }
+                    }
+                    catch
+                    {
+                        failedCount++;
+                    }
+                }
+                
+                if (localTransaction && t != null)
+                {
+                    t.Commit();
+                }
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    string logPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                    File.AppendAllText(logPath, 
+                        $"[COMBINED-MARKS] ✅ Applied {successCount}/{markAssignments.Count} marks (failed: {failedCount})\n");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (localTransaction && t != null && t.HasStarted())
+                {
+                    t.RollBack();
+                }
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    string logPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                    File.AppendAllText(logPath, $"[COMBINED-MARKS] ❌ Error: {ex.Message}\n");
+                }
+                throw;
+            }
+            
+            return (successCount, failedCount);
+        }
+
+        private string GetLevelNameForSorting(FamilyInstance fi, Document doc)
+        {
+            try
+            {
+                var levelId = fi.LevelId;
+                if (levelId != null && levelId != ElementId.InvalidElementId)
+                {
+                    return doc.GetElement(levelId)?.Name ?? "ZZZ";
+                }
+            }
+            catch { }
+            return "ZZZ";
+        }
+
+        private XYZ GetLocationForSorting(FamilyInstance fi)
+        {
+            try
+            {
+                if (fi.Location is LocationPoint lp)
+                    return lp.Point;
+            }
+            catch { }
+            return XYZ.Zero;
+        }
+
+        #endregion
     }
 }
 

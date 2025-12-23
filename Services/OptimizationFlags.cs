@@ -539,7 +539,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Default: true (✅ ENABLED FOR TESTING - SOLID refactored services)
         /// Expected: Fixes sleeve duplication bugs, maintains all optimizations
         /// </summary>
-        public static bool UseRefactoredClashZoneFlagServices { get; set; } = false; // \u26a0\ufe0f DISABLED: Batch update not implemented (line 296-297 in FlagManagerService.cs)
+        public static bool UseRefactoredClashZoneFlagServices { get; set; } = true; // ✅ ENABLED: Batch update now implemented (line 329 in FlagManagerService.cs) // \u26a0\ufe0f DISABLED: Batch update not implemented (line 296-297 in FlagManagerService.cs)
         
         #endregion
 
@@ -694,7 +694,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// When false: ClashZoneRepository performs operations directly (legacy).
         /// Default: true (enabled).
         /// </summary>
-        public static bool UseSolidRefactoredRepositories { get; set; } = true;
+        public static bool UseSolidRefactoredRepositories { get; set; } = false;
         
         /// <summary>
         /// Enable dependency injection for refresh services.

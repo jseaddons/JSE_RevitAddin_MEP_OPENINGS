@@ -64,7 +64,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         options.SetFailuresPreprocessor(new ParameterTransferWarningSwallower());
                         t.SetFailureHandlingOptions(options);
 
-                        var result = transferService.ExecuteTransferConfigurationInTransaction(_doc, _openingIds, _config);
+                        // ✅ UPDATED: Use optimized Batch Transfer (Read-Calculate(Parallel)-Write)
+                        var result = transferService.ExecuteBatchTransferInTransaction(_doc, _openingIds, _config);
 
                         var status = t.Commit();
                         if (status == TransactionStatus.Committed)
@@ -150,24 +151,5 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         public string ErrorMessage { get; set; } = string.Empty;
     }
 
-    /// <summary>
-    /// Failure preprocessor to auto-dismiss warnings during parameter transfer
-    /// </summary>
-    public class ParameterTransferWarningSwallower : IFailuresPreprocessor
-    {
-        public FailureProcessingResult PreprocessFailures(FailuresAccessor fa)
-        {
-            var failures = fa.GetFailureMessages();
-            foreach (var f in failures)
-            {
-                // Only dismiss warnings, not errors
-                if (f.GetSeverity() == FailureSeverity.Warning)
-                {
-                    fa.DeleteWarning(f);
-                    DebugLogger.Info($"[ParameterTransferWarningSwallower] Dismissed warning: {f.GetDescriptionText()}");
-                }
-            }
-            return FailureProcessingResult.Continue;
-        }
-    }
+    // ParameterTransferWarningSwallower moved to Models/ParameterTransferWarningSwallower.cs
 }

@@ -41,24 +41,62 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Se
             if (combinedCluster == null) return;
             if (combinedCluster.MemberClusters.Count == 0) return;
 
-            // ✅ CRITICAL FIX: To prevent overwriting existing critical data (MepParameterValuesJson, etc.),
-            // first retrieve the full existing ClashZone objects from the database.
-            // 1. Collect GUIDs
-            var allZoneGuids = combinedCluster.MemberClusters
-                .SelectMany(c => c.ClashZoneIds)
-                .Distinct()
-                .ToList();
+            // ✅ CRITICAL FIX: To prevent overwriting existing critical data and ensure ROBUST flag updates,
+            // we split the update into two efficient database calls:
+            // 1. Update flags for Individual Constituents (by GUID)
+            // 2. Update flags for Cluster Constituents (by ClusterInstanceId - robust against missing JSON linkage)
 
-            if (allZoneGuids.Count == 0) return;
+            var individualZoneGuids = new List<Guid>();
+            var clusterInstanceIds = new List<int>();
+            var allZoneGuids = new List<Guid>(); // Still collect for potential downstream logic
 
-            // 3. Update resolution flags efficiently using the new repository method
-            // This prevents overwriting other properties of the ClashZone and focuses purely on flag management
-            // "Update Existing, Do Not Create New"
-            _repository.UpdateCombinedResolutionFlags(allZoneGuids, combinedSleeveInstanceId);
+            foreach (var cluster in combinedCluster.MemberClusters)
+            {
+                // Collect GUIDs if available (for "allZoneGuids" usage)
+                if (cluster.ClashZoneIds != null)
+                {
+                    allZoneGuids.AddRange(cluster.ClashZoneIds);
+                }
+
+                // Determine type and collect ID for flag update
+                if (cluster.ClusterSleeveInstanceId > 0)
+                {
+                    clusterInstanceIds.Add(cluster.ClusterSleeveInstanceId);
+                }
+                else
+                {
+                    // It's an individual sleeve (or synthetic cluster without ID, but unlikely here)
+                    if (cluster.ClashZoneIds != null && cluster.ClashZoneIds.Count > 0)
+                    {
+                        individualZoneGuids.AddRange(cluster.ClashZoneIds);
+                    }
+                }
+            }
+
+            allZoneGuids = allZoneGuids.Distinct().ToList();
+            individualZoneGuids = individualZoneGuids.Distinct().ToList();
+            clusterInstanceIds = clusterInstanceIds.Distinct().ToList();
+
+            if (individualZoneGuids.Count == 0 && clusterInstanceIds.Count == 0) return;
+
+            // 1. Update Individuals
+            if (individualZoneGuids.Count > 0)
+            {
+                _repository.UpdateCombinedResolutionFlags(individualZoneGuids, combinedSleeveInstanceId);
+            }
+
+            // 2. Update Clusters (ROBUST FIX)
+            if (clusterInstanceIds.Count > 0)
+            {
+                _repository.UpdateCombinedResolutionFlagsByClusterIds(clusterInstanceIds, combinedSleeveInstanceId);
+            }
 
             // Re-fetch zones to continue with other logic if necessary, or just rely on GUIDs
             // For the following logic (ResetFileComboFlag and CombinedSleeve creation), we need at least one zone to get metadata
             var firstZoneGuid = allZoneGuids.FirstOrDefault();
+            
+            // 4. Batch Persist - NO LONGER NEEDED for flags as we used UpdateCombinedResolutionFlags
+            // But we still need to persist the CombinedSleeve entity below/
             
             // 4. Batch Persist - NO LONGER NEEDED for flags as we used UpdateCombinedResolutionFlags
             // But we still need to persist the CombinedSleeve entity below/

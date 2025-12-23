@@ -1538,12 +1538,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                 _logger($"[SQLite] ⚠️ Error dropping legacy triggers: {ex.Message}");
             }
             
+            // ✅ MIGRATION: Add DeterministicGuid column if it doesn't exist
+            AddColumnIfMissing("CombinedSleeves", "DeterministicGuid", "TEXT", transaction);
+            
             // Table 1: Combined Sleeves
             // ✅ CROSS-FILTER SUPPORT: ComboId and FilterId are nullable because combined sleeves
             // can span multiple filters/combos (e.g., Pipes from Filter A + Duct Accessories from Filter B)
             ExecuteCommand(@"CREATE TABLE IF NOT EXISTS CombinedSleeves (
                     CombinedSleeveId    INTEGER PRIMARY KEY AUTOINCREMENT,
                     CombinedInstanceId  INTEGER NOT NULL UNIQUE,
+                    DeterministicGuid   TEXT UNIQUE,
                     ComboId             INTEGER,
                     FilterId            INTEGER,
                     Categories          TEXT NOT NULL,
@@ -1594,6 +1598,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
 
             // Indexes for Combined Sleeves
             ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_combined_instance ON CombinedSleeves(CombinedInstanceId)", transaction);
+            ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_combined_guid ON CombinedSleeves(DeterministicGuid)", transaction);
             ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_combined_combo ON CombinedSleeves(ComboId)", transaction);
             ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_combined_filter ON CombinedSleeves(FilterId)", transaction);
 

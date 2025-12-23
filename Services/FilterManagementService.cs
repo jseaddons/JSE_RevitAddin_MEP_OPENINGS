@@ -2227,7 +2227,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // Only sync flags if document is available
                             if (_document != null)
                             {
-                                var flagManager = new FlagManager(_document);
+                                var flagManager = Services.FlagManagement.FlagManagerFactory.CreateAdapter(_document);
                                 var clashZonesByCategory = filter.ClashZoneStorage.AllZones
                                     .GroupBy(cz => cz.MepElementCategory)
                                     .ToList();

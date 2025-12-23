@@ -157,17 +157,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
                 new XYZ(clashZone.SleeveCorner4X ?? 0.0, clashZone.SleeveCorner4Y ?? 0.0, clashZone.SleeveCorner4Z ?? 0.0)
             };
             
-            var bbox = new BoundingBoxXYZ
+            var bbox = new BoundingBoxXYZ();
+            
+            // Check if stored BBox is valid (volume > 0 or at least dimensions > 0)
+            bool hasValidStoredBBox = 
+                clashZone.SleeveBoundingBoxMaxX > clashZone.SleeveBoundingBoxMinX ||
+                clashZone.SleeveBoundingBoxMaxY > clashZone.SleeveBoundingBoxMinY;
+
+            if (hasValidStoredBBox)
             {
-                Min = new XYZ(
+                bbox.Min = new XYZ(
                     clashZone.SleeveBoundingBoxMinX, 
                     clashZone.SleeveBoundingBoxMinY, 
-                    clashZone.SleeveBoundingBoxMinZ),
-                Max = new XYZ(
+                    clashZone.SleeveBoundingBoxMinZ);
+                bbox.Max = new XYZ(
                     clashZone.SleeveBoundingBoxMaxX, 
                     clashZone.SleeveBoundingBoxMaxY, 
-                    clashZone.SleeveBoundingBoxMaxZ)
-            };
+                    clashZone.SleeveBoundingBoxMaxZ);
+            }
+            else
+            {
+                // ✅ CRITICAL FIX: Derive BBox from Corners if stored BBox is missing (e.g. Synthetic Zones)
+                double minX = corners.Min(c => c.X);
+                double minY = corners.Min(c => c.Y);
+                double minZ = corners.Min(c => c.Z);
+                double maxX = corners.Max(c => c.X);
+                double maxY = corners.Max(c => c.Y);
+                double maxZ = corners.Max(c => c.Z);
+
+                // Handle 2D case (flat Z) by adding height if available
+                if (Math.Abs(maxZ - minZ) < 0.001)
+                {
+                     double height = clashZone.SleeveHeight > 0 ? clashZone.SleeveHeight : clashZone.SleeveDiameter;
+                     if (height > 0) maxZ += height;
+                }
+
+                bbox.Min = new XYZ(minX, minY, minZ);
+                bbox.Max = new XYZ(maxX, maxY, maxZ);
+            }
             
             return new UnifiedSleeve
             {

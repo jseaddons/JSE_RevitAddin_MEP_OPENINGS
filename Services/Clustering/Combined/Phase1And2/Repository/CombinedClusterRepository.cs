@@ -18,7 +18,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Re
             _clashZoneRepository = clashZoneRepository ?? throw new ArgumentNullException(nameof(clashZoneRepository));
         }
 
-        public IReadOnlyList<ClashZone> LoadClusteredZones(string filterName, IReadOnlyCollection<string> categories)
+        public IReadOnlyList<ClashZone> LoadClusteredZones(Autodesk.Revit.DB.Document doc, string filterName, IReadOnlyCollection<string> categories)
         {
             if (categories == null || categories.Count == 0)
             {
@@ -27,6 +27,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Re
             }
 
             DebugLogger.Info($"[LoadClusteredZones] Starting discovery for filter='{filterName}', categories={string.Join(", ", categories)}");
+
+            // ✅ CRITICAL: Verify sleeves (individual, cluster, combined) still exist in Revit and reset flags for deleted ones
+            // This prevents placing sleeves inside remaining combined sleeves after one is deleted
+            // Uses existing verification logic that handles all sleeve types
+            if (doc != null)
+            {
+                _clashZoneRepository.VerifyExistingSleevesAndResetFlags(doc, new List<string> { filterName }, categories.ToList());
+            }
 
             var resolved = new List<ClashZone>();
             // ✅ AUTO-DISCOVERY FIX: Handle wildcard or missing filter name by scanning all filters
@@ -81,6 +89,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Re
                     continue;
                 }
 
+                // ✅ CRITICAL FIX: Exclude zones already in combined sleeves to prevent duplicate placement
+                int beforeFilter = zones.Count;
+                zones = zones.Where(z => !z.IsCombinedResolved).ToList();
+                if (beforeFilter > zones.Count)
+                {
+                    DebugLogger.Info($"[LoadClusteredZones] Category '{category}': filtered out {beforeFilter - zones.Count} zones already in combined sleeves (IsCombinedResolved=1)");
+                }
+
                 // ✅ FIX: Include BOTH individual sleeves AND cluster sleeves for Combined Sleeve discovery
                 // Individual sleeves: SleeveInstanceId > 0 (not yet clustered, but placed)
                 // Cluster sleeves: IsClusterResolved && ClusterSleeveInstanceId > 0 (already clustered)
@@ -88,7 +104,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Re
                 // DEBUG: Log each zone before adding
                 foreach (var z in zones)
                 {
-                    DebugLogger.Info($"[LoadClusteredZones]   -> Zone {z.Id}: SleeveInstanceId={z.SleeveInstanceId}, ClusterSleeveInstanceId={z.ClusterSleeveInstanceId}, IsClusterResolved={z.IsClusterResolved}");
+                    DebugLogger.Info($"[LoadClusteredZones]   -> Zone {z.Id}: SleeveInstanceId={z.SleeveInstanceId}, ClusterSleeveInstanceId={z.ClusterSleeveInstanceId}, IsClusterResolved={z.IsClusterResolved}, IsCombinedResolved={z.IsCombinedResolved}");
                 }
                 // Add all zones (no pre-filter). Revit-first section-box filtering will be applied later in discovery.
                 resolved.AddRange(zones);
@@ -177,7 +193,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Re
                         zone.SleeveCorner4Y = clusterSleeve.Corner4Y;
                         zone.SleeveCorner4Z = clusterSleeve.Corner4Z;
 
-                        DebugLogger.Info($"[LoadClusteredZones]   ✅ Merged cluster corner data for ClusterInstanceId={zone.ClusterSleeveInstanceId}");
+                        // ✅ FIX: Calculate BBox from Corners (ClusterSleeve model lacks BBox fields)
+                        double c1x = clusterSleeve.Corner1X.GetValueOrDefault();
+                        double c2x = clusterSleeve.Corner2X.GetValueOrDefault();
+                        double c3x = clusterSleeve.Corner3X.GetValueOrDefault();
+                        double c4x = clusterSleeve.Corner4X.GetValueOrDefault();
+
+                        double c1y = clusterSleeve.Corner1Y.GetValueOrDefault();
+                        double c2y = clusterSleeve.Corner2Y.GetValueOrDefault();
+                        double c3y = clusterSleeve.Corner3Y.GetValueOrDefault();
+                        double c4y = clusterSleeve.Corner4Y.GetValueOrDefault();
+
+                        double c1z = clusterSleeve.Corner1Z.GetValueOrDefault();
+                        double c2z = clusterSleeve.Corner2Z.GetValueOrDefault();
+                        double c3z = clusterSleeve.Corner3Z.GetValueOrDefault();
+                        double c4z = clusterSleeve.Corner4Z.GetValueOrDefault();
+
+                        zone.ClusterSleeveBoundingBoxMinX = System.Math.Min(System.Math.Min(c1x, c2x), System.Math.Min(c3x, c4x));
+                        zone.ClusterSleeveBoundingBoxMaxX = System.Math.Max(System.Math.Max(c1x, c2x), System.Math.Max(c3x, c4x));
+                        
+                        zone.ClusterSleeveBoundingBoxMinY = System.Math.Min(System.Math.Min(c1y, c2y), System.Math.Min(c3y, c4y));
+                        zone.ClusterSleeveBoundingBoxMaxY = System.Math.Max(System.Math.Max(c1y, c2y), System.Math.Max(c3y, c4y));
+
+                        zone.ClusterSleeveBoundingBoxMinZ = System.Math.Min(System.Math.Min(c1z, c2z), System.Math.Min(c3z, c4z));
+                        zone.ClusterSleeveBoundingBoxMaxZ = System.Math.Max(System.Math.Max(c1z, c2z), System.Math.Max(c3z, c4z));
+
+                        DebugLogger.Info($"[LoadClusteredZones]   ✅ Merged cluster corner & BBox data for ClusterInstanceId={zone.ClusterSleeveInstanceId}");
                     }
                     else
                     {

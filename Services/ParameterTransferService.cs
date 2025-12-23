@@ -13,7 +13,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// <summary>
     /// Service for transferring parameters from various sources to openings
     /// </summary>
-    public class ParameterTransferService
+    public partial class ParameterTransferService
     {
         private readonly ParameterRenamingService _renamingService;
         private readonly ParameterMappingService _mappingService;
@@ -1166,7 +1166,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
 
                     SleeveSnapshotView snapshot = null;
-                    if (clusterInstanceId > 0 && snapshotIndex.TryGetByCluster(clusterInstanceId, out var clusterView))
+
+                    // ✅ COMBINED SLEEVE HANDLING (Aggregated Parameters)
+                    if (snapshotIndex.TryGetByCombined(openingId.IntegerValue, out var combinedConstituents))
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ Matched Combined Sleeve {openingId.IntegerValue}. Aggregating parameters from {combinedConstituents.Count} constituents...\n");
+                        }
+
+                        snapshot = new SleeveSnapshotView
+                        {
+                            SnapshotId = -1,
+                            SleeveInstanceId = openingId.IntegerValue,
+                            SourceType = "Combined",
+                            MepParameters = AggregateCombinedParameters(combinedConstituents, snapshotIndex, useHost: false),
+                            HostParameters = AggregateCombinedParameters(combinedConstituents, snapshotIndex, useHost: true)
+                        };
+
+                         if (!DeploymentConfiguration.DeploymentMode)
+                         {
+                             SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                 $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] 🔍 Aggregated {snapshot.MepParameters.Count} MEP params and {snapshot.HostParameters.Count} Host params.\n");
+                         }
+                    }
+                    else if (clusterInstanceId > 0 && snapshotIndex.TryGetByCluster(clusterInstanceId, out var clusterView))
                     {
                         // ✅ PROTECTION 14: Validate cluster snapshot is not null
                         if (clusterView == null)
@@ -1189,6 +1214,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         snapshot = sleeveView;
                         SafeFileLogger.SafeAppendText("transfer_debug.log",
                             $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ Matched by SleeveInstanceId={sleeveInstanceId}\n");
+                    }
+
+                    // ✅ FALLBACK: If direct sleeve lookup failed, try finding via ClashZone GUID
+                    // This handles cases where SleeveSnapshots table has stale SleeveInstanceIds but ClashZones table is correct
+                    if (snapshot == null && sleeveInstanceId > 0 && 
+                        snapshotIndex.SleeveIdToClashZoneGuid.TryGetValue(sleeveInstanceId, out var clashZoneGuid))
+                    {
+                        if (snapshotIndex.TryGetByClashZoneGuid(clashZoneGuid, out var guidSnapshot))
+                        {
+                            snapshot = guidSnapshot;
+                            SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_TRANSFER] ✅ Matched by ClashZone GUID Fallback! SleeveId={sleeveInstanceId} -> Guid={clashZoneGuid}\n");
+                        }
                     }
 
                     dbMatchStartTime.Stop();
@@ -3697,6 +3735,170 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 return null;
             }
         }
+        /// <summary>
+        /// Aggregates parameters from multiple constituent snapshots for a combined sleeve.
+        /// Values are joined with commas/semicolons and deduped.
+        /// </summary>
+        private Dictionary<string, string> AggregateCombinedParameters(
+            List<SleeveConstituentSnapshotReference> constituents, 
+            SleeveSnapshotIndex snapshotIndex,
+            bool useHost)
+        {
+            var aggregatedMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var valueCollections = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [AGGREGATE] Processing {constituents.Count} constituents for {(useHost ? "HOST" : "MEP")} parameters...\n");
+            }
+
+            foreach (var c in constituents)
+            {
+                SleeveSnapshotView s = null;
+                string matchMethod = "None";
+                
+                // Try to resolve snapshot for this constituent
+                if (!string.IsNullOrEmpty(c.ClashZoneGuid))
+                {
+                    bool found = false;
+                    // 1. Direct Try
+                    if (snapshotIndex.TryGetByClashZoneGuid(c.ClashZoneGuid, out var sGuids))
+                    {
+                        s = sGuids;
+                        matchMethod = $"ClashZoneGuid:{c.ClashZoneGuid}";
+                        found = true;
+                    }
+                    // 2. Normalization Try (Parsing GUID)
+                    else if (Guid.TryParse(c.ClashZoneGuid, out var parsedGuid))
+                    {
+                        // Some dictionaries might store normalized string
+                        string normalizedKey = parsedGuid.ToString();
+                        if (snapshotIndex.TryGetByClashZoneGuid(normalizedKey, out var sNorm))
+                        {
+                            s = sNorm;
+                            matchMethod = $"NormalizedGuid:{normalizedKey}";
+                            found = true;
+                        }
+                        else
+                        {
+                             string upperParams = parsedGuid.ToString().ToUpperInvariant();
+                             if (snapshotIndex.TryGetByClashZoneGuid(upperParams, out var sUpper))
+                             {
+                                 s = sUpper;
+                                 matchMethod = $"UpperGuid:{upperParams}";
+                                 found = true;
+                             }
+                        }
+                    }
+
+                    if (!found) 
+                    {
+                         if (!DeploymentConfiguration.DeploymentMode)
+                         {
+                             // Debug log available keys to see mismatch
+                             var sampleKeys = snapshotIndex.ByClashZoneGuid.Keys.Take(5).ToList();
+                             SafeFileLogger.SafeAppendText("transfer_debug.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [AGGREGATE] ❌ Snapshot NOT FOUND for constituent. GUID='{c.ClashZoneGuid}', ClusterId='{c.ClusterInstanceId?.ToString() ?? ""}'.\n");
+                         }
+                    }
+                }
+                else if (c.ClusterInstanceId.HasValue && snapshotIndex.TryGetByCluster(c.ClusterInstanceId.Value, out var sCluster))
+                {
+                    s = sCluster;
+                    matchMethod = $"ClusterInstanceId:{c.ClusterInstanceId}";
+                }
+
+                if (s != null)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                         SafeFileLogger.SafeAppendText("transfer_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [AGGREGATE] ✅ Found snapshot via {matchMethod}. Params: {(useHost ? s.HostParameters?.Count : s.MepParameters?.Count) ?? 0}\n");
+                    }
+
+                    var sourceParams = useHost ? s.HostParameters : s.MepParameters;
+                    if (sourceParams != null)
+                    {
+                        foreach (var kvp in sourceParams)
+                        {
+                            if (!valueCollections.ContainsKey(kvp.Key))
+                            {
+                                valueCollections[kvp.Key] = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                            }
+                            if (!string.IsNullOrWhiteSpace(kvp.Value))
+                            {
+                                // ✅ SIZE NORMALIZATION: Dedupe patterns like "475x200-475x200" → "475x200"
+                                var valueToAdd = kvp.Value;
+                                if (kvp.Key.Equals("Size", StringComparison.OrdinalIgnoreCase) ||
+                                    kvp.Key.Contains("Size", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    valueToAdd = NormalizeSizeValue(kvp.Value);
+                                }
+                                valueCollections[kvp.Key].Add(valueToAdd);
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                     if (!DeploymentConfiguration.DeploymentMode)
+                     {
+                         SafeFileLogger.SafeAppendText("transfer_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [AGGREGATE] ❌ Snapshot NOT FOUND for constituent. GUID='{c.ClashZoneGuid}', ClusterId='{c.ClusterInstanceId}'\n");
+                     }
+                }
+            }
+
+            foreach (var kvp in valueCollections)
+            {
+                if (kvp.Value.Count > 0)
+                {
+                    // Sort values for consistency
+                    var sortedValues = kvp.Value.OrderBy(v => v).ToList();
+                    aggregatedMap[kvp.Key] = string.Join(", ", sortedValues);
+                }
+            }
+
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                SafeFileLogger.SafeAppendText("transfer_debug.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [AGGREGATE] Result: {aggregatedMap.Count} unique parameters aggregated.\n");
+            }
+
+            return aggregatedMap;
+        }
+
+        /// <summary>
+        /// Normalizes Size values by deduplicating repeated patterns.
+        /// E.g., "475x200-475x200" → "475x200" (inlet/outlet are same size)
+        /// E.g., "100-100" → "100" (diameter repeated)
+        /// E.g., "475x200-500x200" → keeps as-is (different sizes)
+        /// </summary>
+        private string NormalizeSizeValue(string sizeValue)
+        {
+            if (string.IsNullOrWhiteSpace(sizeValue)) return sizeValue;
+            
+            // Check for pattern: "A-A" where A is the same on both sides of the dash
+            // Handle: "475x200-475x200", "100-100", "ø100-ø100"
+            var parts = sizeValue.Split(new[] { '-' }, StringSplitOptions.RemoveEmptyEntries);
+            
+            if (parts.Length == 2)
+            {
+                var left = parts[0].Trim();
+                var right = parts[1].Trim();
+                
+                if (string.Equals(left, right, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Both sides are identical, return just one
+                    return left;
+                }
+            }
+            
+            // Not a duplicate pattern, return original
+            return sizeValue;
+        }
+
     }
 }
 

@@ -350,7 +350,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                         {
                             _logger($"[CombinedSleevePlacement] ⚠️ No CombinedInstanceId parameter found in opening family");
                         }
-
+                        
                         // ✅ SCHEDULE LEVEL & ELEVATION FROM LEVEL: Set from first sleeve's MEP element level (matches cluster sleeve logic)
                         try
                         {

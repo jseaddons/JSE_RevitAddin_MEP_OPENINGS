@@ -74,11 +74,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
             {
                 if (sleeve.BoundingBox != null)
                 {
+                    _logger($"[SpatialIndex] Inserting {sleeve.Id} ({sleeve.Category}): Min={sleeve.BoundingBox.Min}, Max={sleeve.BoundingBox.Max}");
                     index.Insert(sleeve.Id, sleeve.BoundingBox.Min, sleeve.BoundingBox.Max);
+                }
+                else
+                {
+                    _logger($"[SpatialIndex] SKIPPING {sleeve.Id}: BoundingBox is null!");
                 }
             }
             
             index.Build();
+            _logger($"[SpatialIndex] Build complete.");
             
             return index;
         }
@@ -104,6 +110,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                 // Query spatial index for nearby sleeves
                 var nearbyIds = spatialIndex.Query(searchMin, searchMax);
                 
+                // DIAGNOSTIC LOGGING
+                if (nearbyIds.Count > 0)
+                {
+                   // _logger($"[ProximityDebug] Sleeve {sleeve.Id} ({sleeve.Category}) found {nearbyIds.Count} potential neighbors in spatial index.");
+                }
+
                 foreach (var nearbyId in nearbyIds)
                 {
                     // Skip self
@@ -125,11 +137,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                         continue;
                     
                     // Check proximity using bounding box edges (accounts for element size)
-                    // Center-to-center distance fails for large cluster sleeves where centers are far apart despite close edges
-                    if (sleeve.BoundingBoxIntersects(nearbySleeve, proximityThreshold))
+                    bool intersects = sleeve.BoundingBoxIntersects(nearbySleeve, proximityThreshold);
+                    
+                    
+                    _logger($"[ProximityDetail] Checking {sleeve.Id} vs {nearbyId}:");
+                    _logger($"  - Sleeve 1 BBox: {sleeve.BoundingBox.Min} to {sleeve.BoundingBox.Max}");
+                    _logger($"  - Sleeve 2 BBox: {nearbySleeve.BoundingBox.Min} to {nearbySleeve.BoundingBox.Max}");
+                    _logger($"  - Distance Result: {intersects}");
+                    
+
+                    if (intersects)
                     {
                         pairs.Add((sleeve.Id, nearbyId));
                         processed.Add(pairKey);
+                        _logger($"[ProximityMatch] FOUND PAIR: {sleeve.Id} ({sleeve.Category}) <-> {nearbySleeve.Id} ({nearbySleeve.Category})");
                     }
                 }
             }

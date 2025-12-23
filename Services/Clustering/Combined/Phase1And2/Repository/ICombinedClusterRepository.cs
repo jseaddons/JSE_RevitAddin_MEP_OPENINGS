@@ -8,7 +8,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Re
     /// </summary>
     public interface ICombinedClusterRepository
     {
-        IReadOnlyList<ClashZone> LoadClusteredZones(string filterName, IReadOnlyCollection<string> categories);
+        IReadOnlyList<ClashZone> LoadClusteredZones(Autodesk.Revit.DB.Document doc, string filterName, IReadOnlyCollection<string> categories);
 
         Dictionary<int, Dictionary<string, string>> LoadSnapshotParameters(IEnumerable<int> sleeveInstanceIds);
 

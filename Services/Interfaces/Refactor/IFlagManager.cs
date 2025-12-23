@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor
@@ -85,6 +86,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor
             bool isCluster, 
             string category, 
             string filterName = null);
+        
+        /// <summary>
+        /// Deletes a sleeve when its intersection point has changed significantly.
+        /// part of validation/invalidation workflow.
+        /// </summary>
+        void DeleteSleeveForIntersectionPointChange(
+            ClashZone zone, 
+            string category, 
+            double movementDistance);
+
+        /// <summary>
+        /// Syncs flags from database (or Global XML fallback) to in-memory clash zones.
+        /// </summary>
+        /// <summary>
+        /// Syncs flags from database (or Global XML fallback) to in-memory clash zones.
+        /// </summary>
+        void SyncFlagsFromGlobal(List<JSE_RevitAddin_MEP_OPENINGS.Models.ClashZone> clashZones, string category);
+
+        /// <summary>
+        /// Verifies existing sleeves in model and resets flags for missing ones.
+        /// </summary>
+        int VerifyExistingSleevesAndResetFlags(Document doc, List<string> filterNames, List<string> categories);
+
+        bool GetFlag(Guid clashZoneId, string flagName);
+        void SetFlag(Guid clashZoneId, string flagName, bool value);
+        string GetFlagValue(Guid clashZoneId, string flagName);
+        void SetFlagValue(Guid clashZoneId, string flagName, string value);
+        List<ClashZone> GetFlaggedClashZones(string flagName, string category);
+        void SetFlaggedClashZones(List<ClashZone> clashZones, string flagName, bool value);
     }
 }
 

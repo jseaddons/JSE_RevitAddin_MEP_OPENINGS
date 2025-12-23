@@ -87,19 +87,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
         public static IFlagManager CreateAdapter(
             Document document,
             IFlagManager refactoredService = null,
-            FlagManager legacyFlagManager = null,
             ILogger logger = null)
         {
             if (document == null)
                 throw new ArgumentNullException(nameof(document));
             
-            // ✅ Team F files now included in build - use FlagManagerAdapter
-            if (legacyFlagManager == null)
-            {
-                legacyFlagManager = new Services.FlagManager(document);
-            }
-            
-            return new FlagManagerAdapter(document, refactoredService, legacyFlagManager);
+            return new FlagManagerAdapter(document, refactoredService);
         }
     }
 }

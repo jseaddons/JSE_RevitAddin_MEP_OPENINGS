@@ -1666,7 +1666,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     SourceDocKey = damperDoc?.Title ?? damperDoc?.PathName ?? string.Empty,
                     HostDocKey = wallDoc?.Title ?? wallDoc?.PathName ?? string.Empty,
                     DocumentPath = hostDoc?.PathName ?? string.Empty,
-                    StructuralElementDocumentTitle = wallDoc?.Title ?? string.Empty
+                    StructuralElementDocumentTitle = wallDoc?.Title ?? string.Empty,
+                    
+                    // ✅ CRITICAL FIX: Set Size parameter value for database column
+                    // This was missing, causing the 'Size' column in DB to be empty even if parameter was captured in JSON
+                    MepElementSizeParameterValue = GetSizeParameterValue(mepParameters)
                 };
 
                 _logger($"[DamperProcessing] ✅ Created ClashZone {clashZone.Id} with {mepParameters?.Count ?? 0} MEP params and {hostParameters?.Count ?? 0} Host params, StructuralElementType='{clashZone.StructuralElementType}', MepElementWidth={clashZone.MepElementWidth * 304.8:F1}mm, MepElementHeight={clashZone.MepElementHeight * 304.8:F1}mm, TypeName='{clashZone.MepElementTypeName}', FamilyName='{clashZone.MepElementFamilyName}', HasMepConnector={clashZone.HasMepConnector}, DamperConnectorSide='{clashZone.DamperConnectorSide}'");
@@ -1707,9 +1711,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             // Essential MEP parameters (excluding level params)
             var essentialMepParams = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
+                // Size parameters (various naming conventions)
                 "Size", "Diameter", "Width", "Height",
+                "MEP Size", "Nominal Size", "Actual Size",
+                "Duct Size", "Damper Size", "Outside Diameter",
+                // System parameters
                 "System Type", "System Name", "System Abbreviation",
-                "MEP Size", "Service Type", "System Classification"
+                "Service Type", "System Classification",
+                // Mark parameters
+                "Mark"
             };
 
             // Build whitelist based on what's available
@@ -1767,12 +1777,70 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             // Use ParameterSnapshotService to capture parameters
             var capturedParams = _parameterSnapshotService.CaptureParams(mepElement, mepWhitelist);
             
+            // ✅ DEBUG: Log what was captured
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                var capturedKeys = capturedParams.Where(kv => !string.IsNullOrWhiteSpace(kv.Value)).Select(kv => kv.Key).ToList();
+                _logger($"[DamperProcessing] 📋 CAPTURED PARAMS for MEP {mepElement.Id}: [{string.Join(", ", capturedKeys)}]");
+                
+                // Check if Size is missing
+                bool hasSize = capturedKeys.Any(k => k.Equals("Size", StringComparison.OrdinalIgnoreCase));
+                if (!hasSize)
+                {
+                    _logger($"[DamperProcessing] ⚠️ SIZE NOT CAPTURED for MEP {mepElement.Id}! Whitelist contains Size: {mepWhitelist.Contains("Size")}");
+                }
+            }
+            
             // Convert to Dictionary<string, string>
             var result = capturedParams
                 .Where(kv => !string.IsNullOrWhiteSpace(kv.Value))
                 .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
 
             return result;
+        }
+
+        /// <summary>
+        /// ✅ Helper to extract Size parameter value from dictionary using common keys
+        /// </summary>
+        private string GetSizeParameterValue(Dictionary<string, string> parameters)
+        {
+            if (parameters == null || parameters.Count == 0)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    _logger($"[DamperProcessing] ⚠️ GetSizeParameterValue: parameters is null or empty");
+                return null;
+            }
+
+            // Prioritized list of keys to check for Size
+            var sizeKeys = new[] 
+            { 
+                "Size", 
+                "MEP Size", 
+                "Diameter", 
+                "Width", // Fallback for rectangular
+                "Height", // Fallback for rectangular
+                "Nominal Size", 
+                "Duct Size", 
+                "Damper Size" 
+            };
+
+            foreach (var key in sizeKeys)
+            {
+                if (parameters.TryGetValue(key, out string value) && !string.IsNullOrWhiteSpace(value))
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        _logger($"[DamperProcessing] ✅ GetSizeParameterValue: Found '{key}'='{value}'");
+                    return value;
+                }
+            }
+            
+            // Log available keys if Size not found
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                var availableKeys = string.Join(", ", parameters.Keys.Take(10));
+                _logger($"[DamperProcessing] ⚠️ GetSizeParameterValue: Size NOT FOUND in keys: [{availableKeys}]");
+            }
+            return null;
         }
 
         /// <summary>

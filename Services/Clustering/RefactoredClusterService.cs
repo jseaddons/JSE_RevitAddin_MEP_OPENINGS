@@ -635,10 +635,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                     // This protects the cluster sleeve from being deleted by FlagManager.DeleteSleeveForIntersectionPointChange()
                                     // ✅ CRITICAL: Always register with legacy FlagManager (static method works regardless of which service is active)
                                     // The legacy FlagManager's static HashSet is shared and will protect sleeves even when using refactored services
-                                    FlagManager.RegisterRecentlyPlacedClusterSleeve(placementResult.capturedClusterSleeveId.Value);
+                                    Services.FlagManagement.FlagManagerProtectionHelper.RegisterRecentlyPlacedClusterSleeve(placementResult.capturedClusterSleeveId.Value);
                                     
                                     SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                        $"[{DateTime.Now:HH:mm:ss}] ✅✅✅ REGISTERED cluster sleeve {placementResult.capturedClusterSleeveId.Value} with legacy FlagManager (static protection)\n");
+                                        $"[{DateTime.Now:HH:mm:ss}] ✅✅✅ REGISTERED cluster sleeve {placementResult.capturedClusterSleeveId.Value} with FlagManagerProtectionHelper (static protection)\n");
                                     
                                     placedClusters.Add(placementResult.placedClusterSleeve);
                                     

@@ -317,7 +317,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             var clashZoneService = new ClashZoneService(
                 new ClashZoneStorage(),
                 msg => _logger($"[CLASH-ZONE-SERVICE] {msg}"),
-                new FlagManager(_context.Document),
+                Services.FlagManagement.FlagManagerFactory.CreateAdapter(_context.Document),
                 new GuidManager(_context.Document));
 
             // ✅ PROGRESS CALLBACK: Update progress dialog with intersection counts DURING detection

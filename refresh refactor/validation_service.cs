@@ -16,9 +16,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
     {
         private readonly RefreshContext _context;
         private readonly Validation.ThreePointValidator _threePointValidator;
-        private readonly FlagManager _flagManager;
+        private readonly Services.Interfaces.Refactor.IFlagManager _flagManager;
         
-        public ValidationService(RefreshContext context, FlagManager flagManager)
+        public ValidationService(RefreshContext context, Services.Interfaces.Refactor.IFlagManager flagManager)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _flagManager = flagManager ?? throw new ArgumentNullException(nameof(flagManager));

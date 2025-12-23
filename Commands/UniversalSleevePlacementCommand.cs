@@ -159,7 +159,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         // Zones loaded from DB should have correct flags, but ensure they're synced
                         try
                         {
-                            var flagManager = new Services.FlagManager(_doc);
+                            var flagManager = Services.FlagManagement.FlagManagerFactory.CreateAdapter(_doc);
                             flagManager.SyncFlagsFromGlobal(_clashZones, normalizedCategory);
                             
                             // ✅ DIAGNOSTIC: Log flag status after sync
@@ -427,7 +427,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[UniversalSleevePlacementCommand] ℹ️ Using Legacy FlagManagerAdapter (refactored disabled)");
                             
-                            flagManager = new Services.FlagManagement.FlagManagerAdapter(_doc);
+                            flagManager = Services.FlagManagement.FlagManagerFactory.CreateAdapter(_doc);
                         }
                         catch (Exception flagEx)
                         {
@@ -438,7 +438,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                             // Fallback to minimal adapter if possible or null (Service handles null?)
                             // NewSleevePlacerService might expect non-null. 
                             // Creating simple adapter as fallback.
-                            flagManager = new Services.FlagManagement.FlagManagerAdapter(_doc);
+                            flagManager = Services.FlagManagement.FlagManagerFactory.CreateAdapter(_doc);
                         }
                         
                         // ✅ FORCE DETECTION: Get flag from user settings

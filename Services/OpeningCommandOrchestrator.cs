@@ -94,8 +94,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Info($"[OpeningCommandOrchestrator] Starting execution of {filters.Count} filters");
             }
 
+            // 🔥 BUILD VERIFICATION: Log DLL build timestamp to confirm rebuild
             try
             {
+                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                var buildTime = System.IO.File.GetLastWriteTime(assembly.Location);
+                DebugLogger.Info($"[ORCHESTRATOR] 🔨 DLL BUILD TIME: {buildTime:yyyy-MM-dd HH:mm:ss} - If this timestamp is old, DLL was NOT rebuilt!");
+            }
+            catch { }
+
+            try
+            {
+                // 🔥 DIAGNOSTIC: Log verification entry
+                SafeFileLogger.SafeAppendText("orchestrator_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔥 BEFORE VERIFICATION CALL\n");
+                
+                // ✅ CRITICAL: Verify all sleeve types (individual, cluster, combined) still exist in Revit
+                // Reset flags for deleted sleeves BEFORE loading zones to prevent duplicate placement
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info("[OpeningCommandOrchestrator] Verifying existing sleeves and resetting flags for deleted ones...");
+                }
+                
+                SafeFileLogger.SafeAppendText("orchestrator_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔥 CREATING DbContext for verification\n");
+                
+                using (var dbContext = new SleeveDbContext(_document))
+                {
+                    SafeFileLogger.SafeAppendText("orchestrator_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔥 DbContext created, creating repository\n");
+                    
+                    var repository = new ClashZoneRepository(dbContext, msg => DebugLogger.Info(msg));
+                    var filterNames = filters.Select(f => f.Name).Distinct().ToList();
+                    var categories = filters.SelectMany(f => f.SelectedMepCategoryNames ?? new List<string>()).Distinct().ToList();
+                    
+                    SafeFileLogger.SafeAppendText("orchestrator_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔥 CALLING VerifyExistingSleevesAndResetFlags: filters={string.Join(",", filterNames)}, categories={string.Join(",", categories)}\n");
+                    
+                    int resetCount = repository.VerifyExistingSleevesAndResetFlags(_document, filterNames, categories);
+                    
+                    SafeFileLogger.SafeAppendText("orchestrator_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔥 VERIFICATION RETURNED: resetCount={resetCount}\n");
+                }
+                
+                SafeFileLogger.SafeAppendText("orchestrator_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔥 AFTER VERIFICATION CALL\n");
+
                 // Group filters by name for memory management
                 var disciplineGroups = GroupFiltersByName(filters);
 
@@ -1290,7 +1328,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         // Use FlagManager for efficient flag syncing by GUID
                         // ✅ DATABASE-FIRST: FlagManager tries database first, falls back to Global XML only if needed
-                        var flagManager = new FlagManager(_document);
+                        var flagManager = Services.FlagManagement.FlagManagerFactory.CreateAdapter(_document);
                         flagManager.SyncFlagsFromGlobal(clashZones, categoryName);
                         
                         if (!DeploymentConfiguration.DeploymentMode)

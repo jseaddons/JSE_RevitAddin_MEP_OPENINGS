@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -14,7 +15,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     {
         public Document Document { get; private set; }
 
-        public FlagManager FlagManager { get; private set; }
+        public IFlagManager FlagManager { get; private set; }
 
         public FilterManagementService FilterService { get; private set; }
 
@@ -46,7 +47,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public ClusterContext(
             Document document,
-            FlagManager flagManager,
+            IFlagManager flagManager,
             FilterManagementService filterService,
             Dictionary<ElementId, Element> mepElementCache = null,
             Dictionary<FamilyInstance, BoundingBoxXYZ> bboxCache = null,
@@ -69,7 +70,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public void InitializeServices(Action<string> log = null, Action<string> updateStatus = null)
         {
             if (FlagManager == null && Document != null)
-                FlagManager = new FlagManager(Document);
+                FlagManager = Services.FlagManagement.FlagManagerFactory.CreateAdapter(Document);
 
             if (FilterService == null && Document != null)
                 FilterService = new FilterManagementService(Document, log, updateStatus);
@@ -96,10 +97,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Safe getter for FlagManager - will create one if missing and Document is available.
         /// </summary>
-        public FlagManager GetFlagManagerSafe()
+        public IFlagManager GetFlagManagerSafe()
         {
             if (FlagManager == null && Document != null)
-                FlagManager = new FlagManager(Document);
+                FlagManager = Services.FlagManagement.FlagManagerFactory.CreateAdapter(Document);
             return FlagManager;
         }
 

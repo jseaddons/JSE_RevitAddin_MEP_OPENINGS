@@ -97,7 +97,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             if (categories == null || categories.Count == 0)
                 return;
             
-            var flagManager = new FlagManager(context.Document);
+            var flagManager = Services.FlagManagement.FlagManagerFactory.CreateAdapter(context.Document);
             flagManager.ResetInstanceIdsForDeletedSleeves(categories, clashZonesByCategory, context.RefreshLogName);
         }
     }
@@ -195,7 +195,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             if (categories == null || categories.Count == 0)
                 return;
             
-            var flagManager = new FlagManager(context.Document);
+            var flagManager = Services.FlagManagement.FlagManagerFactory.CreateAdapter(context.Document);
             flagManager.ResetInstanceIdsForDeletedSleeves(categories, clashZonesByCategory, context.RefreshLogName);
         }
     }

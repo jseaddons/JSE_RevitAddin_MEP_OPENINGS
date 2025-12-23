@@ -166,5 +166,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// and links to the combined sleeve ID.
         /// </summary>
         void UpdateCombinedResolutionFlags(IEnumerable<System.Guid> zoneGuids, int combinedSleeveId);
+
+        /// <summary>
+        /// Updates resolution flags for all zones belonging to the specified cluster instance IDs.
+        /// </summary>
+        void UpdateCombinedResolutionFlagsByClusterIds(IEnumerable<int> clusterInstanceIds, int combinedSleeveId);
     }
 }

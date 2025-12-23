@@ -25,6 +25,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// </summary>
         public int CombinedInstanceId { get; set; }
         
+        /// <summary>
+        /// Deterministic GUID generated from constituent sleeve IDs
+        /// Used to prevent duplicate combined sleeve rows in database
+        /// </summary>
+        public string DeterministicGuid { get; set; }
+        
         // ============================================================================
         // FOREIGN KEYS
         // ============================================================================
