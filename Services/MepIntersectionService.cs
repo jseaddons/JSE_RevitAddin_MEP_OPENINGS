@@ -301,6 +301,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             List<(Element, Transform?)> mepElements,
             List<(Element, Transform?)> structuralElements,
             Action<string> log,
+            View3D? view3D = null,
             HashSet<(int mepId, int structuralId)> knownValidPairs = null,
             bool skipKnownPairsGeometryCheck = false)
         {
@@ -313,7 +314,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (mepElements.Count <= MEP_CHUNK_SIZE)
             {
                 // Small batch - process all at once
-                return FindIntersectionsBatchInternal(mepElements, structuralElements, log, knownValidPairs, skipKnownPairsGeometryCheck);
+                return FindIntersectionsBatchInternal(mepElements, structuralElements, log, view3D, knownValidPairs, skipKnownPairsGeometryCheck);
             }
             
             // Large batch - process in chunks
@@ -328,7 +329,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 log($"[Memory] Processing chunk {chunkIndex + 1}/{totalChunks} ({chunk.Count} MEP elements)");
                 
-                var chunkResults = FindIntersectionsBatchInternal(chunk, structuralElements, log, knownValidPairs, skipKnownPairsGeometryCheck);
+                var chunkResults = FindIntersectionsBatchInternal(chunk, structuralElements, log, view3D, knownValidPairs, skipKnownPairsGeometryCheck);
                 results.AddRange(chunkResults);
                 
                 // ✅ MEMORY OPTIMIZATION: Clear cache periodically if getting large
@@ -359,6 +360,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             List<(Element, Transform?)> mepElements,
             List<(Element, Transform?)> structuralElements,
             Action<string> log,
+            View3D? view3D = null,
             HashSet<(int mepId, int structuralId)> knownValidPairs = null,
             bool skipKnownPairsGeometryCheck = false)
         {
@@ -603,6 +605,103 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 log?.Invoke($"[PrecomputeHostSolids] Precomputed {precomputeElements} structural geometries in {totalPrecomputeMs}ms");
             }
 
+
+
+            // ==========================================================================================
+            // RAY CASTING OPTIMIZATION (Linear Elements)
+            // ==========================================================================================
+            // Identify elements suitable for ReferenceIntersector (Ray Casting)
+            // Ideally: Ducts, Pipes, Conduits, Cable Trays that are "linear"
+            // We split mepElements into:
+            // 1. linearCandidates -> Handled by RayCastIntersectionHelper (Fast)
+            // 2. mepElementsForSolidCheck -> Handled by existing Logic (Solid/BBox) (Slower)
+
+            var linearCandidates = new List<(Element, Transform?)>();
+            var mepElementsForSolidCheck = new List<(Element, Transform?)>();
+            var rayCastResults = new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
+
+            if (OptimizationFlags.UseRayCastingForLinearElements && view3D != null)
+            {
+                foreach (var item in mepElements)
+                {
+                    var (e, t) = item;
+                    // Check if linear (Curve based)
+                    bool isLinear = false;
+                    bool isDiagonal = false;
+
+                    // Dampers are NOT linear for this purpose (complex geometry, usually)
+                    if (IsDamperElement(e))
+                    {
+                        mepElementsForSolidCheck.Add(item);
+                        continue;
+                    }
+
+                    if (e is MEPCurve mepCurve)
+                    {
+                        isLinear = true;
+                        // Check if diagonal (not horizontal or vertical)
+                        // Get curve direction
+                        if (mepCurve.Location is LocationCurve lc && lc.Curve is Line l)
+                        {
+                             var dir = l.Direction; 
+                             // Z component check
+                             bool isHorizontal = Math.Abs(dir.Z) < 0.01;
+                             bool isVertical = Math.Abs(dir.Z) > 0.99;
+                             if (!isHorizontal && !isVertical) isDiagonal = true;
+                        }
+                    }
+
+                    // Decide based on flags
+                    bool useRayCast = false;
+                    if (isLinear)
+                    {
+                        if (OptimizationFlags.UseHybridDiagonalDetection)
+                        {
+                            // Hybrid: Only use RayCast for diagonal elements
+                            useRayCast = isDiagonal;
+                        }
+                        else
+                        {
+                            // Full: Use RayCast for all linear elements
+                            useRayCast = true;
+                        }
+                    }
+
+                    if (useRayCast)
+                    {
+                        linearCandidates.Add(item);
+                    }
+                    else
+                    {
+                        mepElementsForSolidCheck.Add(item);
+                    }
+                }
+
+                if (linearCandidates.Count > 0)
+                {
+                    log?.Invoke($"[RayCasting] Processing {linearCandidates.Count} linear elements with ReferenceIntersector (Hybrid={OptimizationFlags.UseHybridDiagonalDetection})");
+                    
+                    // Call Helper
+                    var rcResults = RayCastIntersectionHelper.FindIntersections(linearCandidates, structuralElements, view3D, log);
+                    rayCastResults.AddRange(rcResults);
+                    
+                    log?.Invoke($"[RayCasting] Found {rcResults.Count} intersections. Remaining elements for Solid check: {mepElementsForSolidCheck.Count}");
+                }
+            }
+            else
+            {
+                // Fallback: All elements go to solid check
+                mepElementsForSolidCheck = mepElements;
+            }
+
+            // Merge Pre-calculated RayCast results at the END or treat as "Done"
+            // We will add them to the final 'results' list and only process 'mepElementsForSolidCheck' in the loops below.
+
+            // Note: The variable 'mepElements' was used as the source for the loops below. 
+            // We need to update the source to 'mepElementsForSolidCheck' OR modify the loops to check.
+            // Since there are two strategies (Parallel and Sequential), we need to update both sources.
+            // Let's alias 'mepElementsForSolidCheck' as the source for the subsequent logic.
+
             if (OptimizationFlags.UseParallelClashSearch)
             {
                 // ==========================================================================================
@@ -615,7 +714,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var mepDataList = new List<(Element mepElement, Transform? mepTransform, BoundingBoxXYZ mepBBox, Line? line, bool isDamper)>();
                 // Also keep track of indices for results
 
-                foreach (var (mepElement, mepTransform) in mepElements)
+                // ✅ UPDATE SOURCE: Use mepElementsForSolidCheck instead of mepElements
+                foreach (var (mepElement, mepTransform) in mepElementsForSolidCheck)
                 {
                     var mepBBox = mepElement.get_BoundingBox(null);
                     if (mepBBox == null) continue;
@@ -816,10 +916,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ==========================================================================================
             // END PARALLEL STRATEGY - FALLBACK TO LEGACY (Sequential)
             // ==========================================================================================
+            
+            results.AddRange(rayCastResults); // Add merged Ray Casting results
 
             var mepProcessingStopwatch = System.Diagnostics.Stopwatch.StartNew();
             int mepIndex = 0;
-            foreach (var (mepElement, mepTransform) in mepElements)
+            // ✅ PROCESS ONLY REMAINING ELEMENTS (Skip those handled by RayCasting)
+            foreach (var (mepElement, mepTransform) in mepElementsForSolidCheck)
             {
                 // Pre-calculation for MEP element
                 var perMepStopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -3058,6 +3161,124 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 log?.Invoke($"[R24] CollectStructural failed: {ex.Message}");
             }
+            return results;
+        }
+
+        // ✅ RAY CASTING IMPLEMENTATION using ReferenceIntersector
+        // Based on logic from EfficientIntersectionService.cs but integrated here
+        private static List<(Element, Element, BoundingBoxXYZ, XYZ)> FindIntersectionsUsingRaycast(
+            List<(Element, Transform?)> mepElements,
+            List<(Element, Transform?)> structuralElements,
+            View3D view3D,
+            Action<string> log)
+        {
+            var results = new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
+            
+            try
+            {
+                // Create ReferenceIntersector
+                var structCats = new List<BuiltInCategory>
+                {
+                    BuiltInCategory.OST_Walls,
+                    BuiltInCategory.OST_Floors,
+                    BuiltInCategory.OST_StructuralFraming,
+                    BuiltInCategory.OST_StructuralColumns,
+                    BuiltInCategory.OST_StructuralFoundation
+                };
+                
+                var filter = new ElementMulticategoryFilter(structCats);
+                
+                // Use FindReferencesInRevitLinks if we need linked elements
+                var intersector = new ReferenceIntersector(filter, FindReferenceTarget.All, view3D);
+                intersector.FindReferencesInRevitLinks = true;
+                
+                // Optimize: Build a HashSet of Structural Element UniqueIds for fast lookup
+                var structuralIds = new HashSet<string>(); 
+                foreach (var (elem, _) in structuralElements)
+                {
+                    structuralIds.Add(elem.UniqueId);
+                }
+
+                foreach (var (mepElement, mepTransform) in mepElements)
+                {
+                    // Get Centerline (using cached BBox)
+                    var mepBBox = mepElement.get_BoundingBox(null);
+                    if (mepBBox == null) continue;
+
+                    var lineResult = GetElementLineWithSource(mepElement, mepBBox, null);
+                    var line = lineResult.line;
+                    
+                    if (line == null) continue;
+
+                    // If MEP element is transformed (e.g. from link), we interpret the line in HOST coordinates
+                    XYZ start = line.GetEndPoint(0);
+                    XYZ end = line.GetEndPoint(1);
+
+                    if (mepTransform != null && !lineResult.isFallbackLine)
+                    {
+                        start = mepTransform.OfPoint(start);
+                        end = mepTransform.OfPoint(end);
+                    }
+                    
+                    var dir = (end - start).Normalize();
+                    var length = start.DistanceTo(end);
+                    
+                    // Shoot Ray
+                    var hits = intersector.Find(start, dir);
+                    
+                    foreach (var context in hits)
+                    {
+                        var reference = context.GetReference();
+                        var hitPoint = reference.GlobalPoint;
+                        
+                        // Check distance (must be within segment)
+                        double dist = start.DistanceTo(hitPoint);
+                        if (dist > length + 0.001) continue; // Beyond end of pipe
+                        if (dist < -0.001) continue; // Behind start (shouldn't happen with ray)
+
+                        // Check if hit element is in our target structural list
+                        Element hitElement = null;
+                        
+                        if (reference.LinkedElementId != LinkedElementId.InvalidId)
+                        {
+                            // It's a linked element
+                            var linkInstance = view3D.Document.GetElement(reference.ElementId) as RevitLinkInstance;
+                            if (linkInstance != null)
+                            {
+                                var linkDoc = linkInstance.GetLinkDocument();
+                                if (linkDoc != null)
+                                {
+                                    hitElement = linkDoc.GetElement(reference.LinkedElementId);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Standard element
+                            hitElement = view3D.Document.GetElement(reference.ElementId);
+                        }
+                        
+                        // Verification
+                        if (hitElement != null && structuralIds.Contains(hitElement.UniqueId))
+                        {
+                             // Create Result
+                            double d = 0.1;
+                            var bbox = new BoundingBoxXYZ();
+                            bbox.Min = new XYZ(hitPoint.X - d, hitPoint.Y - d, hitPoint.Z - d);
+                            bbox.Max = new XYZ(hitPoint.X + d, hitPoint.Y + d, hitPoint.Z + d);
+                            
+                            results.Add((mepElement, hitElement, bbox, hitPoint));
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                log?.Invoke($"[RayCasting] Error: {ex.Message}");
+                if (OptimizationFlags.UseDiagnosticMode)
+                    log?.Invoke($"Stack: {ex.StackTrace}");
+            }
+            
             return results;
         }
     }

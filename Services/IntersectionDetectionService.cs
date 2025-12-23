@@ -930,6 +930,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 mepElementsWithTransforms,
                 structuralElementsWithTransforms,
                 _logger,
+                null, // View3D (nullable)
                 optimizationService?.KnownValidPairs,
                 optimizationService?.ShouldSkipKnownPairsGeometryCheck ?? false);
             

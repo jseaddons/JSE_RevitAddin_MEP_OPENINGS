@@ -16,6 +16,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             List<(Element, Transform?)> mepElements,
             List<(Element, Transform?)> structuralElements,
             Action<string> log,
+            View3D? view3D = null,
             HashSet<(int mepId, int structuralId)>? knownValidPairs = null,
             bool skipKnownPairsGeometryCheck = false);
     }

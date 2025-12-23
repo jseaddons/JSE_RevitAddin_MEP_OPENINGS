@@ -103,6 +103,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Location: Services/MepIntersectionService.cs (line 757)
         /// </summary>
         public static bool UseCurveInBoundingBoxFilter { get; set; } = false;
+
+        /// <summary>
+        /// Use ReferenceIntersector (Ray Casting) for linear elements (Ducts, Pipes, etc.)
+        /// When true: Uses Revit's fast ray casting engine (Main Thread) instead of slow solid intersection
+        /// When false: Uses parallel solid intersection (Legacy)
+        /// Default: true (Safe, native method)
+        /// </summary>
+        public static bool UseRayCastingForLinearElements { get; set; } = true;
+
+        /// <summary>
+        /// Use Hybrid detection: Only use Ray Casting for DIAGONAL elements.
+        /// When true: Logic checks if element is diagonal. If yes -> Ray Cast. If no -> Parallel Solid (or whatever is default).
+        /// When false: Uses Ray Casting for ALL linear elements if UseRayCastingForLinearElements is true.
+        /// Default: true (Matches user request for hybrid approach)
+        /// </summary>
+        public static bool UseHybridDiagonalDetection { get; set; } = true;
         
         /// <summary>
         /// Use WhereElementIsViewIndependent() in FilteredElementCollector to skip view-dependent filtering

@@ -218,18 +218,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
 
             // Get 3D view for intersection detection
             var view3D = _context.Document.ActiveView as View3D;
-            if (view3D == null)
+            
+            // ✅ USER REQUIREMENT: Force 3D view and Section Box
+            if (view3D == null || !view3D.IsSectionBoxActive)
             {
-                // Find any 3D view
-                view3D = new FilteredElementCollector(_context.Document)
-                    .OfClass(typeof(View3D))
-                    .Cast<View3D>()
-                    .FirstOrDefault(v => !v.IsTemplate);
-            }
+                // Prompt user to switch to 3D view with section box
+                try 
+                {
+                    Autodesk.Revit.UI.TaskDialog.Show("View Requirement", 
+                        "This command requires an active 3D View with a Section Box enabled.\n\n" +
+                        "Please switch to a 3D view, enable the Section Box to define your work area, and try again.");
+                }
+                catch 
+                {
+                    // Fallback if TaskDialog fails (e.g. valid context check)
+                }
 
-            if (view3D == null)
-            {
-                throw new InvalidOperationException("No 3D view found. Please create a 3D view.");
+                throw new InvalidOperationException("Refresh aborted: Command requires an active 3D View with a Section Box enabled.");
             }
 
             // ✅ STEP 1: Get section box outline for filtering
@@ -288,7 +293,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             var intersections = MepIntersectionService.FindIntersectionsBatch(
                 mepElementsWithTransforms,
                 hostElementsWithTransforms,
-                msg => _logger(msg));
+                msg => _logger(msg),
+                view3D);
 
             _logger($"[INTERSECTION-PROCESSOR] Found {intersections.Count} intersections from {mepElements.Count} MEP + {hostElements.Count} host elements");
 
