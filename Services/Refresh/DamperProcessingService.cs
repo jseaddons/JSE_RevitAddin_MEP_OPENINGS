@@ -915,7 +915,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     }
                     
                     // Update zone properties with fresh data from damper processing
-                    var updatedZone = CreateClashZoneForDamper(damper, wall, placementPoint, damperTransform, wallTransform, damperParamsCache, wallParamsCache);
+                    var updatedZone = CreateClashZoneForDamper(damper, wall, placementPoint, damperTransform, wallTransform, damperParamsCache, wallParamsCache, openingPointKeys);
                     if (updatedZone != null)
                     {
                         // Preserve existing GUID and flags
@@ -1673,6 +1673,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     }
                 }
                 
+            // Log diagnostic info
+            if (openingPointKeys != null)
+                _logger($"[DAMPER-PERF] CreateClashZoneForDamper called with {openingPointKeys.Count} opening keys");
+            else
+                _logger($"[DAMPER-PERF] CreateClashZoneForDamper called with NULL opening keys!");
+
+            // NOTE: Parameters, Dimensions, and Level info were already calculated/extracted above
+            // We just reused the local variables: mepParameters, hostParameters, damperWidth, damperHeight, mepElementLevelName
+            
+            var swFlag = System.Diagnostics.Stopwatch.StartNew();
+                
                 var clashZone = new ClashZone
                 {
                     Id = deterministicGuid, // ✅ CRITICAL: Use deterministic GUID instead of random GUID
@@ -1681,6 +1692,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     StructuralElementId = wall.Id,
                     StructuralElementType = structuralElementType, // ✅ CRITICAL: Set for host type filtering
                     MepElementCategory = "Duct Accessories",
+                    
                     // ✅ CRITICAL FIX: Set damper dimensions for placement sizing
                     // These are used by ParallelSleevePlacementPlanner to calculate sleeve size
                     MepElementWidth = damperWidth,  // Already in Revit internal units (feet)
@@ -1730,14 +1742,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     DocumentPath = hostDoc?.PathName ?? string.Empty,
                     StructuralElementDocumentTitle = wallDoc?.Title ?? string.Empty,
                     
-                    // ✅ O(1) EXISTENCE CHECK: Set IsResolved if sleeve exists at this location
-                    // This eliminates the need for expensive CheckForExistingSleeve calls
-                    IsSleeveCreated = openingPointKeys != null && openingPointKeys.Contains($"{Math.Round(sleevePlacementPoint.X, 3)}_{Math.Round(sleevePlacementPoint.Y, 3)}_{Math.Round(sleevePlacementPoint.Z, 3)}"),
-                    
                     // ✅ CRITICAL FIX: Set Size parameter value for database column
                     // This was missing, causing the 'Size' column in DB to be empty even if parameter was captured in JSON
                     MepElementSizeParameterValue = GetSizeParameterValue(mepParameters)
                 };
+
+                // ✅ O(1) EXISTENCE CHECK: Set IsResolved if sleeve exists at this location
+                // This eliminates the need for expensive CheckForExistingSleeve calls
+                if (openingPointKeys != null && openingPointKeys.Contains($"{Math.Round(sleevePlacementPoint.X, 3)}_{Math.Round(sleevePlacementPoint.Y, 3)}_{Math.Round(sleevePlacementPoint.Z, 3)}"))
+                {
+                    clashZone.IsResolved = true;
+                    // Try to extract existing sleeve info if we tracked it in the keys (we'll need a map for that later)
+                    // For now just marking resolved prevents duplicate placement
+                }
+                swFlag.Stop();
+            
+                if (!JSE_RevitAddin_MEP_OPENINGS.Services.DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("create_clashzone_damper_perf.log", 
+                        $"[{DateTime.Now:HH:mm:ss.fff}] ID={damper.Id} " +
+                        $"ResFlag={swFlag.ElapsedMilliseconds}ms\n");
+                }
 
                 _logger($"[DamperProcessing] ✅ Created ClashZone {clashZone.Id} with {mepParameters?.Count ?? 0} MEP params and {hostParameters?.Count ?? 0} Host params, StructuralElementType='{clashZone.StructuralElementType}', MepElementWidth={clashZone.MepElementWidth * 304.8:F1}mm, MepElementHeight={clashZone.MepElementHeight * 304.8:F1}mm, TypeName='{clashZone.MepElementTypeName}', FamilyName='{clashZone.MepElementFamilyName}', HasMepConnector={clashZone.HasMepConnector}, DamperConnectorSide='{clashZone.DamperConnectorSide}'");
 

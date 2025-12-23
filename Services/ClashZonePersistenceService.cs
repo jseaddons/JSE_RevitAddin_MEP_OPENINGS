@@ -112,8 +112,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             if (targetFilter != null)
             {
-                EnsureFilterStorageInitialized(targetFilter);
-                DeduplicateFilterStorage(targetFilter);
+                using (_performanceMonitor?.TrackOperation("9a1. Deduplicate Storage"))
+                {
+                    EnsureFilterStorageInitialized(targetFilter);
+                    DeduplicateFilterStorage(targetFilter);
+                }
             }
             else
             {
@@ -128,10 +131,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 LogPlacement($"[PERSIST-ENTRY] Zones={allClashZones.Count}, Filter='{baseFilterName}', Sample=[{string.Join(", ", allClashZones.Where(z => z != null).Take(10).Select(z => $"{z.Id}:{z.SleeveInstanceId}"))}]");
 
-                var clashZonesByCategory = allClashZones
-                    .Where(z => z != null && !string.IsNullOrWhiteSpace(z.MepElementCategory))
-                    .GroupBy(z => z.MepElementCategory, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
+                List<IGrouping<string, ClashZone>> clashZonesByCategory;
+                using (_performanceMonitor?.TrackOperation("9a01. Group By Cat"))
+                {
+                    clashZonesByCategory = allClashZones
+                        .Where(z => z != null && !string.IsNullOrWhiteSpace(z.MepElementCategory))
+                        .GroupBy(z => z.MepElementCategory, StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                }
 
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] Saving {allClashZones.Count} clash zones across {clashZonesByCategory.Count} categories");
@@ -228,7 +235,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 var filterName = BuildFilterFileName(baseFilterName, category);
-                var globalIndex = GlobalIndexService.LoadOrCreate(_document, category);
+                CategoryGlobalIndex globalIndex = null;
+                
+                using (_performanceMonitor?.TrackOperation("9a3. Load Global Index"))
+                {
+                    globalIndex = GlobalIndexService.LoadOrCreate(_document, category);
+                }
 
                 // ✅ PHASE SQLITE-2: Write to SQLite FIRST (primary store), then XML (optional/backup)
                 if (_sqliteRepository == null)

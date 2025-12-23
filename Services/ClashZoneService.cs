@@ -1221,14 +1221,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var zoneMap = _clashZoneStorage.ClashZones.ToDictionary(cz => cz.Id);
 
             // ✅ PHASE 3 OPTIMIZATION: Batch sleeve existence check (avoid 800+ document.GetElement calls)
+            var swSleeve = System.Diagnostics.Stopwatch.StartNew();
+            // ⚠️ CRITICAL OPTIMIZATION: Filter by FamilyInstance only, not "NotElementType" which returns ALL elements
             var existingSleeveIds = new FilteredElementCollector(document)
-                .WhereElementIsNotElementType()
+                .OfClass(typeof(FamilyInstance))
                 .ToElementIds()
                 .Select(id => id.IntegerValue)
                 .ToHashSet();
+            swSleeve.Stop();
+            _log($"[STREAMLINED] Collected {existingSleeveIds.Count} potential sleeve candidates in {swSleeve.ElapsedMilliseconds}ms");
 
             // ✅ PHASE 3 OPTIMIZATION: Pre-index "Opening" instances for O(1) proximity check
             // This replaces the O(N^2) CheckForExistingSleeve calls
+            var swIndex = System.Diagnostics.Stopwatch.StartNew();
             var openingLocationMap = new Dictionary<string, FamilyInstance>();
             var allOpenings = new FilteredElementCollector(document)
                 .OfClass(typeof(FamilyInstance))
@@ -1249,7 +1254,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (!openingLocationMap.ContainsKey(key)) openingLocationMap.Add(key, opening);
                 }
             }
-            _log($"[STREAMLINED] Pre-indexed {openingLocationMap.Count} openings for O(1) existence checks");
+            swIndex.Stop();
+            _log($"[STREAMLINED] Pre-indexed {openingLocationMap.Count} openings for O(1) existence checks in {swIndex.ElapsedMilliseconds}ms");
             var openingPointKeys = openingLocationMap.Keys.ToHashSet();
             
             foreach (var (mepElement, structuralElement, boundingBox, intersectionPoint) in currentIntersections)
@@ -2469,9 +2475,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             
             // ✅ OOP REFACTORING: Use centralized WallDirectionService (eliminates code duplication)
+            // TRACKING: Wall Direction
+            var swWall = System.Diagnostics.Stopwatch.StartNew();
             var wallDirection = WallDirectionService.GetWallDirection(structuralElement);
             var wallDirectionType = WallDirectionService.GetWallDirectionType(structuralElement, wallDirection);
-            
+            swWall.Stop();
+
             // 🛡️ ARCHITECTURE FIX: Store RAW dimensions only (no pre-calculated clearance)
             // All clearance (simple and complex) will be handled by CONDITIONS service during placement
             // This ensures consistent architecture: CONDITIONS XML → UniversalSleevePlacerService
@@ -2485,15 +2494,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Info($"[CLASH_DEBUG] Element {mepElement.Id}: Raw dimensions {mepWidth:F3}x{mepHeight:F3} (clearance will be handled by CONDITIONS service during placement)");
             
             // Get pipe opening type if applicable
+            var swPipe = System.Diagnostics.Stopwatch.StartNew();
             var pipeOpeningType = GetPipeOpeningType(mepElement);
+            swPipe.Stop();
             
             // OPTIMIZATION: Get MEP element level information during refresh (no linked file access needed during placement)
+            // TRACKING: Level Info
+            var swLevel = System.Diagnostics.Stopwatch.StartNew();
             var (levelName, levelElevation) = GetMepElementLevelInfo(mepElement);
+            swLevel.Stop();
             
             // ✅ OOP PATTERN: Two paths - optimized if spatial index provided, fallback if not
             bool hasExistingSleeve = false;
             int existingSleeveId = -1;
             
+            var swLookup = System.Diagnostics.Stopwatch.StartNew();
             if (spatialIndex != null && spatialIndex.Count > 0)
             {
                 // ✅ OPTIMIZED PATH: Use spatial index for O(1) lookup
@@ -2521,6 +2536,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (hasExistingSleeve && OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
                     _log($"[LEGACY-SLEEVE-LOOKUP] ✓ Found existing sleeve at placement point using legacy scan");
             }
+            swLookup.Stop();
+            
+            // LOG GRANULAR TIMING
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                SafeFileLogger.SafeAppendText("create_clashzone_perf.log", 
+                    $"[{DateTime.Now:HH:mm:ss.fff}] ID={mepElement.Id} " +
+                    $"WallDir={swWall.ElapsedMilliseconds}ms " +
+                    $"PipeType={swPipe.ElapsedMilliseconds}ms " +
+                    $"Level={swLevel.ElapsedMilliseconds}ms " +
+                    $"Lookup={swLookup.ElapsedMilliseconds}ms\n");
+            }
             
             // ⚠️ CRITICAL: Get MEP element category for category-specific processing ⚠️
             // DO NOT REMOVE: This is essential for each placement service to validate its category
@@ -2537,6 +2564,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             
             // ✅ CRITICAL FIX: Use strategy classes to get MEP element size with insulation information
+            var swSize = System.Diagnostics.Stopwatch.StartNew();
             MepElementSize mepElementSize = GetMepElementSizeWithStrategy(mepElement, mepCategory);
             
             // ✅ DUCT ACCESSORY FIX: Use strategy dimensions (Damper Width/Height) instead of GetMepElementDimensions
@@ -2572,6 +2600,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var insulationDetector = new InsulationDetector();
             var (isInsulated, insulationThickness) = insulationDetector.GetInsulationInfo(mepElement, mepElementSize);
             var insulationType = isInsulated ? "Insulated" : "Normal";
+            swSize.Stop();
+            
+            // LOG GRANULAR TIMING
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                 SafeFileLogger.SafeAppendText("create_clashzone_perf.log", 
+                    $"[{DateTime.Now:HH:mm:ss.fff}] ID={mepElement.Id} " +
+                    $"Size+Insul={swSize.ElapsedMilliseconds}ms\n");
+            }
             
             // ✅ PIPE DIAMETER SCHEMA: Extract pipe diameters early (before formatted size calculation)
             // This ensures pipeNominalDiameter is available for GetMepElementSizeString fallback

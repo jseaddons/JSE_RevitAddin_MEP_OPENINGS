@@ -1556,6 +1556,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             null, // Use default parameter snapshot service
                             context.PerformanceMonitor); // Pass performance monitor for tracking
                         
+                        // ✅ PHASE 3 OPTIMIZATION: Pre-index "Opening" instances for O(1) proximity check
+                        // This allows DamperProcessingService to skip redundant checks
+                        var openingLocationMap = new Dictionary<string, FamilyInstance>();
+                        var allOpenings = new FilteredElementCollector(_document)
+                            .OfClass(typeof(FamilyInstance))
+                            .Cast<FamilyInstance>()
+                            .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                            .ToList();
+
+                        foreach (var opening in allOpenings)
+                        {
+                            XYZ loc = null;
+                            if (opening.Location is LocationPoint lp) loc = lp.Point;
+                            else if (opening.Location is LocationCurve lc) loc = lc.Curve.Evaluate(0.5, true);
+
+                            if (loc != null)
+                            {
+                                string key = $"{Math.Round(loc.X, 3)}_{Math.Round(loc.Y, 3)}_{Math.Round(loc.Z, 3)}";
+                                if (!openingLocationMap.ContainsKey(key)) openingLocationMap.Add(key, opening);
+                            }
+                        }
+                        var openingPointKeys = openingLocationMap.Keys.ToHashSet();
+                        if (!context.IsDeploymentMode) DebugLogger.Info($"[REFRESH-REFACTORED] Pre-indexed {openingPointKeys.Count} openings for Damper O(1) check");
+
                         // Process dampers (pass selected reference files to respect UI selection)
                         // ✅ CRITICAL FIX: Pass existing zones to prevent duplicate GUID creation
                         damperClashZones = damperService.ProcessDampers(
@@ -1563,7 +1587,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             context.SelectedHostTypes,
                             context.SelectedReferenceFiles,
                             sectionBox,
-                            context.ExistingClashZones) ?? new List<ClashZone>();
+                            context.ExistingClashZones,
+                            openingPointKeys) ?? new List<ClashZone>();
                         
                         if (!context.IsDeploymentMode)
                         {

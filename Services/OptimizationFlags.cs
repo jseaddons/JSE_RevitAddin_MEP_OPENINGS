@@ -558,6 +558,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static bool UseNewSleevePlacerService { get; set; } = true;
 
+        #region Cluster Sleeve Optimization Flags (NEW - High Impact)
+
+        /// <summary>
+        /// Use cluster family symbol caching to eliminate repeated family loading
+        /// When true: Caches family symbols across all cluster placements
+        /// When false: Loads family for each cluster (current behavior)
+        /// Default: true (high impact optimization for cluster-heavy projects)
+        /// Location: Services/Clustering/Placement/ClusterPlacementService.cs
+        /// </summary>
+        public static bool UseClusterFamilySymbolCaching { get; set; } = true;
+
+        /// <summary>
+        /// Use batch parameter operations for cluster sleeves
+        /// When true: Sets all cluster parameters in batch operations
+        /// When false: Sets parameters individually (current behavior)
+        /// Default: true (significant performance improvement)
+        /// Location: Services/Clustering/Placement/ClusterPlacementService.cs
+        /// </summary>
+        public static bool UseClusterBatchParameterOperations { get; set; } = true;
+
+        /// <summary>
+        /// Use parameter validation caching for cluster sleeves
+        /// When true: Caches parameter validation results per family type
+        /// When false: Validates parameters individually (current behavior)
+        /// Default: true (moderate performance improvement)
+        /// Location: Services/Clustering/Placement/ClusterPlacementService.cs
+        /// </summary>
+        public static bool UseClusterParameterValidationCaching { get; set; } = true;
+
+        /// <summary>
+        /// Use cluster family pre-loading for known family types
+        /// When true: Pre-loads all required families before cluster placement
+        /// When false: Loads families on-demand (current behavior)
+        /// Default: true (high impact for projects with many clusters)
+        /// Location: Services/Clustering/Placement/ClusterPlacementService.cs
+        /// </summary>
+        public static bool UseClusterFamilyPreLoading { get; set; } = true;
+
+        #endregion
+
         /// <summary>
         /// Enable SOLID-refactored command and orchestrator services
         /// When true: Uses extracted services (IConditionsLoader, IPathDeterminer, IStrategyFactory, etc.)
