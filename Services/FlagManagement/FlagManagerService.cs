@@ -194,6 +194,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                                     _logger.Debug($"🔄 RESET: Cluster sleeve {dbZone.ClusterSleeveInstanceId} not found in Revit for zone {dbZone.Id}", "FlagManager");
                                 }
                             }
+                            // ✅ CRITICAL FIX: Also check zones with IsClusterResolved=true but ClusterSleeveInstanceId invalid
+                            else if (dbZone.IsClusterResolved && dbZone.ClusterSleeveInstanceId <= 0)
+                            {
+                                int mepId = dbZone.MepElementId?.IntegerValue ?? dbZone.MepElementIdValue;
+                                int hostId = dbZone.StructuralElementId?.IntegerValue ?? dbZone.StructuralElementIdValue;
+                                
+                                updates.Add((dbZone.Id, false, false, -1, -1, mepId, hostId, 
+                                    dbZone.IntersectionPointX, dbZone.IntersectionPointY, dbZone.IntersectionPointZ,
+                                    dbZone.SleeveInstanceId, dbZone.ClusterSleeveInstanceId, null, -1, null));
+                                resetCount++;
+                                _logger.Debug($"🔄 RESET: Zone {dbZone.Id} has IsClusterResolved=true but ClusterSleeveInstanceId={dbZone.ClusterSleeveInstanceId} (invalid). Resetting flags.", "FlagManager");
+                            }
                             // ✅ Then check individual (only if not cluster resolved)
                             // ✅ CRITICAL FIX: Also check zones with IsResolved=true but SleeveInstanceId=-1 (deleted sleeves)
                             else if (!dbZone.IsClusterResolved && dbZone.IsResolved)
@@ -209,49 +221,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                                     resetCount++;
                                     _logger.Debug($"🔄 RESET: Individual sleeve {dbZone.SleeveInstanceId} not found in Revit for zone {dbZone.Id}", "FlagManager");
                                 }
-                                // Case 2: IsResolved=true but SleeveInstanceId=-1 (sleeve was deleted, flag not reset)
-                                // ✅ ROBUST FIX: Verify no sleeve exists for this zone's MEP element before resetting
-                                else if (dbZone.SleeveInstanceId <= 0)
-                                {
-                                    // Check if there's a sleeve in Revit for this zone's MEP element
-                                    // If a sleeve exists but SleeveInstanceId=-1, it means DB is stale - DON'T reset
-                                    bool sleeveExistsForThisZone = false;
-                                    
-                                    if (dbZone.MepElementIdValue > 0)
-                                    {
-                                        // Look for any sleeve in Revit that might be for this MEP element
-                                        // This is a heuristic check - if we find ANY sleeve for this MEP element, don't reset
-                                        try
-                                        {
-                                            var mepElement = _document.GetElement(new Autodesk.Revit.DB.ElementId(dbZone.MepElementIdValue));
-                                            if (mepElement != null)
-                                            {
-                                                // Check if any sleeve in existingSleeveIdsSet could be for this MEP element
-                                                // For now, we'll be conservative: if SleeveInstanceId=-1 but zone has valid MEP element,
-                                                // assume the sleeve might exist and DON'T reset
-                                                sleeveExistsForThisZone = true;
-                                                _logger.Debug($"⚠️ SKIP RESET: Zone {dbZone.Id} has SleeveInstanceId=-1 but MEP element {dbZone.MepElementIdValue} exists - DB might be stale", "FlagManager");
-                                            }
-                                        }
-                                        catch
-                                        {
-                                            // MEP element doesn't exist, safe to reset
-                                            sleeveExistsForThisZone = false;
-                                        }
-                                    }
-                                    
-                                    // Only reset if we're confident no sleeve exists
-                                    if (!sleeveExistsForThisZone)
+                                    // Case 2: IsResolved=true but SleeveInstanceId=-1 (sleeve was deleted, flag not reset)
+                                    // ✅ FIXED: Always reset if SleeveInstanceId is invalid, regardless of MEP element existence
+                                    else if (dbZone.SleeveInstanceId <= 0)
                                     {
                                         int mepId = dbZone.MepElementId?.IntegerValue ?? dbZone.MepElementIdValue;
                                         int hostId = dbZone.StructuralElementId?.IntegerValue ?? dbZone.StructuralElementIdValue;
+                                        
+                                        // If IsResolved is true but SleeveID is missing, it's a data anomaly. Reset it.
                                         updates.Add((dbZone.Id, false, dbZone.IsClusterResolved, -1, dbZone.ClusterSleeveInstanceId, mepId, hostId,
                                             dbZone.IntersectionPointX, dbZone.IntersectionPointY, dbZone.IntersectionPointZ,
                                             -1, dbZone.ClusterSleeveInstanceId, null, -1, null));
+                                        
                                         resetCount++;
-                                        _logger.Debug($"🔄 RESET: Zone {dbZone.Id} has IsResolved=true but SleeveInstanceId=-1 and no MEP element found (deleted sleeve, flag not reset)", "FlagManager");
+                                        _logger.Debug($"🔄 RESET: Zone {dbZone.Id} has IsResolved=true but SleeveInstanceId={dbZone.SleeveInstanceId} (invalid). Resetting flag.", "FlagManager");
                                     }
-                                }
                             }
                         }
                         

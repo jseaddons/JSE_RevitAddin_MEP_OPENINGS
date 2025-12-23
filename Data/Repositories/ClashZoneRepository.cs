@@ -328,6 +328,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 
                 using (var cmd = _context.Connection.CreateCommand())
                 {
+                    // ✅ BUG FIX: Removed "AND ClusterInstanceId > 0" to catch zones with STUCK flags but invalid/missing IDs
+                    // This query now includes zones where flag=1 even if ID is invalid (zombies).
                     cmd.CommandText = @"
                         SELECT ClashZoneId, 
                                CASE 
@@ -341,22 +343,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                    WHEN IsResolvedFlag = 1 THEN 'Individual'
                                END as SleeveType
                         FROM ClashZones
-                        WHERE (IsCombinedResolved = 1 AND CombinedClusterSleeveInstanceId IS NOT NULL)
-                           OR (IsClusterResolvedFlag = 1 AND IsCombinedResolved = 0 AND ClusterInstanceId > 0)
-                           OR (IsResolvedFlag = 1 AND IsCombinedResolved = 0 AND IsClusterResolvedFlag = 0 AND SleeveInstanceId > 0)";
+                        WHERE (IsCombinedResolved = 1)
+                           OR (IsClusterResolvedFlag = 1 AND IsCombinedResolved = 0)
+                           OR (IsResolvedFlag = 1 AND IsCombinedResolved = 0 AND IsClusterResolvedFlag = 0)";
                     
                     using (var reader = cmd.ExecuteReader())
                     {
                         while (reader.Read())
                         {
-                            if (!reader.IsDBNull(1)) // SleeveId not null
-                            {
-                                zonesToCheck.Add((
-                                    reader.GetInt32(0), // ZoneId
-                                    reader.GetInt32(1), // SleeveId
-                                    reader.GetString(2)  // SleeveType
-                                ));
-                            }
+                            // If SleeveId is null, treat as -1 (invalid)
+                            int sleeveId = reader.IsDBNull(1) ? -1 : reader.GetInt32(1);
+                            
+                            zonesToCheck.Add((
+                                reader.GetInt32(0), // ZoneId
+                                sleeveId,
+                                reader.GetString(2)  // SleeveType
+                            ));
                         }
                     }
                 }
@@ -370,34 +372,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 _logger($"[SQLite] 🔍 Found {zonesToCheck.Count} zones to verify");
 
                 // ⚡ OPTIMIZATION 2: Batch element collection - ONE Revit API call for ALL sleeves
-                var allSleeveIds = zonesToCheck.Select(z => new ElementId(z.SleeveId)).Distinct().ToList();
-                _logger($"[SQLite] 🔍 Checking {allSleeveIds.Count} unique sleeve elements in ONE batch (BIM 360 optimized)...");
+                // Get only VALID IDs (>0) to check in Revit. Invalid IDs (-1) are automatically marked for reset below.
+                var validSleeveIds = zonesToCheck
+                    .Where(z => z.SleeveId > 0)
+                    .Select(z => new ElementId(z.SleeveId))
+                    .Distinct()
+                    .ToList();
+                    
+                _logger($"[SQLite] 🔍 Checking {validSleeveIds.Count} unique sleeve elements in ONE batch (BIM 360 optimized)...");
 
                 var existingElements = new HashSet<int>();
-                try
+                if (validSleeveIds.Count > 0)
                 {
-                    // Single Revit API call to get all elements at once
-                    var collector = new FilteredElementCollector(doc)
-                        .WhereElementIsNotElementType()
-                        .Where(e => allSleeveIds.Contains(e.Id));
-                    
-                    foreach (var elem in collector)
+                    try
                     {
-                        existingElements.Add(elem.Id.IntegerValue);
-                    }
-                    
-                    _logger($"[SQLite] 🔍 Found {existingElements.Count}/{allSleeveIds.Count} existing sleeves in model");
-                }
-                catch (Exception ex)
-                {
-                    _logger($"[SQLite] ⚠️ Batch collection failed, falling back to individual checks: {ex.Message}");
-                    // Fallback: check individually
-                    foreach (var sleeveId in allSleeveIds)
-                    {
-                        var elem = doc.GetElement(sleeveId);
-                        if (elem != null)
+                        // Single Revit API call to get all elements at once
+                        var collector = new FilteredElementCollector(doc)
+                            .WhereElementIsNotElementType()
+                            .Where(e => validSleeveIds.Contains(e.Id));
+                        
+                        foreach (var elem in collector)
                         {
-                            existingElements.Add(sleeveId.IntegerValue);
+                            existingElements.Add(elem.Id.IntegerValue);
+                        }
+                        
+                        _logger($"[SQLite] 🔍 Found {existingElements.Count}/{validSleeveIds.Count} existing sleeves in model");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger($"[SQLite] ⚠️ Batch collection failed, falling back to individual checks: {ex.Message}");
+                        // Fallback: check individually
+                        foreach (var sleeveId in validSleeveIds)
+                        {
+                            var elem = doc.GetElement(sleeveId);
+                            if (elem != null)
+                            {
+                                existingElements.Add(sleeveId.IntegerValue);
+                            }
                         }
                     }
                 }
@@ -409,11 +420,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                 foreach (var (zoneId, sleeveId, sleeveType) in zonesToCheck)
                 {
-                    bool exists = existingElements.Contains(sleeveId);
+                    // Logic: Reset if (ID is invalid) OR (ID is valid but element not found in Revit)
+                    bool isValidId = sleeveId > 0;
+                    bool exists = isValidId && existingElements.Contains(sleeveId);
                     
                     if (!exists)
                     {
-                        _logger($"[SQLite] 🔍   Zone {zoneId}: {sleeveType} sleeve {sleeveId} NOT FOUND - will reset");
+                        string reason = isValidId ? "NOT FOUND in model" : "INVALID ID (Zombie Flag)";
+                        _logger($"[SQLite] 🔍   Zone {zoneId}: {sleeveType} sleeve {sleeveId} {reason} - will reset");
                         
                         if (sleeveType == "Combined")
                             combinedToReset.Add(zoneId);
@@ -3343,9 +3357,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         }
                     }
 
-                    // ✅ REMOVED: No longer adding "MEP Size" alias to snapshot
-                    // Parameter transfer now reads "MEP Size" directly from Revit MEP element (not from snapshot)
-                    // This avoids stale data and ensures we always get the current value from the live MEP element
+                    // ✅ RESTORED: Add "MEP Size" alias to snapshot for redundancy
+                    // Although individual sleeves read from Revit, strict aggregators might look for this key.
+                    if (!string.IsNullOrWhiteSpace(zone.MepElementSizeParameterValue))
+                    {
+                         // Check if "MEP Size" is already in bag to avoid duplicates
+                         bool hasMepSize = bag.Any(kv => kv != null && 
+                            string.Equals(kv.Key?.Trim(), "MEP Size", StringComparison.OrdinalIgnoreCase));
+                            
+                         if (!hasMepSize)
+                         {
+                             bag.Add(new Models.SerializableKeyValue { Key = "MEP Size", Value = zone.MepElementSizeParameterValue });
+                         }
+                    }
                 }
 
                 if (bag == null) continue;
