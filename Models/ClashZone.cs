@@ -9,8 +9,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
     /// <summary>
     /// Represents a clash zone detected between MEP and structural elements
     /// </summary>
-    public class ClashZone
-    {
+        public class ClashZone
+        {
+            /// <summary>
+            /// The cluster instance ID this zone belongs to (-1 if not clustered)
+            /// </summary>
+            public int ClusterInstanceId { get; set; } = -1;
+
+            /// <summary>
+            /// The source of placement for this zone (Individual, Cluster, XML, etc.)
+            /// </summary>
+            public PlacementSourceType PlacementSource { get; set; } = PlacementSourceType.Unknown;
+
+            /// <summary>
+            /// The sleeve state for this zone (Unprocessed, IndividualPlaced, ClusterPlaced, etc.)
+            /// </summary>
+            public SleeveStateType SleeveState { get; set; } = SleeveStateType.Unprocessed;
         /// <summary>
         /// Unique identifier for this clash zone
         /// </summary>
@@ -1143,6 +1157,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
             
             return Math.Sqrt(dx * dx + dy * dy + dz * dz);
         }
+    }
+
+    /// <summary>
+    /// Enum for the source of placement for a clash zone
+    /// </summary>
+    public enum PlacementSourceType
+    {
+        Unknown = 0,
+        Individual = 1,
+        Cluster = 2,
+        XML = 3
+    }
+
+    /// <summary>
+    /// Enum for the sleeve state of a clash zone
+    /// </summary>
+    public enum SleeveStateType
+    {
+        Unprocessed = 0,
+        ClusterPlaced = 2,
+        IndividualPlaced = 1
     }
     
     /// <summary>

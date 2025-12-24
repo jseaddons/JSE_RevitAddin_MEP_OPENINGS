@@ -3079,7 +3079,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 // ✅ SECTION BOX FILTERING: Get cached section box bounds if available
-                BoundingBoxXYZ sectionBoxBounds = null;
+                BoundingBoxXYZ? sectionBoxBounds = null;
                 
                 // ✅ OPTIMIZATION: Use cached section box if flag is enabled
                 if (Services.OptimizationFlags.UseSectionBoxFilterForParameterTransfer)

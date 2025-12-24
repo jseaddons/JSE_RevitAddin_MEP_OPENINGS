@@ -454,8 +454,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
             string category, 
             string filterName = null)
         {
+            // 🔥 DIAGNOSTIC: Log entry to this method
+            SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                $"[{DateTime.Now:HH:mm:ss}] 🔥🔥🔥 [FlagManagerService] BatchUpdateFlagsForPlacement CALLED: isCluster={isCluster}, category={category}, count={clashZones?.Count ?? 0}\n");
+            
             if (clashZones == null || clashZones.Count == 0)
+            {
+                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ [FlagManagerService] BatchUpdateFlagsForPlacement: clashZones is null or empty, returning\n");
                 return;
+            }
             if (string.IsNullOrWhiteSpace(category))
                 throw new ArgumentException("Category cannot be null or empty", nameof(category));
             try
@@ -488,6 +496,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                         
                         // Clear individual sleeve ID if it was set (since it's now a cluster)
                         clashZone.SleeveInstanceId = -1;
+                        
+                        // 🔥 DIAGNOSTIC: Log flag changes
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] 🔥 [FlagManagerService] SET CLUSTER FLAGS: ClashZone={clashZone.Id}, IsClusterResolved=true, ClusterSleeveId={sleeveId}\n");
                     }
                     else
                     {
@@ -511,13 +523,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                         clashZone.IsClusteredFlag
                     ));
                 }
-                if (dbUpdates.Count == 0) return;
+                if (dbUpdates.Count == 0)
+                {
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ [FlagManagerService] BatchUpdateFlagsForPlacement: dbUpdates is empty after processing, returning\n");
+                    return;
+                }
+                
+                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🔥 [FlagManagerService] CALLING _repository.BatchUpdateFlagsWithCurrentClash with {dbUpdates.Count} updates\n");
+                
                 _logger.Info($"📝 BATCH: Flagging {dbUpdates.Count} clash zones as placed (Resetting IsCurrentClash)", "FlagManager");
                 _repository.BatchUpdateFlagsWithCurrentClash(dbUpdates);
                 _logger.Info($"✅ BATCH: Updated flags for {dbUpdates.Count} clash zones", "FlagManager");
+                
+                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ✅ [FlagManagerService] BatchUpdateFlagsWithCurrentClash COMPLETED for {dbUpdates.Count} updates\n");
             }
             catch (Exception ex)
             {
+                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ❌ [FlagManagerService] BatchUpdateFlagsForPlacement ERROR: {ex.Message}\n");
                 _logger.Error($"❌ BATCH: Error in BatchUpdateFlagsForPlacement: {ex.Message}", ex, "FlagManager");
                 throw;
             }

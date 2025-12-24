@@ -1607,7 +1607,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
 
                     // ✅ CRITICAL FIX: Set Size parameter value for database column
                     // This was missing, causing the 'Size' column in DB to be empty even if parameter was captured in JSON
-                    MepElementSizeParameterValue = GetSizeParameterValue(mepParameters)
+                    MepElementSizeParameterValue = GetSizeParameterValue(mepParameters),
+                    
+                    // ✅ CRITICAL FIX: Explicitly set IsCurrentClash to true
+                    // Damper zones are created during refresh, so they are by definition "Current" active clashes
+                    // Without this, they are filtered out by GetClashZonesByFiles (WHERE IsCurrentClash = 1)
+                    IsCurrentClash = true
                 };
 
                 // ✅ O(1) EXISTENCE CHECK: Set IsResolved if sleeve exists at this location

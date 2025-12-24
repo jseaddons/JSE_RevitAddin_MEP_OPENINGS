@@ -127,8 +127,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             strategy,
                             clearanceSettings,
                             new SleeveRepository(), // ✅ Required: Create repository instance
-                            null, // zoneFilterService - can be null
-                            null, // familyManager - can be null
+                            null!, // zoneFilterService - can be null (suppressed warning)
+                            null!, // familyManager - can be null (suppressed warning)
                             _flagManager, // ✅ Use IFlagManager directly
                             isReplayPath: false, // ✅ PATH 2 logic: Full calculation
                             filterName ?? "Unknown",
@@ -183,8 +183,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     strategy,
                     clearanceSettings,
                     new SleeveRepository(), // ✅ Required: Create repository instance
-                    null, // zoneFilterService - can be null
-                    null, // familyManager - can be null
+                    null!, // zoneFilterService - can be null (suppressed warning)
+                    null!, // familyManager - can be null (suppressed warning)
                     _flagManager, // ✅ Use IFlagManager directly
                     isReplayPath: false, // ✅ PATH 2 logic: Full calculation and placement
                     filterName);

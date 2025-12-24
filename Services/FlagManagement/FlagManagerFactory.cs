@@ -92,7 +92,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
             if (document == null)
                 throw new ArgumentNullException(nameof(document));
             
+            // ✅ CRITICAL FIX: Create actual FlagManagerService if refactoredService is null
+            // Previously, passing null caused the adapter to do nothing!
+            if (refactoredService == null)
+            {
+                logger = logger ?? LoggerAdapter.Default;
+                
+                // Create required dependencies
+                var dbContext = new SleeveDbContext(document);
+                var repository = new ClashZoneRepository(dbContext);
+                var sleeveCollector = new RevitSleeveCollector();
+                
+                // ✅ Use simple stub for IInstanceIdManager (not used by BatchUpdateFlagsForPlacement)
+                var instanceIdManager = new StubInstanceIdManager();
+                
+                // Create actual FlagManagerService
+                refactoredService = new FlagManagerService(document, instanceIdManager, repository, sleeveCollector, logger);
+            }
+            
             return new FlagManagerAdapter(document, refactoredService);
+        }
+    }
+
+    /// <summary>
+    /// Simple stub implementation of IInstanceIdManager.
+    /// Only used by FlagManagerFactory when creating FlagManagerService.
+    /// ✅ BatchUpdateFlagsForPlacement does NOT use IInstanceIdManager, so this stub is safe.
+    /// </summary>
+    internal class StubInstanceIdManager : IInstanceIdManager
+    {
+        public int ResetInstanceIdsForDeletedSleeves(
+            System.Collections.Generic.List<string> categories,
+            System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<Models.ClashZone>> clashZonesByCategory = null,
+            string refreshLogName = null)
+        {
+            // Stub - not used by BatchUpdateFlagsForPlacement
+            return 0;
         }
     }
 }

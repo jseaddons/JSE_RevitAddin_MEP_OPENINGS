@@ -897,58 +897,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 return;
             }
 
-            // ✅ SAFE FALLBACK: Use individual updates if bulk updates are disabled
-            // This bypasses potential SQLite syntax issues with UPDATE FROM
-            if (!Services.OptimizationFlags.UseBulkSqliteUpdates)
-            {
-                _logger($"[SQLite][BATCH] ⚠️ Bulk updates disabled - switching to iterative updates for {updates.Count} items");
-                using (var transaction = _context.Connection.BeginTransaction())
-                {
-                    try
-                    {
-                        using (var cmd = _context.Connection.CreateCommand())
-                        {
-                            cmd.Transaction = transaction;
-                            foreach (var update in updates)
-                            {
-                                cmd.Parameters.Clear();
-                                cmd.CommandText = @"
-                                    UPDATE ClashZones SET 
-                                        IsResolvedFlag = @IsResolved,
-                                        IsClusterResolvedFlag = @IsClusterResolved,
-                                        IsCombinedResolved = @IsCombinedResolved,
-                                        SleeveInstanceId = @SleeveInstanceId,
-                                        ClusterSleeveInstanceId = @ClusterInstanceId,
-                                        IsCurrentClashFlag = @IsCurrentClash,
-                                        IsClusteredFlag = @IsClusteredFlag,
-                                        UpdatedAt = CURRENT_TIMESTAMP
-                                    WHERE ClashZoneGuid = @ClashZoneId"; // Use GUID matching
-
-                                cmd.Parameters.AddWithValue("@IsResolved", update.IsResolved ? 1 : 0);
-                                cmd.Parameters.AddWithValue("@IsClusterResolved", update.IsClusterResolved ? 1 : 0);
-                                cmd.Parameters.AddWithValue("@IsCombinedResolved", update.IsCombinedResolved ? 1 : 0);
-                                cmd.Parameters.AddWithValue("@SleeveInstanceId", update.SleeveInstanceId);
-                                cmd.Parameters.AddWithValue("@ClusterInstanceId", update.ClusterInstanceId);
-                                cmd.Parameters.AddWithValue("@IsCurrentClash", update.IsCurrentClash ? 1 : 0);
-                                cmd.Parameters.AddWithValue("@IsClusteredFlag", update.IsClusteredFlag ? 1 : 0);
-                                cmd.Parameters.AddWithValue("@ClashZoneId", update.ClashZoneId.ToString());
-
-                                cmd.ExecuteNonQuery();
-                            }
-                        }
-                        transaction.Commit();
-                        _logger($"[SQLite][BATCH] ✅ Iterative update complete for {updates.Count} items");
-                    }
-                    catch (Exception ex)
-                    {
-                        transaction.Rollback();
-                        _logger($"[SQLite][BATCH] ❌ Error in iterative update: {ex.Message}");
-                        throw;
-                    }
-                }
-                return;
-            }
-
             try
             {
                 using (var transaction = _context.Connection.BeginTransaction())
@@ -1030,27 +978,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         }
                     }
                     
-
-                    // Execute single UPDATE using JOIN
-
-                    // Execute single UPDATE using JOIN
-                    using (var cmd = _context.Connection.CreateCommand())
+                    // ✅ CRITICAL: Execute UPDATE using JOIN from temp table to main table
+                    using (var updateCmd = _context.Connection.CreateCommand())
                     {
-                        cmd.Transaction = transaction;
-                        cmd.CommandText = @"
+                        updateCmd.Transaction = transaction;
+                        updateCmd.CommandText = @"
                             UPDATE ClashZones
                             SET 
-                                IsResolvedFlag = TempFlagUpdates.IsResolved,
-                                IsClusterResolvedFlag = TempFlagUpdates.IsClusterResolved,
-                                IsCombinedResolved = TempFlagUpdates.IsCombinedResolved,
-                                SleeveInstanceId = TempFlagUpdates.SleeveInstanceId,
-                                ClusterSleeveInstanceId = TempFlagUpdates.ClusterInstanceId,
-                                IsCurrentClashFlag = TempFlagUpdates.IsCurrentClash,
-                                IsClusteredFlag = TempFlagUpdates.IsClusteredFlag,
+                                IsResolvedFlag = (SELECT IsResolved FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneGuid),
+                                IsClusterResolvedFlag = (SELECT IsClusterResolved FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneGuid),
+                                IsCombinedResolved = (SELECT IsCombinedResolved FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneGuid),
+                                SleeveInstanceId = (SELECT SleeveInstanceId FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneGuid),
+                                ClusterInstanceId = (SELECT ClusterInstanceId FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneGuid),
+                                IsCurrentClashFlag = (SELECT IsCurrentClash FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneGuid),
+                                IsClusteredFlag = (SELECT IsClusteredFlag FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneGuid),
                                 UpdatedAt = CURRENT_TIMESTAMP
-                            FROM TempFlagUpdates
-                            WHERE ClashZones.ClashZoneId = TempFlagUpdates.ClashZoneId";
-                        cmd.ExecuteNonQuery();
+                            WHERE ClashZoneGuid IN (SELECT ClashZoneId FROM TempFlagUpdates)";
+                        int rowsAffected = updateCmd.ExecuteNonQuery();
+                        _logger($"[SQLite][BATCH] ✅ UPDATE executed: {rowsAffected} rows affected");
                     }
 
                     // ✅ DIAGNOSTIC: Check if the flags were actually set
@@ -1061,15 +1006,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         using (var verifyCmd = _context.Connection.CreateCommand())
                         {
                             verifyCmd.Transaction = transaction;
-                            verifyCmd.CommandText = $"SELECT IsResolvedFlag, IsClusterResolvedFlag, SleeveInstanceId, ClusterSleeveInstanceId FROM ClashZones WHERE ClashZoneGuid = '{sampleId}'";
+                            verifyCmd.CommandText = $"SELECT IsResolvedFlag, IsClusterResolvedFlag, SleeveInstanceId, ClusterInstanceId FROM ClashZones WHERE ClashZoneGuid = '{sampleId}'";
                             using (var reader = verifyCmd.ExecuteReader())
+
                             {
                                 if (reader.Read())
                                 {
                                     int isResolved = GetInt(reader, "IsResolvedFlag", 0);
                                     int isClusterResolved = GetInt(reader, "IsClusterResolvedFlag", 0);
                                     int sleeveId = GetInt(reader, "SleeveInstanceId", 0);
-                                    int clusterId = GetInt(reader, "ClusterSleeveInstanceId", 0);
+                                    int clusterId = GetInt(reader, "ClusterInstanceId", 0);
                                     _logger($"[SQLite][BATCH] 🔍 VERIFY: ClashZone {sampleId} after update: IsResolvedFlag={isResolved}, IsClusterResolvedFlag={isClusterResolved}, SleeveId={sleeveId}, ClusterId={clusterId}");
                                 }
                                 else
@@ -1087,6 +1033,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         dropCmd.CommandText = "DROP TABLE IF EXISTS TempFlagUpdates";
                         dropCmd.ExecuteNonQuery();
                     }
+
+                    // ✅ CRITICAL: Commit the transaction to persist changes
+                    transaction.Commit();
+                    _logger($"[SQLite][BATCH] ✅ Transaction committed successfully for {updates.Count} flag updates");
                 }
             }
             catch (Exception ex)
@@ -1762,6 +1712,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         MepOrientationX, MepOrientationY, MepOrientationZ,
                         MepRotationAngleRad, MepRotationAngleDeg,
                         MepAngleToXRad, MepAngleToXDeg, MepAngleToYRad, MepAngleToYDeg,
+                        MepParameterValuesJson, HostParameterValuesJson,
+                        MepElementSystemAbbreviation, MepElementFormattedSize, IsStandardDamper,
                         IsCurrentClashFlag, ReadyForPlacementFlag, UpdatedAt
                     ) VALUES ");
 
@@ -1782,7 +1734,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                    $"@CAT{j}, @ST{j}, @MW{j}, @MH{j}, @OD{j}, @ND{j}, @TN{j}, @FN{j}, @SP{j}, " +
                                    $"@LN{j}, @LE{j}, @STH{j}, @WTH{j}, @FTH{j}, @INS{j}, @INSTH{j}, @CONN{j}, @CONNSIDE{j}, " +
                                    $"@SDK{j}, @HDK{j}, @UID{j}, @HO{j}, @MOD{j}, @MOX{j}, @MOY{j}, @MOZ{j}, " +
-                                   $"@MRAR{j}, @MRAD{j}, @MAXR{j}, @MAXD{j}, @MAYR{j}, @MAYD{j}, 1, 1, @T{j})");
+                                   $"@MRAR{j}, @MRAD{j}, @MAXR{j}, @MAXD{j}, @MAYR{j}, @MAYD{j}, " +
+                                   $"@MPJ{j}, @HPJ{j}, @MSA{j}, @MFS{j}, @ISD{j}, 1, 1, @T{j})");
                         if (j < currentBatch.Count - 1) sql.Append(",");
 
                         cmd.Parameters.AddWithValue($"@G{j}", zone.Id.ToString());
@@ -1827,6 +1780,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         cmd.Parameters.AddWithValue($"@MAXD{j}", 0.0); // MepAngleToXDeg - populated later
                         cmd.Parameters.AddWithValue($"@MAYR{j}", 0.0); // MepAngleToYRad - populated later
                         cmd.Parameters.AddWithValue($"@MAYD{j}", 0.0); // MepAngleToYDeg - populated later
+                        
+                        // ✅ CRITICAL: Serialize MEP and Host parameter values to JSON as Dictionary format
+                        // Uses Dictionary format {"key":"value"} for consistency with AddClashZoneParameters
+                        string mepParamJson = "{}";
+                        if (zone.MepParameterValues != null && zone.MepParameterValues.Count > 0)
+                        {
+                            try 
+                            { 
+                                var mepDict = zone.MepParameterValues
+                                    .Where(kv => kv != null && !string.IsNullOrEmpty(kv.Key))
+                                    .ToDictionary(kv => kv.Key, kv => kv.Value ?? string.Empty, StringComparer.OrdinalIgnoreCase);
+                                mepParamJson = System.Text.Json.JsonSerializer.Serialize(mepDict); 
+                            }
+                            catch { mepParamJson = "{}"; }
+                        }
+                        cmd.Parameters.AddWithValue($"@MPJ{j}", mepParamJson);
+                        
+                        string hostParamJson = "{}";
+                        if (zone.HostParameterValues != null && zone.HostParameterValues.Count > 0)
+                        {
+                            try 
+                            { 
+                                var hostDict = zone.HostParameterValues
+                                    .Where(kv => kv != null && !string.IsNullOrEmpty(kv.Key))
+                                    .ToDictionary(kv => kv.Key, kv => kv.Value ?? string.Empty, StringComparer.OrdinalIgnoreCase);
+                                hostParamJson = System.Text.Json.JsonSerializer.Serialize(hostDict); 
+                            }
+                            catch { hostParamJson = "{}"; }
+                        }
+                        cmd.Parameters.AddWithValue($"@HPJ{j}", hostParamJson);
+
+                        
+                        cmd.Parameters.AddWithValue($"@MSA{j}", zone.MepElementSystemAbbreviation ?? string.Empty);
+                        cmd.Parameters.AddWithValue($"@MFS{j}", zone.MepElementFormattedSize ?? string.Empty);
+                        cmd.Parameters.AddWithValue($"@ISD{j}", zone.IsStandardDamper ? 1 : 0);
+                        
                         cmd.Parameters.AddWithValue($"@T{j}", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
                     }
 
@@ -1835,6 +1824,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 }
             }
         }
+
 
         public void InsertOrUpdateClashZones(IEnumerable<ClashZone> clashZones, string filterName, string category)
         {
@@ -6294,19 +6284,56 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
         private Dictionary<string, string> DeserializeDictionary(string json)
         {
-            if (string.IsNullOrWhiteSpace(json) || json == "{}" || json == "NULL")
+            if (string.IsNullOrWhiteSpace(json) || json == "{}" || json == "NULL" || json == "[]")
                 return new Dictionary<string, string>();
 
             try
             {
-                return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json)
-                    ?? new Dictionary<string, string>();
+                // ✅ CRITICAL FIX: Handle TWO possible JSON formats:
+                // 1. Dictionary format: {"key1":"value1","key2":"value2"} (from AddClashZoneParameters)
+                // 2. Array of Key/Value objects: [{"Key":"k1","Value":"v1"},{"Key":"k2","Value":"v2"}] (from BulkInsertClashZones)
+                
+                json = json.Trim();
+                
+                // Try Dictionary format first (starts with '{')
+                if (json.StartsWith("{"))
+                {
+                    return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json)
+                        ?? new Dictionary<string, string>();
+                }
+                
+                // Try Array of Key/Value objects format (starts with '[')
+                if (json.StartsWith("["))
+                {
+                    var list = System.Text.Json.JsonSerializer.Deserialize<List<Models.SerializableKeyValue>>(json);
+                    if (list != null && list.Count > 0)
+                    {
+                        var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                        foreach (var kv in list)
+                        {
+                            if (kv != null && !string.IsNullOrEmpty(kv.Key))
+                            {
+                                dict[kv.Key] = kv.Value ?? string.Empty;
+                            }
+                        }
+                        return dict;
+                    }
+                }
+                
+                return new Dictionary<string, string>();
             }
-            catch
+            catch (Exception ex)
             {
+                // Log the error if in debug mode
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] ❌ DeserializeDictionary failed: {ex.Message}, JSON prefix: {json?.Substring(0, Math.Min(50, json?.Length ?? 0))}\n");
+                }
                 return new Dictionary<string, string>();
             }
         }
+
 
         private void SetMetadataFromReader(ClashZone clashZone, SQLiteDataReader reader)
         {

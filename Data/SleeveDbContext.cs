@@ -305,8 +305,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                             IntersectionY REAL NOT NULL,
                             IntersectionZ REAL NOT NULL,
                             SleeveState   INTEGER NOT NULL DEFAULT 0,
-                            SleeveInstanceId INTEGER,
-                            ClusterInstanceId INTEGER,
+                            SleeveInstanceId INTEGER DEFAULT -1,
+                            ClusterInstanceId INTEGER DEFAULT -1,
                             SleeveWidth   REAL,
                             SleeveHeight  REAL,
                             SleeveDiameter REAL,
@@ -599,6 +599,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     // This is the exact text from the Size parameter, stored for transfer to sleeve MEP_Size parameter
                     if (AddColumnIfMissing("ClashZones", "MepElementSizeParameterValue", "TEXT DEFAULT ''", transaction))
                         _logger("[SQLite] ✅ Added MepElementSizeParameterValue column to ClashZones (Size parameter as string)");
+                    
+                    // ✅ MEP SYSTEM INFO: Add missing system abbreviation and formatted size columns
+                    if (AddColumnIfMissing("ClashZones", "MepElementSystemAbbreviation", "TEXT", transaction))
+                        _logger("[SQLite] ✅ Added MepElementSystemAbbreviation column to ClashZones");
+                    if (AddColumnIfMissing("ClashZones", "MepElementFormattedSize", "TEXT", transaction))
+                        _logger("[SQLite] ✅ Added MepElementFormattedSize column to ClashZones");
+                    
+                    // ✅ DAMPER INFO: Add standard damper flag
+                    if (AddColumnIfMissing("ClashZones", "IsStandardDamper", "INTEGER NOT NULL DEFAULT 0", transaction))
+                        _logger("[SQLite] ✅ Added IsStandardDamper column to ClashZones");
                     AddColumnIfMissing("ClashZones", "SleeveFamilyName", "TEXT", transaction);
                     AddColumnIfMissing("ClashZones", "SleevePlacementActiveX", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "SleevePlacementActiveY", "REAL", transaction);
@@ -642,9 +652,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     // ✅ COMBINED RESOLVED: Flag for Phase 4 combined sleeves
                     if (AddColumnIfMissing("ClashZones", "IsCombinedResolved", "INTEGER NOT NULL DEFAULT 0", transaction))
                         _logger("[SQLite] ✅ Added IsCombinedResolved column to ClashZones (for combined sleeves)");
-                    AddColumnIfMissing("ClashZones", "IsClusteredFlag", "INTEGER", transaction);
-                    AddColumnIfMissing("ClashZones", "MarkedForClusterProcess", "INTEGER", transaction);
-                    AddColumnIfMissing("ClashZones", "AfterClusterSleeveId", "INTEGER", transaction);
+                    AddColumnIfMissing("ClashZones", "IsClusteredFlag", "INTEGER NOT NULL DEFAULT 0", transaction);
+                    AddColumnIfMissing("ClashZones", "MarkedForClusterProcess", "INTEGER NOT NULL DEFAULT 0", transaction);
+                    AddColumnIfMissing("ClashZones", "AfterClusterSleeveId", "INTEGER NOT NULL DEFAULT -1", transaction);
                     // ✅ COMBINED RESOLVED: Instance ID for the combined sleeve if this zone is part of one
                     AddColumnIfMissing("ClashZones", "CombinedClusterSleeveInstanceId", "INTEGER", transaction);
                     AddColumnIfMissing("ClashZones", "HasDamperNearbyFlag", "INTEGER NOT NULL DEFAULT 0", transaction);

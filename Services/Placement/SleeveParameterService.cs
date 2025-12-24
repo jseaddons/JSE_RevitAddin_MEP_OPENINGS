@@ -1031,7 +1031,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             }
 
             // ✅ FAMILY CHECK: Only apply to RectangularOpeningOnWall family
-            string familyName = instance.Symbol?.FamilyName ?? "";
+            string familyName = instance.Symbol?.FamilyName ?? string.Empty;
             if (!familyName.Equals("RectangularOpeningOnWall", StringComparison.OrdinalIgnoreCase))
             {
                 if (!DeploymentConfiguration.DeploymentMode)
@@ -1090,8 +1090,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 double? scheduleOfLevel = elevationFromLevel;
 
                 // ✅ DIAGNOSTIC LOGGING: Log all values before validation and calculation
-                string elevationStr = elevationFromLevel.HasValue ? $"{elevationFromLevel.Value * 304.8:F1}mm" : "null";
-                string scheduleStr = scheduleOfLevel.HasValue ? $"{scheduleOfLevel.Value * 304.8:F1}mm" : "null";
+                string elevationStr = elevationFromLevel.HasValue ? $"{elevationFromLevel.Value * 304.8:F1}mm" : string.Empty;
+                string scheduleStr = scheduleOfLevel.HasValue ? $"{scheduleOfLevel.Value * 304.8:F1}mm" : string.Empty;
                 SafeFileLogger.SafeAppendText("placement_debug.log",
                     $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] 🔍 DIAGNOSTIC: Zone={zone?.Id}, Sleeve={instance.Id}\n" +
                     $"  - elevationFromLevel (read from param): {elevationFromLevel?.ToString() ?? "null"} ({elevationStr})\n" +
@@ -1128,7 +1128,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     scheduleOfLevel.Value, height);
                 
                 // ✅ DIAGNOSTIC LOGGING: Log calculation result
-                string bottomOfOpeningStr = bottomOfOpening.HasValue ? $"{bottomOfOpening.Value * 304.8:F1}mm" : "null";
+                string bottomOfOpeningStr = bottomOfOpening.HasValue ? $"{bottomOfOpening.Value * 304.8:F1}mm" : string.Empty;
                 SafeFileLogger.SafeAppendText("placement_debug.log",
                     $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] 🔍 CALCULATION RESULT: Zone={zone?.Id}, Sleeve={instance.Id}\n" +
                     $"  - Input: scheduleOfLevel={scheduleOfLevel.Value} ({scheduleOfLevel.Value * 304.8:F1}mm), height={height} ({height * 304.8:F1}mm)\n" +

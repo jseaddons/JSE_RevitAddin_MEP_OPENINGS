@@ -253,7 +253,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Impact: Reduces SQLite write time from ~517ms to ~30ms for 9 zones (17x faster)
         /// Location: Data/ClashZoneRepository.cs (InsertOrUpdateClashZones)
         /// </summary>
-        public static bool UseBulkSqliteUpdates { get; set; } = false; // ⚠️ DISABLED BY USER REQUEST (Safe Fallback)
+        public static bool UseBulkSqliteUpdates { get; set; } = true;
 
         /// <summary>
         /// Perform SQLite schema/R-tree verification only once per session.
@@ -554,7 +554,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// ✅ BUG FIXED (2025-01-XX): Added GetParameterValueWithBatchingSupport() to read from deferred cache
         ///    before flushing, preventing stale reads of Width/Height/Depth during corner placement calculations.
         /// </summary>
-        public static bool UseBatchedParameterWrites { get; set; } = false; // ⚠️ DISABLED BY USER REQUEST (Safe Fallback)
+        public static bool UseBatchedParameterWrites { get; set; } = true;
 
         /// <summary>
         /// Enable snapshot parameter transfer from SQLite SleeveSnapshots into placed sleeve instances after pipeline placement.
@@ -706,7 +706,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Default: true (safe optimization)
         /// Location: Services/NewSleevePlacerService.cs
         /// </summary>
-        public static bool UseBatchParameterOperations { get; set; } = false; // ⚠️ DISABLED BY USER REQUEST (Safe Fallback)
+        public static bool UseBatchParameterOperations { get; set; } = true;
 
         /// <summary>
         /// Use pre-caching of family symbols before placement (eliminates loading overhead)
