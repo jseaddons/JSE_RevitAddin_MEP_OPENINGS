@@ -129,6 +129,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return CaptureParamsLegacy(element, whitelist, element?.Document, null);
         }
 
+        /// <summary>
+        /// ✅ BATCH OPTIMIZATION: Capture parameters for multiple elements in one pass.
+        /// Returns a dictionary mapping element IDs to their parameter dictionaries.
+        /// This significantly reduces overhead in large refresh operations.
+        /// </summary>
+        public static Dictionary<int, Dictionary<string, string>> CaptureBatchParams(IEnumerable<Element> elements)
+        {
+            var results = new Dictionary<int, Dictionary<string, string>>();
+            if (elements == null) return results;
+
+            // Use the default legacy whitelist for batch processing
+            var whitelist = BuildWhitelistLegacy();
+
+            foreach (var element in elements)
+            {
+                if (element == null) continue;
+
+                var id = element.Id.IntegerValue;
+                if (results.ContainsKey(id)) continue;
+
+                // Capture using the legacy logic
+                var snapshots = CaptureParamsLegacy(element, whitelist, element.Document, null);
+                
+                // Convert to dictionary for easy O(1) lookup in processing loops
+                var paramDict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var snapshot in snapshots)
+                {
+                    if (!string.IsNullOrEmpty(snapshot.Key))
+                        paramDict[snapshot.Key] = snapshot.Value ?? "";
+                }
+
+                results[id] = paramDict;
+            }
+
+            return results;
+        }
+
         private static partial List<SerializableKeyValue> CaptureParamsLegacy(Element element, HashSet<string> whitelist, Document doc, string docKey)
         {
             var result = new List<SerializableKeyValue>();

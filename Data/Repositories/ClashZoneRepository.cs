@@ -88,6 +88,163 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
 
         /// <summary>
+        /// ✅ PUBLIC BATCH OPTIMIZATION: Insert or update clash zones in a single multi-category batch.
+        /// Consolidates multiple transactions into one atomic operation.
+        /// </summary>
+        public void InsertOrUpdateClashZonesBulk(IEnumerable<ClashZone> clashZones, string filterName)
+        {
+            var zonesList = clashZones?.ToList() ?? new List<ClashZone>();
+            if (zonesList.Count == 0) return;
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            _logger($"[SQLite][BULK-MULTI] ⚡ Starting multi-category bulk update for {zonesList.Count} zones");
+
+            using (var transaction = _context.Connection.BeginTransaction())
+            {
+                try
+                {
+                    // Group by category to respect the database schema (Filters table)
+                    var byCategory = zonesList
+                        .Where(z => z != null && !string.IsNullOrWhiteSpace(z.MepElementCategory))
+                        .GroupBy(z => z.MepElementCategory, StringComparer.OrdinalIgnoreCase);
+
+                    foreach (var categoryGroup in byCategory)
+                    {
+                        string category = categoryGroup.Key;
+                        var categoryZones = categoryGroup.ToList();
+
+                        _logger($"[SQLite][BULK-MULTI]   Processing category '{category}' with {categoryZones.Count} zones");
+
+                        int filterId;
+                        using (var filterOp = _performanceMonitor?.TrackOperation("9a2a. Get Filter ID"))
+                        {
+                            filterId = GetOrCreateFilter(filterName, category, transaction);
+                        }
+                        
+                        if (filterId <= 0)
+                        {
+                            _logger($"[SQLite][BULK-MULTI] ⚠️ Filter not found: '{filterName}' category '{category}'");
+                            continue; 
+                        }
+
+                        // Build GUID list for batch lookup
+                        var guidList = string.Join(",", categoryZones.Select(z => $"'{z.Id.ToString().ToUpperInvariant()}'"));
+
+                        // Batch lookup
+                        var existingMap = new Dictionary<Guid, int>();
+                        using (var fetchOp = _performanceMonitor?.TrackOperation("9a2b. Fetch Existing IDs"))
+                        {
+                            using (var cmd = _context.Connection.CreateCommand())
+                            {
+                                cmd.Transaction = transaction;
+                                cmd.CommandText = $@"
+                                    SELECT ClashZoneGuid, ClashZoneId 
+                                    FROM ClashZones 
+                                    WHERE UPPER(ClashZoneGuid) IN ({guidList})
+                                      AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL";
+
+                                using (var reader = cmd.ExecuteReader())
+                                {
+                                    while (reader.Read())
+                                    {
+                                        var guid = Guid.Parse(reader.GetString(0));
+                                        var id = reader.GetInt32(1);
+                                        existingMap[guid] = id;
+                                    }
+                                }
+                            }
+                        }
+
+                        // Batch File Combos
+                        Dictionary<Guid, int> comboMap;
+                        using (var comboOp = _performanceMonitor?.TrackOperation("9a5. Batch File Combos") as PerformanceMonitor.OperationTracker)
+                        {
+                            comboMap = BatchGetOrCreateFileCombos(categoryZones, filterId, category, transaction);
+                        }
+
+                        // Update existing
+                        var toUpdate = categoryZones.Where(z => existingMap.ContainsKey(z.Id)).ToList();
+                        if (toUpdate.Count > 0)
+                        {
+                            // Populate IDs for R-tree sync
+                            foreach (var zone in toUpdate) zone.ClashZoneId = existingMap[zone.Id];
+
+                            using (var updateOp = _performanceMonitor?.TrackOperation("9a3. Bulk Update") as PerformanceMonitor.OperationTracker)
+                            {
+                                BulkUpdateClashZones(toUpdate, existingMap, comboMap, transaction);
+                                updateOp?.SetItemCount(toUpdate.Count);
+                            }
+
+                            // ✅ SYNC R-TREE: Update spatial index for existing zones
+                            BulkUpdateRTreeIndex(toUpdate, transaction);
+                        }
+
+                        // Insert new
+                        var toInsert = categoryZones.Where(z => !existingMap.ContainsKey(z.Id) && comboMap.ContainsKey(z.Id)).ToList();
+                        if (toInsert.Count > 0)
+                        {
+                            using (var insertOp = _performanceMonitor?.TrackOperation("9a2. Bulk Insert") as PerformanceMonitor.OperationTracker)
+                            {
+                                BulkInsertClashZones(toInsert, comboMap, transaction);
+                                insertOp?.SetItemCount(toInsert.Count);
+                            }
+
+                            // ✅ SYNC R-TREE: Fetch new IDs and update spatial index
+                            // We must re-query to get the auto-increment IDs for the R-tree mapping
+                            var newZonesGuidList = string.Join(",", toInsert.Select(z => $"'{z.Id.ToString().ToUpperInvariant()}'"));
+                            using (var fetchNewCmd = _context.Connection.CreateCommand())
+                            {
+                                fetchNewCmd.Transaction = transaction;
+                                fetchNewCmd.CommandText = $"SELECT ClashZoneGuid, ClashZoneId FROM ClashZones WHERE UPPER(ClashZoneGuid) IN ({newZonesGuidList})";
+                                using (var reader = fetchNewCmd.ExecuteReader())
+                                {
+                                    var newIdMap = new Dictionary<Guid, int>();
+                                    while (reader.Read())
+                                    {
+                                        var guid = Guid.Parse(reader.GetString(0));
+                                        var id = reader.GetInt32(1);
+                                        newIdMap[guid] = id;
+                                    }
+
+                                    foreach (var zone in toInsert)
+                                    {
+                                        if (newIdMap.TryGetValue(zone.Id, out int newId))
+                                        {
+                                            zone.ClashZoneId = newId;
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            BulkUpdateRTreeIndex(toInsert, transaction);
+                        }
+
+                        // Snapshots
+                        var processedZonesData = categoryZones
+                            .Where(z => comboMap.ContainsKey(z.Id))
+                            .Select(z => (comboMap[z.Id], z))
+                            .ToList();
+                        
+                        if (processedZonesData.Count > 0)
+                        {
+                            InsertOrUpdateSleeveSnapshots(filterId, processedZonesData, transaction);
+                        }
+                    }
+
+                    transaction.Commit();
+                    sw.Stop();
+                    _logger($"[SQLite][BULK-MULTI] ✅ Completed in {sw.ElapsedMilliseconds}ms");
+                }
+                catch (Exception ex)
+                {
+                    _logger($"[SQLite][BULK-MULTI] ❌ Error: {ex.Message}");
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+        }
+
+        /// <summary>
         /// ✅ PERFORMANCE OPTIMIZED: Bulk INSERT/UPDATE for clash zones using batch SQL operations
         /// Reduces 9 zones from ~517ms to ~30ms (17x faster) by eliminating per-zone queries
         /// </summary>
@@ -125,8 +282,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         }
                     }
 
-                    // Get filter ID once
-                    var filterId = GetOrCreateFilter(filterName, category, transaction);
+                    int filterId;
+                    using (var filterOp = _performanceMonitor?.TrackOperation("9a2a. Get Filter ID"))
+                    {
+                        filterId = GetOrCreateFilter(filterName, category, transaction);
+                    }
                     if (filterId <= 0)
                     {
                         _logger($"[SQLite][BULK] ⚠️ Filter not found: '{filterName}' category '{category}'");
@@ -139,22 +299,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                     // Batch lookup: find all existing ClashZoneIds by GUID in single query
                     var existingMap = new Dictionary<Guid, int>();
-                    using (var cmd = _context.Connection.CreateCommand())
+                    using (var fetchOp = _performanceMonitor?.TrackOperation("9a2b. Fetch Existing IDs"))
                     {
-                        cmd.Transaction = transaction;
-                        cmd.CommandText = $@"
-                            SELECT ClashZoneGuid, ClashZoneId 
-                            FROM ClashZones 
-                            WHERE UPPER(ClashZoneGuid) IN ({guidList})
-                              AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL";
-
-                        using (var reader = cmd.ExecuteReader())
+                        using (var cmd = _context.Connection.CreateCommand())
                         {
-                            while (reader.Read())
+                            cmd.Transaction = transaction;
+                            cmd.CommandText = $@"
+                                SELECT ClashZoneGuid, ClashZoneId 
+                                FROM ClashZones 
+                                WHERE UPPER(ClashZoneGuid) IN ({guidList})
+                                  AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL";
+
+                            using (var reader = cmd.ExecuteReader())
                             {
-                                var guid = Guid.Parse(reader.GetString(0));
-                                var id = reader.GetInt32(1);
-                                existingMap[guid] = id;
+                                while (reader.Read())
+                                {
+                                    var guid = Guid.Parse(reader.GetString(0));
+                                    var id = reader.GetInt32(1);
+                                    existingMap[guid] = id;
+                                }
                             }
                         }
                     }
@@ -298,7 +461,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         }
                     }
 
-                    transaction.Commit();
+                    using (var commitOp = _performanceMonitor?.TrackOperation("9a2c. Commit Transaction"))
+                    {
+                        transaction.Commit();
+                    }
                     sw.Stop();
                     _logger($"[SQLite][BULK] ⚡ Completed in {sw.ElapsedMilliseconds}ms ({sw.ElapsedMilliseconds / (double)zonesList.Count:F1}ms per zone)");
                 }
@@ -4291,10 +4457,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         var sectionBoxClause = "";
                         if (sectionBox != null)
                         {
-                            sectionBoxClause = @"
-                                AND cz.IntersectionPointX >= @MinX AND cz.IntersectionPointX <= @MaxX
-                                AND cz.IntersectionPointY >= @MinY AND cz.IntersectionPointY <= @MaxY
-                                AND cz.IntersectionPointZ >= @MinZ AND cz.IntersectionPointZ <= @MaxZ";
+                            if (OptimizationFlags.UseRTreeDatabaseIndex)
+                            {
+                                // ✅ R-TREE OPTIMIZATION: Use spatial index join for O(log n) filtering
+                                // This is significantly faster for large databases with small section boxes
+                                sectionBoxClause = @"
+                                    AND cz.ClashZoneId IN (
+                                        SELECT id FROM ClashZonesRTree 
+                                        WHERE minX <= @MaxX AND maxX >= @MinX
+                                          AND minY <= @MaxY AND maxY >= @MinY
+                                          AND minZ <= @MaxZ AND maxZ >= @MinZ
+                                    )";
+                            }
+                            else
+                            {
+                                // B-tree range query (fallback)
+                                sectionBoxClause = @"
+                                    AND cz.IntersectionPointX >= @MinX AND cz.IntersectionPointX <= @MaxX
+                                    AND cz.IntersectionPointY >= @MinY AND cz.IntersectionPointY <= @MaxY
+                                    AND cz.IntersectionPointZ >= @MinZ AND cz.IntersectionPointZ <= @MaxZ";
+                            }
                             cmd.Parameters.AddWithValue("@MinX", sectionBox.Min.X);
                             cmd.Parameters.AddWithValue("@MaxX", sectionBox.Max.X);
                             cmd.Parameters.AddWithValue("@MinY", sectionBox.Min.Y);
@@ -5122,6 +5304,122 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// ✅ R-TREE MAINTENANCE: Update R-tree index when clash zone is inserted/updated
         /// Called automatically from InsertOrUpdateClashZone
         /// </summary>
+        /// <summary>
+        /// ✅ BATCH OPTIMIZATION: Update R-tree index for multiple clash zones in one pass.
+        /// Strategy: 
+        /// 1. Delete existing entries for the IDs (batch DELETE).
+        /// 2. Batch INSERT new entries.
+        /// </summary>
+        public void BulkUpdateRTreeIndex(IEnumerable<ClashZone> zones, SQLiteTransaction? transaction = null)
+        {
+            if (!Services.OptimizationFlags.UseRTreeDatabaseIndex)
+                return;
+
+            var zonesList = zones?.ToList() ?? new List<ClashZone>();
+            if (zonesList.Count == 0) return;
+
+            try
+            {
+                // We need IDs for R-tree. If IDs are missing, we can't update.
+                // Note: zonesList must have ClashZoneId populated or we must have another way to get them.
+                var zonesWithId = zonesList.Where(z => z.ClashZoneId > 0).ToList();
+                if (zonesWithId.Count == 0) return;
+
+                bool ownTransaction = transaction == null;
+                var currentTransaction = transaction ?? _context.Connection.BeginTransaction();
+
+                try
+                {
+                    using (var cmd = _context.Connection.CreateCommand())
+                    {
+                        cmd.Transaction = currentTransaction;
+
+                        // 1. Batch DELETE
+                        var idList = string.Join(",", zonesWithId.Select(z => z.ClashZoneId));
+                        cmd.CommandText = $"DELETE FROM ClashZonesRTree WHERE id IN ({idList})";
+                        cmd.ExecuteNonQuery();
+
+                        // 2. Batch INSERT
+                        const int batchSize = 100;
+                        for (int i = 0; i < zonesWithId.Count; i += batchSize)
+                        {
+                            var batch = zonesWithId.Skip(i).Take(batchSize).ToList();
+                            var sql = new System.Text.StringBuilder();
+                            sql.Append("INSERT INTO ClashZonesRTree (id, minX, maxX, minY, maxY, minZ, maxZ) VALUES ");
+
+                            for (int j = 0; j < batch.Count; j++)
+                            {
+                                var zone = batch[j];
+                                double minX = 0, maxX = 0, minY = 0, maxY = 0, minZ = 0, maxZ = 0;
+                                bool hasValidBBox = false;
+
+                                // Tolerance check (same as UpdateRTreeIndex)
+                                bool hasValidSleeveBBox =
+                                    zone.SleeveBoundingBoxMinX < zone.SleeveBoundingBoxMaxX &&
+                                    zone.SleeveBoundingBoxMinY < zone.SleeveBoundingBoxMaxY &&
+                                    zone.SleeveBoundingBoxMinZ < zone.SleeveBoundingBoxMaxZ &&
+                                    (zone.SleeveBoundingBoxMinX != 0.0 || zone.SleeveBoundingBoxMaxX != 0.0);
+
+                                if (hasValidSleeveBBox)
+                                {
+                                    minX = zone.SleeveBoundingBoxMinX;
+                                    maxX = zone.SleeveBoundingBoxMaxX;
+                                    minY = zone.SleeveBoundingBoxMinY;
+                                    maxY = zone.SleeveBoundingBoxMaxY;
+                                    minZ = zone.SleeveBoundingBoxMinZ;
+                                    maxZ = zone.SleeveBoundingBoxMaxZ;
+                                    hasValidBBox = true;
+                                }
+                                else
+                                {
+                                    double interX = zone.IntersectionPoint?.X ?? zone.IntersectionPointX;
+                                    double interY = zone.IntersectionPoint?.Y ?? zone.IntersectionPointY;
+                                    double interZ = zone.IntersectionPoint?.Z ?? zone.IntersectionPointZ;
+
+                                    if (Math.Abs(interX) > 1e-9 || Math.Abs(interY) > 1e-9)
+                                    {
+                                        double tol = 3.28; // ~1m
+                                        minX = interX - tol; maxX = interX + tol;
+                                        minY = interY - tol; maxY = interY + tol;
+                                        minZ = interZ - tol; maxZ = interZ + tol;
+                                        hasValidBBox = true;
+                                    }
+                                }
+
+                                if (hasValidBBox)
+                                {
+                                    sql.Append($"({zone.ClashZoneId}, {minX:F6}, {maxX:F6}, {minY:F6}, {maxY:F6}, {minZ:F6}, {maxZ:F6})");
+                                    if (j < batch.Count - 1) sql.Append(",");
+                                }
+                            }
+
+                            // Clean trailing comma if last entries were skipped
+                            string finalSql = sql.ToString().TrimEnd(',');
+                            if (finalSql.EndsWith("VALUES ")) continue;
+
+                            cmd.CommandText = finalSql;
+                            cmd.ExecuteNonQuery();
+                        }
+                    }
+
+                    if (ownTransaction) currentTransaction.Commit();
+
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        _logger($"[SQLite] ✅ Bulk R-tree index updated for {zonesWithId.Count} zones");
+                }
+                catch (Exception)
+                {
+                    if (ownTransaction) currentTransaction.Rollback();
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    _logger($"[SQLite] ⚠️ Bulk R-tree update failed: {ex.Message}");
+            }
+        }
+
         private void UpdateRTreeIndex(int clashZoneId, ClashZone clashZone, SQLiteTransaction transaction)
         {
             if (!Services.OptimizationFlags.UseRTreeDatabaseIndex)
@@ -5755,6 +6053,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             {
                 clashZone.Id = clashGuid;
             }
+
+            // ✅ R-TREE SYNC: Load the database auto-increment ID
+            clashZone.ClashZoneId = GetInt(reader, "ClashZoneId", -1);
 
             var mepId = GetInt(reader, "MepElementId");
             if (mepId > 0)

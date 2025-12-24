@@ -4120,17 +4120,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Get MEP element dimensions (width and height)
         /// </summary>
-        private (double width, double height) GetMepElementDimensions(Element mepElement)
+        private (double width, double height) GetMepElementDimensions(Element mepElement, Dictionary<string, string>? paramCache = null)
         {
             try
             {
                 if (mepElement is Duct duct)
                 {
-                    var width = duct.get_Parameter(BuiltInParameter.RBS_CURVE_WIDTH_PARAM)?.AsDouble() ?? 0;
-                    var height = duct.get_Parameter(BuiltInParameter.RBS_CURVE_HEIGHT_PARAM)?.AsDouble() ?? 0;
+                    double width = 0;
+                    double height = 0;
+                    double diameter = 0;
+
+                    if (paramCache != null)
+                    {
+                        if (paramCache.TryGetValue("Width", out var wStr) && double.TryParse(wStr, out var wVal)) width = wVal / 304.8;
+                        if (paramCache.TryGetValue("Height", out var hStr) && double.TryParse(hStr, out var hVal)) height = hVal / 304.8;
+                        if (paramCache.TryGetValue("Diameter", out var dStr) && double.TryParse(dStr, out var dVal)) diameter = dVal / 304.8;
+                    }
+                    else
+                    {
+                        width = duct.get_Parameter(BuiltInParameter.RBS_CURVE_WIDTH_PARAM)?.AsDouble() ?? 0;
+                        height = duct.get_Parameter(BuiltInParameter.RBS_CURVE_HEIGHT_PARAM)?.AsDouble() ?? 0;
+                        diameter = duct.get_Parameter(BuiltInParameter.RBS_CURVE_DIAMETER_PARAM)?.AsDouble() ?? 0;
+                    }
                     
-                    // Handle round ducts
-                    var diameter = duct.get_Parameter(BuiltInParameter.RBS_CURVE_DIAMETER_PARAM)?.AsDouble() ?? 0;
                     if ((width <= 0.0 || height <= 0.0) && diameter > 0.0)
                     {
                         width = diameter;
@@ -4141,89 +4153,91 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 else if (mepElement is Pipe pipe)
                 {
-                    // ✅ CRITICAL: Use OUTER DIAMETER (not nominal diameter) for pipe sizing
-                    var outerDiameter = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_OUTER_DIAMETER)?.AsDouble() ?? 0;
-                    var nominalDiameter = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_DIAMETER_PARAM)?.AsDouble() ?? 0;
-                    
-                    // ✅ SCHEMA: Store both outer diameter and nominal diameter separately for UI toggle
-                    // Store outer diameter and nominal diameter as class-level fields for later retrieval
-                    // These will be populated in CreateClashZone when creating the ClashZone object
-                    
-                    // ✅ WARNING: If outer diameter is missing or zero, try fallback to nominal diameter (with warning)
-                    var diameter = outerDiameter; // Default to outer diameter for sizing
-                    if (diameter <= 0)
+                    double outerDiameter = 0;
+                    double nominalDiameter = 0;
+
+                    if (paramCache != null)
                     {
-                        if (nominalDiameter > 0)
-                        {
-                            diameter = nominalDiameter;
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                var nominalMm = UnitUtils.ConvertFromInternalUnits(diameter, UnitTypeId.Millimeters);
-                                DebugLogger.Warning($"[PIPE-OD-WARNING] Pipe {pipe.Id}: OUTER DIAMETER not available, using NOMINAL DIAMETER = {nominalMm:F1}mm (this may cause incorrect sizing!)");
-                            }
-                        }
-                        else
-                        {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                DebugLogger.Warning($"[PIPE-OD-ERROR] Pipe {pipe.Id}: No outer diameter or nominal diameter available! Sizing will be incorrect.");
-                            }
-                        }
+                        if (paramCache.TryGetValue("Outside Diameter", out var odStr) && double.TryParse(odStr, out var odVal)) outerDiameter = odVal / 304.8;
+                        if (paramCache.TryGetValue("Nominal Diameter", out var ndStr) && double.TryParse(ndStr, out var ndVal)) nominalDiameter = ndVal / 304.8;
                     }
                     else
                     {
-                        // ✅ LOGGING: Log pipe OD for debugging (verify it's outer diameter, not nominal)
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            var diameterMm = UnitUtils.ConvertFromInternalUnits(diameter, UnitTypeId.Millimeters);
-                            if (nominalDiameter > 0)
-                            {
-                                var nominalMm = UnitUtils.ConvertFromInternalUnits(nominalDiameter, UnitTypeId.Millimeters);
-                                DebugLogger.Info($"[PIPE-OD-DEBUG] Pipe {pipe.Id}: OUTER DIAMETER = {diameterMm:F1}mm, Nominal Diameter = {nominalMm:F1}mm (using OD for sizing)");
-                            }
-                            else
-                            {
-                                DebugLogger.Info($"[PIPE-OD-DEBUG] Pipe {pipe.Id}: OUTER DIAMETER = {diameterMm:F1}mm (using OD for sizing)");
-                            }
-                        }
+                        outerDiameter = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_OUTER_DIAMETER)?.AsDouble() ?? 0;
+                        nominalDiameter = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_DIAMETER_PARAM)?.AsDouble() ?? 0;
                     }
                     
-                    return (diameter, diameter); // Pipes are round - store OD in both width and height for sizing
+                    var diameter = outerDiameter;
+                    if (diameter <= 0)
+                    {
+                        diameter = nominalDiameter;
+                    }
+                    
+                    return (diameter, diameter);
                 }
                 else if (mepElement is Autodesk.Revit.DB.Electrical.CableTray cableTray)
                 {
-                    var width = cableTray.get_Parameter(BuiltInParameter.RBS_CABLETRAY_WIDTH_PARAM)?.AsDouble() ?? 0;
-                    var height = cableTray.get_Parameter(BuiltInParameter.RBS_CABLETRAY_HEIGHT_PARAM)?.AsDouble() ?? 0;
+                    double width = 0;
+                    double height = 0;
+
+                    if (paramCache != null)
+                    {
+                        if (paramCache.TryGetValue("Width", out var wStr) && double.TryParse(wStr, out var wVal)) width = wVal / 304.8;
+                        if (paramCache.TryGetValue("Height", out var hStr) && double.TryParse(hStr, out var hVal)) height = hVal / 304.8;
+                    }
+                    else
+                    {
+                        width = cableTray.get_Parameter(BuiltInParameter.RBS_CABLETRAY_WIDTH_PARAM)?.AsDouble() ?? 0;
+                        height = cableTray.get_Parameter(BuiltInParameter.RBS_CABLETRAY_HEIGHT_PARAM)?.AsDouble() ?? 0;
+                    }
                     return (width, height);
                 }
                 else if (mepElement is Conduit conduit)
                 {
-                    var width = conduit.get_Parameter(BuiltInParameter.RBS_CABLETRAY_WIDTH_PARAM)?.AsDouble() ?? 0;
-                    var height = conduit.get_Parameter(BuiltInParameter.RBS_CABLETRAY_HEIGHT_PARAM)?.AsDouble() ?? 0;
+                    double width = 0;
+                    double height = 0;
+
+                    if (paramCache != null)
+                    {
+                        if (paramCache.TryGetValue("Width", out var wStr) && double.TryParse(wStr, out var wVal)) width = wVal / 304.8;
+                        if (paramCache.TryGetValue("Height", out var hStr) && double.TryParse(hStr, out var hVal)) height = hVal / 304.8;
+                    }
+                    else
+                    {
+                        width = conduit.get_Parameter(BuiltInParameter.RBS_CABLETRAY_WIDTH_PARAM)?.AsDouble() ?? 0;
+                        height = conduit.get_Parameter(BuiltInParameter.RBS_CABLETRAY_HEIGHT_PARAM)?.AsDouble() ?? 0;
+                    }
                     return (width, height);
                 }
                 else if (mepElement is FamilyInstance famInst)
                 {
-                    // Handle duct accessories (dampers), cable trays, etc.
-                    // Try damper-specific parameters first
-                    var widthParam = famInst.LookupParameter("Damper Width") ?? 
-                                    famInst.LookupParameter("Width") ?? 
-                                    famInst.LookupParameter("width");
-                    var heightParam = famInst.LookupParameter("Damper Height") ?? 
-                                     famInst.LookupParameter("Height") ?? 
-                                     famInst.LookupParameter("height");
-                    
-                    double width = widthParam?.AsDouble() ?? 0.1;
-                    double height = heightParam?.AsDouble() ?? 0.1;
+                    double width = 0;
+                    double height = 0;
+
+                    if (paramCache != null)
+                    {
+                        if (paramCache.TryGetValue("Damper Width", out var dwStr) && double.TryParse(dwStr, out var dwVal)) width = dwVal / 304.8;
+                        else if (paramCache.TryGetValue("Width", out var wStr) && double.TryParse(wStr, out var wVal)) width = wVal / 304.8;
+                        
+                        if (paramCache.TryGetValue("Damper Height", out var dhStr) && double.TryParse(dhStr, out var dhVal)) height = dhVal / 304.8;
+                        else if (paramCache.TryGetValue("Height", out var hStr) && double.TryParse(hStr, out var hVal)) height = hVal / 304.8;
+                    }
+                    else
+                    {
+                        var widthParam = famInst.LookupParameter("Damper Width") ?? famInst.LookupParameter("Width") ?? famInst.LookupParameter("width");
+                        var heightParam = famInst.LookupParameter("Damper Height") ?? famInst.LookupParameter("Height") ?? famInst.LookupParameter("height");
+                        width = widthParam?.AsDouble() ?? 0.1;
+                        height = heightParam?.AsDouble() ?? 0.1;
+                    }
                     
                     return (width, height);
                 }
                 
-                return (0.1, 0.1); // Default fallback
+                return (0.1, 0.1);
             }
             catch
             {
-                return (0.1, 0.1); // Default fallback
+                return (0.1, 0.1);
             }
         }
         

@@ -17,6 +17,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         void InsertOrUpdateClashZones(IEnumerable<ClashZone> clashZones, string filterName, string category);
 
         /// <summary>
+        /// ✅ BATCH OPTIMIZATION: Insert or update clash zones in a single multi-category batch.
+        /// Consolidates multiple transactions into one atomic operation.
+        /// </summary>
+        void InsertOrUpdateClashZonesBulk(IEnumerable<ClashZone> clashZones, string filterName);
+
+        /// <summary>
         /// Get clash zones by filter and category
         /// </summary>
         List<ClashZone> GetClashZonesByFilter(string filterName, string category, bool unresolvedOnly = false, bool readyForPlacementOnly = false);
@@ -179,5 +185,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         System.Collections.Generic.Dictionary<(int MepId, int HostId, string PointKey), System.Guid> FindGuidsByMepHostAndPointsBulk(
             System.Collections.Generic.IEnumerable<(int MepId, int HostId, double X, double Y, double Z)> targets, 
             double tolerance = 0.001);
+
+        /// <summary>
+        /// ✅ BATCH OPTIMIZATION: Update R-tree index for multiple clash zones in one pass.
+        /// </summary>
+        void BulkUpdateRTreeIndex(IEnumerable<ClashZone> zones, System.Data.SQLite.SQLiteTransaction? transaction = null);
     }
 }

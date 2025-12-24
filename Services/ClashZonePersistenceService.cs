@@ -145,12 +145,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", 
                     $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] Saving {allClashZones.Count} clash zones across {clashZonesByCategory.Count} categories\n");
 
+                // ✅ PHASE SQLITE-2: Write to SQLite in a SINGLE bulk transaction (multi-category)
+                if (_sqliteRepository != null && allClashZones.Count > 0)
+                {
+                    using (var bulkOp = _performanceMonitor?.TrackOperation("9a8. Repo Bulk Save"))
+                    {
+                        var validZones = allClashZones.Where(z => z != null && !string.IsNullOrWhiteSpace(z.MepElementCategory)).ToList();
+                        _sqliteRepository.InsertOrUpdateClashZonesBulk(validZones, baseFilterName);
+                        if (bulkOp is PerformanceMonitor.OperationTracker tracker) tracker.SetItemCount(validZones.Count);
+                    }
+                }
+
                 foreach (var categoryGroup in clashZonesByCategory)
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] Processing category '{categoryGroup.Key}' with {categoryGroup.Count()} zones");
+                        DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] Processing category '{categoryGroup.Key}' (XML/Logging) with {categoryGroup.Count()} zones");
                     SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", 
-                        $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] Processing category '{categoryGroup.Key}' with {categoryGroup.Count()} zones\n");
+                        $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] Processing category '{categoryGroup.Key}' (XML/Logging) with {categoryGroup.Count()} zones\n");
                     
                     var stats = SaveCategory(
                         categoryGroup.Key,
@@ -160,11 +171,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         allowStructuralUpdates);
 
                     processingSummaries.Add(stats);
-                    
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] Category '{categoryGroup.Key}' completed: {stats}");
-                    SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", 
-                        $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] Category '{categoryGroup.Key}' completed: {stats}\n");
                 }
 
                 LogAggregate(processingSummaries, baseFilterName);
@@ -194,9 +200,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var totalZones = categoryClashZones?.Count ?? 0;
                 LogPlacement($"[PERSIST-CATEGORY] Category='{category}', Filter='{baseFilterName}', Zones={totalZones}");
 
-                var validZones = categoryClashZones?
-                    .Where(IsValidClashZone)
-                    .ToList() ?? new List<ClashZone>();
+                var validZones = new List<ClashZone>();
+                using (_performanceMonitor?.TrackOperation("9a6. Filter Valid Zones"))
+                {
+                    validZones = categoryClashZones?
+                        .Where(IsValidClashZone)
+                        .ToList() ?? new List<ClashZone>();
+                }
 
                 stats.TotalZones = totalZones;
                 stats.ValidZones = validZones.Count;
@@ -222,16 +232,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     LogRefresh($"[PERSIST-DEBUG]   Sample combo key: Linked='{key.LinkedFile}', Host='{key.HostFile}'");
                 }
 
-                var combos = validZones
-                    .GroupBy(GetFileComboKey)
-                    .Where(g => !string.IsNullOrWhiteSpace(g.Key.LinkedFile) && !string.IsNullOrWhiteSpace(g.Key.HostFile))
-                    .ToList();
+                List<IGrouping<(string LinkedFile, string HostFile), ClashZone>> combos;
+                using (_performanceMonitor?.TrackOperation("9a7. Group File Combos"))
+                {
+                    combos = validZones
+                        .GroupBy(GetFileComboKey)
+                        .Where(g => !string.IsNullOrWhiteSpace(g.Key.LinkedFile) && !string.IsNullOrWhiteSpace(g.Key.HostFile))
+                        .ToList();
+                }
 
                 stats.FileComboCount = combos.Count;
                 LogRefresh($"[PERSIST-DEBUG] Valid combos to persist for '{category}': {combos.Count}");
-                foreach (var combo in combos)
+                // Process each combo (batched by LinkedFile+HostFile)
+                using (_performanceMonitor?.TrackOperation("9a7b. Loop Overhead"))
                 {
-                    LogRefresh($"[PERSIST-DEBUG]   Combo: Linked='{combo.Key.LinkedFile}', Host='{combo.Key.HostFile}', Zones={combo.Count()}");
+                    foreach (var combo in combos)
+                    {
+                        LogRefresh($"[PERSIST-DEBUG]   Combo: Linked='{combo.Key.LinkedFile}', Host='{combo.Key.HostFile}', Zones={combo.Count()}");
+                    }
                 }
 
                 var filterName = BuildFilterFileName(baseFilterName, category);
@@ -242,75 +260,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     globalIndex = GlobalIndexService.LoadOrCreate(_document, category);
                 }
 
-                // ✅ PHASE SQLITE-2: Write to SQLite FIRST (primary store), then XML (optional/backup)
-                if (_sqliteRepository == null)
+                // ✅ PHASE SQLITE-2: SQLite write is now handled by the bulk call in SaveClashZones
+                // This section in SaveCategory only handles XML and diagnostic logging now.
+                if (!DeploymentConfiguration.DeploymentMode && string.Equals(category, "Pipes", StringComparison.OrdinalIgnoreCase))
                 {
-                    // ⚠️ CRITICAL: SQLite repository is null - clash zones will NOT be saved to database
-                    var errorMsg = $"[CLASH-ZONE-PERSISTENCE] ❌ CRITICAL: _sqliteRepository is NULL - clash zones will NOT be saved to database for category '{category}'";
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Error(errorMsg);
-                    SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", $"[{DateTime.Now}] {errorMsg}\n");
-                    HandleException(errorMsg, new InvalidOperationException("SQLite repository is null - database save will be skipped"));
-                }
-                else if (validZones.Count == 0)
-                {
-                    // ⚠️ WARNING: No valid zones to save
-                    var warningMsg = $"[CLASH-ZONE-PERSISTENCE] ⚠️ No valid zones to save for category '{category}' (total zones: {categoryClashZones?.Count ?? 0})";
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Warning(warningMsg);
-                    SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", $"[{DateTime.Now}] {warningMsg}\n");
-                }
-                else if (_sqliteRepository != null && validZones.Count > 0)
-                {
-                    try
+                    foreach (var zone in validZones.Take(5))
                     {
-                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] 🔄 Attempting to save {validZones.Count} zones to SQLite for category '{category}', filter '{baseFilterName}'");
-                        SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", 
-                            $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] 🔄 Attempting to save {validZones.Count} zones to SQLite for category '{category}', filter '{baseFilterName}'\n");
-                        
-                        // ✅ DIAGNOSTIC: Log ClashZone values BEFORE saving to database
-                        if (!DeploymentConfiguration.DeploymentMode && string.Equals(category, "Pipes", StringComparison.OrdinalIgnoreCase))
+                        int mepParamCount = zone.MepParameterValues?.Count ?? 0;
+                        if (mepParamCount == 0)
                         {
-                            foreach (var zone in validZones.Take(5)) // Log first 5 pipes
-                            {
-                                var odMm = zone.MepElementOuterDiameter > 0 ? (zone.MepElementOuterDiameter * 304.8) : 0.0;
-                                var nomMm = zone.MepElementNominalDiameter > 0 ? (zone.MepElementNominalDiameter * 304.8) : 0.0;
-                                
-                                // ✅ ENHANCED: Show parameter counts with detailed diagnostics
-                                int mepParamCount = zone.MepParameterValues?.Count ?? 0;
-                                int hostParamCount = zone.HostParameterValues?.Count ?? 0;
-                                string mepParamSample = "";
-                                if (mepParamCount > 0)
-                                {
-                                    var sampleKeys = zone.MepParameterValues.Take(5).Select(kv => kv?.Key ?? "null").Where(k => !string.IsNullOrEmpty(k)).ToList();
-                                    mepParamSample = string.Join(", ", sampleKeys);
-                                    if (mepParamCount > 5) mepParamSample += $" (+{mepParamCount - sampleKeys.Count} more)";
-                                }
-                                
-                                // ✅ CRITICAL DIAGNOSTIC: Log if parameters are missing
-                                if (mepParamCount == 0)
-                                {
-                                    SafeFileLogger.SafeAppendText("save_db_diagnostic.log",
-                                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZonePersistence] ⚠️⚠️⚠️ BEFORE SAVE: Zone {zone.Id} has ZERO MEP parameters! MepParameterValues={(zone.MepParameterValues != null ? "NOT NULL but empty" : "NULL")}, MEP={zone.MepElementId?.IntegerValue ?? zone.MepElementIdValue}\n");
-                                }
-                                
-                                SafeFileLogger.SafeAppendText("save_db_diagnostic.log",
-                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZonePersistence] 🔍 BEFORE SAVE: Zone {zone.Id}, OuterDiameter={zone.MepElementOuterDiameter:F6}ft ({odMm:F1}mm), NominalDiameter={zone.MepElementNominalDiameter:F6}ft ({nomMm:F1}mm), SizeParameterValue='{zone.MepElementSizeParameterValue ?? "NULL"}', MepElementFormattedSize='{zone.MepElementFormattedSize ?? "NULL"}', MepParams={mepParamCount} ({mepParamSample}), HostParams={hostParamCount}\n");
-                            }
+                            SafeFileLogger.SafeAppendText("save_db_diagnostic.log",
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZonePersistence] ⚠️ BEFORE SAVE: Zone {zone.Id} has ZERO MEP parameters!\n");
                         }
-                        
-                        _sqliteRepository.InsertOrUpdateClashZones(validZones, baseFilterName, category);
-                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] ✅ PHASE 2: Saved to SQLite (PRIMARY): {validZones.Count} zones for '{category}'");
-                        SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", 
-                            $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] ✅ PHASE 2: Saved to SQLite (PRIMARY): {validZones.Count} zones for '{category}'\n");
-                    }
-                    catch (Exception sqliteEx)
-                    {
-                        // ✅ CRITICAL: If SQLite fails in Phase 2, fail the operation (SQLite is primary)
-                        HandleException($"[CLASH-ZONE-PERSISTENCE] ❌ SQLite save failed (PRIMARY STORE): {sqliteEx.Message}", sqliteEx);
-                        throw; // Fail the operation since SQLite is primary
                     }
                 }
 
@@ -337,7 +298,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // ✅ PHASE 2: Only update Global XML in-memory if XML creation is enabled
                         if (!DeploymentConfiguration.DisableXmlCreation)
                         {
-                        SaveToGlobalXml(globalIndex, comboClashZones, category, baseFilterName, filterName, key, stats, allowStructuralUpdates);
+                            using (_performanceMonitor?.TrackOperation("9a9. Global XML Save"))
+                            {
+                                SaveToGlobalXml(globalIndex, comboClashZones, category, baseFilterName, filterName, key, stats, allowStructuralUpdates);
+                            }
                         }
                         else
                         {
@@ -381,7 +345,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // ✅ PHASE 2: Only update Global XML in-memory if XML creation is enabled
                         if (!DeploymentConfiguration.DisableXmlCreation)
                         {
-                        SaveToGlobalXml(globalIndex, comboClashZones, category, baseFilterName, filterName, key, stats, allowStructuralUpdates);
+                            using (_performanceMonitor?.TrackOperation("9a9. Global XML Save"))
+                            {
+                                SaveToGlobalXml(globalIndex, comboClashZones, category, baseFilterName, filterName, key, stats, allowStructuralUpdates);
+                            }
                         }
                         else
                         {

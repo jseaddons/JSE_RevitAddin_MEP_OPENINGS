@@ -15,6 +15,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// Unique identifier for this clash zone
         /// </summary>
         public Guid Id { get; set; } = Guid.NewGuid();
+
+        /// <summary>
+        /// Database auto-increment ID (for SQLite operations)
+        /// Not serialized to XML, only used for database indexing
+        /// </summary>
+        [XmlIgnore]
+        public int ClashZoneId { get; set; } = -1;
         
         /// <summary>
         /// The MEP element involved in the clash

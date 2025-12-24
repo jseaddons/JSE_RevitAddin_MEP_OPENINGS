@@ -79,7 +79,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Default: true (enabled - R-tree is supported in SQLite 3.42.0+)
         /// Expected gain: 10x faster section box filtering, 80-90% reduction in data transfer
         /// </summary>
-        public static bool UseRTreeDatabaseIndex { get; set; } = false; // ⚠️ DISABLED: R-tree filter not working correctly, using in-memory section box test
+        public static bool UseRTreeDatabaseIndex { get; set; } = true; // ✅ FIXED: R-tree synchronization now handled in bulk saves
         
         #endregion
         
@@ -384,7 +384,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// When false: No performance logging (deployment mode)
         /// Default: false (disabled for deployment - enable for diagnostics)
         /// </summary>
-        public static bool LogPerformanceMetrics { get; set; } = true;
+        public static bool LogPerformanceMetrics { get; set; } = false;
         
         #endregion
         
@@ -400,7 +400,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Enable diagnostic mode for performance monitoring
         /// Default: false (disabled for deployment)
         /// </summary>
-        public static bool UseDiagnosticMode { get; set; } = true; // ✅ DIAGNOSTIC MODE ON for debugging 888 zones issue
+        public static bool UseDiagnosticMode { get; set; } = false; // ✅ OFF as requested
         
         /// <summary>
         /// Enable batch clash zone creation (pre-calculate common data once)
@@ -411,6 +411,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         #endregion
 
+        #endregion
+        
         #region Refresh Optimization Phase 3 (Batch GUID & Parameter Cache)
 
         /// <summary>
@@ -437,6 +439,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static bool UseTempTableForBulkUpdates { get; set; } = true;
 
+        #endregion
+
+        #region Bulk Processing & DB Optimizations (NEW - Priority 4)
+
+        /// <summary>
+        /// Enable bulk intersection processing for Ducts, Pipes, and Cable Trays.
+        /// When true: Batches parameter capture and creation for all intersection types (O(1) parameter access).
+        /// When false: Legacy per-element processing (O(n) API calls).
+        /// Default: true (enabled for performance testing).
+        /// Target: 40-50 zones/sec.
+        /// </summary>
+        public static bool UseBulkIntersectionProcessing { get; set; } = true;
+
+        /// <summary>
+        /// Enable optimized database save strategy with pre-filtering and reduced grouping.
+        /// When true: Loads existing IDs once, filters insert vs update, and streamlines category grouping (2x faster save).
+        /// When false: Legacy save with repeated index loads and manual grouping.
+        /// Default: true (enabled for performance testing).
+        /// </summary>
+        public static bool UseOptimizedDbSaveStrategy { get; set; } = true;
+
+        #endregion
+        
         #endregion
         
         #region Sleeve Placement Safety Flags (NEW)
@@ -490,7 +515,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// When true: Uses SetSleeveParametersOptimized path with timing logs to param_timing.log.
         /// Default: false (safe off; turn on for diagnostics only).
         /// </summary>
-        public static bool EnableParameterTimingInstrumentation { get; set; } = true;
+        public static bool EnableParameterTimingInstrumentation { get; set; } = false;
         
         /// <summary>
         /// Defer non-critical metadata writes during sleeve placement (Phase 2: Medium Risk).

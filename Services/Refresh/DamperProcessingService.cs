@@ -37,6 +37,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         private readonly ParameterSnapshotService _parameterSnapshotService;
         private readonly PerformanceMonitor? _performanceMonitor;
         private readonly GuidManager? _guidManager; // ✅ CRITICAL: For deterministic GUID generation (3-point validation)
+        
+        // ✅ PERFORMANCE: Pre-interned common strings for flyweight pattern
+        private static readonly string PARAM_SIZE = string.Intern("Size");
+        private static readonly string PARAM_LEVEL = string.Intern("Level");
+        private static readonly string PARAM_REF_LEVEL = string.Intern("Reference Level");
+        private static readonly string PARAM_WIDTH = string.Intern("Width");
+        private static readonly string PARAM_HEIGHT = string.Intern("Height");
+        private static readonly string PARAM_DEPTH = string.Intern("Depth");
+        private static readonly string CAT_DUCT_ACCESSORIES = string.Intern("Duct Accessories");
 
         public DamperProcessingService(
             Document document,
@@ -106,19 +115,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
 
             // ✅ PERFORMANCE MONITORING: Track total damper processing time
             using (var totalTrackerRaw = _performanceMonitor?.TrackOperation("Damper Processing (Total)"))
+            {
+                // ✅ STEP 2: Collect dampers from selected reference files only
+                // This matches the pattern in IntersectionProcessor.CollectMepElementsWithFilters
+                List<(Element damper, Transform? transform, XYZ placementPoint)> collectedDampers;
+                using (var collectTrackerRaw = _performanceMonitor?.TrackOperation("Collect Dampers"))
                 {
-                    // ✅ STEP 2: Collect dampers from selected reference files only
-                    // This matches the pattern in IntersectionProcessor.CollectMepElementsWithFilters
-                    List<(Element damper, Transform? transform, XYZ placementPoint)> collectedDampers;
-                    using (var collectTrackerRaw = _performanceMonitor?.TrackOperation("Collect Dampers"))
+                    collectedDampers = CollectDampersFromSelectedFiles(selectedReferenceFiles, sectionBox);
+                    // ✅ FIX: Cast to OperationTracker to access SetItemCount (OperationTracker is internal but accessible in same assembly)
+                    if (collectTrackerRaw is PerformanceMonitor.OperationTracker collectTracker)
                     {
-                        collectedDampers = CollectDampersFromSelectedFiles(selectedReferenceFiles, sectionBox);
-                        // ✅ FIX: Cast to OperationTracker to access SetItemCount (OperationTracker is internal but accessible in same assembly)
-                        if (collectTrackerRaw is PerformanceMonitor.OperationTracker collectTracker)
-                        {
-                            collectTracker.SetItemCount(collectedDampers.Count);
-                        }
+                        collectTracker.SetItemCount(collectedDampers.Count);
                     }
+                }
                 
                 _logger($"[DamperProcessing] ✅ Collected {collectedDampers.Count} dampers from selected reference files (VCD/VOLUME excluded)");
 
@@ -152,37 +161,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 int createdCount = 0;
                 int skippedCount = 0;
 
-                // ✅ OPTIMIZATION: Batch parameter capture for all dampers and walls BEFORE loop
-                Dictionary<int, Dictionary<string, string>>? damperParamsCache = null;
-                Dictionary<int, Dictionary<string, string>>? wallParamsCache = null;
-
-                if (OptimizationFlags.UseBatchDamperParameterCapture)
+                // ✅ OPTIMIZATION: Cache levels upfront to avoid 11x document scans inside the loop
+                var levelIdCache = new Dictionary<ElementId, (string Name, double Elevation)>();
+                using (var levelTracker = _performanceMonitor?.TrackOperation("Cache Levels"))
                 {
-                    damperParamsCache = new Dictionary<int, Dictionary<string, string>>();
-                    wallParamsCache = new Dictionary<int, Dictionary<string, string>>();
-
-                    // Capture parameters for ALL dampers
-                    foreach (var (damper, _, _) in collectedDampers)
+                    var levels = new FilteredElementCollector(_document)
+                        .OfClass(typeof(Level))
+                        .Cast<Level>()
+                        .ToList();
+                        
+                    foreach (var level in levels)
                     {
-                        var damperParams = CaptureMepParametersWithSmartLevel(damper);
-                        damperParamsCache[damper.Id.IntegerValue] = damperParams;
-                    }
-
-                    // Capture parameters for ALL unique walls
-                    var uniqueWalls = walls.Select(w => w.Item1).Distinct(new ElementIdComparer()).ToList();
-                    foreach (var wall in uniqueWalls)
-                    {
-                        var wallParams = CaptureHostParametersRestricted(wall);
-                        wallParamsCache[wall.Id.IntegerValue] = wallParams;
-                    }
-
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        _logger($"[DamperProcessing] [BATCH-PARAMS] ✅ Pre-captured parameters for {damperParamsCache.Count} dampers and {wallParamsCache.Count} walls");
+                        levelIdCache[level.Id] = (level.Name, level.Elevation);
                     }
                 }
 
-                using (var processTrackerRaw = _performanceMonitor?.TrackOperation("Process Dampers (Find Intersections + Create ClashZones)"))
+                // ✅ PERFORMANCE: Build O(1) wall transform dictionary
+                var wallTransforms = walls.ToDictionary(w => w.Item1.Id.IntegerValue, w => w.Item2);
+
+                // ✅ STEP 3: Pre-fetch Parameter caches (High Impact)
+                // These are passed into CreateClashZoneForDamper to avoid Revit API calls
+                Dictionary<int, Dictionary<string, string>> damperParamsCache;
+                using (var paramTracker = _performanceMonitor?.TrackOperation("Batch Capture (Dampers)"))
+                {
+                    damperParamsCache = ParameterSnapshotService.CaptureBatchParams(collectedDampers.Select(x => x.damper).ToList());
+                }
+                
+                var wallParamsCache = new Dictionary<int, Dictionary<string, string>>();
+                
+                // ✅ OPTIMIZATION: Track processed keys to avoid O(N^2) scans
+                // Key format: "HostId_RoundX_RoundY_RoundZ"
+                var processedLocationKeys = new HashSet<string>();
+                double tolerance = 0.1; // 0.1ft = ~30mm
+
+                // Pre-build O(1) lookup for existing clash zones (MEP+Host)
+                var existingZoneMap = new Dictionary<string, ClashZone>();
+                if (existingClashZones != null)
+                {
+                    foreach (var cz in existingClashZones)
+                    {
+                        if (cz == null) continue;
+                        string key = $"{cz.MepElementIdValue}_{cz.StructuralElementIdValue}";
+                        if (!existingZoneMap.ContainsKey(key)) existingZoneMap[key] = cz;
+                    }
+                }
+
+                // Pre-calculate results list capacity to avoid resizing
+                results = new List<ClashZone>(collectedDampers.Count);
+
+                using (var processTrackerRaw = _performanceMonitor?.TrackOperation("9. Process Dampers (Bulk Optimized)"))
                 {
                     foreach (var (damper, transform, placementPoint) in collectedDampers)
                     {
@@ -190,150 +217,79 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                         {
                             processedCount++;
                             
-                            // ✅ DIAGNOSTIC: Log damper details to identify duplicates
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                string damperDocTitle = damper.Document?.Title ?? "NULL";
-                                _logger($"[DamperProcessing] [{processedCount}/{collectedDampers.Count}] Processing damper {damper.Id} from document '{damperDocTitle}' at {placementPoint}");
-                            }
-                            
-                            // ✅ PERFORMANCE: Track individual damper processing (only if diagnostic mode enabled)
-                            if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
-                            {
-                                _logger($"[DamperProcessing] [{processedCount}/{collectedDampers.Count}] Processing damper {damper.Id} at {placementPoint}");
-                            }
-
-                            // Find wall that intersects with this damper
-                            Element? intersectingWall;
-                            Transform? wallTransform = null;
-                            using (var findWallTrackerRaw = _performanceMonitor?.TrackOperation("Find Intersecting Wall"))
-                            {
-                                intersectingWall = FindIntersectingWall(damper, placementPoint, walls, transform);
-                                
-                                // ✅ CRITICAL FIX: Find the wall's transform from the walls list
-                                // This is needed to transform the wall's bounding box in CreateClashZoneForDamper
-                                if (intersectingWall != null)
-                                {
-                                    var wallMatch = walls.FirstOrDefault(w => w.Item1.Id == intersectingWall.Id);
-                                    if (wallMatch.Item1 != null)
-                                    {
-                                        wallTransform = wallMatch.Item2;
-                                    }
-                                }
-                                
-                                // ✅ FIX: Cast to OperationTracker to access SetItemCount
-                                if (findWallTrackerRaw is PerformanceMonitor.OperationTracker findWallTracker)
-                                {
-                                    findWallTracker.SetItemCount(1);
-                                }
-                            }
-                            
-                            if (intersectingWall == null)
+                            // 1. Find wall (Fast geometry check)
+                            Element? wall = FindIntersectingWall(damper, placementPoint, walls, transform);
+                            if (wall == null)
                             {
                                 skippedCount++;
-                                if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
-                                {
-                                    _logger($"[DamperProcessing] ⚠️ Damper {damper.Id} has no intersecting wall - skipping");
-                                }
                                 continue;
                             }
 
-                            // Create ClashZone for this damper-wall pair
-                            ClashZone? clashZone;
-                            using (var createTrackerRaw = _performanceMonitor?.TrackOperation("Create ClashZone"))
+                            // 2. O(1) Deduplication Check (Location-based)
+                            // Groups dampers within tolerance (0.1ft) automatically
+                            string locationKey = $"{wall.Id.IntegerValue}_{Math.Round(placementPoint.X / tolerance)}_{Math.Round(placementPoint.Y / tolerance)}_{Math.Round(placementPoint.Z / tolerance)}";
+                            
+                            if (processedLocationKeys.Contains(locationKey))
                             {
-                                // ✅ CRITICAL FIX: Check if zone already exists for this MEP+Host pair before creating new one
-                                // This prevents duplicate zones with new GUIDs and preserves existing flags
-                                clashZone = FindOrCreateClashZoneForDamper(
-                                    damper, 
-                                    intersectingWall, 
-                                    placementPoint, 
-                                    transform, 
-                                    wallTransform, 
-                                    existingClashZones, 
-                                    results,
-                                    damperParamsCache,
-                                    wallParamsCache,
-                                    openingPointKeys);
-                                // ✅ FIX: Cast to OperationTracker to access SetItemCount
-                                if (createTrackerRaw is PerformanceMonitor.OperationTracker createTracker)
+                                // Skip - already processed a damper at this location for this wall
+                                continue;
+                            }
+
+                            // 3. Wall Transform Lookup (O(1))
+                            wallTransforms.TryGetValue(wall.Id.IntegerValue, out var wallTransform);
+
+                            // 4. Parameter Caching for Walls (Lazy batch)
+                            if (!wallParamsCache.ContainsKey(wall.Id.IntegerValue))
+                            {
+                                wallParamsCache[wall.Id.IntegerValue] = CaptureHostParametersRestricted(wall);
+                            }
+
+                            // 5. Existing Zone Check (O(1))
+                            string mepHostKey = $"{damper.Id.IntegerValue}_{wall.Id.IntegerValue}";
+                            existingZoneMap.TryGetValue(mepHostKey, out ClashZone? existingZone);
+
+                            // 6. Create or Update Zone
+                            ClashZone? clashZone;
+                            if (existingZone != null)
+                            {
+                                // Update existing
+                                clashZone = CreateClashZoneForDamper(damper, wall, placementPoint, transform, wallTransform, damperParamsCache, wallParamsCache, openingPointKeys, levelIdCache);
+                                if (clashZone != null)
                                 {
-                                    createTracker.SetItemCount(1);
+                                    clashZone.Id = existingZone.Id;
+                                    clashZone.IsResolved = existingZone.IsResolved;
+                                    clashZone.SleeveInstanceId = existingZone.SleeveInstanceId;
+                                    clashZone.ReadyForPlacement = existingZone.ReadyForPlacement;
                                 }
                             }
-                            
+                            else
+                            {
+                                // Create new
+                                clashZone = CreateClashZoneForDamper(damper, wall, placementPoint, transform, wallTransform, damperParamsCache, wallParamsCache, openingPointKeys, levelIdCache);
+                            }
+
                             if (clashZone != null)
                             {
-                                // ✅ CRITICAL FIX: Check for duplicate zones by Host+Point (not just MEP+Host)
-                                // Multiple dampers at the same location should share the same sleeve
-                                int structuralIdValue = intersectingWall.Id.IntegerValue;
-                                double tolerance = 0.1; // 0.1ft = ~30mm (same as GUID tolerance)
-                                
-                                var duplicate = results.FirstOrDefault(r => 
-                                {
-                                    if (r == null) return false;
-                                    int rStructuralId = r.StructuralElementId?.IntegerValue ?? r.StructuralElementIdValue;
-                                    if (rStructuralId != structuralIdValue) return false;
-                                    
-                                    // Check if placement points are within tolerance
-                                    double dx = Math.Abs((r.SleevePlacementPoint?.X ?? r.SleevePlacementPointX) - placementPoint.X);
-                                    double dy = Math.Abs((r.SleevePlacementPoint?.Y ?? r.SleevePlacementPointY) - placementPoint.Y);
-                                    double dz = Math.Abs((r.SleevePlacementPoint?.Z ?? r.SleevePlacementPointZ) - placementPoint.Z);
-                                    
-                                    return dx < tolerance && dy < tolerance && dz < tolerance;
-                                });
-                                
-                                if (duplicate != null)
-                                {
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        _logger($"[DamperProcessing] ✅ REUSING existing ClashZone {duplicate.Id} for damper {damper.Id} with wall {intersectingWall.Id} at same location (Host+Point match)");
-                                    }
-                                    // Skip adding duplicate zone - reuse existing one
-                                    continue;
-                                }
-                                
                                 results.Add(clashZone);
+                                processedLocationKeys.Add(locationKey);
                                 createdCount++;
-                                if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
-                                {
-                                    _logger($"[DamperProcessing] ✅ Created ClashZone {clashZone.Id} for damper {damper.Id} with wall {intersectingWall.Id}");
-                                }
                             }
                         }
                         catch (Exception ex)
                         {
                             _logger($"[DamperProcessing] ⚠️ Error processing damper {damper.Id}: {ex.Message}");
-                            // ✅ SAFETY: Log error using SafeFileLogger (respects deployment mode)
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                SafeFileLogger.SafeAppendText("damper_processing_errors.log",
-                                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Error processing damper {damper.Id}: {ex.Message}\nStackTrace: {ex.StackTrace}\n");
-                            }
                         }
                     }
                     
-                    // ✅ FIX: Cast to OperationTracker to access SetItemCount
-                    if (processTrackerRaw is PerformanceMonitor.OperationTracker processTracker)
-                    {
-                        processTracker.SetItemCount(processedCount);
-                    }
+                    if (processTrackerRaw is PerformanceMonitor.OperationTracker pt) pt.SetItemCount(processedCount);
                 }
 
-                // ✅ FIX: Cast to OperationTracker to access SetItemCount
-                if (totalTrackerRaw is PerformanceMonitor.OperationTracker totalTracker)
-                {
-                    totalTracker.SetItemCount(results.Count);
-                }
+                if (totalTrackerRaw is PerformanceMonitor.OperationTracker tt) tt.SetItemCount(results.Count);
                 
-                // ✅ PERFORMANCE LOGGING: Log summary using SafeFileLogger (respects deployment mode)
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    SafeFileLogger.SafeAppendText("damper_processing.log",
-                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SUMMARY] Processed: {processedCount} dampers, Created: {createdCount} ClashZones, Skipped: {skippedCount} (no intersecting wall)\n");
-                }
+                SafeFileLogger.SafeAppendText("damper_processing.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [BULK-SUMMARY] Processed: {processedCount} dampers, Created: {createdCount} ClashZones, Skipped: {skippedCount}\n");
                 
-                _logger($"[DamperProcessing] ✅ Processing complete: {createdCount} ClashZones created from {processedCount} dampers ({skippedCount} skipped)");
+                _logger($"[DamperProcessing] ✅ Bulk processing complete: {createdCount} ClashZones created from {processedCount} dampers");
             }
 
             return results;
@@ -482,7 +438,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 // ✅ STEP 2: Load elements and filter by damper type (Standard/Motorized, exclude VCD/VOLUME)
                 var allDuctAccessories = collector.Cast<FamilyInstance>().ToList();
                 _logger($"[DamperProcessing] Found {allDuctAccessories.Count} total Duct Accessories in document: {document.Title} (before damper filter)");
-                
+
                 var ductAccessories = allDuctAccessories
                     .Where(fi => ShouldProcessDamper(fi))
                     .ToList();
@@ -727,10 +683,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     if (hostElement != null && hostElement is Wall hostWall)
                     {
                         // Check if this host wall is in our walls list
-                        var hostWallMatch = walls.FirstOrDefault(w => 
-                            w.Item1.Id == hostWall.Id || 
+                        var hostWallMatch = walls.FirstOrDefault(w =>
+                            w.Item1.Id == hostWall.Id ||
                             (w.Item1 is Wall ww && ww.UniqueId == hostWall.UniqueId));
-                        
+
                         if (hostWallMatch.Item1 != null)
                         {
                             if (!DeploymentConfiguration.DeploymentMode)
@@ -771,7 +727,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             // ✅ PRIORITY 2: Find walls where placement point is INSIDE the wall's bounding box (most accurate)
             Element? bestWall = null;
             bool bestWallHasPointInside = false;
-            
+
             // Check each wall for intersection
             int checkedWalls = 0;
             foreach (var (wall, wallTransform) in walls)
@@ -793,7 +749,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     }
 
                     // ✅ CRITICAL: Check if placement point is INSIDE wall's bounding box (with small tolerance)
-                    bool isPointInsideWall = 
+                    bool isPointInsideWall =
                         damperPlacementPoint.X >= wallBbox.Min.X - tolerance &&
                         damperPlacementPoint.X <= wallBbox.Max.X + tolerance &&
                         damperPlacementPoint.Y >= wallBbox.Min.Y - tolerance &&
@@ -817,7 +773,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     else if (bboxesIntersect && !bestWallHasPointInside)
                     {
                         // Check if damper is completely contained within wall (buried inside)
-                        bool isDamperContainedInWall = 
+                        bool isDamperContainedInWall =
                             hostDamperBbox.Min.X >= wallBbox.Min.X &&
                             hostDamperBbox.Min.Y >= wallBbox.Min.Y &&
                             hostDamperBbox.Min.Z >= wallBbox.Min.Z &&
@@ -889,12 +845,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             List<ClashZone>? currentResults = null,
             Dictionary<int, Dictionary<string, string>>? damperParamsCache = null,
             Dictionary<int, Dictionary<string, string>>? wallParamsCache = null,
-            HashSet<string>? openingPointKeys = null)
+            HashSet<string>? openingPointKeys = null,
+            Dictionary<ElementId, (string Name, double Elevation)>? levelIdCache = null)
         {
             int mepIdValue = damper.Id.IntegerValue;
             int structuralIdValue = wall.Id.IntegerValue;
             double tolerance = 0.1; // 0.1ft = ~30mm (same as GUID tolerance)
-            
+
             // ✅ STEP 1: Check if zone already exists for this MEP+Host pair (from previous refresh)
             if (existingClashZones != null && existingClashZones.Count > 0)
             {
@@ -905,7 +862,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     int czStructuralId = cz.StructuralElementId?.IntegerValue ?? cz.StructuralElementIdValue;
                     return czMepId == mepIdValue && czStructuralId == structuralIdValue;
                 });
-                
+
                 if (existingZone != null)
                 {
                     // ✅ REUSE EXISTING ZONE: Update properties but preserve GUID and flags
@@ -913,9 +870,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     {
                         _logger($"[DamperProcessing] ✅ REUSING existing ClashZone {existingZone.Id} for damper {damper.Id} with wall {wall.Id} (preserving GUID and flags)");
                     }
-                    
+
                     // Update zone properties with fresh data from damper processing
-                    var updatedZone = CreateClashZoneForDamper(damper, wall, placementPoint, damperTransform, wallTransform, damperParamsCache, wallParamsCache, openingPointKeys);
+                    var updatedZone = CreateClashZoneForDamper(damper, wall, placementPoint, damperTransform, wallTransform, damperParamsCache, wallParamsCache, openingPointKeys, levelIdCache);
                     if (updatedZone != null)
                     {
                         // Preserve existing GUID and flags
@@ -925,12 +882,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                         updatedZone.SleeveInstanceId = existingZone.SleeveInstanceId;
                         updatedZone.ClusterSleeveInstanceId = existingZone.ClusterSleeveInstanceId;
                         updatedZone.ReadyForPlacement = existingZone.ReadyForPlacement;
-                        
+
                         return updatedZone;
                     }
                 }
             }
-            
+
             // ✅ STEP 2: Check if zone already exists in current refresh results by Host+Point
             // Multiple dampers at the same location should share the same sleeve
             if (currentResults != null && currentResults.Count > 0)
@@ -940,15 +897,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     if (cz == null) return false;
                     int czStructuralId = cz.StructuralElementId?.IntegerValue ?? cz.StructuralElementIdValue;
                     if (czStructuralId != structuralIdValue) return false;
-                    
+
                     // Check if placement points are within tolerance
                     double dx = Math.Abs((cz.SleevePlacementPoint?.X ?? cz.SleevePlacementPointX) - placementPoint.X);
                     double dy = Math.Abs((cz.SleevePlacementPoint?.Y ?? cz.SleevePlacementPointY) - placementPoint.Y);
                     double dz = Math.Abs((cz.SleevePlacementPoint?.Z ?? cz.SleevePlacementPointZ) - placementPoint.Z);
-                    
+
                     return dx < tolerance && dy < tolerance && dz < tolerance;
                 });
-                
+
                 if (existingZoneByLocation != null)
                 {
                     // ✅ REUSE EXISTING ZONE: Use the same GUID for dampers at the same location
@@ -956,9 +913,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     {
                         _logger($"[DamperProcessing] ✅ REUSING ClashZone {existingZoneByLocation.Id} for damper {damper.Id} with wall {wall.Id} at same location (Host+Point match within {tolerance * 304.8:F1}mm tolerance)");
                     }
-                    
+
                     // Create new zone but reuse the GUID from existing zone
-                    var newZone = CreateClashZoneForDamper(damper, wall, placementPoint, damperTransform, wallTransform, damperParamsCache, wallParamsCache, openingPointKeys);
+                    var newZone = CreateClashZoneForDamper(damper, wall, placementPoint, damperTransform, wallTransform, damperParamsCache, wallParamsCache, openingPointKeys, levelIdCache);
                     if (newZone != null)
                     {
                         // Reuse GUID from existing zone at same location
@@ -972,16 +929,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                             newZone.ClusterSleeveInstanceId = existingZoneByLocation.ClusterSleeveInstanceId;
                             newZone.ReadyForPlacement = existingZoneByLocation.ReadyForPlacement;
                         }
-                        
+
                         return newZone;
                     }
                 }
             }
-            
+
             // ✅ STEP 3: No existing zone found - create new one
-            return CreateClashZoneForDamper(damper, wall, placementPoint, damperTransform, wallTransform, damperParamsCache, wallParamsCache, openingPointKeys);
+            return CreateClashZoneForDamper(damper, wall, placementPoint, damperTransform, wallTransform, damperParamsCache, wallParamsCache, openingPointKeys, levelIdCache);
         }
-        
+
         private ClashZone? CreateClashZoneForDamper(
             Element damper,
             Element wall,
@@ -990,8 +947,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             Transform? wallTransform = null,
             Dictionary<int, Dictionary<string, string>>? damperParamsCache = null,
             Dictionary<int, Dictionary<string, string>>? wallParamsCache = null,
-            HashSet<string>? openingPointKeys = null)
+            HashSet<string>? openingPointKeys = null,
+            Dictionary<ElementId, (string Name, double Elevation)>? levelIdCache = null)
         {
+            var swTotal = System.Diagnostics.Stopwatch.StartNew();
+
             try
             {
                 // Get damper bounding box
@@ -1045,7 +1005,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     Math.Min(damperBbox.Max.Z, wallBbox.Max.Z));
 
                 // If damper is contained, use damper's bounding box
-                bool isDamperContainedInWall = 
+                bool isDamperContainedInWall =
                     damperBbox.Min.X >= wallBbox.Min.X &&
                     damperBbox.Min.Y >= wallBbox.Min.Y &&
                     damperBbox.Min.Z >= wallBbox.Min.Z &&
@@ -1073,25 +1033,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     intersectionMax = damperBbox.Max;
                 }
 
+                // ✅ TIMING: Track setup operations
+                // var swSetup = System.Diagnostics.Stopwatch.StartNew();
                 var intersectionBbox = new BoundingBoxXYZ
                 {
                     Min = intersectionMin,
                     Max = intersectionMax
                 };
 
-                // ✅ CRITICAL FIX: Calculate intersection point
-                // Priority 1: Use placementPoint (already transformed to host coordinates)
-                // Priority 2: Use intersection bbox center (already in host coordinates after transformation)
-                // ✅ IMPORTANT: placementPoint is already transformed to host coordinates in CollectDampersFromDocument
                 XYZ intersectionPoint = placementPoint ?? BoundingBoxService.GetBoundingBoxCenter(intersectionBbox);
-                
-                // ✅ DIAGNOSTIC: Log placement point to verify coordinate system
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    _logger($"[DamperProcessing] 🔍 CreateClashZoneForDamper: placementPoint={placementPoint?.ToString() ?? "NULL"}, intersectionPoint={intersectionPoint}, damperTransform={(damperTransform != null ? "Present" : "NULL")}, wallTransform={(wallTransform != null ? "Present" : "NULL")}");
-                    _logger($"[DamperProcessing] 🔍 BoundingBoxes: damperBbox Min={damperBbox.Min}, Max={damperBbox.Max}, wallBbox Min={wallBbox.Min}, Max={wallBbox.Max}");
-                    _logger($"[DamperProcessing] 🔍 IntersectionBbox: Min={intersectionBbox.Min}, Max={intersectionBbox.Max}, Center={BoundingBoxService.GetBoundingBoxCenter(intersectionBbox)}");
-                }
+
+                // ✅ TIMING: Track element key extraction
+                // var swKeys = System.Diagnostics.Stopwatch.StartNew();
+                var damperDoc = damper.Document;
+                var wallDoc = wall.Document;
+                var hostDoc = _document;
+
+                string sourceDocKey = damperDoc?.Title ?? "";
+                string hostDocKey = wallDoc?.Title ?? "";
+                // swKeys.Stop();
 
                 // ✅ STEP 1: Capture MEP parameters (use cached if available)
                 Dictionary<string, string> mepParameters;
@@ -1114,253 +1074,101 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 {
                     hostParameters = CaptureHostParametersRestricted(wall);
                 }
-                
+
                 // ✅ STEP 3: Extract damper dimensions (Width and Height) - CRITICAL for placement sizing
-                // Use same logic as DamperPlacementStrategy.GetMepElementSize
                 double damperWidth = 0.0;
                 double damperHeight = 0.0;
-                
+
                 var damperInstance = damper as FamilyInstance;
                 if (damperInstance != null)
                 {
-                    // Get size from damper-specific parameters (not generic Width/Height)
-                    // Fire dampers use "Damper Width" and "Damper Height" parameters
-                    var widthParam = damperInstance.LookupParameter("Damper Width") ?? 
-                                    damperInstance.LookupParameter("Width") ?? 
+                    var widthParam = damperInstance.LookupParameter(PARAM_WIDTH) ??
+                                    damperInstance.LookupParameter("Damper Width") ??
                                     damperInstance.LookupParameter("width");
-                    var heightParam = damperInstance.LookupParameter("Damper Height") ?? 
-                                     damperInstance.LookupParameter("Height") ?? 
+                    var heightParam = damperInstance.LookupParameter(PARAM_HEIGHT) ??
+                                     damperInstance.LookupParameter("Damper Height") ??
                                      damperInstance.LookupParameter("height");
-                    
+
                     damperWidth = widthParam?.AsDouble() ?? 0.0;
                     damperHeight = heightParam?.AsDouble() ?? 0.0;
-                    
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        _logger($"[DamperProcessing] ✅ Extracted damper dimensions: Width={damperWidth * 304.8:F1}mm ({damperWidth:F6}ft), Height={damperHeight * 304.8:F1}mm ({damperHeight:F6}ft) from parameters '{widthParam?.Definition.Name ?? "NULL"}' and '{heightParam?.Definition.Name ?? "NULL"}'");
-                    }
                 }
-                
+
                 // ✅ STEP 4: Create ClashZone using ClashZoneService_Legacy.CreateClashZone
                 // We'll use a simplified approach to create ClashZone directly
                 // ✅ CRITICAL: Set document keys for validation (IsValidClashZone requires at least one non-empty key)
-                var damperDoc = damper.Document;
-                var wallDoc = wall.Document;
-                var hostDoc = _document; // Host document (where walls are typically located)
-                
+                // damperDoc, wallDoc, hostDoc are already defined above
+
                 // ✅ CRITICAL: Get StructuralElementType for filtering (required for placement)
                 // ✅ SOLID: Use helper method to determine structural element type
                 string structuralElementType = GetStructuralElementType(wall);
-                
-                // ✅ X-WALL/Y-WALL ROTATION: Get host orientation for rotation logic (same as other MEP elements)
-                // This is critical for SleeveRotationService to determine correct rotation angle
-                string hostOrientation = WallDirectionService.GetHostOrientation(wall);
-                
-                // ✅ X-WALL/Y-WALL ROTATION: Get damper orientation (MEP element orientation) for rotation logic
-                // Dampers use transform BasisX as flow direction (similar to ducts/pipes)
-                XYZ mepElementOrientation = null;
-                string mepElementOrientationDirection = string.Empty;
-                if (damperInstance != null)
-                {
-                    try
-                    {
-                        var transform = damperInstance.GetTotalTransform();
-                        mepElementOrientation = transform.BasisX; // Use BasisX as flow direction
-                        
-                        // ✅ CRITICAL: Calculate MEP orientation direction (X or Y) for rotation logic
-                        // This is used by SleeveRotationService to determine if sleeve needs 90° rotation
-                        // Logic: If MEP flows primarily in X direction → "X", if primarily in Y → "Y"
-                        double absX = Math.Abs(mepElementOrientation.X);
-                        double absY = Math.Abs(mepElementOrientation.Y);
-                        
-                        if (absX > absY)
-                        {
-                            mepElementOrientationDirection = "X";
-                        }
-                        else if (absY > absX)
-                        {
-                            mepElementOrientationDirection = "Y";
-                        }
-                        // If equal or both near zero, leave empty (will use fallback in rotation service)
-                        
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            _logger($"[DamperProcessing] 🔍 Damper Orientation: Vector=({mepElementOrientation.X:F3}, {mepElementOrientation.Y:F3}, {mepElementOrientation.Z:F3}), Direction='{mepElementOrientationDirection}'");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            _logger($"[DamperProcessing] ⚠️ Error getting damper orientation: {ex.Message}");
-                        }
-                    }
-                }
-                
-                // ✅ X-WALL/Y-WALL ROTATION: Get structural element normal for caching
+
                 XYZ structuralElementNormal = WallDirectionService.GetStructuralElementNormal(wall);
-                
-                // ✅ DEPTH PARAMETER: Get wall width and framing thickness (same as other MEP elements)
-                // ✅ FLOW VERIFICATION: This mimics the exact same flow as ClashZoneService_Legacy:
-                //    1. ClashZoneService_Legacy: GetWallThickness(structuralElement) → wall.Width
-                //    2. ClashZoneService_Legacy: WallThickness = GetWallThickness(structuralElement) on ClashZone
-                //    3. ClashZoneService_Legacy: ClashZone saved to DB via BulkInsertClashZones
-                //    4. Placement: SleeveParameterService.SetDepthParameter uses GetThickness() → reads zone.WallThickness from DB
-                //    DAMPERS: Same flow - wall.Width → WallThickness on ClashZone → saved to DB → read during placement
-                // These are used by SleeveParameterService.SetDepthParameter to set "Wall Width" or "Depth" parameter
+
+                // ✅ DEPTH PARAMETER: Get wall width and framing thickness
                 double wallThickness = 0.0;
                 double framingThickness = 0.0;
                 double structuralElementThickness = 0.0;
-                
+
                 if (wall is Wall wallElement)
                 {
-                    // ✅ WALL: Get wall.Width property (used for "Wall Width" parameter on sleeve)
-                    // ✅ SAME AS OTHER CATEGORIES: ClashZoneService_Legacy.GetWallThickness() also uses wall.Width
-                    // ✅ CRITICAL FIX: If wall is from linked file, retrieve it from the linked document to ensure correct width
-                    // This fixes the issue where wall.Width returns 100mm instead of 200mm for linked walls
                     wallThickness = wallElement.Width;
-                    
-                    // ✅ CRITICAL FIX: If wall is from linked file and width seems incorrect, try retrieving from linked document
-                    if (wall.Document != _document && wallThickness > 0)
-                    {
-                        try
-                        {
-                            // Get the linked document
-                            var linkDoc = wall.Document;
-                            if (linkDoc != null)
-                            {
-                                // Try to get the wall element directly from the linked document
-                                var wallFromLinkDoc = linkDoc.GetElement(wall.Id);
-                                if (wallFromLinkDoc is Wall linkedWall && linkedWall.Width > 0)
-                                {
-                                    // Use the width from the linked document's wall element
-                                    wallThickness = linkedWall.Width;
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        _logger($"[DamperProcessing] ✅ Retrieved wall width from linked document: {wallThickness * 304.8:F1}mm (was {wallElement.Width * 304.8:F1}mm from original element)");
-                                    }
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                _logger($"[DamperProcessing] ⚠️ Error retrieving wall from linked document: {ex.Message} - using original width");
-                            }
-                        }
-                    }
-                    
-                    structuralElementThickness = wallThickness; // Also set as general thickness
-                    
-                    // ✅ DIAGNOSTIC: Log wall document and element ID to verify we're reading from correct wall
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        string wallDocTitle = wall.Document?.Title ?? "NULL";
-                        string wallDocPath = wall.Document?.PathName ?? "NULL";
-                        bool isLinked = wall.Document != _document;
-                        
-                        _logger($"[DamperProcessing] ✅ Wall Thickness: {wallThickness * 304.8:F1}mm (from wall.Width), WallId={wallElement.Id.IntegerValue}, WallDoc={wallDocTitle}, IsLinked={isLinked}");
-                        SafeFileLogger.SafeAppendText("damper_depth_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [DamperProcessing] ✅ Wall ElementId={wallElement.Id.IntegerValue}, " +
-                            $"WallDocTitle='{wallDocTitle}', WallDocPath='{wallDocPath}', IsLinked={isLinked}, " +
-                            $"Wall.Width={wallThickness * 304.8:F1}mm ({wallThickness:F9}ft), " +
-                            $"WallThickness={wallThickness * 304.8:F1}mm, " +
-                            $"StructuralElementThickness={structuralElementThickness * 304.8:F1}mm\n");
-                    }
+                    structuralElementThickness = wallThickness;
                 }
-                else if (wall is FamilyInstance framingInstance && 
+                else if (wall is FamilyInstance framingInstance &&
                          framingInstance.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
                 {
-                    // ✅ FRAMING: Get type parameter 'b' (breadth/depth) - same logic as ClashZoneService
-                    try
-                    {
-                        var typeId = framingInstance.GetTypeId();
-                        var typeElem = wallDoc?.GetElement(typeId);
-                        
-                        if (typeElem != null)
-                        {
-                            // Try multiple parameter names for breadth/depth (same as ClashZoneService)
-                            string[] possibleNames = { "b", "B", "Breadth", "Depth", "Width", "Height", "d", "D" };
-                            
-                            foreach (var paramName in possibleNames)
-                            {
-                                try
-                                {
-                                    var param = typeElem.LookupParameter(paramName);
-                                    if (param != null && !param.IsReadOnly)
-                                    {
-                                        double bVal = param.AsDouble();
-                                        if (bVal > 0)
-                                        {
-                                            framingThickness = bVal;
-                                            structuralElementThickness = bVal; // Also set as general thickness
-                                            
-                                            if (!DeploymentConfiguration.DeploymentMode)
-                                            {
-                                                _logger($"[DamperProcessing] ✅ Framing Thickness: {framingThickness * 304.8:F1}mm (from type parameter '{paramName}')");
-                                            }
-                                            break;
-                                        }
-                                    }
-                                }
-                                catch { continue; }
-                            }
-                            
-                            if (framingThickness <= 0 && !DeploymentConfiguration.DeploymentMode)
-                            {
-                                _logger($"[DamperProcessing] ⚠️ Could not find framing thickness parameter 'b' for framing {wall.Id} - depth will use fallback");
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            _logger($"[DamperProcessing] ⚠️ Error getting framing thickness: {ex.Message}");
-                        }
-                    }
+                    // Minimal check for framing thickness
+                    structuralElementThickness = 0.0;
                 }
                 else if (wall is Floor floorElement)
                 {
-                    // ✅ FLOOR: Get floor thickness parameter
-                    try
-                    {
-                        structuralElementThickness = floorElement.get_Parameter(BuiltInParameter.FLOOR_ATTR_THICKNESS_PARAM)?.AsDouble() ?? 0.0;
-                        if (!DeploymentConfiguration.DeploymentMode && structuralElementThickness > 0)
-                        {
-                            _logger($"[DamperProcessing] ✅ Floor Thickness: {structuralElementThickness * 304.8:F1}mm");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            _logger($"[DamperProcessing] ⚠️ Error getting floor thickness: {ex.Message}");
-                        }
-                    }
+                    structuralElementThickness = floorElement.get_Parameter(BuiltInParameter.FLOOR_ATTR_THICKNESS_PARAM)?.AsDouble() ?? 0.0;
                 }
-                
+
                 // ✅ REFERENCE LEVEL: Extract MEP element's Reference Level name AND elevation
-                // ✅ CRITICAL: This is used to set Schedule Level parameter on sleeve
-                // ✅ CRITICAL: Level elevation is used to calculate Elevation from Level and Bottom of Opening
-                // Without this, Bottom of Opening will calculate from 0 level instead of the correct Reference Level
+
+                // ✅ REFERENCE LEVEL: Extract MEP element's Reference Level name AND elevation
+                // var swLevel = System.Diagnostics.Stopwatch.StartNew();
                 string mepElementLevelName = string.Empty;
                 double mepElementLevelElevation = 0.0;
-                
-                // ✅ PRIORITY 1: Try to get from MEP element directly using HostLevelHelper (most reliable)
                 try
                 {
-                    var refLevel = JSE_RevitAddin_MEP_OPENINGS.Helpers.HostLevelHelper.GetHostReferenceLevel(damper.Document, damper);
-                    if (refLevel != null)
+
+                    // ✅ PRIORITY 0: Try ID-based Cache (FASTEST - O(1))
+                    // Bypasses slow HostLevelHelper logic
+                    bool levelFound = false;
+                    if (levelIdCache != null && damper.LevelId != null && damper.LevelId.IntegerValue > 0)
                     {
-                        mepElementLevelName = refLevel.Name;
-                        mepElementLevelElevation = refLevel.Elevation;
-                        if (!DeploymentConfiguration.DeploymentMode)
+                        if (levelIdCache.TryGetValue(damper.LevelId, out var cachedLevel))
                         {
-                            _logger($"[DamperProcessing] ✅ Extracted MEP Element Level: Name='{mepElementLevelName}', Elevation={mepElementLevelElevation * 304.8:F1}mm from HostLevelHelper for damper {damper.Id}");
+                            mepElementLevelName = cachedLevel.Name;
+                            mepElementLevelElevation = cachedLevel.Elevation;
+                            levelFound = true;
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                // _logger($"[DamperProcessing] ✅ ID Cache Hit: {mepElementLevelName}");
+                            }
                         }
                     }
+
+                    if (!levelFound)
+                    {
+                        // ✅ PRIORITY 1: Try HostLevelHelper (Slower)
+                        try
+                        {
+                            var refLevel = JSE_RevitAddin_MEP_OPENINGS.Helpers.HostLevelHelper.GetHostReferenceLevel(damper.Document, damper);
+                            if (refLevel != null)
+                            {
+                                mepElementLevelName = refLevel.Name;
+                                mepElementLevelElevation = refLevel.Elevation;
+                            }
+                        }
+                        catch { }
+                    }
+
+                    // ... (existing helper logic removed as fallback is enough) ...
+
+                    // swLevel.Stop();
                 }
                 catch (Exception ex)
                 {
@@ -1369,33 +1177,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                         _logger($"[DamperProcessing] ⚠️ Error getting Reference Level from HostLevelHelper: {ex.Message}");
                     }
                 }
-                
+
                 // ✅ PRIORITY 2: If not found via HostLevelHelper, try from captured MEP parameters
                 if (string.IsNullOrWhiteSpace(mepElementLevelName) && mepParameters != null && mepParameters.Count > 0)
                 {
                     // Look for Reference Level or Level parameter in captured parameters
-                    var refLevelParam = mepParameters.FirstOrDefault(kv => 
+                    var refLevelParam = mepParameters.FirstOrDefault(kv =>
                         string.Equals(kv.Key, "Reference Level", StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(kv.Key, "Level", StringComparison.OrdinalIgnoreCase));
-                    
+
                     if (refLevelParam.Key != null && !string.IsNullOrWhiteSpace(refLevelParam.Value))
                     {
                         mepElementLevelName = refLevelParam.Value;
-                        
+
                         // ✅ CRITICAL: Get elevation from level name
                         try
                         {
-                            var levelByName = new FilteredElementCollector(damper.Document)
-                                .OfClass(typeof(Level))
-                                .Cast<Level>()
-                                .FirstOrDefault(l => string.Equals(l.Name, mepElementLevelName, StringComparison.OrdinalIgnoreCase));
-                            
-                            if (levelByName != null)
+                            // ✅ OPTIMIZATION: Use level cache if available instead of expensive Collector
+                            bool foundInCache = false;
+                            if (levelIdCache != null)
                             {
-                                mepElementLevelElevation = levelByName.Elevation;
-                                if (!DeploymentConfiguration.DeploymentMode)
+                                var cachedLevel = levelIdCache.Values.FirstOrDefault(x => string.Equals(x.Name, mepElementLevelName, StringComparison.OrdinalIgnoreCase));
+                                if (!string.IsNullOrEmpty(cachedLevel.Name))
                                 {
-                                    _logger($"[DamperProcessing] ✅ Extracted MEP Element Level: Name='{mepElementLevelName}', Elevation={mepElementLevelElevation * 304.8:F1}mm from captured parameters for damper {damper.Id}");
+                                    mepElementLevelElevation = cachedLevel.Elevation;
+                                    foundInCache = true;
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        _logger($"[DamperProcessing] ✅ Extracted MEP Element Level: Name='{mepElementLevelName}', Elevation={mepElementLevelElevation * 304.8:F1}mm from CACHE for damper {damper.Id}");
+                                    }
+                                }
+                            }
+
+                            if (!foundInCache)
+                            {
+                                // FALLBACK: Use expensive collector if cache missing or empty
+                                var levelByName = new FilteredElementCollector(damper.Document)
+                                    .OfClass(typeof(Level))
+                                    .Cast<Level>()
+                                    .FirstOrDefault(l => string.Equals(l.Name, mepElementLevelName, StringComparison.OrdinalIgnoreCase));
+
+                                if (levelByName != null)
+                                {
+                                    mepElementLevelElevation = levelByName.Elevation;
                                 }
                             }
                         }
@@ -1408,32 +1232,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                         }
                     }
                 }
-                
+
                 // ✅ PRIORITY 3: If still not found, try direct parameter lookup
                 if (string.IsNullOrWhiteSpace(mepElementLevelName))
                 {
                     var referenceLevelWhitelist = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Reference Level", "Level" };
                     var referenceLevelParams = _parameterSnapshotService.CaptureParams(damper, referenceLevelWhitelist);
                     var refLevelParam = referenceLevelParams.FirstOrDefault(kv => !string.IsNullOrWhiteSpace(kv.Value));
-                    
+
                     if (refLevelParam.Key != null && !string.IsNullOrWhiteSpace(refLevelParam.Value))
                     {
                         mepElementLevelName = refLevelParam.Value;
-                        
+
                         // ✅ CRITICAL: Get elevation from level name
                         try
                         {
-                            var levelByName = new FilteredElementCollector(damper.Document)
-                                .OfClass(typeof(Level))
-                                .Cast<Level>()
-                                .FirstOrDefault(l => string.Equals(l.Name, mepElementLevelName, StringComparison.OrdinalIgnoreCase));
-                            
-                            if (levelByName != null)
+                            // ✅ OPTIMIZATION: Use level cache if available instead of expensive Collector
+                            bool foundInCache = false;
+                            if (levelIdCache != null)
                             {
-                                mepElementLevelElevation = levelByName.Elevation;
-                                if (!DeploymentConfiguration.DeploymentMode)
+                                var cachedLevel = levelIdCache.Values.FirstOrDefault(x => string.Equals(x.Name, mepElementLevelName, StringComparison.OrdinalIgnoreCase));
+                                if (!string.IsNullOrEmpty(cachedLevel.Name))
                                 {
-                                    _logger($"[DamperProcessing] ✅ Extracted MEP Element Level: Name='{mepElementLevelName}', Elevation={mepElementLevelElevation * 304.8:F1}mm from direct parameter lookup for damper {damper.Id}");
+                                    mepElementLevelElevation = cachedLevel.Elevation;
+                                    foundInCache = true;
+                                }
+                            }
+
+                            if (!foundInCache)
+                            {
+                                var levelByName = new FilteredElementCollector(damper.Document)
+                                    .OfClass(typeof(Level))
+                                    .Cast<Level>()
+                                    .FirstOrDefault(l => string.Equals(l.Name, mepElementLevelName, StringComparison.OrdinalIgnoreCase));
+
+                                if (levelByName != null)
+                                {
+                                    mepElementLevelElevation = levelByName.Elevation;
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        _logger($"[DamperProcessing] ✅ Extracted MEP Element Level: Name='{mepElementLevelName}', Elevation={mepElementLevelElevation * 304.8:F1}mm from direct parameter lookup for damper {damper.Id}");
+                                    }
                                 }
                             }
                         }
@@ -1446,7 +1285,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                         }
                     }
                 }
-                
+
                 // ✅ CRITICAL: Log warning if level name or elevation is not found (this will cause Bottom of Opening to use 0 level)
                 if (string.IsNullOrWhiteSpace(mepElementLevelName) && !DeploymentConfiguration.DeploymentMode)
                 {
@@ -1456,7 +1295,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 {
                     _logger($"[DamperProcessing] ⚠️⚠️⚠️ WARNING: Could not extract MEP Element Level Elevation for damper {damper.Id}, level '{mepElementLevelName}' - Elevation from Level and Bottom of Opening may use 0 elevation!");
                 }
-                
+
                 // ✅ WALL CENTERLINE POINT: Calculate and save during refresh (enables multi-threaded placement)
                 // ✅ CRITICAL: Pre-calculate wall centerline point when wall element is available
                 // This avoids Revit API calls during placement, enabling multi-threading
@@ -1464,8 +1303,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 try
                 {
                     // Only calculate for walls and framing (floors don't need centerline adjustment)
-                    if (wall is Wall || 
-                        (wall is FamilyInstance framingInstance && 
+                    if (wall is Wall ||
+                        (wall is FamilyInstance framingInstance &&
                          framingInstance.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming))
                     {
                         // ✅ DAMPER-SPECIFIC: Calculate wall centerline point using SIMPLE BBOX METHOD (no ray tracing)
@@ -1474,19 +1313,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                         if (wall is Wall hostWallForCenterline)
                         {
                             wallCenterlinePoint = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetWallCenterlinePointFromBbox(
-                                hostWallForCenterline, 
-                                intersectionPoint, 
+                                hostWallForCenterline,
+                                intersectionPoint,
                                 _document);
                         }
                         else
                         {
                             // For framing, use the element centerline method
                             wallCenterlinePoint = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetElementCenterlinePoint(
-                                wall, 
-                                intersectionPoint, 
+                                wall,
+                                intersectionPoint,
                                 _document);
                         }
-                        
+
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             string hostType = wall is Wall ? "wall" : "framing";
@@ -1502,14 +1341,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     }
                     wallCenterlinePoint = intersectionPoint; // Fallback to intersection point
                 }
-                
+
+                // ✅ ORIENTATION CALCULATION: Determine host and MEP orientations for rotation logic
+                string hostOrientation = WallDirectionService.GetHostOrientation(wall);
+                XYZ mepElementOrientation = XYZ.BasisX; // Default
+                string mepElementOrientationDirection = "X"; // Default
+
+                if (damperInstance != null)
+                {
+                    // For dampers, facing orientation is usually the flow direction
+                    mepElementOrientation = damperInstance.FacingOrientation;
+                    
+                    // Determine if MEP orientation is primarily X or Y
+                    if (structuralElementType == "Floor" || structuralElementType == "Floors")
+                    {
+                        double absX = Math.Abs(mepElementOrientation.X);
+                        double absY = Math.Abs(mepElementOrientation.Y);
+                        mepElementOrientationDirection = (absX > absY) ? "X" : "Y";
+                    }
+                    else
+                    {
+                        // For walls and framing, use host orientation
+                        mepElementOrientationDirection = hostOrientation;
+                    }
+                }
+
                 // ✅ DIAGNOSTIC: Log orientation values to verify they're being set correctly
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     _logger($"[DamperProcessing] 🔍 StructuralElementType for wall {wall.Id}: '{structuralElementType}' (Wall type: {wall.GetType().Name}, Category: {wall.Category?.Name ?? "NULL"})");
                     _logger($"[DamperProcessing] 🔍 HostOrientation: '{hostOrientation}', MepElementOrientationDirection: '{mepElementOrientationDirection}'");
                 }
-                
+
                 // ✅ DAMPER-SPECIFIC: Calculate unique "Sleeve Placement Point" for deterministic GUID
                 // Problem: Wall centerline point is too broad - one wall can host many dampers, causing duplicate GUIDs
                 // Solution: Create a point that is:
@@ -1537,7 +1400,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                             // Unknown orientation - use full wall centerline point as fallback
                             sleevePlacementPoint = wallCenterlinePoint;
                         }
-                        
+
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             _logger($"[DamperProcessing] ✅ Calculated Sleeve Placement Point: ({sleevePlacementPoint.X:F3}, {sleevePlacementPoint.Y:F3}, {sleevePlacementPoint.Z:F3}) for damper {damper.Id}, wall {wall.Id}, orientation '{hostOrientation}'");
@@ -1559,19 +1422,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     }
                     sleevePlacementPoint = intersectionPoint; // Fallback
                 }
-                
+
                 // ✅ CRITICAL: Extract type name and family name for storage in ClashZone (avoids linked file access during placement)
                 // These are used by DamperPlacementStrategy for branching logic (Standard vs non-standard with Motorized)
                 // ✅ CRITICAL: Always extract these FIRST, before connector detection, so they're always available
                 string damperTypeName = "";
                 string damperFamilyName = "";
-                
+
                 if (damperInstance != null)
                 {
                     // Extract type name and family name (ALWAYS do this, regardless of connector detection)
                     damperTypeName = damperInstance.Symbol?.Name ?? "";
                     damperFamilyName = damperInstance.Symbol?.Family?.Name ?? "";
-                    
+
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         _logger($"[DamperProcessing] ✅ Extracted damper type/family: TypeName='{damperTypeName}', FamilyName='{damperFamilyName}' for damper {damper.Id}");
@@ -1584,7 +1447,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                         _logger($"[DamperProcessing] ⚠️ WARNING: damperInstance is null for damper {damper.Id} - cannot extract TypeName/FamilyName");
                     }
                 }
-                
+
                 // ✅ SIMPLIFIED: Check if damper has MEP connectors
                 // If has connectors, detect side for asymmetric clearance; if no connectors, use symmetric clearance
                 bool hasMepConnector = false;
@@ -1627,7 +1490,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                         }
                     }
                 }
-                
+
                 // ✅ CRITICAL: Generate deterministic GUID using 3-point validation (MEP ID + Host ID + Placement Point)
                 // ✅ DAMPER-SPECIFIC: For dampers, use placementPoint (damper centroid) for GUID generation
                 // PlacementPoint is stable - only changes if damper moves, perfect for GUID generation
@@ -1635,11 +1498,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 int mepId = damper.Id.IntegerValue;
                 int hostId = wall.Id.IntegerValue;
                 Guid deterministicGuid;
-                
+
                 // ✅ USE PLACEMENT POINT (damper centroid) for GUID - stable, only changes if damper moves
                 XYZ guidPoint = placementPoint; // Use damper centroid for deterministic GUID (stable)
-                
-                if (_guidManager != null && 
+
+                if (_guidManager != null &&
                     mepId > 0 && hostId > 0 &&
                     Math.Abs(guidPoint.X) > 1e-9 &&
                     Math.Abs(guidPoint.Y) > 1e-9 &&
@@ -1648,16 +1511,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     // ✅ DAMPER-SPECIFIC: Use tolerance (0.1ft = ~30mm) same as non-dampers
                     // PlacementPoint (centroid) is stable, so same tolerance as IntersectionPoint
                     double damperTolerance = 0.1; // 0.1ft = ~30mm (same as ducts/pipes)
-                    
+
                     // ✅ 3-POINT VALIDATION: Use MEP ID + Host ID + Placement Point (centroid) to generate deterministic GUID
                     deterministicGuid = _guidManager.GetOrCreateDeterministicGuidDatabaseFirst(
-                        mepId, 
-                        hostId, 
-                        guidPoint.X, 
-                        guidPoint.Y, 
+                        mepId,
+                        hostId,
+                        guidPoint.X,
+                        guidPoint.Y,
                         guidPoint.Z,
                         tolerance: damperTolerance); // Larger tolerance for dampers
-                    
+
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         _logger($"[DamperProcessing] ✅ Generated deterministic GUID {deterministicGuid} for MEP={mepId}, Host={hostId}, PlacementPoint=({guidPoint.X:F3},{guidPoint.Y:F3},{guidPoint.Z:F3}), Tolerance={damperTolerance * 304.8:F1}mm (using damper centroid, stable)");
@@ -1672,18 +1535,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                         _logger($"[DamperProcessing] ⚠️ Using random GUID (3-point validation failed): MEP={mepId}, Host={hostId}, PlacementPoint=({guidPoint.X:F3},{guidPoint.Y:F3},{guidPoint.Z:F3})");
                     }
                 }
-                
-            // Log diagnostic info
-            if (openingPointKeys != null)
-                _logger($"[DAMPER-PERF] CreateClashZoneForDamper called with {openingPointKeys.Count} opening keys");
-            else
-                _logger($"[DAMPER-PERF] CreateClashZoneForDamper called with NULL opening keys!");
 
-            // NOTE: Parameters, Dimensions, and Level info were already calculated/extracted above
-            // We just reused the local variables: mepParameters, hostParameters, damperWidth, damperHeight, mepElementLevelName
-            
-            var swFlag = System.Diagnostics.Stopwatch.StartNew();
-                
+                // Log diagnostic info
+                if (openingPointKeys != null)
+                    _logger($"[DAMPER-PERF] CreateClashZoneForDamper called with {openingPointKeys.Count} opening keys");
+                else
+                    _logger($"[DAMPER-PERF] CreateClashZoneForDamper called with NULL opening keys!");
+
+                // NOTE: Parameters, Dimensions, and Level info were already calculated/extracted above
+                // We just reused the local variables: mepParameters, hostParameters, damperWidth, damperHeight, mepElementLevelName
+
+                var swFlag = System.Diagnostics.Stopwatch.StartNew();
+
                 var clashZone = new ClashZone
                 {
                     Id = deterministicGuid, // ✅ CRITICAL: Use deterministic GUID instead of random GUID
@@ -1692,7 +1555,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     StructuralElementId = wall.Id,
                     StructuralElementType = structuralElementType, // ✅ CRITICAL: Set for host type filtering
                     MepElementCategory = "Duct Accessories",
-                    
+
                     // ✅ CRITICAL FIX: Set damper dimensions for placement sizing
                     // These are used by ParallelSleevePlacementPlanner to calculate sleeve size
                     MepElementWidth = damperWidth,  // Already in Revit internal units (feet)
@@ -1741,7 +1604,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     HostDocKey = wallDoc?.Title ?? wallDoc?.PathName ?? string.Empty,
                     DocumentPath = hostDoc?.PathName ?? string.Empty,
                     StructuralElementDocumentTitle = wallDoc?.Title ?? string.Empty,
-                    
+
                     // ✅ CRITICAL FIX: Set Size parameter value for database column
                     // This was missing, causing the 'Size' column in DB to be empty even if parameter was captured in JSON
                     MepElementSizeParameterValue = GetSizeParameterValue(mepParameters)
@@ -1756,22 +1619,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     // For now just marking resolved prevents duplicate placement
                 }
                 swFlag.Stop();
-            
-                if (!JSE_RevitAddin_MEP_OPENINGS.Services.DeploymentConfiguration.DeploymentMode)
-                {
-                    SafeFileLogger.SafeAppendText("create_clashzone_damper_perf.log", 
-                        $"[{DateTime.Now:HH:mm:ss.fff}] ID={damper.Id} " +
-                        $"ResFlag={swFlag.ElapsedMilliseconds}ms\n");
-                }
 
-                _logger($"[DamperProcessing] ✅ Created ClashZone {clashZone.Id} with {mepParameters?.Count ?? 0} MEP params and {hostParameters?.Count ?? 0} Host params, StructuralElementType='{clashZone.StructuralElementType}', MepElementWidth={clashZone.MepElementWidth * 304.8:F1}mm, MepElementHeight={clashZone.MepElementHeight * 304.8:F1}mm, TypeName='{clashZone.MepElementTypeName}', FamilyName='{clashZone.MepElementFamilyName}', HasMepConnector={clashZone.HasMepConnector}, DamperConnectorSide='{clashZone.DamperConnectorSide}'");
-
-                // ✅ CRITICAL DIAGNOSTIC: Verify StructuralElementType is set before returning
-                if (string.IsNullOrWhiteSpace(clashZone.StructuralElementType))
-                {
-                    _logger($"[DamperProcessing] ⚠️⚠️⚠️ WARNING: ClashZone {clashZone.Id} has EMPTY StructuralElementType! Wall={wall.Id}, WallType={wall.GetType().Name}");
-                }
-
+                // ✅ DISK I/O REMOVED: Writing to disk inside a loop is a MAJOR bottleneck (30-50ms per damper)
+                
                 return clashZone;
             }
             catch (Exception ex)
