@@ -97,7 +97,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             if (zonesList.Count == 0) return;
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            _logger($"[SQLite][BULK-MULTI] ⚡ Starting multi-category bulk update for {zonesList.Count} zones");
+            _logger($"[SQLite][BULK-OPTIMIZED] ⚡ Starting multi-category bulk save for {zonesList.Count} zones");
 
             using (var transaction = _context.Connection.BeginTransaction())
             {
@@ -106,142 +106,168 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     // Group by category to respect the database schema (Filters table)
                     var byCategory = zonesList
                         .Where(z => z != null && !string.IsNullOrWhiteSpace(z.MepElementCategory))
-                        .GroupBy(z => z.MepElementCategory, StringComparer.OrdinalIgnoreCase);
+                        .GroupBy(z => z.MepElementCategory, StringComparer.OrdinalIgnoreCase)
+                        .ToList();
 
                     foreach (var categoryGroup in byCategory)
                     {
                         string category = categoryGroup.Key;
                         var categoryZones = categoryGroup.ToList();
 
-                        _logger($"[SQLite][BULK-MULTI]   Processing category '{category}' with {categoryZones.Count} zones");
-
-                        int filterId;
-                        using (var filterOp = _performanceMonitor?.TrackOperation("9a2a. Get Filter ID"))
+                        // Use the optimized single-category bulk method if flag is enabled
+                        if (OptimizationFlags.UseBulkSqliteUpdates)
                         {
-                            filterId = GetOrCreateFilter(filterName, category, transaction);
+                            InsertOrUpdateClashZonesBulkInternal(categoryZones, filterName, category, transaction);
                         }
-                        
-                        if (filterId <= 0)
+                        else
                         {
-                            _logger($"[SQLite][BULK-MULTI] ⚠️ Filter not found: '{filterName}' category '{category}'");
-                            continue; 
-                        }
-
-                        // Build GUID list for batch lookup
-                        var guidList = string.Join(",", categoryZones.Select(z => $"'{z.Id.ToString().ToUpperInvariant()}'"));
-
-                        // Batch lookup
-                        var existingMap = new Dictionary<Guid, int>();
-                        using (var fetchOp = _performanceMonitor?.TrackOperation("9a2b. Fetch Existing IDs"))
-                        {
-                            using (var cmd = _context.Connection.CreateCommand())
-                            {
-                                cmd.Transaction = transaction;
-                                cmd.CommandText = $@"
-                                    SELECT ClashZoneGuid, ClashZoneId 
-                                    FROM ClashZones 
-                                    WHERE UPPER(ClashZoneGuid) IN ({guidList})
-                                      AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL";
-
-                                using (var reader = cmd.ExecuteReader())
-                                {
-                                    while (reader.Read())
-                                    {
-                                        var guid = Guid.Parse(reader.GetString(0));
-                                        var id = reader.GetInt32(1);
-                                        existingMap[guid] = id;
-                                    }
-                                }
-                            }
-                        }
-
-                        // Batch File Combos
-                        Dictionary<Guid, int> comboMap;
-                        using (var comboOp = _performanceMonitor?.TrackOperation("9a5. Batch File Combos") as PerformanceMonitor.OperationTracker)
-                        {
-                            comboMap = BatchGetOrCreateFileCombos(categoryZones, filterId, category, transaction);
-                        }
-
-                        // Update existing
-                        var toUpdate = categoryZones.Where(z => existingMap.ContainsKey(z.Id)).ToList();
-                        if (toUpdate.Count > 0)
-                        {
-                            // Populate IDs for R-tree sync
-                            foreach (var zone in toUpdate) zone.ClashZoneId = existingMap[zone.Id];
-
-                            using (var updateOp = _performanceMonitor?.TrackOperation("9a3. Bulk Update") as PerformanceMonitor.OperationTracker)
-                            {
-                                BulkUpdateClashZones(toUpdate, existingMap, comboMap, transaction);
-                                updateOp?.SetItemCount(toUpdate.Count);
-                            }
-
-                            // ✅ SYNC R-TREE: Update spatial index for existing zones
-                            BulkUpdateRTreeIndex(toUpdate, transaction);
-                        }
-
-                        // Insert new
-                        var toInsert = categoryZones.Where(z => !existingMap.ContainsKey(z.Id) && comboMap.ContainsKey(z.Id)).ToList();
-                        if (toInsert.Count > 0)
-                        {
-                            using (var insertOp = _performanceMonitor?.TrackOperation("9a2. Bulk Insert") as PerformanceMonitor.OperationTracker)
-                            {
-                                BulkInsertClashZones(toInsert, comboMap, transaction);
-                                insertOp?.SetItemCount(toInsert.Count);
-                            }
-
-                            // ✅ SYNC R-TREE: Fetch new IDs and update spatial index
-                            // We must re-query to get the auto-increment IDs for the R-tree mapping
-                            var newZonesGuidList = string.Join(",", toInsert.Select(z => $"'{z.Id.ToString().ToUpperInvariant()}'"));
-                            using (var fetchNewCmd = _context.Connection.CreateCommand())
-                            {
-                                fetchNewCmd.Transaction = transaction;
-                                fetchNewCmd.CommandText = $"SELECT ClashZoneGuid, ClashZoneId FROM ClashZones WHERE UPPER(ClashZoneGuid) IN ({newZonesGuidList})";
-                                using (var reader = fetchNewCmd.ExecuteReader())
-                                {
-                                    var newIdMap = new Dictionary<Guid, int>();
-                                    while (reader.Read())
-                                    {
-                                        var guid = Guid.Parse(reader.GetString(0));
-                                        var id = reader.GetInt32(1);
-                                        newIdMap[guid] = id;
-                                    }
-
-                                    foreach (var zone in toInsert)
-                                    {
-                                        if (newIdMap.TryGetValue(zone.Id, out int newId))
-                                        {
-                                            zone.ClashZoneId = newId;
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            BulkUpdateRTreeIndex(toInsert, transaction);
-                        }
-
-                        // Snapshots
-                        var processedZonesData = categoryZones
-                            .Where(z => comboMap.ContainsKey(z.Id))
-                            .Select(z => (comboMap[z.Id], z))
-                            .ToList();
-                        
-                        if (processedZonesData.Count > 0)
-                        {
-                            InsertOrUpdateSleeveSnapshots(filterId, processedZonesData, transaction);
+                            // Legacy per-zone fallback if needed (though not recommended for Phase 3)
+                            InsertOrUpdateClashZones(categoryZones, filterName, category);
                         }
                     }
 
                     transaction.Commit();
                     sw.Stop();
-                    _logger($"[SQLite][BULK-MULTI] ✅ Completed in {sw.ElapsedMilliseconds}ms");
+                    _logger($"[SQLite][BULK-OPTIMIZED] ✅ Completed multi-category save in {sw.ElapsedMilliseconds}ms");
                 }
                 catch (Exception ex)
                 {
-                    _logger($"[SQLite][BULK-MULTI] ❌ Error: {ex.Message}");
+                    _logger($"[SQLite][BULK-OPTIMIZED] ❌ Fatal error: {ex.Message}");
                     transaction.Rollback();
                     throw;
                 }
             }
+        }
+
+        private void InsertOrUpdateClashZonesBulkInternal(List<ClashZone> zonesList, string filterName, string category, SQLiteTransaction transaction)
+        {
+            int filterId = GetOrCreateFilter(filterName, category, transaction);
+            if (filterId <= 0) return;
+
+            // 1. Batch lookup existing IDs by GUID
+            var guidList = string.Join(",", zonesList.Select(z => $"'{z.Id.ToString().ToUpperInvariant()}'"));
+            var existingMap = new Dictionary<Guid, int>();
+            using (var cmd = _context.Connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = $@"SELECT ClashZoneGuid, ClashZoneId FROM ClashZones WHERE UPPER(ClashZoneGuid) IN ({guidList})";
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read()) existingMap[Guid.Parse(reader.GetString(0))] = reader.GetInt32(1);
+                }
+            }
+
+            // 2. Batch File Combos
+            var comboMap = BatchGetOrCreateFileCombos(zonesList, filterId, category, transaction);
+
+            // 3. Update existing
+            var toUpdate = zonesList.Where(z => existingMap.ContainsKey(z.Id)).ToList();
+            if (toUpdate.Count > 0)
+            {
+                foreach (var zone in toUpdate) zone.ClashZoneId = existingMap[zone.Id];
+                BulkUpdateClashZones(toUpdate, existingMap, comboMap, transaction);
+                BulkUpdateRTreeIndex(toUpdate, transaction);
+            }
+
+            // 4. Handle Inserts (with UNIQUE constraint check)
+            var toInsert = zonesList.Where(z => !existingMap.ContainsKey(z.Id) && comboMap.ContainsKey(z.Id)).ToList();
+            if (toInsert.Count > 0)
+            {
+                // Unique constraint check... (simplified for now to keep diff clean, but ideally uses temp table)
+                // For now, reuse the existing logic in the private method but inside this transaction
+                var uniqueConstraintMap = GetUniqueConstraintMap(toInsert, comboMap, transaction);
+                
+                var actuallyNew = new List<ClashZone>();
+                foreach (var zone in toInsert)
+                {
+                    var key = GetUniqueKey(zone, comboMap[zone.Id]);
+                    if (uniqueConstraintMap.TryGetValue(key, out var existingId))
+                    {
+                        existingMap[zone.Id] = existingId;
+                        zone.ClashZoneId = existingId;
+                        BulkUpdateClashZones(new List<ClashZone> { zone }, existingMap, comboMap, transaction);
+                    }
+                    else actuallyNew.Add(zone);
+                }
+
+                if (actuallyNew.Count > 0)
+                {
+                    BulkInsertClashZones(actuallyNew, comboMap, transaction);
+                    // Fetch new IDs for R-tree
+                    var newGuids = string.Join(",", actuallyNew.Select(z => $"'{z.Id.ToString().ToUpperInvariant()}'"));
+                    using (var fetchCmd = _context.Connection.CreateCommand())
+                    {
+                        fetchCmd.Transaction = transaction;
+                        fetchCmd.CommandText = $"SELECT ClashZoneGuid, ClashZoneId FROM ClashZones WHERE UPPER(ClashZoneGuid) IN ({newGuids})";
+                        using (var reader = fetchCmd.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                var guid = Guid.Parse(reader.GetString(0));
+                                var zone = actuallyNew.FirstOrDefault(z => z.Id == guid);
+                                if (zone != null) zone.ClashZoneId = reader.GetInt32(1);
+                            }
+                        }
+                    }
+                    BulkUpdateRTreeIndex(actuallyNew, transaction);
+                }
+            }
+
+            // 5. Snapshots
+            var processedZonesData = zonesList
+                .Where(z => comboMap.ContainsKey(z.Id))
+                .Select(z => (comboMap[z.Id], z))
+                .ToList();
+            if (processedZonesData.Count > 0) InsertOrUpdateSleeveSnapshots(filterId, processedZonesData, transaction);
+        }
+
+        private string GetUniqueKey(ClashZone zone, int comboId)
+        {
+            var mepId = zone.MepElementId?.IntegerValue ?? zone.MepElementIdValue;
+            var hostId = zone.StructuralElementId?.IntegerValue ?? zone.StructuralElementIdValue;
+            var interX = Math.Round(zone.IntersectionPoint?.X ?? zone.IntersectionPointX, 6);
+            var interY = Math.Round(zone.IntersectionPoint?.Y ?? zone.IntersectionPointY, 6);
+            var interZ = Math.Round(zone.IntersectionPoint?.Z ?? zone.IntersectionPointZ, 6);
+            return $"{comboId}|{mepId}|{hostId}|{interX}|{interY}|{interZ}";
+        }
+
+        private Dictionary<string, int> GetUniqueConstraintMap(List<ClashZone> zones, Dictionary<Guid, int> comboMap, SQLiteTransaction transaction)
+        {
+            var map = new Dictionary<string, int>();
+            if (zones.Count == 0) return map;
+
+            using (var cmd = _context.Connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                var conditions = new List<string>();
+                int i = 0;
+                foreach (var zone in zones)
+                {
+                    int cid = comboMap[zone.Id];
+                    int mid = zone.MepElementId?.IntegerValue ?? zone.MepElementIdValue;
+                    int hid = zone.StructuralElementId?.IntegerValue ?? zone.StructuralElementIdValue;
+                    double x = zone.IntersectionPoint?.X ?? zone.IntersectionPointX;
+                    double y = zone.IntersectionPoint?.Y ?? zone.IntersectionPointY;
+                    double z = zone.IntersectionPoint?.Z ?? zone.IntersectionPointZ;
+
+                    conditions.Add($"(ComboId={cid} AND MepElementId={mid} AND HostElementId={hid} AND ABS(IntersectionX-{x}) < 0.0001 AND ABS(IntersectionY-{y}) < 0.0001 AND ABS(IntersectionZ-{z}) < 0.0001)");
+                    if (++i > 100) break; // Limit to 100 per check to avoid giant SQL
+                }
+
+                if (conditions.Count > 0)
+                {
+                    cmd.CommandText = $"SELECT ClashZoneId, ComboId, MepElementId, HostElementId, IntersectionX, IntersectionY, IntersectionZ FROM ClashZones WHERE {string.Join(" OR ", conditions)}";
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            var key = $"{reader.GetInt32(1)}|{reader.GetInt32(2)}|{reader.GetInt32(3)}|{Math.Round(reader.GetDouble(4), 6)}|{Math.Round(reader.GetDouble(5), 6)}|{Math.Round(reader.GetDouble(6), 6)}";
+                            map[key] = reader.GetInt32(0);
+                        }
+                    }
+                }
+            }
+            return map;
         }
 
         /// <summary>
@@ -849,6 +875,166 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             {
                 _logger($"[SQLite][BULK] ❌ Error in BulkUpdateClashZonesWithTempTable: {ex.Message}");
                 // Fallback to individual updates if needed
+            }
+        }
+
+        /// <summary>
+        /// ✅ BATCH OPTIMIZATION: Update placement flags for multiple clash zones in a single transaction.
+        /// Uses a temporary table approach for maximum performance.
+        /// Updates IsResolved, IsClusterResolved, IsCombinedResolved, SleeveInstanceId, ClusterSleeveInstanceId, and IsCurrentClash flags.
+        /// </summary>
+        public void BatchUpdateFlagsWithCurrentClash(
+            List<(System.Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, 
+                  int SleeveInstanceId, int ClusterInstanceId, bool IsCurrentClash)> updates)
+        {
+            _logger($"[SQLite][BATCH] 🚀 BatchUpdateFlagsWithCurrentClash called with {updates?.Count ?? 0} updates");
+            
+            if (updates == null || updates.Count == 0)
+            {
+                _logger($"[SQLite][BATCH] ⚠️ No updates to process, returning early");
+                return;
+            }
+
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    // Create temporary table for batch updates
+                    cmd.CommandText = @"
+                        CREATE TEMP TABLE IF NOT EXISTS TempFlagUpdates (
+                            ClashZoneId TEXT PRIMARY KEY,
+                            IsResolved INTEGER,
+                            IsClusterResolved INTEGER,
+                            IsCombinedResolved INTEGER,
+                            SleeveInstanceId INTEGER,
+                            ClusterInstanceId INTEGER,
+                            IsCurrentClash INTEGER
+                        )";
+                    cmd.ExecuteNonQuery();
+
+                    // Clear temp table
+                    cmd.CommandText = "DELETE FROM TempFlagUpdates";
+                    cmd.ExecuteNonQuery();
+
+                    // Bulk insert updates into temp table
+                    using (var transaction = _context.Connection.BeginTransaction())
+                    {
+                        cmd.Transaction = transaction;
+                        cmd.CommandText = @"
+                            INSERT INTO TempFlagUpdates 
+                            (ClashZoneId, IsResolved, IsClusterResolved, IsCombinedResolved, 
+                             SleeveInstanceId, ClusterInstanceId, IsCurrentClash)
+                            VALUES (@ClashZoneId, @IsResolved, @IsClusterResolved, @IsCombinedResolved, 
+                                    @SleeveInstanceId, @ClusterInstanceId, @IsCurrentClash)";
+
+                        var pClashZoneId = cmd.CreateParameter();
+                        pClashZoneId.ParameterName = "@ClashZoneId";
+                        cmd.Parameters.Add(pClashZoneId);
+
+                        var pIsResolved = cmd.CreateParameter();
+                        pIsResolved.ParameterName = "@IsResolved";
+                        cmd.Parameters.Add(pIsResolved);
+
+                        var pIsClusterResolved = cmd.CreateParameter();
+                        pIsClusterResolved.ParameterName = "@IsClusterResolved";
+                        cmd.Parameters.Add(pIsClusterResolved);
+
+                        var pIsCombinedResolved = cmd.CreateParameter();
+                        pIsCombinedResolved.ParameterName = "@IsCombinedResolved";
+                        cmd.Parameters.Add(pIsCombinedResolved);
+
+                        var pSleeveInstanceId = cmd.CreateParameter();
+                        pSleeveInstanceId.ParameterName = "@SleeveInstanceId";
+                        cmd.Parameters.Add(pSleeveInstanceId);
+
+                        var pClusterInstanceId = cmd.CreateParameter();
+                        pClusterInstanceId.ParameterName = "@ClusterInstanceId";
+                        cmd.Parameters.Add(pClusterInstanceId);
+
+                        var pIsCurrentClash = cmd.CreateParameter();
+                        pIsCurrentClash.ParameterName = "@IsCurrentClash";
+                        cmd.Parameters.Add(pIsCurrentClash);
+
+                        foreach (var update in updates)
+                        {
+                            pClashZoneId.Value = update.ClashZoneId.ToString();
+                            pIsResolved.Value = update.IsResolved ? 1 : 0;
+                            pIsClusterResolved.Value = update.IsClusterResolved ? 1 : 0;
+                            pIsCombinedResolved.Value = update.IsCombinedResolved ? 1 : 0;
+                            pSleeveInstanceId.Value = update.SleeveInstanceId;
+                            pClusterInstanceId.Value = update.ClusterInstanceId;
+                            pIsCurrentClash.Value = update.IsCurrentClash ? 1 : 0;
+
+                            cmd.ExecuteNonQuery();
+                        }
+
+                        transaction.Commit();
+                    }
+
+                    // Execute single UPDATE using JOIN
+                    cmd.Transaction = null;
+                    
+                    // ✅ DIAGNOSTIC: Log what we're about to update
+                    _logger($"[SQLite][BATCH] 📝 About to update {updates.Count} clash zones with flags");
+                    if (updates.Count > 0)
+                    {
+                        var sample = updates[0];
+                        _logger($"[SQLite][BATCH] 📝 Sample update: ClashZoneId={sample.ClashZoneId}, IsResolved={sample.IsResolved}, IsClusterResolved={sample.IsClusterResolved}, SleeveId={sample.SleeveInstanceId}, ClusterId={sample.ClusterInstanceId}");
+                    }
+                    
+                    cmd.CommandText = @"
+                        UPDATE ClashZones
+                        SET IsResolvedFlag = t.IsResolved,
+                            IsClusterResolvedFlag = t.IsClusterResolved,
+                            IsCombinedResolved = t.IsCombinedResolved,
+                            SleeveInstanceId = t.SleeveInstanceId,
+                            ClusterSleeveInstanceId = t.ClusterInstanceId,
+                            IsCurrentClash = t.IsCurrentClash
+                        FROM TempFlagUpdates t
+                        WHERE ClashZones.Id = t.ClashZoneId";
+                    
+                    int rowsAffected = cmd.ExecuteNonQuery();
+                    
+                    _logger($"[SQLite][BATCH] ✅ Updated flags for {rowsAffected} clash zones (expected {updates.Count})");
+                    
+                    // ✅ DIAGNOSTIC: Verify the update worked
+                    if (rowsAffected != updates.Count)
+                    {
+                        _logger($"[SQLite][BATCH] ⚠️ WARNING: Updated {rowsAffected} rows but expected {updates.Count}. Some ClashZone IDs may not exist in database.");
+                    }
+                    
+                    // ✅ DIAGNOSTIC: Check if the flags were actually set
+                    if (updates.Count > 0)
+                    {
+                        var sampleId = updates[0].ClashZoneId.ToString();
+                        cmd.CommandText = $"SELECT IsResolvedFlag, IsClusterResolvedFlag, SleeveInstanceId, ClusterSleeveInstanceId FROM ClashZones WHERE Id = '{sampleId}'";
+                        using (var reader = cmd.ExecuteReader())
+                        {
+                            if (reader.Read())
+                            {
+                                int isResolved = reader.GetInt32(0);
+                                int isClusterResolved = reader.GetInt32(1);
+                                int sleeveId = reader.GetInt32(2);
+                                int clusterId = reader.GetInt32(3);
+                                _logger($"[SQLite][BATCH] 🔍 VERIFY: ClashZone {sampleId} after update: IsResolvedFlag={isResolved}, IsClusterResolvedFlag={isClusterResolved}, SleeveId={sleeveId}, ClusterId={clusterId}");
+                            }
+                            else
+                            {
+                                _logger($"[SQLite][BATCH] ❌ ERROR: ClashZone {sampleId} not found in database!");
+                            }
+                        }
+                    }
+
+                    // Clean up temp table
+                    cmd.CommandText = "DROP TABLE IF EXISTS TempFlagUpdates";
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite][BATCH] ❌ Error in BatchUpdateFlagsWithCurrentClash: {ex.Message}");
+                _logger($"[SQLite][BATCH] ❌ Stack trace: {ex.StackTrace}");
+                throw;
             }
         }
 

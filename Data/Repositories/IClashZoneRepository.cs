@@ -190,5 +190,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// ✅ BATCH OPTIMIZATION: Update R-tree index for multiple clash zones in one pass.
         /// </summary>
         void BulkUpdateRTreeIndex(IEnumerable<ClashZone> zones, System.Data.SQLite.SQLiteTransaction? transaction = null);
+
+        /// <summary>
+        /// ✅ BATCH OPTIMIZATION: Update placement flags for multiple clash zones in a single transaction.
+        /// Updates IsResolved, IsClusterResolved, IsCombinedResolved, SleeveInstanceId, ClusterSleeveInstanceId, and IsCurrentClash flags.
+        /// This method is called after successful placement to mark zones as resolved.
+        /// </summary>
+        /// <param name="updates">List of tuples containing ClashZoneId and flag values to update</param>
+        void BatchUpdateFlagsWithCurrentClash(
+            List<(System.Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, 
+                  int SleeveInstanceId, int ClusterInstanceId, bool IsCurrentClash)> updates);
     }
 }

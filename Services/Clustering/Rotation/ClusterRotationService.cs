@@ -429,6 +429,132 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 }
             }
 
+            // ✅ ROUND PIPE/DUCT FIX: Detect if this is a round pipe or round duct cluster and use bounding box extents instead of corners
+            // For circular sleeves (round pipes/ducts), corners don't represent the actual extent properly
+            // Instead, we need to use the bounding box min/max to get the true cluster width
+            bool isRoundPipeCluster = false;
+            foreach (var sleeveData in cluster)
+            {
+                if (sleeveData == null) continue;
+                try
+                {
+                    int sleeveId = sleeveData.SleeveInstanceId;
+                    var cz = GetCachedClashZone(sleeveId, xmlFilePath);
+                    if (cz != null)
+                    {
+                        // Check for pipes (all pipes are circular)
+                        bool isPipe = string.Equals(cz.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
+                        
+                        // Check for round ducts
+                        bool isRoundDuct = false;
+                        if (string.Equals(cz.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(cz.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Check if duct is round/circular
+                            isRoundDuct = string.Equals(cz.DuctShape, "Round", StringComparison.OrdinalIgnoreCase) ||
+                                         string.Equals(cz.DuctShape, "Circular", StringComparison.OrdinalIgnoreCase);
+                        }
+                        
+                        if (isPipe || isRoundDuct)
+                        {
+                            isRoundPipeCluster = true;
+                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                $"[{DateTime.Now:HH:mm:ss}] 🔵 CIRCULAR ELEMENT DETECTED: Sleeve {sleeveId}, Category={cz.MepElementCategory}, DuctShape={cz.DuctShape ?? "N/A"}, IsPipe={isPipe}, IsRoundDuct={isRoundDuct}\n");
+                            break;
+                        }
+                    }
+                }
+                catch { continue; }
+            }
+
+            if (isRoundPipeCluster)
+            {
+                // ✅ ROUND PIPE/DUCT CLUSTER: Use bounding box extents instead of corners
+                // For round pipes/ducts, the cluster width should be calculated from the min/max extents of all sleeve bounding boxes
+                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                    $"[{DateTime.Now:HH:mm:ss}] 🔵 CIRCULAR CLUSTER DETECTED: Using bounding box extents instead of corners (applies to round pipes and round ducts)\n");
+
+                double circularMinX = double.MaxValue, circularMaxX = double.MinValue;
+                double circularMinY = double.MaxValue, circularMaxY = double.MinValue;
+                double circularMinZ = double.MaxValue, circularMaxZ = double.MinValue;
+
+                foreach (var sleeveData in cluster)
+                {
+                    if (sleeveData == null) continue;
+                    try
+                    {
+                        int sleeveId = sleeveData.SleeveInstanceId;
+                        var cz = GetCachedClashZone(sleeveId, xmlFilePath);
+                        if (cz != null)
+                        {
+                            // Use sleeve bounding box (which includes clearance)
+                            circularMinX = Math.Min(circularMinX, cz.SleeveBoundingBoxMinX);
+                            circularMaxX = Math.Max(circularMaxX, cz.SleeveBoundingBoxMaxX);
+                            circularMinY = Math.Min(circularMinY, cz.SleeveBoundingBoxMinY);
+                            circularMaxY = Math.Max(circularMaxY, cz.SleeveBoundingBoxMaxY);
+                            circularMinZ = Math.Min(circularMinZ, cz.SleeveBoundingBoxMinZ);
+                            circularMaxZ = Math.Max(circularMaxZ, cz.SleeveBoundingBoxMaxZ);
+
+                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                $"[{DateTime.Now:HH:mm:ss}]   Sleeve {sleeveId}: BBox Min=({cz.SleeveBoundingBoxMinX:F6},{cz.SleeveBoundingBoxMinY:F6},{cz.SleeveBoundingBoxMinZ:F6}), Max=({cz.SleeveBoundingBoxMaxX:F6},{cz.SleeveBoundingBoxMaxY:F6},{cz.SleeveBoundingBoxMaxZ:F6})\n");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                            $"[{DateTime.Now:HH:mm:ss}]   ⚠️ Error processing sleeve: {ex.Message}\n");
+                        continue;
+                    }
+                }
+
+                double circularWidth = circularMaxX - circularMinX;
+                double circularHeight = circularMaxY - circularMinY;
+                double circularDepth = circularMaxZ - circularMinZ;
+
+                // Determine wall direction to assign width correctly
+                bool isYWall = Math.Abs(circularMaxY - circularMinY) > Math.Abs(circularMaxX - circularMinX);
+                if (isYWall)
+                {
+                    // Y-wall: width is along Y axis
+                    circularWidth = circularMaxY - circularMinY;
+                    circularHeight = circularMaxZ - circularMinZ;
+                }
+                else
+                {
+                    // X-wall: width is along X axis
+                    circularWidth = circularMaxX - circularMinX;
+                    circularHeight = circularMaxZ - circularMinZ;
+                }
+
+                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                    $"[{DateTime.Now:HH:mm:ss}] 🔵 CIRCULAR CLUSTER RESULT (Pipes/Round Ducts): Width={circularWidth * 304.8:F1}mm, Height={circularHeight * 304.8:F1}mm, Depth={circularDepth * 304.8:F1}mm\n");
+                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                    $"[{DateTime.Now:HH:mm:ss}]   Extents: X=[{circularMinX:F6},{circularMaxX:F6}], Y=[{circularMinY:F6},{circularMaxY:F6}], Z=[{circularMinZ:F6},{circularMaxZ:F6}]\n");
+
+                // Cache the result
+                try
+                {
+                    var sleeveIds = cluster.Select(s => s?.SleeveInstanceId ?? 0).Where(id => id > 0).OrderBy(id => id).ToList();
+                    if (sleeveIds.Count == cluster.Count)
+                    {
+                        string cacheKey = $"RBB_{string.Join("_", sleeveIds)}_{rotationAngle:F6}";
+                        var circularResult = (circularWidth, circularHeight, circularDepth, placementPoint, (double?)circularMinX, (double?)circularMinY, (double?)circularMinZ, (double?)circularMaxX, (double?)circularMaxY, (double?)circularMaxZ);
+                        
+                        if (_rotatedBboxCache.Count < MAX_ROTATED_BBOX_CACHE_SIZE)
+                        {
+                            _rotatedBboxCache[cacheKey] = circularResult;
+                        }
+                        
+                        calcStopwatch.Stop();
+                        return circularResult;
+                    }
+                }
+                catch { }
+
+                calcStopwatch.Stop();
+                return (circularWidth, circularHeight, circularDepth, placementPoint, circularMinX, circularMinY, circularMinZ, circularMaxX, circularMaxY, circularMaxZ);
+            }
+
             // ✅ CRITICAL FIX: Use corner-based calculation for ALL clusters (not just rotated ones)
             // Corners are always saved and are the authoritative source for accurate sizing
             // For walls/framing, we'll transform corners to RCS before calculating dimensions

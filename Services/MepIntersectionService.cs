@@ -1,5 +1,3 @@
-#nullable enable
-#if !REVIT2024_OR_GREATER
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Electrical;
 using Autodesk.Revit.DB.Mechanical;
@@ -7,7 +5,90 @@ using Autodesk.Revit.DB.Plumbing;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+// ========================================================================================================
+#if REVIT2024_OR_GREATER
+namespace JSE_RevitAddin_MEP_OPENINGS.Services
+{
+    public static partial class MepIntersectionService
+    {
+        /// <summary>
+        /// Gets the centerline of an MEP element and indicates whether it's from the fallback path.
+        /// Returns (line, isFallbackLine) where isFallbackLine=true means line is already in host coordinates.
+        /// </summary>
+        static (Line? line, bool isFallbackLine) GetElementLineWithSource(Element element, BoundingBoxXYZ mepBBox, Action<string> log)
+        {
+            if (element is FamilyInstance fi && fi.Symbol?.Family?.Name?.IndexOf("Damper", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                log?.Invoke($"[MepIntersectionService] Element {element.Id} identified as damper; using bounding-box intersection approach.");
+                return (null, false);
+            }
 
+            if (element.Location is LocationCurve locCurve && locCurve.Curve is Line curveLine)
+            {
+                // Diagnostic logging omitted for brevity
+                return (curveLine, false); // LocationCurve is in linked doc coordinates, needs transform
+            }
+
+            if (element is MEPCurve mepCurve)
+            {
+                try
+                {
+                    var connectors = mepCurve.ConnectorManager?.Connectors?.Cast<Connector>().Where(c => c != null).ToList();
+                    if (connectors != null && connectors.Count >= 2)
+                    {
+                        var endpoints = connectors
+                            .SelectMany((c, idx) => connectors
+                                .Skip(idx + 1)
+                                .Select(other => new { First = c, Second = other, Distance = c.Origin.DistanceTo(other.Origin) }))
+                            .OrderByDescending(x => x.Distance)
+                            .FirstOrDefault();
+
+                        if (endpoints != null && endpoints.Distance > 0)
+                        {
+                            return (Line.CreateBound(endpoints.First.Origin, endpoints.Second.Origin), false); // Connector is in linked doc coordinates, needs transform
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    log?.Invoke($"[MepIntersectionService] Failed deriving line from MEPCurve connectors for element {element.Id}: {ex.Message}");
+                }
+            }
+
+            try
+            {
+                var min = mepBBox.Min;
+                var max = mepBBox.Max;
+                var centerX = (min.X + max.X) * 0.5;
+                var centerY = (min.Y + max.Y) * 0.5;
+                var p1 = new XYZ(centerX, centerY, min.Z);
+                var p2 = new XYZ(centerX, centerY, max.Z);
+
+                if (p1.DistanceTo(p2) < 1e-6)
+                {
+                    p1 = new XYZ(min.X, centerY, (min.Z + max.Z) * 0.5);
+                    p2 = new XYZ(max.X, centerY, (min.Z + max.Z) * 0.5);
+                }
+
+                if (p1.DistanceTo(p2) < 1e-6)
+                {
+                    p2 = new XYZ(p1.X + 1.0, p1.Y, p1.Z);
+                }
+
+                return (Line.CreateBound(p1, p2), true); // Fallback line is created from transformed bbox, already in host coordinates
+            }
+            catch (Exception ex)
+            {
+                log?.Invoke($"[MepIntersectionService] Failed to derive fallback line for element {element.Id}: {ex.Message}");
+                return (null, false);
+            }
+        }
+    }
+}
+#endif
+#nullable enable
+#if !REVIT2024_OR_GREATER
+using Autodesk.Revit.DB;
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
     public static partial class MepIntersectionService
@@ -2543,7 +2624,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Gets the centerline of an MEP element and indicates whether it's from the fallback path.
         /// Returns (line, isFallbackLine) where isFallbackLine=true means line is already in host coordinates.
         /// </summary>
-        private static (Line? line, bool isFallbackLine) GetElementLineWithSource(Element element, BoundingBoxXYZ mepBBox, Action<string> log)
+        internal static (Line? line, bool isFallbackLine) GetElementLineWithSource(Element element, BoundingBoxXYZ mepBBox, Action<string> log)
         {
             if (element is FamilyInstance fi && fi.Symbol?.Family?.Name?.IndexOf("Damper", StringComparison.OrdinalIgnoreCase) >= 0)
             {
@@ -2837,19 +2918,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 }
 #endif // !REVIT2024_OR_GREATER
 
-#if REVIT2024_OR_GREATER
 // ========================================================================================================
 // REVIT 2024+ MINIMAL IMPLEMENTATION
 // This version eliminates ALL static caches to avoid TypeInitializationException in R2024 environment
 // ========================================================================================================
-using Autodesk.Revit.DB;
-using Autodesk.Revit.DB.Electrical;
-using Autodesk.Revit.DB.Mechanical;
-using Autodesk.Revit.DB.Plumbing;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-
+// ========================================================================================================
+#if REVIT2024_OR_GREATER
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
     public static partial class MepIntersectionService
@@ -3221,7 +3295,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // Check if hit element is in our target structural list
                         Element hitElement = null;
                         
-                        if (reference.LinkedElementId != LinkedElementId.InvalidId)
+                        if (reference.LinkedElementId != ElementId.InvalidElementId)
                         {
                             // It's a linked element
                             var linkInstance = view3D.Document.GetElement(reference.ElementId) as RevitLinkInstance;

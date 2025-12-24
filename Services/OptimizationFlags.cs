@@ -206,6 +206,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public static bool UseStreamlinedClashZoneCreation { get; set; } = true;
 
         /// <summary>
+        /// ✅ PERFORMANCE: Bulk orientation pre-calculation for clash zones
+        /// When true: Pre-calculates ALL MEP element orientations before zone creation loop, caches in dictionary
+        /// When false: Calculates orientation for each zone individually (redundant for same MEP crossing multiple walls)
+        /// Default: true (enabled - 26 zones is correct count)
+        /// Impact: Reduces orientation calculation from O(N zones) to O(N unique MEPs), ~50% savings
+        /// Location: Services/ClashZoneService.cs (DetectNewClashZonesStreamlined)
+        /// </summary>
+        public static bool UseBulkOrientationCaching { get; set; } = true;
+
+        /// <summary>
+        /// 🔍 DIAGNOSTIC: Enable detailed line-by-line profiling in CreateClashZone()
+        /// When true: Logs timing for each operation in CreateClashZone to identify bottlenecks
+        /// When false: No profiling overhead
+        /// Default: true (enabled for performance analysis)
+        /// Impact: Adds logging overhead but reveals where time is spent
+        /// Location: Services/ClashZoneService.cs (CreateClashZone)
+        /// </summary>
+        public static bool EnableDetailedClashZoneProfiler { get; set; } = true;
+
+        /// <summary>
         /// Skip XML processing during Flag Reset operation (database-only mode optimization)
         /// When true: Only updates SQLite database, skips reading/writing Global XML files (5-10x faster flag reset)
         /// When false: Updates both database AND XML files (legacy behavior)
@@ -355,8 +375,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Features: Supports parameter batching, performance monitoring, safe validation, diagnostic logging.
         /// </summary>
         public static bool UseBottomOfOpeningCalculation { get; set; } = true;
-         
-         #endregion
+        #endregion
+        
         
         #region Advanced Optimizations (NEW - Priority 3, Optional)
         
@@ -398,9 +418,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         /// <summary>
         /// Enable diagnostic mode for performance monitoring
-        /// Default: false (disabled for deployment)
+        /// Default: false (disabled - causes 2.6x slowdown due to logging overhead)
         /// </summary>
-        public static bool UseDiagnosticMode { get; set; } = false; // ✅ OFF as requested
+        public static bool UseDiagnosticMode { get; set; } = true; // ✅ ON - temporarily enabled to debug flag updates
         
         /// <summary>
         /// Enable batch clash zone creation (pre-calculate common data once)
@@ -408,8 +428,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Location: Services/ClashZoneService.cs (DetectNewClashZones)
         /// </summary>
         public static bool UseBatchClashZoneCreation { get; set; } = true;
-
-        #endregion
 
         #endregion
         
@@ -460,8 +478,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static bool UseOptimizedDbSaveStrategy { get; set; } = true;
 
-        #endregion
-        
         #endregion
         
         #region Sleeve Placement Safety Flags (NEW)

@@ -313,8 +313,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 intersections = MepIntersectionService.FindIntersectionsBatch(
                     mepElementsWithTransforms,
                     hostElementsWithTransforms,
-                    msg => _logger(msg),
-                    view3D);
+                    msg => _logger(msg));
             }
 
             _logger($"[INTERSECTION-PROCESSOR] Found {intersections.Count} intersections from {mepElements.Count} MEP + {hostElements.Count} host elements");
@@ -340,7 +339,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             _logger($"[INTERSECTION-PROCESSOR] After MEP intersection filtering: {filteredIntersections.Count} intersections (removed {intersections.Count - filteredIntersections.Count} elements)");
 
             // ✅ STEP 6: Convert intersections to ClashZones using ClashZoneService
-            // Note: Empty cache is correct - we're only detecting NEW intersections here
             var clashZoneService = new ClashZoneService(
                 new ClashZoneStorage(),
                 msg => _logger($"[CLASH-ZONE-SERVICE] {msg}"),

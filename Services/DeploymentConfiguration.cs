@@ -77,7 +77,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// - Parallel computation (dimensions, clearance, rotation calculated in parallel)
         /// - Better diagnostics (risk classification available)
         /// </summary>
-        public static bool EnableParallelPlanning { get; set; } = true; // ✅ PARALLEL PLANNING: Enable by default
+        public static bool EnableParallelPlanning { get; set; } = true; // ✅ PARALLEL PLANNING: Enabled (fixing round pipe cluster bug)
     }
 }
 
