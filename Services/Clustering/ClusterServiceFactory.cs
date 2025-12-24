@@ -325,8 +325,60 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
             Action<List<dynamic>, ElementId, string?, BoundingBoxXYZ?, (double minX, double minY, double minZ, double maxX, double maxY, double maxZ)?> markClusterResolved = (cluster, clusterSleeveId, xmlPath, bbox, rotatedBbox) =>
             {
-                // Use FlagManager to mark cluster as resolved
-                // TODO: Implement via FlagManager
+                // ✅ FLAG FIX: Update flags in database using ClashZoneRepository
+                if (cluster == null || cluster.Count == 0 || clusterSleeveId == ElementId.InvalidElementId) return;
+
+                try
+                {
+                    using (var dbContext = new SleeveDbContext(doc))
+                    {
+                        var repository = new ClashZoneRepository(dbContext);
+                        foreach (var sleeve in cluster)
+                        {
+                            // Use dynamic property access to get ClashZone
+                            // The dynamic object is created in RefactoredClusterService.PrepareSleeveData and has a ClashZone property
+                            var clashZone = sleeve.ClashZone as ClashZone;
+                            
+                            if (clashZone != null)
+                            {
+                                // Call UpdateClusterPlacement to update state, cluster ID, and flags
+                                // This sets IsResolvedFlag=1 and IsClusterResolvedFlag=1 via the repository logic
+                                repository.UpdateClusterPlacement(
+                                    clashZoneId: clashZone.Id,
+                                    clusterInstanceId: clusterSleeveId.IntegerValue,
+                                    minX: bbox?.Min.X ?? 0,
+                                    minY: bbox?.Min.Y ?? 0,
+                                    minZ: bbox?.Min.Z ?? 0,
+                                    maxX: bbox?.Max.X ?? 0,
+                                    maxY: bbox?.Max.Y ?? 0,
+                                    maxZ: bbox?.Max.Z ?? 0,
+                                    // Pass rotated bounding box if available
+                                    rotatedMinX: rotatedBbox?.minX,
+                                    rotatedMinY: rotatedBbox?.minY,
+                                    rotatedMinZ: rotatedBbox?.minZ,
+                                    rotatedMaxX: rotatedBbox?.maxX,
+                                    rotatedMaxY: rotatedBbox?.maxY,
+                                    rotatedMaxZ: rotatedBbox?.maxZ,
+                                    isClustered: true
+                                );
+                                
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                        $"[{DateTime.Now:HH:mm:ss}] ✅ DELEGATE: Marked ClashZone {clashZone.Id} as resolved for Cluster {clusterSleeveId.IntegerValue}\n");
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_errors.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] ❌ DELEGATE ERROR: Failed to mark cluster resolved: {ex.Message}\n");
+                    }
+                }
             };
 
             getFilterNameForCategory ??= (category) => null; // Default to null if not provided

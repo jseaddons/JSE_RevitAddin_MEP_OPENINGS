@@ -1,3 +1,4 @@
+
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -304,7 +305,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     // Try common parameter name variations
                     p = element.LookupParameter("MEP System Name") ??
-                        element.LookupParameter("System Name");
+                        element.LookupParameter("System Name") ??
+                        element.get_Parameter(BuiltInParameter.RBS_SYSTEM_NAME_PARAM); // ✅ Fallback to BuiltInParameter
                 }
                 
                 // ✅ CRITICAL: Special fallback for System Abbreviation when not found by name
@@ -451,22 +453,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     
                     // ✅ CRITICAL: Log empty essential parameters with full details
-                    if (isEssential && (key.Equals("System Type", StringComparison.OrdinalIgnoreCase) ||
-                                       key.Equals("System Name", StringComparison.OrdinalIgnoreCase) ||
-                                       key.Equals("System Abbreviation", StringComparison.OrdinalIgnoreCase)))
+                    if (isEssential && (actualKey.Equals("System Type", StringComparison.OrdinalIgnoreCase) ||
+                                       actualKey.Equals("Service Type", StringComparison.OrdinalIgnoreCase) ||
+                                       actualKey.Equals("System Name", StringComparison.OrdinalIgnoreCase) ||
+                                       actualKey.Equals("System Abbreviation", StringComparison.OrdinalIgnoreCase) ||
+                                       actualKey.Equals("Level", StringComparison.OrdinalIgnoreCase) ||
+                                       actualKey.Equals("Reference Level", StringComparison.OrdinalIgnoreCase) ||
+                                       actualKey.Equals("Schedule Level", StringComparison.OrdinalIgnoreCase) ||
+                                       actualKey.Equals("Schedule of Level", StringComparison.OrdinalIgnoreCase)))
                     {
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Warning($"[{DateTime.Now}] [PARAM_CAPTURE] ⚠️⚠️⚠️ CRITICAL: Essential parameter '{key}' found but value is empty on element {element.Id} ({element.Category?.Name}) - {paramDetails} - this will prevent parameter transfer!\n");
+                            DebugLogger.Warning($"[{DateTime.Now}] [PARAM_CAPTURE] ⚠️⚠️⚠️ CRITICAL: Essential parameter '{actualKey}' found but value is empty on element {element.Id} ({element.Category?.Name}) - {paramDetails} - this will prevent parameter transfer!\n");
                         }
+                        
+                         // ✅ CRITICAL FIX: Capture empty strings for essential parameters instead of skipping
+                         // This ensures the parameter key exists in the snapshot, even if empty
+                         value = ""; 
                     }
                     else
                     {
                         // ✅ ENHANCED LOGGING: Log empty non-essential parameter values with details
                         if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
                             DebugLogger.Info($"[{DateTime.Now}] [PARAM-CAPTURE] Element {element.Id} ({element.Category?.Name}): Parameter '{key}' found but value is empty - {paramDetails}\n");
+                        
+                        // For non-essential parameters, continue skipping empty values
+                        continue;
                     }
-                    continue;
                 }
 
                 // ✅ MEMORY OPTIMIZATION: Truncate very long parameter values to prevent memory bloat

@@ -45,7 +45,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// <summary>
         /// Update cluster placement
         /// </summary>
-        void UpdateClusterPlacement(int clashZoneId, int clusterInstanceId, double minX, double minY, double minZ,
+        void UpdateClusterPlacement(System.Guid clashZoneId, int clusterInstanceId, double minX, double minY, double minZ,
             double maxX, double maxY, double maxZ, double? placementX = null, double? placementY = null, double? placementZ = null,
             double? rotatedMinX = null, double? rotatedMinY = null, double? rotatedMinZ = null,
             double? rotatedMaxX = null, double? rotatedMaxY = null, double? rotatedMaxZ = null,
@@ -109,7 +109,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// <summary>
         /// Batch update flags including IsCurrentClashFlag.
         /// </summary>
-        void BatchUpdateFlagsWithCurrentClash(IEnumerable<(System.Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsCurrentClash)> updates);
+        void BatchUpdateFlagsWithCurrentClash(IEnumerable<(System.Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsCurrentClash, bool IsClusteredFlag)> updates);
 
         /// <summary>
         /// Force Detection Mode: Reset all flags (IsResolved, IsClusterResolved) to false and clear sleeve IDs
@@ -196,9 +196,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Updates IsResolved, IsClusterResolved, IsCombinedResolved, SleeveInstanceId, ClusterSleeveInstanceId, and IsCurrentClash flags.
         /// This method is called after successful placement to mark zones as resolved.
         /// </summary>
-        /// <param name="updates">List of tuples containing ClashZoneId and flag values to update</param>
         void BatchUpdateFlagsWithCurrentClash(
             List<(System.Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, 
-                  int SleeveInstanceId, int ClusterInstanceId, bool IsCurrentClash)> updates);
+                  int SleeveInstanceId, int ClusterInstanceId, bool IsCurrentClash, bool IsClusteredFlag)> updates);
     }
 }

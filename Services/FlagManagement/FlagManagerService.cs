@@ -460,7 +460,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                 throw new ArgumentException("Category cannot be null or empty", nameof(category));
             try
             {
-                var dbUpdates = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsCurrentClash)>();
+                // Use 8-tuple including IsClusteredFlag
+                var dbUpdates = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsCurrentClash, bool IsClusteredFlag)>();
                 foreach (var (clashZone, sleeveId) in clashZones)
                 {
                     if (clashZone == null || sleeveId <= 0) continue;
@@ -476,17 +477,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                         {
                             clashZone.AfterClusterSleevePlacedSleeveInstanceId = clashZone.SleeveInstanceId;
                         }
+                        
+                        // ✅ CRITICAL FIX: Explicitly set IsClusterResolved=true and ClusterID for cluster placement
                         clashZone.IsClusterResolved = true;
                         clashZone.ClusterSleeveInstanceId = sleeveId;
+                        clashZone.IsClusteredFlag = true; // Also set IsClusteredFlag column
+                        
+                        // Ensure IsResolved is also true (generic resolved state)
                         clashZone.IsResolved = true;
+                        
+                        // Clear individual sleeve ID if it was set (since it's now a cluster)
                         clashZone.SleeveInstanceId = -1;
                     }
                     else
                     {
                         clashZone.IsResolved = true;
                         clashZone.SleeveInstanceId = sleeveId;
+                        
+                        // Ensure cluster flags are cleared for individual placement
                         clashZone.IsClusterResolved = false;
                         clashZone.ClusterSleeveInstanceId = -1;
+                        clashZone.IsClusteredFlag = false;
                     }
 
                     dbUpdates.Add((
@@ -496,7 +507,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                         clashZone.IsCombinedResolved,
                         clashZone.SleeveInstanceId,
                         clashZone.ClusterSleeveInstanceId,
-                        clashZone.IsCurrentClash
+                        clashZone.IsCurrentClash,
+                        clashZone.IsClusteredFlag
                     ));
                 }
                 if (dbUpdates.Count == 0) return;

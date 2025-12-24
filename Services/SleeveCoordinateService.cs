@@ -317,57 +317,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                   cz.ClusterSleeveBoundingBoxMaxX == 0.0 && cz.ClusterSleeveBoundingBoxMaxY == 0.0 && cz.ClusterSleeveBoundingBoxMaxZ == 0.0))
                             {
                                 // Get ClashZoneId (int) from GUID
-                                using (var cmd = dbContext.Connection.CreateCommand())
+                                // ✅ OPTIMIZATION: UpdateClusterPlacement now accepts GUID directly
+                                // No need to look up the int ID separately
+                                        
+                                // ✅ Calculate cluster sleeve placement point (midpoint of cluster bbox)
+                                double placementX = (cz.ClusterSleeveBoundingBoxMinX + cz.ClusterSleeveBoundingBoxMaxX) / 2.0;
+                                double placementY = (cz.ClusterSleeveBoundingBoxMinY + cz.ClusterSleeveBoundingBoxMaxY) / 2.0;
+                                double placementZ = (cz.ClusterSleeveBoundingBoxMinZ + cz.ClusterSleeveBoundingBoxMaxZ) / 2.0;
+                                
+                                // ✅ Get rotated bounding box if available (from GetClusterBoundingBoxWithRotatedCoordinates)
+                                double? rotatedMinX = cz.RotatedBoundingBoxMinX;
+                                double? rotatedMinY = cz.RotatedBoundingBoxMinY;
+                                double? rotatedMinZ = cz.RotatedBoundingBoxMinZ;
+                                double? rotatedMaxX = cz.RotatedBoundingBoxMaxX;
+                                double? rotatedMaxY = cz.RotatedBoundingBoxMaxY;
+                                double? rotatedMaxZ = cz.RotatedBoundingBoxMaxZ;
+                                
+                                // ✅ Get flags
+                                bool? isClustered = cz.MarkedForClusteringSleeveProcess;
+                                bool? markedForCluster = cz.MarkedForClusteringSleeveProcess;
+                                
+                                repository.UpdateClusterPlacement(
+                                    cz.Id, // ✅ CRITICAL: Pass GUID directly
+                                    cz.ClusterSleeveInstanceId,
+                                    cz.ClusterSleeveBoundingBoxMinX, cz.ClusterSleeveBoundingBoxMinY, cz.ClusterSleeveBoundingBoxMinZ,
+                                    cz.ClusterSleeveBoundingBoxMaxX, cz.ClusterSleeveBoundingBoxMaxY, cz.ClusterSleeveBoundingBoxMaxZ,
+                                    placementX, placementY, placementZ,
+                                    rotatedMinX, rotatedMinY, rotatedMinZ,
+                                    rotatedMaxX, rotatedMaxY, rotatedMaxZ,
+                                    isClustered, markedForCluster);
+                                dbClusterUpdatedCount++;
+                                
+                                if (!DeploymentConfiguration.DeploymentMode)
                                 {
-                                    cmd.CommandText = @"
-                                        SELECT ClashZoneId FROM ClashZones
-                                        WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)
-                                          AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL
-                                        LIMIT 1";
-                                    cmd.Parameters.AddWithValue("@ClashZoneGuid", cz.Id.ToString().ToUpperInvariant());
-                                    var clashZoneIdResult = cmd.ExecuteScalar();
-                                    
-                                    if (clashZoneIdResult != null)
-                                    {
-                                        int clashZoneId = Convert.ToInt32(clashZoneIdResult);
-                                        
-                                        // ✅ Calculate cluster sleeve placement point (midpoint of cluster bbox)
-                                        double placementX = (cz.ClusterSleeveBoundingBoxMinX + cz.ClusterSleeveBoundingBoxMaxX) / 2.0;
-                                        double placementY = (cz.ClusterSleeveBoundingBoxMinY + cz.ClusterSleeveBoundingBoxMaxY) / 2.0;
-                                        double placementZ = (cz.ClusterSleeveBoundingBoxMinZ + cz.ClusterSleeveBoundingBoxMaxZ) / 2.0;
-                                        
-                                        // ✅ Get rotated bounding box if available (from GetClusterBoundingBoxWithRotatedCoordinates)
-                                        double? rotatedMinX = cz.RotatedBoundingBoxMinX;
-                                        double? rotatedMinY = cz.RotatedBoundingBoxMinY;
-                                        double? rotatedMinZ = cz.RotatedBoundingBoxMinZ;
-                                        double? rotatedMaxX = cz.RotatedBoundingBoxMaxX;
-                                        double? rotatedMaxY = cz.RotatedBoundingBoxMaxY;
-                                        double? rotatedMaxZ = cz.RotatedBoundingBoxMaxZ;
-                                        
-                                        // ✅ Get flags
-                                        bool? isClustered = cz.MarkedForClusteringSleeveProcess;
-                                        bool? markedForCluster = cz.MarkedForClusteringSleeveProcess;
-                                        
-                                        repository.UpdateClusterPlacement(
-                                            clashZoneId,
-                                            cz.ClusterSleeveInstanceId,
-                                            cz.ClusterSleeveBoundingBoxMinX, cz.ClusterSleeveBoundingBoxMinY, cz.ClusterSleeveBoundingBoxMinZ,
-                                            cz.ClusterSleeveBoundingBoxMaxX, cz.ClusterSleeveBoundingBoxMaxY, cz.ClusterSleeveBoundingBoxMaxZ,
-                                            placementX, placementY, placementZ,
-                                            rotatedMinX, rotatedMinY, rotatedMinZ,
-                                            rotatedMaxX, rotatedMaxY, rotatedMaxZ,
-                                            isClustered, markedForCluster);
-                                        dbClusterUpdatedCount++;
-                                        
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        {
-                                            File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ✅ Saved cluster data for ClashZone {cz.Id}: ClusterId={cz.ClusterSleeveInstanceId}, Placement=({placementX:F6}, {placementY:F6}, {placementZ:F6}), RotatedBbox={rotatedMinX?.ToString("F6") ?? "NULL"}\n");
-                                        }
-                                    }
-                                    else if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ⚠️ Could not find ClashZoneId for GUID {cz.Id} to update cluster bounding box\n");
-                                    }
+                                    File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UpdateSleeveCoordinatesInXml] ✅ Saved cluster data for ClashZone {cz.Id}: ClusterId={cz.ClusterSleeveInstanceId}, Placement=({placementX:F6}, {placementY:F6}, {placementZ:F6}), RotatedBbox={rotatedMinX?.ToString("F6") ?? "NULL"}\n");
                                 }
                             }
                         }

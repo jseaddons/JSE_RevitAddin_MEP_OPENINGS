@@ -286,8 +286,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public bool HasDamperNearby { get; set; } = false;
         
         /// <summary>
-        /// REMOVED: IsClustered flag - replaced by MarkedForClusteringSleeveProcess
+        /// Indicates if this clash zone is part of a cluster.
+        /// Re-added to support IsClusteredFlag database column.
         /// </summary>
+        public bool IsClusteredFlag { get; set; } = false;
 
         /// <summary>
         /// Flag indicating if this clash zone was detected in the current refresh
