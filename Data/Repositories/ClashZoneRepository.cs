@@ -8997,6 +8997,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 }
             }
         }
+
+        /// <summary>
+        /// ✅ DEBUG: Get flag statistics for all zones in DB
+        /// </summary>
+        public (int Total, int IsCurrentClashSet, int ReadyForPlacementSet, int IsResolvedSet) GetFlagStatistics()
+        {
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = @"
+                        SELECT 
+                            COUNT(*) as Total,
+                            SUM(CASE WHEN IsCurrentClashFlag = 1 THEN 1 ELSE 0 END) as IsCurrentClashSet,
+                            SUM(CASE WHEN ReadyForPlacementFlag = 1 THEN 1 ELSE 0 END) as ReadyForPlacementSet,
+                            SUM(CASE WHEN IsResolved = 1 THEN 1 ELSE 0 END) as IsResolvedSet
+                        FROM ClashZones";
+                    
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        if (reader.Read())
+                        {
+                            return (
+                                Convert.ToInt32(reader["Total"]),
+                                Convert.ToInt32(reader["IsCurrentClashSet"]),
+                                Convert.ToInt32(reader["ReadyForPlacementSet"]),
+                                Convert.ToInt32(reader["IsResolvedSet"])
+                            );
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ❌ GetFlagStatistics error: {ex.Message}");
+            }
+            return (0, 0, 0, 0);
+        }
     }
 }
 

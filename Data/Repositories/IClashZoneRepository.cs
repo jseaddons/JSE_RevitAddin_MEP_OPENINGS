@@ -213,5 +213,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 double Corner2X, double Corner2Y, double Corner2Z,
                 double Corner3X, double Corner3Y, double Corner3Z,
                 double Corner4X, double Corner4Y, double Corner4Z)> updates);
+
+        /// <summary>
+        /// ✅ DEBUG: Get flag statistics for all zones in DB
+        /// </summary>
+        (int Total, int IsCurrentClashSet, int ReadyForPlacementSet, int IsResolvedSet) GetFlagStatistics();
     }
 }
