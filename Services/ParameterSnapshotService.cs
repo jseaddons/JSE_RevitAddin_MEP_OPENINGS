@@ -618,10 +618,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var p = element.LookupParameter(paramName);
             if (p != null) return p;
 
-            if (element is FamilyInstance fi)
+            // ✅ FIX: Check type parameters for ANY element that has a type (Walls, Floors, etc.)
+            // Previously only checked FamilyInstance.Symbol, which missed Walls/Floors
+            ElementId typeId = element.GetTypeId();
+            if (typeId != ElementId.InvalidElementId)
             {
-                var sp = fi.Symbol?.LookupParameter(paramName);
-                if (sp != null) return sp;
+                Element typeElem = element.Document.GetElement(typeId);
+                if (typeElem != null)
+                {
+                    var tp = typeElem.LookupParameter(paramName);
+                    if (tp != null) return tp;
+                }
             }
             
             // ✅ SPECIAL HANDLING: For "Size" parameter, try multiple fallbacks

@@ -1230,18 +1230,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Query ALL zones (readyForPlacementOnly=false)
                     var zones = repository.GetClashZonesByFilter(filter.Name, categoryName, unresolvedOnly: false, readyForPlacementOnly: false) ?? new List<ClashZone>();
 
-                    // ✅ Filter by session flag OR unresolved status
-                    // Primary: IsCurrentClash/ReadyForPlacement (set by VerifyExistingSleevesAndResetFlags)
-                    // Fallback: Unresolved zones (in case session flag wasn't set)
-                    eligibleZones = zones.Where(cz => cz != null && (
-                        cz.IsCurrentClash ||  // Session flag (set by Verify method)
-                        (!cz.IsResolvedFlag && !cz.IsClusterResolvedFlag && !cz.IsCombinedResolved && !cz.ReadyForPlacement)  // Fallback: unresolved but flag not set
-                    )).ToList();
+                    // ✅ SIMPLIFIED ELIGIBILITY: Zone is eligible if:
+            // 1. IsCurrentClash = 1 (session flag set during refresh), OR
+            // 2. Zone is unresolved (deleted sleeve scenario: IsResolved=0, IsClusterResolved=0, IsCombinedResolved=0)
+            // NOTE: ReadyForPlacement is DEPRECATED and should NOT be used for filtering
+            eligibleZones = zones.Where(cz => cz != null && (
+                cz.IsCurrentClash ||  // Primary: Session flag (set during refresh for zones in section box)
+                (!cz.IsResolvedFlag && !cz.IsClusterResolvedFlag && !cz.IsCombinedResolved)  // Fallback: unresolved zone (deleted sleeve)
+            )).ToList();
 
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         int bySession = zones.Count(cz => cz?.IsCurrentClash == true);
-                        int byFallback = zones.Count(cz => cz != null && !cz.IsResolvedFlag && !cz.IsClusterResolvedFlag && !cz.IsCombinedResolved && !cz.ReadyForPlacement);
+                        int byFallback = zones.Count(cz => cz != null && !cz.IsResolvedFlag && !cz.IsClusterResolvedFlag && !cz.IsCombinedResolved);
                         DebugLogger.Info($"[OpeningCommandOrchestrator] 🔄 Filtered: {zones.Count} total -> {eligibleZones.Count} eligible (session={bySession}, fallback={byFallback})");
                     }
 

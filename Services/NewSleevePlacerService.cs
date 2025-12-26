@@ -871,11 +871,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
             
-            // Reset ReadyForPlacement flags
-            if (processedZoneGuids.Count > 0)
-            {
-                ResetReadyForPlacementFlags(processedZoneGuids);
-            }
+            // ✅ REMOVED: ReadyForPlacementFlag reset after placement
+            // This flag is redundant - IsResolved flag is sufficient to track placement status
+            // Zone eligibility = IsCurrentClashFlag=1 AND IsResolved=0
+            // Keeping this code commented for reference during deprecation period:
+            // if (processedZoneGuids.Count > 0)
+            // {
+            //     ResetReadyForPlacementFlags(processedZoneGuids);
+            // }
 
             return (placed, skipped, errors);
         }

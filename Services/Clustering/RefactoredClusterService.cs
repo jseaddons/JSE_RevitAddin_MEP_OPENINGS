@@ -1021,56 +1021,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     }
                     dbSaveTracker.SetItemCount(_clusterToClashZoneIds.Count);
 
-                    // ✅ SESSION FLAG: Reset ReadyForPlacementFlag for all zones that were clustered
-                    // This should happen AFTER cluster placement completes (whichever placement is last: individual or cluster)
-                    // Individual sleeve placement already resets flags, so this ensures cluster-processed zones are also reset
-                    if (_clusterToClashZoneIds != null && _clusterToClashZoneIds.Count > 0)
-                    {
-                        try
-                        {
-                            // Collect all ClashZone GUIDs that were part of clusters
-                            var clusteredZoneGuids = new HashSet<Guid>();
-                            foreach (var clusterData in _clusterToClashZoneIds.Values)
-                            {
-                                foreach (var guid in clusterData)
-                                {
-                                    if (guid != Guid.Empty)
-                                        clusteredZoneGuids.Add(guid);
-                                }
-                            }
-
-                            if (clusteredZoneGuids.Count > 0)
-                            {
-                                using (var dbContext = new SleeveDbContext(doc, msg => { }))
-                                {
-                                    var repository = new ClashZoneRepository(dbContext, msg => { });
-                                    repository.BulkResetReadyForPlacementFlags(clusteredZoneGuids);
-
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        DebugLogger.Info($"[RefactoredClusterService] ✅ Reset ReadyForPlacementFlag on {clusteredZoneGuids.Count} clustered zones after cluster placement");
-                                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                            $"[{DateTime.Now:HH:mm:ss}] ✅ SESSION-FLAG-RESET: Reset ReadyForPlacementFlag=0 for {clusteredZoneGuids.Count} zones that were clustered\n");
-                                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                                            $"[{DateTime.Now:HH:mm:ss}] ✅ CLUSTER-FLAG-RESET: Reset ReadyForPlacementFlag=0 for {clusteredZoneGuids.Count} clustered zones (after cluster placement completes)\n");
-                                    }
-                                }
-                            }
-                        }
-                        catch (Exception flagEx)
-                        {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                DebugLogger.Warning($"[RefactoredClusterService] ⚠️ Failed to reset ReadyForPlacementFlag after cluster placement: {flagEx.Message}");
-                                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ SESSION-FLAG-RESET-ERROR: {flagEx.Message}\n");
-                            }
-                            // Continue even if flag reset fails (non-blocking)
-                        }
-                    }
+                    // ✅ REMOVED: ReadyForPlacementFlag reset after cluster placement (redundant)
+                    // IsClusterResolved flag is sufficient to track cluster placement status
 
                     // ✅ STEP 5 OPTIMIZATION: Flush deferred cluster parameters after all placements
-                    // This writes all accumulated parameters in a single transaction (much faster)
                     if (OptimizationFlags.UseBatchedParameterWrites)
                     {
                         int flushedCount = FlushDeferredClusterParameters();

@@ -251,7 +251,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                         clashZone.IsCombinedResolved,
                         clashZone.SleeveInstanceId,
                         clashZone.ClusterSleeveInstanceId,
-                        clashZone.IsCurrentClashFlag,
+                        true, // ✅ UNIFIED: Always keep IsCurrentClash true during placement (Reset only on Refresh)
                         clashZone.IsClusteredFlag
                     ));
                 }
