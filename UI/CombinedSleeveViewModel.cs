@@ -615,6 +615,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                             
                             DebugLogger.Info($"Manual Join Success. Kept {masterId}, deleted {idsToDelete.Count} sleeves.");
                             
+                            // 8. PERSISTENCE (Update Flags in DB)
+                            try 
+                            {
+                                int masterIntId = masterId.IntegerValue;
+                                var involvedSleeveIds = new List<int> { masterIntId };
+                                involvedSleeveIds.AddRange(idsToDelete.Select(id => id.IntegerValue));
+                                
+                                var zonesToProcess = _repo.GetClashZonesBySleeveIds(involvedSleeveIds);
+                                if (zonesToProcess != null && zonesToProcess.Count > 0)
+                                {
+                                    var updates = new List<(Guid, bool, bool, bool, int, int, bool, bool)>();
+                                    foreach(var z in zonesToProcess)
+                                    {
+                                        updates.Add((
+                                            z.Id, 
+                                            true, // IsResolved
+                                            true, // IsClusterResolved
+                                            true, // IsCombinedResolved
+                                            masterIntId, // SleeveInstanceId
+                                            masterIntId, // ClusterInstanceId
+                                            z.IsCurrentClashFlag, 
+                                            true // IsClusteredFlag
+                                        ));
+                                    }
+                                    _repo.BatchUpdateFlagsWithCurrentClash(updates);
+                                    DebugLogger.Info($"[ManualJoin] Persisted flags for {updates.Count} zones.");
+                                }
+                            }
+                            catch (Exception pEx)
+                            {
+                                DebugLogger.Error($"[ManualJoin] Persistence Failed: {pEx.Message}");
+                            }
+
                             _selectedIds.Clear();
                             SelectedSleevesList.Clear();
                             OnPropertyChanged(nameof(CanJoin));

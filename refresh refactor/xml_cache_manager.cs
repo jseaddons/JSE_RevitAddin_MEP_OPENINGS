@@ -17,38 +17,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
     /// </summary>
     public class XmlCache
     {
-        // Filter XML cache: filterName -> ClashZoneStorage
+        // Filter Data cache: filterName -> ClashZoneStorage
+        // Renaming to generic "FilterData" would be better but keeping FilterXml for minimal churn
         public Dictionary<string, ClashZoneStorage> FilterXml { get; private set; }
-        
-        // Global XML cache: category -> CategoryGlobalIndex
-        public Dictionary<string, CategoryGlobalIndex> GlobalXml { get; private set; }
-        
-        // Processed file combos: category -> HashSet of normalized combo keys
-        public Dictionary<string, HashSet<string>> ProcessedCombos { get; private set; }
-        
-        // Resolved GUIDs: category -> HashSet of resolved GUIDs
-        public Dictionary<string, HashSet<Guid>> ResolvedGuids { get; private set; }
         
         public XmlCache()
         {
             FilterXml = new Dictionary<string, ClashZoneStorage>(StringComparer.OrdinalIgnoreCase);
-            GlobalXml = new Dictionary<string, CategoryGlobalIndex>(StringComparer.OrdinalIgnoreCase);
-            ProcessedCombos = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
-            ResolvedGuids = new Dictionary<string, HashSet<Guid>>(StringComparer.OrdinalIgnoreCase);
+            GlobalXml = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
         }
+        
+        // ✅ BACKWARD COMPATIBILITY: GlobalXml property for legacy code
+        // Global XML is deprecated. This property is a stub to prevent compilation errors.
+        public Dictionary<string, object> GlobalXml { get; private set; }
         
         public void Clear()
         {
             FilterXml?.Clear();
             GlobalXml?.Clear();
-            ProcessedCombos?.Clear();
-            ResolvedGuids?.Clear();
         }
     }
     
     /// <summary>
     /// Caches all clash zone data in memory for a refresh operation.
-    /// Database-first architecture - loads from SQLite, caches in memory.
+    /// Database-only architecture - loads from SQLite, caches in memory.
     /// Eliminates redundant database queries (was 4+ loads, now 1 load per filter).
     /// ✅ SOLID: Implements IRefreshDataCacheManager for dependency injection support.
     /// </summary>
@@ -72,66 +64,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         {
             var cache = new XmlCache();
             
-            Log($"[XML-CACHE] Loading XML data once for reuse (parallelized file I/O)...");
+            Log($"[CLASHZONE-CACHE] Loading data from database for reuse...");
             
             var sw = System.Diagnostics.Stopwatch.StartNew();
             
-            // ✅ PARALLELIZATION: Load Filter XML files in parallel (pure file I/O, no Revit API)
-            var filterResults = new ConcurrentDictionary<string, ClashZoneStorage>();
             var validFilterNames = (filterNames ?? new List<string>())
                 .Where(fn => !string.IsNullOrWhiteSpace(fn))
                 .ToList();
             
             if (validFilterNames.Count > 0)
             {
-                System.Threading.Tasks.Parallel.ForEach(validFilterNames, filterName =>
+                foreach (var filterName in validFilterNames)
                 {
-                    var storage = LoadFilterXml(filterName, categories);
+                    var storage = LoadFilterData(filterName, categories);
                     if (storage != null)
                     {
-                        filterResults[filterName] = storage;
-                        Log($"[XML-CACHE] ✅ Loaded Filter XML: {filterName} ({storage.ClashZones?.Count ?? 0} zones)");
+                        cache.FilterXml[filterName] = storage;
+                        Log($"[CLASHZONE-CACHE] ✅ Loaded Database Data for filter: {filterName} ({storage.ClashZones?.Count ?? 0} zones)");
                     }
-                });
-            }
-            
-            // Copy results to cache (thread-safe - ConcurrentDictionary)
-            foreach (var kvp in filterResults)
-            {
-                cache.FilterXml[kvp.Key] = kvp.Value;
-            }
-            
-            // ✅ PARALLELIZATION: Load Global XML files in parallel (pure file I/O, no Revit API)
-            // Note: GlobalIndexService.LoadOrCreate() may use Revit API, so we need to check
-            // For now, keeping sequential for Global XML to be safe, but Filter XML is parallelized
-            var validCategories = (categories ?? new List<string>())
-                .Where(c => !string.IsNullOrWhiteSpace(c))
-                .ToList();
-            
-            foreach (var category in validCategories)
-            {
-                var globalIndex = GlobalIndexService.LoadOrCreate(_document, category);
-                cache.GlobalXml[category] = globalIndex;
-                
-                // Extract processed combos
-                var processedKeys = GlobalIndexService.GetProcessedFileComboKeys(_document, category);
-                cache.ProcessedCombos[category] = processedKeys;
-                
-                // Extract resolved GUIDs
-                var resolvedGuids = GlobalIndexService.GetResolvedGuidsForCategories(_document, new HashSet<string> { category });
-                cache.ResolvedGuids[category] = resolvedGuids;
-                
-                Log($"[XML-CACHE] ✅ Loaded Global XML: {category} ({processedKeys.Count} combos, {resolvedGuids.Count} resolved)");
+                }
             }
             
             sw.Stop();
             
-            Log($"[XML-CACHE] ✅ XML cache loaded: {cache.FilterXml.Count} filters, {cache.GlobalXml.Count} categories in {sw.ElapsedMilliseconds}ms");
+            Log($"[CLASHZONE-CACHE] ✅ Cache loaded: {cache.FilterXml.Count} filters in {sw.ElapsedMilliseconds}ms");
             
             return cache;
         }
         
-        private ClashZoneStorage LoadFilterXml(string filterName, List<string> categories)
+        private ClashZoneStorage LoadFilterData(string filterName, List<string> categories)
         {
             var mergedStorage = new ClashZoneStorage
             {
@@ -139,65 +100,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 LastUpdated = DateTime.Now
             };
             
-            // ✅ PHASE SQLITE-2: Load from SQLite FIRST (primary source), XML as fallback
-            if (DeploymentConfiguration.UseSqliteAsPrimary)
-            {
-                try
-                {
-                    var sqliteZones = LoadFromSqlite(filterName, categories ?? new List<string>());
-                    if (sqliteZones != null && sqliteZones.Count > 0)
-                    {
-                        mergedStorage.ClashZones.AddRange(sqliteZones);
-                        Log($"[XML-CACHE] ✅ PHASE 2: Loaded {sqliteZones.Count} zones from SQLite (PRIMARY) for filter '{filterName}'");
-                        return mergedStorage;
-                    }
-                    else
-                    {
-                        Log($"[XML-CACHE] PHASE 2: SQLite has no zones for '{filterName}', falling back to XML");
-                    }
-                }
-                catch (Exception sqliteEx)
-                {
-                    Log($"[XML-CACHE] PHASE 2: SQLite load failed for '{filterName}', falling back to XML: {sqliteEx.Message}");
-                }
-            }
-            
-            // Fallback to XML (legacy mode or when SQLite has no data)
             try
             {
-                var filtersDirectory = ProjectPathService.GetFiltersDirectory(_document);
-                if (!Directory.Exists(filtersDirectory))
-                    return mergedStorage.ClashZones.Count > 0 ? mergedStorage : null;
-                
-                // Load category-specific XML files
-                foreach (var category in categories ?? new List<string>())
+                var sqliteZones = LoadFromSqlite(filterName, categories ?? new List<string>());
+                if (sqliteZones != null && sqliteZones.Count > 0)
                 {
-                    var pattern = $"{filterName}_{category.ToLower().Replace(" ", "_")}.xml";
-                    var matchingFiles = Directory.GetFiles(filtersDirectory, pattern);
-                    
-                    if (matchingFiles.Length > 0)
-                    {
-                        var xmlFile = matchingFiles.First();
-                        var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
-                        
-                        using (var reader = new StreamReader(xmlFile))
-                        {
-                            var filter = (OpeningFilter)serializer.Deserialize(reader);
-                            if (filter?.ClashZoneStorage?.AllZones != null)
-                            {
-                                mergedStorage.ClashZones.AddRange(filter.ClashZoneStorage.AllZones);
-                            }
-                        }
-                    }
+                    mergedStorage.ClashZones.AddRange(sqliteZones);
+                    return mergedStorage;
                 }
-                
-                return mergedStorage.ClashZones.Count > 0 ? mergedStorage : null;
             }
-            catch (Exception ex)
+            catch (Exception sqliteEx)
             {
-                Log($"[XML-CACHE] ⚠️ Error loading Filter XML '{filterName}': {ex.Message}");
-                return mergedStorage.ClashZones.Count > 0 ? mergedStorage : null;
+                Log($"[CLASHZONE-CACHE] Database load failed for '{filterName}': {sqliteEx.Message}");
             }
+            
+            return mergedStorage.ClashZones.Count > 0 ? mergedStorage : null;
         }
         
         /// <summary>
@@ -297,29 +214,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         /// <summary>
         /// Check if file combo is already processed (O(1) lookup from cache)
         /// </summary>
+        /// <summary>
+        /// Check if file combo is already processed (O(1) lookup from database)
+        /// Placeholder for now, eventually this will query the database.
+        /// </summary>
         public bool IsComboProcessed(XmlCache cache, string category, string linkedFile, string hostFile)
         {
-            if (!cache.ProcessedCombos.TryGetValue(category, out var combos))
-                return false;
-            
-            var combo = new ProcessedFileCombo
-            {
-                LinkedFile = linkedFile,
-                HostFile = hostFile
-            };
-
-            return combos.Contains(combo.GetNormalizedKey());
+            // Database is source of truth, check is performed by individual processors against the database
+            // The cache is no longer used for this check as we don't load all combos into memory
+            return false; 
         }
         
         /// <summary>
-        /// Check if GUID is already resolved (O(1) lookup from cache)
+        /// Check if GUID is already resolved (checked against database cache)
         /// </summary>
         public bool IsGuidResolved(XmlCache cache, string category, Guid guid)
         {
-            if (!cache.ResolvedGuids.TryGetValue(category, out var guids))
-                return false;
-            
-            return guids.Contains(guid);
+            // Database is source of truth, already loaded into storage
+            if (cache.FilterXml != null)
+            {
+                foreach(var storage in cache.FilterXml.Values)
+                {
+                    if (storage?.ClashZones != null)
+                    {
+                        if (storage.ClashZones.Any(cz => cz.Id == guid && (cz.IsResolvedFlag || cz.IsClusterResolvedFlag)))
+                            return true;
+                    }
+                }
+            }
+            return false;
         }
         
         /// <summary>

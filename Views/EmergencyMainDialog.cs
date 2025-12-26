@@ -7094,39 +7094,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             // ✅ FALLBACK: Use Global XML if database has no data (backward compatibility)
                             if (!usedDatabase || unresolvedCount == 0)
                             {
-                                DebugLogger.Info("[OK_BUTTON_DEBUG] Falling back to Global XML (database has no data or no unresolved zones)");
-                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Falling back to Global XML\n");
-                                
-                                if (selectedMepCategories != null && selectedMepCategories.Count > 0)
-                                {
-                                    foreach (var category in selectedMepCategories)
-                                    {
-                                        if (string.IsNullOrWhiteSpace(category))
-                                            continue;
-                                        
-                                        try
-                                        {
-                                            var globalIndex = Services.GlobalIndexService.LoadOrCreate(document, category);
-                                            var allEntries = Services.GlobalIndexService.GetAllEntries(globalIndex).ToList();
-                                            
-                                            if (allEntries != null && allEntries.Count > 0)
-                                            {
-                                                int categoryUnresolved = allEntries.Count(e => !e.IsResolved && !e.IsClusterResolved);
-                                                unresolvedCount += categoryUnresolved;
-                                                
-                                                if (categoryUnresolved > 0)
-                                                {
-                                                    DebugLogger.Info($"[OK_BUTTON_DEBUG] Global XML '{category}': {categoryUnresolved} unresolved out of {allEntries.Count} total entries (FALLBACK)");
-                                                    JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [OK_BUTTON_DEBUG] Global XML '{category}': {categoryUnresolved}/{allEntries.Count} unresolved (FALLBACK)\n");
-                                                }
-                                            }
-                                        }
-                                        catch (Exception globalEx)
-                                        {
-                                            DebugLogger.Warning($"[OK_BUTTON_DEBUG] Error checking Global XML for category '{category}': {globalEx.Message}");
-                                        }
-                                    }
-                                }
+                                DebugLogger.Info("[OK_BUTTON_DEBUG] Database has no data. Global XML fallback removed (Legacy XML deleted).");
+                                // Legacy XML logic removed entirely.
                             }
                         }
                         

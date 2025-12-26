@@ -1164,8 +1164,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                // ✅ PERFORMANCE FIX: Use the helper method to get XML file path
-                string xmlFilePath = GetXmlFilePathForFilter(filter);
 
                 // ✅ CRITICAL: Get category from filter
                 string categoryName = filter.Category switch
@@ -1178,185 +1176,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 };
 
                 // ✅ PHASE SQLITE-2: Load from SQLite FIRST (primary source)
-                var dbClashZones = LoadClashZonesFromDatabase(filter, categoryName);
-                if (DeploymentConfiguration.UseSqliteAsPrimary)
-                {
-                    // Phase 2: SQLite is primary
-                    if (dbClashZones != null && dbClashZones.Count > 0)
-                    {
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ PHASE 2: Loaded {dbClashZones.Count} clash zones from SQLite (PRIMARY) for filter '{filter.Name}' ({categoryName})\n");
-                        }
-                        return dbClashZones;
-                    }
-                    else
-                    {
-                        // SQLite has no zones - fallback to XML
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            DebugLogger.Info($"[OpeningCommandOrchestrator] PHASE 2: SQLite has no zones, falling back to XML: {xmlFilePath}");
-                        }
-                    }
-                }
-                else
-                {
-                    // Legacy mode: XML is primary, SQLite is fallback
-                    if (dbClashZones != null && dbClashZones.Count > 0)
-                    {
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Loaded {dbClashZones.Count} clash zones from SQLite (fallback) for filter '{filter.Name}' ({categoryName})\n");
-                        }
-                        return dbClashZones;
-                    }
-                }
-
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                {
-                        DebugLogger.Info($"[OpeningCommandOrchestrator] Looking for clash zones in: {xmlFilePath}");
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔍 GUID-GUIDED LOAD: Category='{categoryName}', Filter='{filter.Name}'\n");
-                }
-
-                // ✅ STEP 1: Load unresolved entries from Global XML (deterministic GUIDs)
-                // Global XML is the single source of truth for which zones need placement
-                var globalIndex = GlobalIndexService.LoadOrCreate(_document, categoryName);
-                var allGlobalEntries = GlobalIndexService.GetAllEntries(globalIndex).ToList();
-                
-                // Get unresolved GUIDs (zones that need placement)
-                var unresolvedGuids = allGlobalEntries
-                    .Where(e => !e.IsResolved && !e.IsClusterResolved)
-                    .Select(e => Guid.Parse(e.Id))
-                    .ToHashSet();
-                
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    DebugLogger.Info($"[GUID-GUIDED-LOAD] Found {unresolvedGuids.Count} unresolved GUIDs in Global XML for category '{categoryName}'");
-                }
-
-                if (!File.Exists(xmlFilePath))
+                var dbZones = LoadClashZonesFromDatabase(filter, categoryName);
+                if (dbZones != null && dbZones.Count > 0)
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ❌ XML file not found: {xmlFilePath}\n");
-                            DebugLogger.Warning($"[OpeningCommandOrchestrator] XML file not found: {xmlFilePath}");
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Loaded {dbZones.Count} clash zones from SQLite for filter '{filter.Name}' ({categoryName})\n");
                     }
-                    return new List<ClashZone>();
-                }
-                
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ XML file found: {xmlFilePath}\n");
-                }
-
-                // ✅ STEP 2: Load Filter XML and filter by unresolved GUIDs
-                var serializer = new System.Xml.Serialization.XmlSerializer(typeof(OpeningFilter));
-                OpeningFilter loadedFilter;
-                
-                using (var reader = new StreamReader(xmlFilePath))
-                {
-                    loadedFilter = (OpeningFilter)serializer.Deserialize(reader);
-                }
-
-                // Extract clash zones from the loaded filter (tree-aware)
-                var allClashZones = ExtractClashZonesFromStorage(loadedFilter?.ClashZoneStorage);
-
-                if (allClashZones.Count == 0)
-                {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ❌ No clash zones found in XML file: {xmlFilePath}\n");
-                            DebugLogger.Warning($"[OpeningCommandOrchestrator] No clash zones found in XML file: {xmlFilePath}");
-                    }
-                    return new List<ClashZone>();
-                }
-
-                // ✅ CRITICAL FIX: Reconstruct SleevePlacementPoint and IntersectionPoint from XML-serializable properties
-                foreach (var cz in allClashZones)
-                {
-                    cz.EnsureSleevePlacementPointReconstructed();
-                    if (cz.IntersectionPoint == null && (Math.Abs(cz.IntersectionPointX) > 1e-9 || Math.Abs(cz.IntersectionPointY) > 1e-9 || Math.Abs(cz.IntersectionPointZ) > 1e-9))
-                    {
-                        cz.IntersectionPoint = new XYZ(cz.IntersectionPointX, cz.IntersectionPointY, cz.IntersectionPointZ);
-                    }
+                    return dbZones;
                 }
 
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Successfully loaded {allClashZones.Count} total clash zones from {xmlFilePath}\n");
+                    DebugLogger.Warning($"[OpeningCommandOrchestrator] No clash zones found in database for filter '{filter.Name}' ({categoryName})");
                 }
-
-                // ✅ STEP 3: Filter clash zones by unresolved GUIDs from Global XML
-                // Only load clash zones that match unresolved GUIDs (deterministic GUID guides us to correct Filter XML data)
-                var clashZones = new List<ClashZone>();
                 
-                if (unresolvedGuids.Count > 0)
-                {
-                    // Filter by GUID - only include zones that match unresolved GUIDs from Global XML
-                    clashZones = allClashZones
-                        .Where(cz => unresolvedGuids.Contains(cz.Id))
-                        .ToList();
-                    
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"[GUID-GUIDED-LOAD] ✅ Filtered {allClashZones.Count} total zones → {clashZones.Count} zones matching unresolved GUIDs from Global XML");
-                        
-                        // Log which GUIDs were found/not found
-                        var foundGuids = clashZones.Select(cz => cz.Id).ToHashSet();
-                        var missingGuids = unresolvedGuids.Except(foundGuids).ToList();
-                        if (missingGuids.Count > 0)
-                        {
-                            DebugLogger.Warning($"[GUID-GUIDED-LOAD] ⚠️ {missingGuids.Count} unresolved GUIDs from Global XML not found in Filter XML: {string.Join(", ", missingGuids.Take(5))}{(missingGuids.Count > 5 ? "..." : "")}");
-                        }
-                    }
-                }
-                else
-                {
-                    // No unresolved GUIDs - return empty list (all zones are resolved)
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"[GUID-GUIDED-LOAD] ✅ No unresolved GUIDs in Global XML - all zones are resolved, returning empty list");
-                    }
-                    return new List<ClashZone>();
-                }
-
-                // ✅ STEP 4: Sync flags from Global XML (already loaded above)
-                // Since we're GUID-guided, we can sync flags directly by GUID match using FlagManager
-                if (clashZones.Count > 0)
-                {
-                    try
-                    {
-                        // Use FlagManager for efficient flag syncing by GUID
-                        // ✅ DATABASE-FIRST: FlagManager tries database first, falls back to Global XML only if needed
-                        var flagManager = Services.FlagManagement.FlagManagerFactory.CreateAdapter(_document);
-                        flagManager.SyncFlagsFromGlobal(clashZones, categoryName);
-                        
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            int clusterResolvedAfterSync = clashZones.Count(cz => cz.IsClusterResolved);
-                            int individualResolvedAfterSync = clashZones.Count(cz => cz.IsResolved);
-                            // ✅ NOTE: SyncFlagsFromGlobal uses database-first, only falls back to Global XML if database has no data
-                            DebugLogger.Info($"[GUID-GUIDED-LOAD] ✅ Synced flags (database-first): {clashZones.Count} zones, {clusterResolvedAfterSync} cluster-resolved, {individualResolvedAfterSync} individual-resolved");
-                        }
-                    }
-                    catch (Exception syncEx)
-                    {
-                        // Log error but continue - don't fail placement if sync fails
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            DebugLogger.Warning($"[GUID-GUIDED-LOAD] Error syncing flags (database-first): {syncEx.Message}");
-                        }
-                    }
-                }
-
-                return clashZones;
+                return new List<ClashZone>();
             }
             catch (Exception ex)
             {
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Error($"[OpeningCommandOrchestrator] Error loading clash zones for filter {filter.Name}: {ex.Message}");
+                    DebugLogger.Error($"[OpeningCommandOrchestrator] Error loading clash zones for filter {filter.Name}: {ex.Message}");
                 }
                 return new List<ClashZone>();
             }
@@ -1389,12 +1230,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Query ALL zones (readyForPlacementOnly=false)
                     var zones = repository.GetClashZonesByFilter(filter.Name, categoryName, unresolvedOnly: false, readyForPlacementOnly: false) ?? new List<ClashZone>();
 
-                    // Filter by IsCurrentClash
-                    eligibleZones = zones.Where(cz => cz != null && cz.IsCurrentClash).ToList();
+                    // ✅ Filter by session flag OR unresolved status
+                    // Primary: IsCurrentClash/ReadyForPlacement (set by VerifyExistingSleevesAndResetFlags)
+                    // Fallback: Unresolved zones (in case session flag wasn't set)
+                    eligibleZones = zones.Where(cz => cz != null && (
+                        cz.IsCurrentClash ||  // Session flag (set by Verify method)
+                        (!cz.IsResolvedFlag && !cz.IsClusterResolvedFlag && !cz.IsCombinedResolved && !cz.ReadyForPlacement)  // Fallback: unresolved but flag not set
+                    )).ToList();
 
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        DebugLogger.Info($"[OpeningCommandOrchestrator] 🔄 Filtered by IsCurrentClash: {zones.Count} total -> {eligibleZones.Count} eligible zones");
+                        int bySession = zones.Count(cz => cz?.IsCurrentClash == true);
+                        int byFallback = zones.Count(cz => cz != null && !cz.IsResolvedFlag && !cz.IsClusterResolvedFlag && !cz.IsCombinedResolved && !cz.ReadyForPlacement);
+                        DebugLogger.Info($"[OpeningCommandOrchestrator] 🔄 Filtered: {zones.Count} total -> {eligibleZones.Count} eligible (session={bySession}, fallback={byFallback})");
                     }
 
                     foreach (var zone in eligibleZones)
@@ -1570,15 +1418,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // If all zones have sleeves but are validated, hasInvalidatedZones should be FALSE
                         var invalidatedZones = new List<ClashZone>(); // Empty by default - assume validated unless proven otherwise
                         
-                        // ✅ PATH 3 FIX: Validated zones are zones that are eligible for placement
-                        // This includes zones with sleeves (if validated) and zones without sleeves
                         var validatedZones = clashZones
-                            .Where(cz => !cz.IsResolved && !cz.IsClusterResolved && cz.ClusterSleeveInstanceId <= 0)
+                            .Where(cz => !cz.IsResolvedFlag && !cz.IsClusterResolvedFlag && cz.ClusterSleeveInstanceId <= 0)
                             .ToList();
                         
                         // ✅ PATH 3 NEW: New zones are zones that don't have existing sleeves (SleeveInstanceId <= 0)
                         // These zones route to PATH 2 placement, then PATH 3 new clustering
-                        var newZones = clashZones.Where(cz => cz.SleeveInstanceId <= 0 && !cz.IsResolved && !cz.IsClusterResolved && cz.ClusterSleeveInstanceId <= 0).ToList();
+                        var newZones = clashZones.Where(cz => cz.SleeveInstanceId <= 0 && !cz.IsResolvedFlag && !cz.IsClusterResolvedFlag && cz.ClusterSleeveInstanceId <= 0).ToList();
                         
                         // ✅ PATH 3 TRACKING: Store PATH 3 type flags for clustering
                         // CRITICAL: hasInvalidatedZones = false by default (assume validated)

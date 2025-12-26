@@ -228,11 +228,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
             
-            // PHASE 2 & 3: Load Data
-            LoadRefreshData(context);
-            
-            // PHASE 4: Determine Path
+            // PHASE 2: Determine Path
             DetermineRefreshPath(context);
+            
+            // PHASE 3: Reset Flags (Hierarchical Verification & Section Box Filtering)
+            // ✅ CRITICAL: Run this BEFORE loading data so in-memory zones have correct flags
+            ResetFlags(context);
+            
+            // PHASE 4: Load Data
+            // ✅ RELIABLE: Loads zones with correct flags from optimized Phase 3
+            LoadRefreshData(context);
             
             // PHASE 5: Sync Flags
             if (context.PathStrategy.ShouldSyncFlags)
@@ -251,10 +256,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // PHASE 6: Validate Zones
             ValidateZones(context);
             
-            // PHASE 7: Reset Flags
-            ResetFlags(context);
-            
-            // PHASE 8: Process Intersections
+            // PHASE 7: Process Intersections
             ProcessIntersections(context);
             
             // PHASE 9: Capture Parameters
@@ -541,9 +543,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             SafeFileLogger.SafeAppendText(context.RefreshLogName, 
                 $"[{DateTime.Now}] [MERGE-SAVE] Calling SaveClashZones with {context.AllClashZones?.Count ?? 0} zones\n");
             
-            // ✅ CRITICAL: Reset IsCurrentClashFlag=0 for ALL zones BEFORE SaveClashZones
-            // This clears stale data from previous refreshes
-            // New zones detected in current refresh will have IsCurrentClash=1 set when created
+            // ✅ REMOVED: ResetIsCurrentClashFlag is no longer needed
+            // SetReadyForPlacementBatchOptimized now uses atomic CASE-based UPDATE:
+            // - Sets IsCurrentClashFlag=1 for zones IN scope (filter+category+unresolved+section box)
+            // - Sets IsCurrentClashFlag=0 for zones OUT of scope (filter+category but resolved or outside section box)
+            // This eliminates timing issues and is more efficient (single atomic operation)
+            /*
             try
             {
                 using (var resetOp = context.PerformanceMonitor.TrackOperation("9a0. Reset IsCurrentClash") as PerformanceMonitor.OperationTracker)
@@ -585,6 +590,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 // Continue with refresh even if reset fails (non-blocking)
             }
+            */
             
             try
             {
@@ -694,6 +700,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         $"[{DateTime.Now}] [MERGE-SAVE] ✅ SECTION BOX ACTIVE: Min=({sb.Min.X:F2}, {sb.Min.Y:F2}, {sb.Min.Z:F2}), Max=({sb.Max.X:F2}, {sb.Max.Y:F2}, {sb.Max.Z:F2})\n");
                                 }
                                 
+                                // ========== IsCurrentClashFlag TRACING SECTION ==========
+                                if (!context.IsDeploymentMode)
+                                {
+                                    SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                        $"\n[{DateTime.Now}] ========== IsCurrentClashFlag TRACING ==========\n");
+                                    SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                        $"[{DateTime.Now}] UseBatchReadyForPlacementUpdate = {Services.OptimizationFlags.UseBatchReadyForPlacementUpdate}\n");
+                                    SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                        $"[{DateTime.Now}] FilterNames: [{string.Join(", ", context.SelectedFilterNames ?? new List<string>())}]\n");
+                                    SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                        $"[{DateTime.Now}] Categories: [{string.Join(", ", context.SelectedMepCategories ?? new List<string>())}]\n");
+                                    SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                        $"[{DateTime.Now}] SectionBox: {(sectionBoxNullable != null ? "Present" : "NULL")}\n");
+                                }
+                                
                                 // Set ReadyForPlacementFlag=1 for unresolved zones within section box
                                 int markedCount = repository.SetReadyForPlacementForUnresolvedZonesInSectionBox(
                                     context.SelectedFilterNames ?? new List<string>(),
@@ -702,8 +723,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 
                                 flagOp?.SetItemCount(markedCount);
                                 
+                                // ========== VERIFY FLAGS AFTER CALL ==========
                                 if (!context.IsDeploymentMode)
                                 {
+                                    SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                        $"[{DateTime.Now}] RESULT: markedCount = {markedCount}\n");
+                                    
+                                    // Query DB to verify actual flag values
+                                    try
+                                    {
+                                        var flagStats = repository.GetFlagStatistics();
+                                        SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                            $"[{DateTime.Now}] DB FLAG STATS: Total={flagStats.Total}, IsCurrentClash=1: {flagStats.IsCurrentClashSet}, ReadyForPlacement=1: {flagStats.ReadyForPlacementSet}, IsResolved=1: {flagStats.IsResolvedSet}\n");
+                                    }
+                                    catch (Exception statsEx)
+                                    {
+                                        SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                            $"[{DateTime.Now}] Could not get flag stats: {statsEx.Message}\n");
+                                    }
+                                    
+                                    SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                        $"[{DateTime.Now}] ========== END IsCurrentClashFlag TRACING ==========\n\n");
+                                    
                                     DebugLogger.Info($"[MERGE-SAVE] [SECTION-BOX-FILTER] ✅ Set ReadyForPlacementFlag=1 for {markedCount} unresolved zones within section box");
                                     SafeFileLogger.SafeAppendText(context.RefreshLogName,
                                         $"[{DateTime.Now}] [MERGE-SAVE] [SECTION-BOX-FILTER] ✅ Set ReadyForPlacementFlag=1 for {markedCount} zones\n");
@@ -1209,7 +1250,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     var xmlManager = new XmlCacheManager(_document, context.RefreshLogName);
                     context.XmlCache = xmlManager.LoadAll(context.SelectedFilterNames, context.SelectedMepCategories);
-                    xmlOp?.SetItemCount(context.XmlCache.FilterXml.Count + context.XmlCache.GlobalXml.Count);
+                    xmlOp?.SetItemCount(context.XmlCache.FilterXml.Count); // GlobalXml removed - DB only
                 }
             }
             
@@ -1308,9 +1349,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         private void ResetFlags(RefreshContext context)
         {
-            // ✅ CRITICAL FIX: ALWAYS verify sleeves and set section box flags, regardless of path
-            // This ensures section box filtering is respected even in SUPERFAST PATH mode
-            // Section box filtering should be applied FIRST, before any path-specific logic
+            // ✅ CRITICAL: ALWAYS verify sleeves and set section box flags early in the refresh
+            // This ensures hierarchical resolution (Combined -> Cluster -> Individual) is clean
+            // and section box filtering is applied consistently to the database.
+            
+            UpdateProgress(30, "Verifying existing sleeves and resetting flags...");
             
             // Get section box bounds (if active)
             BoundingBoxXYZ? sectionBoxNullable = null;
@@ -1321,143 +1364,78 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     BoundingBoxXYZ sb = sectionBoxNullable;
                     DebugLogger.Info($"[REFRESH-REFACTORED] ✅ SECTION BOX ACTIVE: Min=({sb.Min.X:F2}, {sb.Min.Y:F2}, {sb.Min.Z:F2}), Max=({sb.Max.X:F2}, {sb.Max.Y:F2}, {sb.Max.Z:F2})");
-                    SafeFileLogger.SafeAppendText(context.RefreshLogName,
-                        $"[{DateTime.Now}] [REFRESH-REFACTORED] ✅ SECTION BOX ACTIVE: Min=({sb.Min.X:F2}, {sb.Min.Y:F2}, {sb.Min.Z:F2}), Max=({sb.Max.X:F2}, {sb.Max.Y:F2}, {sb.Max.Z:F2})\n");
                 }
             }
-            else if (!context.IsDeploymentMode)
-            {
-                DebugLogger.Info("[REFRESH-REFACTORED] ⚠️ Section box NOT active - all zones will be processed");
-                SafeFileLogger.SafeAppendText(context.RefreshLogName,
-                    $"[{DateTime.Now}] [REFRESH-REFACTORED] ⚠️ Section box NOT active - all zones will be processed\n");
-            }
             
-            // ✅ CRITICAL: ALWAYS verify sleeves and set flags, regardless of path strategy
-            // This ensures section box filtering works for ALL paths (including SUPERFAST PATH)
-            UpdateProgress(46, "Verifying existing sleeves and setting placement flags...");
             try
             {
-                using (var dbContext = new Data.SleeveDbContext(_document, msg =>
+                using (var op = context.PerformanceMonitor.TrackOperation("3. Hierarchical Flag Reset") as PerformanceMonitor.OperationTracker)
                 {
-                    if (!context.IsDeploymentMode)
-                        DebugLogger.Info($"[REFRESH-REFACTORED][SQLite] {msg}");
-                }))
-                {
-                    var repository = new Data.Repositories.ClashZoneRepository(dbContext, msg =>
+                    using (var dbContext = new Data.SleeveDbContext(_document, msg => { }))
                     {
+                        var repository = new Data.Repositories.ClashZoneRepository(dbContext, msg => { });
+
+                        // ✅ STEP 1: Optimized Hierarchical Reset (Combined -> Cluster -> Individual)
+                        // Uses O(1) HashSet check against ALL opening families in Revit.
+                        int resetCount = repository.VerifyExistingSleevesAndResetFlags(
+                            _document,
+                            context.SelectedFilterNames ?? new List<string>(),
+                            context.SelectedMepCategories ?? new List<string>());
+
                         if (!context.IsDeploymentMode)
-                            DebugLogger.Info($"[REFRESH-REFACTORED][SQLite] {msg}");
-                    });
-
-                    // ✅ STEP 1: Verify sleeves exist in Revit BEFORE setting ReadyForPlacementFlag
-                    // This ensures zones with existing sleeves get ReadyForPlacementFlag=0
-                    if (!context.IsDeploymentMode)
-                    {
-                        try
                         {
-                            DebugLogger.Info($"[REFRESH-REFACTORED] [SLEEVE-VERIFY] Verifying existing sleeves in Revit...");
+                            DebugLogger.Info($"[REFRESH-REFACTORED] [HIERARCHICAL-RESET] ✅ Reset flags for {resetCount} zones with missing/deleted sleeves");
                             SafeFileLogger.SafeAppendText(context.RefreshLogName,
-                                $"[{DateTime.Now}] [REFRESH-REFACTORED] [SLEEVE-VERIFY] Verifying existing sleeves in Revit...\n");
+                                $"[{DateTime.Now}] [HIERARCHICAL-RESET] ✅ Reset flags for {resetCount} zones\n");
                         }
-                        catch { }
-                    }
 
-                    int verifiedCount = repository.VerifyExistingSleevesAndResetFlags(
-                        _document,
-                        context.SelectedFilterNames ?? new List<string>(),
-                        context.SelectedMepCategories ?? new List<string>());
+                        // ✅ STEP 2: Set ReadyForPlacementFlag=1 for unresolved zones within section box
+                        int markedCount = repository.SetReadyForPlacementForUnresolvedZonesInSectionBox(
+                            context.SelectedFilterNames ?? new List<string>(),
+                            context.SelectedMepCategories ?? new List<string>(),
+                            sectionBoxNullable);
 
-                    if (!context.IsDeploymentMode)
-                    {
-                        try
+                        if (!context.IsDeploymentMode)
                         {
-                            DebugLogger.Info($"[REFRESH-REFACTORED] [SLEEVE-VERIFY] ✅ Verified {verifiedCount} zones → Set ReadyForPlacementFlag=0 for zones with existing sleeves");
+                            DebugLogger.Info($"[REFRESH-REFACTORED] [SECTION-BOX-FILTER] ✅ Set ReadyForPlacementFlag=1 for {markedCount} unresolved zones within section box");
                             SafeFileLogger.SafeAppendText(context.RefreshLogName,
-                                $"[{DateTime.Now}] [REFRESH-REFACTORED] [SLEEVE-VERIFY] ✅ Verified {verifiedCount} zones\n");
+                                $"[{DateTime.Now}] [SECTION-BOX-FILTER] ✅ Set ReadyForPlacementFlag=1 for {markedCount} zones\n");
                         }
-                        catch { }
-                    }
-
-                    // ✅ STEP 2: Set ReadyForPlacementFlag=1 ONLY for unresolved zones within section box
-                    // This is the CRITICAL section box filtering step that must run for ALL paths
-                    if (!context.IsDeploymentMode)
-                    {
-                        try
-                        {
-                            DebugLogger.Info($"[REFRESH-REFACTORED] [SECTION-BOX-FILTER] Setting ReadyForPlacementFlag=1 for unresolved zones within section box...");
-                            SafeFileLogger.SafeAppendText(context.RefreshLogName,
-                                $"[{DateTime.Now}] [REFRESH-REFACTORED] [SECTION-BOX-FILTER] Setting flags for zones within section box (sectionBox={(sectionBoxNullable != null ? "ACTIVE" : "NOT ACTIVE")})\n");
-                        }
-                        catch { }
-                    }
-
-                    int markedCount = repository.SetReadyForPlacementForUnresolvedZonesInSectionBox(
-                        context.SelectedFilterNames ?? new List<string>(),
-                        context.SelectedMepCategories ?? new List<string>(),
-                        sectionBoxNullable);
-
-                    if (!context.IsDeploymentMode)
-                    {
-                        DebugLogger.Info($"[REFRESH-REFACTORED] [SECTION-BOX-FILTER] ✅ Set ReadyForPlacementFlag=1 for {markedCount} unresolved zones within section box");
-                        SafeFileLogger.SafeAppendText(context.RefreshLogName,
-                            $"[{DateTime.Now}] [REFRESH-REFACTORED] [SECTION-BOX-FILTER] ✅ Set ReadyForPlacementFlag=1 for {markedCount} zones\n");
                         
-                        try
-                        {
-                            var placementLogPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
-                            File.AppendAllText(placementLogPath,
-                                $"[{DateTime.Now:HH:mm:ss}] [REFRESH-FLAG-SET] ✅ Set ReadyForPlacementFlag=1 for {markedCount} zones (filters: {string.Join(", ", context.SelectedFilterNames ?? new List<string>())}, categories: {string.Join(", ", context.SelectedMepCategories ?? new List<string>())}, sectionBox: {(sectionBoxNullable != null ? "ACTIVE" : "NOT ACTIVE")})\n");
-                        }
-                        catch { }
+                        op?.SetItemCount(resetCount + markedCount);
                     }
                 }
             }
-            catch (Exception markEx)
+            catch (Exception ex)
             {
-                if (!context.IsDeploymentMode)
-                {
-                    DebugLogger.Warning($"[REFRESH-REFACTORED] ⚠️ Failed to verify sleeves or set ReadyForPlacementFlag: {markEx.Message}");
-                    SafeFileLogger.SafeAppendText(context.RefreshLogName,
-                        $"[{DateTime.Now}] [REFRESH-REFACTORED] ⚠️ Failed to verify sleeves or set flags: {markEx.Message}\n");
-                }
-                // Continue with refresh even if marking fails (non-blocking)
+                DebugLogger.Warning($"[REFRESH-REFACTORED] ⚠️ Hierarchical flag reset failed: {ex.Message}");
+                SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                    $"[{DateTime.Now}] [REFRESH-REFACTORED] ⚠️ Hierarchical flag reset failed: {ex.Message}\n");
             }
             
-            // ✅ PATH-SPECIFIC FLAG RESET: Only run if path strategy requires it
-            // This is for additional flag management beyond section box filtering
+            // ✅ PATH-SPECIFIC LEGACY RESET: Only if strategy requires it and not superseded by hierarchical reset
             if (context.PathStrategy.ShouldResetFlags)
             {
-                UpdateProgress(45, "Resetting flags for deleted sleeves...");
-                using (context.PerformanceMonitor.TrackOperation("5B. Flag Reset"))
+                // Note: The hierarchical reset above is much more robust than the per-category XML check below.
+                // We keep this for now to maintain consistency with historical behavior if needed.
+                UpdateProgress(35, "Checking category-specific legacy flags...");
+                using (context.PerformanceMonitor.TrackOperation("3B. Legacy Flag Sync"))
                 {
-                    var flagManager = Services.FlagManagement.FlagManagerFactory.CreateAdapter(_document);
-                    var categoriesToCheck = context.ExistingClashZones?
-                        .Where(cz => !string.IsNullOrWhiteSpace(cz.MepElementCategory))
-                        .Select(cz => cz.MepElementCategory)
-                        .Distinct(StringComparer.OrdinalIgnoreCase)
-                        .ToList() ?? new List<string>();
+                    // If we have already reset 1000s of sleeves hierarchically, this might be skip-able.
+                    // But for safety, we allow the strategy to decide.
+
+                    // ✅ FIX: Define expected variables
+                    var categoriesToCheck = context.SelectedMepCategories ?? new List<string>();
+                    Dictionary<string, List<Models.ClashZone>> clashZonesByCategory = null; // Not loaded yet at this phase
+
+                    context.PathStrategy.ResetInstanceIdsForDeletedSleeves(
+                        context,
+                        categoriesToCheck,
+                        clashZonesByCategory);
                     
-                    if (categoriesToCheck.Count > 0)
+                    if (!context.IsDeploymentMode)
                     {
-                        var clashZonesByCategory = context.ExistingClashZones?
-                            .GroupBy(cz => cz.MepElementCategory, StringComparer.OrdinalIgnoreCase)
-                            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase) 
-                            ?? new Dictionary<string, List<ClashZone>>();
-                        
-                        var resetCount = flagManager.ResetFlagsForDeletedSleeves(
-                            context.ExistingClashZones,
-                            categoriesToCheck,
-                            context.RefreshLogName);
-                        
-                        context.PathStrategy.ResetInstanceIdsForDeletedSleeves(
-                            context,
-                            categoriesToCheck,
-                            clashZonesByCategory);
-                        
-                        if (!context.IsDeploymentMode)
-                        {
-                            DebugLogger.Info($"[REFRESH-REFACTORED] Path-specific flag reset completed: {resetCount} zones reset");
-                        }
+                        DebugLogger.Info($"[REFRESH-REFACTORED] Path-specific flag reset completed");
                     }
                 }
             }

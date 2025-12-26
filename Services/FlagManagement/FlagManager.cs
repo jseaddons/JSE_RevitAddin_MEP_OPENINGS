@@ -14,7 +14,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// <summary>
     /// Centralized flag management for clash zones.
     /// Eliminates redundant flag operations across multiple services.
-    /// Uses GlobalIndexService for all Global XML operations.
+    /// Uses SQLite Database for all flag operations.
     /// </summary>
     public class FlagManager
     {

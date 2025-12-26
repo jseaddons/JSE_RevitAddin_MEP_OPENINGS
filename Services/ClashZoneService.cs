@@ -2168,32 +2168,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         bool globalSaysResolved = false;
                         bool globalSaysClusterResolved = false;
                         bool globalEntryFound = false;
-                        try
-                        {
-                            var globalIndex = GlobalIndexService.LoadOrCreate(document, clashZone.MepElementCategory);
-                            
-                            // ✅ CRITICAL FIX: Use GetAllEntries to get entries from BOTH hierarchical and flat structures
-                            // Entries are now stored in Filters → FileCombos → Entries, not just in flat Entries list
-                            var allEntries = GlobalIndexService.GetAllEntries(globalIndex).ToList();
-                            var entry = allEntries?.FirstOrDefault(e => e.Id == clashZone.Id.ToString());
-                            if (entry != null)
-                            {
-                                globalEntryFound = true;
-                                globalSaysResolved = entry.IsResolved;
-                                globalSaysClusterResolved = entry.IsClusterResolved;
-                                _log($"[ResetResolvedFlag] ✅ Global XML FOUND for ClashZone {clashZone.Id}: IsResolved={entry.IsResolved}, IsClusterResolved={entry.IsClusterResolved}, SleeveId={entry.SleeveInstanceId}, ClusterId={entry.ClusterSleeveInstanceId}");
-                            }
-                            else
-                            {
-                                // Entry not in Global XML - check Revit to determine if sleeve actually exists
-                                _log($"[ResetResolvedFlag] ClashZone {clashZone.Id} NOT in Global XML - will check Revit to determine if reset needed");
-                            }
-                        }
-                        catch (Exception globalEx)
-                        {
-                            _log($"[ResetResolvedFlag] WARNING: Error checking Global XML for ClashZone {clashZone.Id}: {globalEx.Message} - will check Revit to determine if reset needed");
-                            // Continue with Revit check even if Global XML check fails
-                        }
+                        // ✅ LEGACY XML REMOVED: GlobalIndexService checks removed.
+                        // Relying solely on Revit model state to determine if sleeves exist.
+                        
                         
                         // ✅ METHOD 3: Check for damper presence before resetting duct clash zones
                         if (string.Equals(clashZone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase))
@@ -2370,33 +2347,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         // ✅ CRITICAL FIX: Save flags to Global XML after reset (legacy path)
                         // Note: FlagManager path handles this automatically, but legacy path needs manual save
-                        try
-                        {
-                            var resetClashZones = _clashZoneStorage.ClashZones
-                                .Where(cz => selectedCategories != null && selectedCategories.Contains(cz.MepElementCategory, StringComparer.OrdinalIgnoreCase))
-                                .ToList();
-                            
-                            if (resetClashZones.Count > 0)
-                            {
-                                var updatesByCategory = resetClashZones
-                                    .GroupBy(cz => cz.MepElementCategory)
-                                    .ToDictionary(g => g.Key, g => g.Select(cz => (cz.Id, cz.IsResolved, cz.IsClusterResolved, cz.SleeveInstanceId, cz.ClusterSleeveInstanceId)));
-                                
-                                foreach (var kvp in updatesByCategory)
-                                {
-                                    GlobalIndexService.UpsertFlagsWithIds(document, kvp.Key, kvp.Value);
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Info($"[RESET-FLAGS] Updated Global XML for category: {kvp.Key}, {kvp.Value.Count()} entries (legacy path)");
-                                }
-                            }
-                        }
-                        catch (Exception saveEx)
-                        {
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                                        if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Warning($"[RESET-FLAGS] Error saving reset flags to Global XML: {saveEx.Message}");
-                        }
+                        // ✅ LEGACY XML REMOVED: No longer saving to Global XML here.
+                        // FlagManager handles persistence now.
                     }
                 }
             }
@@ -3084,14 +3036,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         (clashZone.Id, true, false, existingSleeveId, -1)
                     };
                     
-                    GlobalIndexService.UpsertFlagsWithIds(document, mepCategory, updates);
+                    // ✅ LEGACY XML REMOVED: GlobalIndexService is deleted.
+                    // GlobalIndexService.UpsertFlagsWithIds(document, mepCategory, updates);
                     
                     if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
-                        _log($"[OPTIMIZED-SLEEVE-LOOKUP] ✓ Updated Global XML immediately: Entry {clashZone.Id} → IsResolved=true, SleeveInstanceId={existingSleeveId}");
+                        _log($"[OPTIMIZED-SLEEVE-LOOKUP] ✓ Skipped Global XML update (legacy service deleted): Entry {clashZone.Id} → IsResolved=true, SleeveInstanceId={existingSleeveId}");
                 }
                 catch (Exception ex)
                 {
-                    _log($"[OPTIMIZED-SLEEVE-LOOKUP] Error updating Global XML immediately: {ex.Message}");
+                    _log($"[OPTIMIZED-SLEEVE-LOOKUP] Error (legacy service deleted): {ex.Message}");
                 }
             }
             

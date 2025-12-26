@@ -279,13 +279,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// ✅ FLAG PERSISTENCE: Stored in both Global XML and Filter XML so refresh + placement share a single view of flag state
         /// (Global XML remains the source of truth; Filter XML copy assists diagnostics and legacy tools.)
         /// </summary>
-        public bool IsResolved { get; set; } = false;
+        public bool IsResolvedFlag { get; set; } = false;
         
         /// <summary>
         /// Whether this clash zone has been resolved by cluster sleeve
         /// ✅ FLAG PERSISTENCE: Stored in both Global XML and Filter XML for transparency; Global XML is still authoritative.
         /// </summary>
-        public bool IsClusterResolved { get; set; } = false;
+        public bool IsClusterResolvedFlag { get; set; } = false;
 
         /// <summary>
         /// Indicates if this zone is part of a resolved combined sleeve.
@@ -311,7 +311,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// false = loaded from previous XML (old clash)
         /// Used for debugging filtering effectiveness
         /// </summary>
-        public bool IsCurrentClash { get; set; } = false; // ✅ CRITICAL FIX: Default to false for XML-loaded clashes
+        public bool IsCurrentClashFlag { get; set; } = false; // ✅ CRITICAL FIX: Default to false for XML-loaded clashes
         
         /// <summary>
         /// ✅ SESSION FLAG: Indicates this zone is ready for placement in current session
@@ -329,7 +329,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// - No dependency on timestamps (avoid clock skew, batch update issues)
         /// - Clear session boundaries (no ambiguity about which zones to process)
         /// </summary>
-        public bool ReadyForPlacement { get; set; } = false;
+        public bool ReadyForPlacementFlag { get; set; } = false;
+        
+        // ✅ BACKWARD COMPATIBILITY: Alias properties for legacy code that uses names without 'Flag' suffix
+        [XmlIgnore]
+        public bool IsResolved
+        {
+            get => IsResolvedFlag;
+            set => IsResolvedFlag = value;
+        }
+        
+        [XmlIgnore]
+        public bool IsClusterResolved
+        {
+            get => IsClusterResolvedFlag;
+            set => IsClusterResolvedFlag = value;
+        }
+        
+        [XmlIgnore]
+        public bool IsCurrentClash
+        {
+            get => IsCurrentClashFlag;
+            set => IsCurrentClashFlag = value;
+        }
+        
+        [XmlIgnore]
+        public bool ReadyForPlacement
+        {
+            get => ReadyForPlacementFlag;
+            set => ReadyForPlacementFlag = value;
+        }
         
         /// <summary>
         /// CLEAR FLAG: Indicates this sleeve should be processed for cluster placement

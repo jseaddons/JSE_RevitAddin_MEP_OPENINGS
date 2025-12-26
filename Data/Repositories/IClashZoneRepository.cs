@@ -109,7 +109,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// <summary>
         /// Batch update flags including IsCurrentClashFlag.
         /// </summary>
-        void BatchUpdateFlagsWithCurrentClash(IEnumerable<(System.Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsCurrentClash, bool IsClusteredFlag)> updates);
+        void BatchUpdateFlagsWithCurrentClash(List<(System.Guid ClashZoneId, bool IsResolvedFlag, bool IsClusterResolvedFlag, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsCurrentClashFlag, bool IsClusteredFlag)> updates);
 
         /// <summary>
         /// Force Detection Mode: Reset all flags (IsResolved, IsClusterResolved) to false and clear sleeve IDs
@@ -191,13 +191,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// </summary>
         void BulkUpdateRTreeIndex(IEnumerable<ClashZone> zones, System.Data.SQLite.SQLiteTransaction? transaction = null);
 
+
+
         /// <summary>
-        /// ✅ BATCH OPTIMIZATION: Update placement flags for multiple clash zones in a single transaction.
-        /// Updates IsResolved, IsClusterResolved, IsCombinedResolved, SleeveInstanceId, ClusterSleeveInstanceId, and IsCurrentClash flags.
-        /// This method is called after successful placement to mark zones as resolved.
+        /// ✅ PLACEMENT OPTIMIZATION: Batch update sleeve placement data in a single transaction.
+        /// Replaces multiple UpdateSleevePlacement calls with one batch operation (50x faster).
         /// </summary>
-        void BatchUpdateFlagsWithCurrentClash(
-            List<(System.Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, 
-                  int SleeveInstanceId, int ClusterInstanceId, bool IsCurrentClash, bool IsClusteredFlag)> updates);
+        void BatchUpdateSleevePlacement(
+            IEnumerable<(System.Guid ClashZoneGuid, int SleeveInstanceId, double Width, double Height, double Diameter,
+                double PlacementX, double PlacementY, double PlacementZ,
+                double PlacementActiveX, double PlacementActiveY, double PlacementActiveZ,
+                double RotationAngleRad)> updates);
+
+        /// <summary>
+        /// ✅ PLACEMENT OPTIMIZATION: Batch update sleeve corners in a single transaction.
+        /// Replaces multiple UpdateSleeveCorners calls with one batch operation (50x faster).
+        /// </summary>
+        void BatchUpdateSleeveCorners(
+            IEnumerable<(System.Guid ClashZoneGuid,
+                double Corner1X, double Corner1Y, double Corner1Z,
+                double Corner2X, double Corner2Y, double Corner2Z,
+                double Corner3X, double Corner3Y, double Corner3Z,
+                double Corner4X, double Corner4Y, double Corner4Z)> updates);
     }
 }

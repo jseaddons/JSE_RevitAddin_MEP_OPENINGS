@@ -257,9 +257,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                                 if (clashZone != null)
                                 {
                                     clashZone.Id = existingZone.Id;
-                                    clashZone.IsResolved = existingZone.IsResolved;
+                                    clashZone.IsResolvedFlag = existingZone.IsResolvedFlag;
                                     clashZone.SleeveInstanceId = existingZone.SleeveInstanceId;
-                                    clashZone.ReadyForPlacement = existingZone.ReadyForPlacement;
+                                    clashZone.ReadyForPlacementFlag = existingZone.ReadyForPlacementFlag;
                                 }
                             }
                             else

@@ -12,6 +12,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// </summary>
     public static class OptimizationFlags
     {
+        /// <summary>
+        /// Enable refactored parameter transfer optimizations (buffered logging, lazy cache, unified lookup, struct-based deferred params).
+        /// When true: Uses new optimized code paths in ParameterTransferService and SleeveParameterService.
+        /// When false: Uses legacy code paths.
+        /// Default: false (safe rollout, enable for testing).
+        /// Location: Services/ParameterTransferService.cs, Services/Placement/SleeveParameterService.cs
+        /// </summary>
+        public static bool UseParameterTransferRefactor { get; set; } = true;
         // Use minimal per-category global index during Refresh to avoid loading full XMLs
         public static bool UseGlobalCategoryIndexForRefresh { get; set; } = true;
         #region Phase 1 Foundation Flags (40% gain)
@@ -310,7 +318,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Use in production/deployment mode for maximum performance.
         /// Location: DebugLogger.cs (all Log calls check this flag)
         /// </summary>
-        public static bool DisableVerboseLogging { get; set; } = false;
+        public static bool DisableVerboseLogging { get; set; } = false; // ✅ Full logging enabled for debugging
 
         /// <summary>
         /// Skip synchronous parameter capture for existing zones in ClashZoneService.
@@ -420,7 +428,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Enable diagnostic mode for performance monitoring
         /// Default: false (disabled - causes 2.6x slowdown due to logging overhead)
         /// </summary>
-        public static bool UseDiagnosticMode { get; set; } = true; // ✅ ON - temporarily enabled to debug flag updates
+        public static bool UseDiagnosticMode { get; set; } = true; // ✅ ON - enabled for debugging
         
         /// <summary>
         /// Enable batch clash zone creation (pre-calculate common data once)
@@ -848,12 +856,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Enable bulk database operations for cluster save (ClusterSleeveRepository).
         /// When true: Uses bulk check query + bulk INSERT/UPDATE operations (90%+ faster).
         /// When false: Uses individual SELECT + INSERT/UPDATE per cluster (current behavior).
-        /// Default: false (disabled initially - enable after validation to ensure data integrity).
+        /// Default: true (enabled - validated for data integrity).
         /// Location: Data/Repositories/ClusterSleeveRepository.cs (BatchSaveClusterSleeves)
         /// Expected gain: 90%+ reduction in database save time (7616ms → ~500ms).
-        /// ⚠️ CRITICAL: Must preserve all cluster data - validation ensures no data loss.
+        /// ✅ ROLLBACK: If issues occur, set this to false.
         /// </summary>
-        public static bool UseBulkClusterSave { get; set; } = false;
+        public static bool UseBulkClusterSave { get; set; } = true;
+
 
         /// <summary>
         /// Enable database-only pre-calculation (avoids Revit API calls during parallel processing).

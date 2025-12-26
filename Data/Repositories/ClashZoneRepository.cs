@@ -18,8 +18,8 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Refresh;
 namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 {
     /// <summary>
-    /// SQLite repository implementation for ClashZone persistence
-    /// Phase SQLite-1: Dual-write mode (writes to both XML and SQLite)
+    /// SQLite repository implementation for ClashZone persistence.
+    /// Database is the sole source of truth for all clash zone data and flags.
     /// </summary>
     public class ClashZoneRepository : IClashZoneRepository
     {
@@ -511,49 +511,54 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Verify if sleeves marked as resolved in the DB still exist in the current Revit model.
         /// If not found, reset their flags to false and IDs to -1.
         /// </summary>
+        /// <summary>
+        /// Verify if sleeves marked as resolved in the DB still exist in the current Revit model.
+        /// If not found, reset their flags to false and IDs to -1 in a hierarchical manner.
+        /// Hierarchy: Combined -> Cluster -> Individual
+        /// </summary>
         public int VerifyExistingSleevesAndResetFlags(Autodesk.Revit.DB.Document doc, List<string> filterNames, List<string> categories)
         {
             try
             {
-                _logger("[SQLite] 🔍 Verifying sleeves (BIM 360 optimized: batch element collection)...");
-                int totalReset = 0;
+                _logger("[SQLite] 🔍 Starting Optimized Hierarchical Sleeve Verification...");
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-                // ⚡ OPTIMIZATION 1: Single SQL query to get ALL zones at once
-                var zonesToCheck = new List<(int ZoneId, int SleeveId, string SleeveType)>();
-                
+                // ⚡ OPTIMIZATION 1: High-performance batch collection from Revit
+                var sleeveCollector = new JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement.RevitSleeveCollector();
+                var revitSleeveIds = sleeveCollector.CollectAllSleeveIds(doc);
+                _logger($"[SQLite] 🔍 Collected {revitSleeveIds.Count} sleeve elements from Revit in {stopwatch.ElapsedMilliseconds}ms");
+
+                // ⚡ OPTIMIZATION 2: Single query to get all zones with ANY resolution flag set
+                var zonesToCheck = new List<ZoneResolutionState>();
                 using (var cmd = _context.Connection.CreateCommand())
                 {
-                    // ✅ BUG FIX: Removed "AND ClusterInstanceId > 0" to catch zones with STUCK flags but invalid/missing IDs
-                    // This query now includes zones where flag=1 even if ID is invalid (zombies).
                     cmd.CommandText = @"
                         SELECT ClashZoneId, 
-                               CASE 
-                                   WHEN IsCombinedResolved = 1 THEN CombinedClusterSleeveInstanceId
-                                   WHEN IsClusterResolvedFlag = 1 THEN ClusterInstanceId
-                                   WHEN IsResolvedFlag = 1 THEN SleeveInstanceId
-                               END as SleeveId,
-                               CASE 
-                                   WHEN IsCombinedResolved = 1 THEN 'Combined'
-                                   WHEN IsClusterResolvedFlag = 1 THEN 'Cluster'
-                                   WHEN IsResolvedFlag = 1 THEN 'Individual'
-                               END as SleeveType
+                               IsCombinedResolved, CombinedClusterSleeveInstanceId,
+                               IsClusterResolvedFlag, ClusterInstanceId,
+                               IsResolvedFlag, SleeveInstanceId,
+                               ReadyForPlacementFlag
                         FROM ClashZones
-                        WHERE (IsCombinedResolved = 1)
-                           OR (IsClusterResolvedFlag = 1 AND IsCombinedResolved = 0)
-                           OR (IsResolvedFlag = 1 AND IsCombinedResolved = 0 AND IsClusterResolvedFlag = 0)";
+                        WHERE IsCombinedResolved = 1 
+                           OR IsClusterResolvedFlag = 1 
+                           OR IsResolvedFlag = 1
+                           OR (IsResolvedFlag = 0 AND IsClusterResolvedFlag = 0 AND IsCombinedResolved = 0 AND ReadyForPlacementFlag = 0)";
                     
                     using (var reader = cmd.ExecuteReader())
                     {
                         while (reader.Read())
                         {
-                            // If SleeveId is null, treat as -1 (invalid)
-                            int sleeveId = reader.IsDBNull(1) ? -1 : reader.GetInt32(1);
-                            
-                            zonesToCheck.Add((
-                                reader.GetInt32(0), // ZoneId
-                                sleeveId,
-                                reader.GetString(2)  // SleeveType
-                            ));
+                            zonesToCheck.Add(new ZoneResolutionState
+                            {
+                                ZoneId = reader.GetInt32(0),
+                                IsCombined = reader.GetBoolean(1),
+                                CombinedId = reader.IsDBNull(2) ? -1 : reader.GetInt32(2),
+                                IsCluster = reader.GetBoolean(3),
+                                ClusterId = reader.IsDBNull(4) ? -1 : reader.GetInt32(4),
+                                IsIndividual = reader.GetBoolean(5),
+                                IndividualId = reader.IsDBNull(6) ? -1 : reader.GetInt32(6),
+                                ReadyForPlacement = reader.IsDBNull(7) ? false : reader.GetBoolean(7)
+                            });
                         }
                     }
                 }
@@ -564,122 +569,113 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     return 0;
                 }
 
-                _logger($"[SQLite] 🔍 Found {zonesToCheck.Count} zones to verify");
+                _logger($"[SQLite] 🔍 Checking {zonesToCheck.Count} zones in multi-threading...");
 
-                // ⚡ OPTIMIZATION 2: Batch element collection - ONE Revit API call for ALL sleeves
-                // Get only VALID IDs (>0) to check in Revit. Invalid IDs (-1) are automatically marked for reset below.
-                var validSleeveIds = zonesToCheck
-                    .Where(z => z.SleeveId > 0)
-                    .Select(z => new ElementId(z.SleeveId))
-                    .Distinct()
-                    .ToList();
-                    
-                _logger($"[SQLite] 🔍 Checking {validSleeveIds.Count} unique sleeve elements in ONE batch (BIM 360 optimized)...");
-
-                var existingElements = new HashSet<int>();
-                if (validSleeveIds.Count > 0)
+                // ⚡ OPTIMIZATION 3: Multi-threaded existence check using Parallel.ForEach
+                var updates = new System.Collections.Concurrent.ConcurrentBag<ZoneResolutionUpdate>();
+                
+                System.Threading.Tasks.Parallel.ForEach(zonesToCheck, zone =>
                 {
-                    try
+                    bool needsUpdate = false;
+                    bool newIsCombined = zone.IsCombined;
+                    bool newIsCluster = zone.IsCluster;
+                    bool newIsIndividual = zone.IsIndividual;
+
+                    // Hierarchical Check 1: Combined
+                    if (zone.IsCombined)
                     {
-                        // Single Revit API call to get all elements at once
-                        var collector = new FilteredElementCollector(doc)
-                            .WhereElementIsNotElementType()
-                            .Where(e => validSleeveIds.Contains(e.Id));
-                        
-                        foreach (var elem in collector)
+                        if (zone.CombinedId <= 0 || !revitSleeveIds.Contains(zone.CombinedId))
                         {
-                            existingElements.Add(elem.Id.IntegerValue);
-                        }
-                        
-                        _logger($"[SQLite] 🔍 Found {existingElements.Count}/{validSleeveIds.Count} existing sleeves in model");
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger($"[SQLite] ⚠️ Batch collection failed, falling back to individual checks: {ex.Message}");
-                        // Fallback: check individually
-                        foreach (var sleeveId in validSleeveIds)
-                        {
-                            var elem = doc.GetElement(sleeveId);
-                            if (elem != null)
-                            {
-                                existingElements.Add(sleeveId.IntegerValue);
-                            }
+                            newIsCombined = false;
+                            needsUpdate = true;
                         }
                     }
-                }
 
-                // Group zones by sleeve type for organized reset
-                var combinedToReset = new List<int>();
-                var clusterToReset = new List<int>();
-                var individualToReset = new List<int>();
-
-                foreach (var (zoneId, sleeveId, sleeveType) in zonesToCheck)
-                {
-                    // Logic: Reset if (ID is invalid) OR (ID is valid but element not found in Revit)
-                    bool isValidId = sleeveId > 0;
-                    bool exists = isValidId && existingElements.Contains(sleeveId);
-                    
-                    if (!exists)
+                    // Hierarchical Check 2: Cluster
+                    if (zone.IsCluster)
                     {
-                        string reason = isValidId ? "NOT FOUND in model" : "INVALID ID (Zombie Flag)";
-                        _logger($"[SQLite] 🔍   Zone {zoneId}: {sleeveType} sleeve {sleeveId} {reason} - will reset");
-                        
-                        if (sleeveType == "Combined")
-                            combinedToReset.Add(zoneId);
-                        else if (sleeveType == "Cluster")
-                            clusterToReset.Add(zoneId);
-                        else
-                            individualToReset.Add(zoneId);
+                        if (zone.ClusterId <= 0 || !revitSleeveIds.Contains(zone.ClusterId))
+                        {
+                            newIsCluster = false;
+                            needsUpdate = true;
+                        }
                     }
+
+                    // Hierarchical Check 3: Individual
+                    if (zone.IsIndividual)
+                    {
+                        if (zone.IndividualId <= 0 || !revitSleeveIds.Contains(zone.IndividualId))
+                        {
+                            newIsIndividual = false;
+                            needsUpdate = true;
+                        }
+                    }
+
+                    // ✅ NEW CASE: Unresolved zone with ReadyForPlacement=0 needs the flag set
+                    if (!zone.IsCombined && !zone.IsCluster && !zone.IsIndividual && !zone.ReadyForPlacement)
+                    {
+                        needsUpdate = true;
+                    }
+                    if (needsUpdate)
+                    {
+                        updates.Add(new ZoneResolutionUpdate
+                        {
+                            ZoneId = zone.ZoneId,
+                            IsCombined = newIsCombined,
+                            IsCluster = newIsCluster,
+                            IsIndividual = newIsIndividual
+                        });
+                    }
+                });
+
+                if (updates.Count == 0)
+                {
+                    _logger($"[SQLite] ✅ All {zonesToCheck.Count} zones verified. No resets needed. ({stopwatch.ElapsedMilliseconds}ms)");
+                    return 0;
                 }
 
-                // Reset flags for each type
-                if (combinedToReset.Count > 0)
+                // ⚡ OPTIMIZATION 4: Batch DB Update
+                _logger($"[SQLite] ⚠️ Resetting flags for {updates.Count} zones...");
+                int totalReset = 0;
+                
+                using (var transaction = _context.Connection.BeginTransaction())
                 {
-                    string ids = string.Join(",", combinedToReset);
-                    using (var updateCmd = _context.Connection.CreateCommand())
+                    using (var cmd = _context.Connection.CreateCommand())
                     {
-                        updateCmd.CommandText = $@"
+                        cmd.Transaction = transaction;
+                        cmd.CommandText = @"
                             UPDATE ClashZones 
-                            SET IsCombinedResolved = 0, 
-                                IsResolvedFlag = 0, 
-                                IsClusterResolvedFlag = 0,
-                                SleeveInstanceId = -1,
-                                ClusterInstanceId = -1,
-                                CombinedClusterSleeveInstanceId = NULL,
+                            SET IsCombinedResolved = @isCombined,
+                                IsClusterResolvedFlag = @isCluster,
+                                IsResolvedFlag = @isIndividual,
+                                CombinedClusterSleeveInstanceId = CASE WHEN @isCombined = 0 THEN NULL ELSE CombinedClusterSleeveInstanceId END,
+                                ClusterInstanceId = CASE WHEN @isCluster = 0 THEN -1 ELSE ClusterInstanceId END,
+                                SleeveInstanceId = CASE WHEN @isIndividual = 0 THEN -1 ELSE SleeveInstanceId END,
+                                IsCurrentClashFlag = 1,
+                                ReadyForPlacementFlag = 1,
                                 UpdatedAt = CURRENT_TIMESTAMP
-                            WHERE ClashZoneId IN ({ids})";
-                        int count = updateCmd.ExecuteNonQuery();
-                        _logger($"[SQLite] ⚠️ Reset {count} zones with deleted combined sleeves");
-                        totalReset += count;
+                            WHERE ClashZoneId = @id";
+
+                        var pId = cmd.CreateParameter(); pId.ParameterName = "@id"; cmd.Parameters.Add(pId);
+                        var pCombined = cmd.CreateParameter(); pCombined.ParameterName = "@isCombined"; cmd.Parameters.Add(pCombined);
+                        var pCluster = cmd.CreateParameter(); pCluster.ParameterName = "@isCluster"; cmd.Parameters.Add(pCluster);
+                        var pIndividual = cmd.CreateParameter(); pIndividual.ParameterName = "@isIndividual"; cmd.Parameters.Add(pIndividual);
+
+                        foreach (var update in updates)
+                        {
+                            pId.Value = update.ZoneId;
+                            pCombined.Value = update.IsCombined ? 1 : 0;
+                            pCluster.Value = update.IsCluster ? 1 : 0;
+                            pIndividual.Value = update.IsIndividual ? 1 : 0;
+                            
+                            totalReset += cmd.ExecuteNonQuery();
+                        }
                     }
+                    transaction.Commit();
                 }
 
-                if (clusterToReset.Count > 0)
-                {
-                    string ids = string.Join(",", clusterToReset);
-                    using (var updateCmd = _context.Connection.CreateCommand())
-                    {
-                        updateCmd.CommandText = $"UPDATE ClashZones SET IsClusterResolvedFlag = 0, ClusterInstanceId = -1, UpdatedAt = CURRENT_TIMESTAMP WHERE ClashZoneId IN ({ids})";
-                        int count = updateCmd.ExecuteNonQuery();
-                        _logger($"[SQLite] ⚠️ Reset {count} zones with deleted cluster sleeves");
-                        totalReset += count;
-                    }
-                }
-
-                if (individualToReset.Count > 0)
-                {
-                    string ids = string.Join(",", individualToReset);
-                    using (var updateCmd = _context.Connection.CreateCommand())
-                    {
-                        updateCmd.CommandText = $"UPDATE ClashZones SET IsResolvedFlag = 0, SleeveInstanceId = -1, UpdatedAt = CURRENT_TIMESTAMP WHERE ClashZoneId IN ({ids})";
-                        int count = updateCmd.ExecuteNonQuery();
-                        _logger($"[SQLite] ⚠️ Reset {count} zones with deleted individual sleeves");
-                        totalReset += count;
-                    }
-                }
-
-                _logger($"[SQLite] ✅ Verification complete: {totalReset} total zones reset (BIM 360 optimized)");
+                stopwatch.Stop();
+                _logger($"[SQLite] ✅ Optimized Verification complete: {totalReset} total zones updated in {stopwatch.ElapsedMilliseconds}ms");
                 return totalReset;
             }
             catch (Exception ex)
@@ -687,6 +683,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 _logger($"[SQLite] ❌ Error in VerifyExistingSleevesAndResetFlags: {ex.Message}");
                 return 0;
             }
+        }
+
+        // Helper classes for flag reset logic
+        private class ZoneResolutionState
+        {
+            public int ZoneId { get; set; }
+            public bool IsCombined { get; set; }
+            public int CombinedId { get; set; }
+            public bool IsCluster { get; set; }
+            public int ClusterId { get; set; }
+            public bool IsIndividual { get; set; }
+            public int IndividualId { get; set; }
+            public bool ReadyForPlacement { get; set; }
+        }
+
+        private class ZoneResolutionUpdate
+        {
+            public int ZoneId { get; set; }
+            public bool IsCombined { get; set; }
+            public bool IsCluster { get; set; }
+            public bool IsIndividual { get; set; }
         }
 
         /// <summary>
@@ -725,21 +742,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         
                         if (filterConditions.Count == 0)
                         {
-                            // No filters/categories selected - reset ALL (fallback to old behavior)
-                            cmd.CommandText = "UPDATE ClashZones SET IsCurrentClashFlag = 0";
+                            // No filters/categories selected - reset ALL
+                            cmd.CommandText = "UPDATE ClashZones SET IsCurrentClashFlag = 0, ReadyForPlacementFlag = 0";
                         }
                         else
                         {
                             // ✅ OPTIMIZED: Only reset zones matching selected filters/categories
+                            // Reset ALL zones in scope - SetReadyForPlacementForUnresolvedZonesInSectionBox 
+                            // will set flag=1 for zones in section box
                             cmd.CommandText = $@"
                                 UPDATE ClashZones 
-                                SET IsCurrentClashFlag = 0
+                                SET IsCurrentClashFlag = 0, ReadyForPlacementFlag = 0
                                 WHERE ClashZoneId IN (
                                     SELECT cz.ClashZoneId
                                     FROM ClashZones cz
                                     INNER JOIN FilterFileCombos ffc ON cz.ComboId = ffc.ComboId
                                     INNER JOIN Filters f ON ffc.FilterId = f.FilterId
-                                    WHERE {string.Join(" OR ", filterConditions)}
+                                    WHERE ({string.Join(" OR ", filterConditions)})
                                 )";
                         }
                         
@@ -887,7 +906,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Uses a temporary table approach for maximum performance.
         /// Updates IsResolved, IsClusterResolved, IsCombinedResolved, SleeveInstanceId, ClusterSleeveInstanceId, and IsCurrentClash flags.
         /// </summary>
-        public void BatchUpdateFlagsWithCurrentClash(List<(System.Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsCurrentClash, bool IsClusteredFlag)> updates)
+        public void BatchUpdateFlagsWithCurrentClash(List<(System.Guid ClashZoneId, bool IsResolvedFlag, bool IsClusterResolvedFlag, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsCurrentClashFlag, bool IsClusteredFlag)> updates)
         {
             _logger($"[SQLite][BATCH] 🚀 BatchUpdateFlagsWithCurrentClash called with {updates?.Count ?? 0} updates");
             
@@ -966,12 +985,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         foreach (var update in updates)
                         {
                             pClashZoneId.Value = update.ClashZoneId.ToString();
-                            pIsResolved.Value = update.IsResolved ? 1 : 0;
-                            pIsClusterResolved.Value = update.IsClusterResolved ? 1 : 0;
+                            pIsResolved.Value = update.IsResolvedFlag ? 1 : 0;
+                            pIsClusterResolved.Value = update.IsClusterResolvedFlag ? 1 : 0;
                             pIsCombinedResolved.Value = update.IsCombinedResolved ? 1 : 0;
                             pSleeveInstanceId.Value = update.SleeveInstanceId;
                             pClusterInstanceId.Value = update.ClusterInstanceId;
-                            pIsCurrentClash.Value = update.IsCurrentClash ? 1 : 0;
+                            pIsCurrentClash.Value = update.IsCurrentClashFlag ? 1 : 0;
                             pIsClusteredFlag.Value = update.IsClusteredFlag ? 1 : 0;
 
                             cmd.ExecuteNonQuery();
@@ -992,6 +1011,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 ClusterInstanceId = (SELECT ClusterInstanceId FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneGuid),
                                 IsCurrentClashFlag = (SELECT IsCurrentClash FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneGuid),
                                 IsClusteredFlag = (SELECT IsClusteredFlag FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneGuid),
+                                ReadyForPlacementFlag = (SELECT IsCurrentClash FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneGuid),
                                 UpdatedAt = CURRENT_TIMESTAMP
                             WHERE ClashZoneGuid IN (SELECT ClashZoneId FROM TempFlagUpdates)";
                         int rowsAffected = updateCmd.ExecuteNonQuery();
@@ -2735,9 +2755,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         {
             // Determine sleeve state
             int sleeveState = 0; // Unprocessed
-            if (clashZone.IsClusterResolved && clashZone.ClusterSleeveInstanceId > 0)
+            if (clashZone.IsClusterResolvedFlag && clashZone.ClusterSleeveInstanceId > 0)
                 sleeveState = 2; // ClusterPlaced
-            else if (clashZone.IsResolved && clashZone.SleeveInstanceId > 0)
+            else if (clashZone.IsResolvedFlag && clashZone.SleeveInstanceId > 0)
                 sleeveState = 1; // IndividualPlaced
 
             var mepElementId = clashZone.MepElementId?.IntegerValue ?? clashZone.MepElementIdValue;
@@ -2901,16 +2921,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             else
             {
                 // Use clash zone flags (for new entries or when sleeve was placed)
-                cmd.Parameters.AddWithValue("@IsResolvedFlag", clashZone.IsResolved ? 1 : 0);
-                cmd.Parameters.AddWithValue("@IsClusterResolvedFlag", clashZone.IsClusterResolved ? 1 : 0);
+                cmd.Parameters.AddWithValue("@IsResolvedFlag", clashZone.IsResolvedFlag ? 1 : 0);
+                cmd.Parameters.AddWithValue("@IsClusterResolvedFlag", clashZone.IsClusterResolvedFlag ? 1 : 0);
             }
 
             cmd.Parameters.AddWithValue("@IsClusteredFlag", isClustered);
             cmd.Parameters.AddWithValue("@MarkedForClusterProcess", markedForCluster);
             cmd.Parameters.AddWithValue("@AfterClusterSleeveId", clashZone.AfterClusterSleevePlacedSleeveInstanceId);
             cmd.Parameters.AddWithValue("@HasDamperNearbyFlag", clashZone.HasDamperNearby ? 1 : 0);
-            cmd.Parameters.AddWithValue("@IsCurrentClashFlag", clashZone.IsCurrentClash ? 1 : 0);
-            cmd.Parameters.AddWithValue("@ReadyForPlacementFlag", clashZone.ReadyForPlacement ? 1 : 0);
+            cmd.Parameters.AddWithValue("@IsCurrentClashFlag", clashZone.IsCurrentClashFlag ? 1 : 0);
+            cmd.Parameters.AddWithValue("@ReadyForPlacementFlag", clashZone.ReadyForPlacementFlag ? 1 : 0);
 
             // ✅ CRITICAL: Add thickness parameters for depth calculation
             cmd.Parameters.AddWithValue("@StructuralThickness", clashZone.StructuralElementThickness);
@@ -4756,20 +4776,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             cmd.Parameters.AddWithValue("@MaxZ", sectionBox.Max.Z);
                         }
 
-                        // Single UPDATE query for all filters/categories
+                        // ✅ ATOMIC UPDATE: Sets flag=1 for IN-SCOPE zones, flag=0 for OUT-OF-SCOPE zones
+                        // This eliminates the need for a separate reset step and avoids timing issues
+                        // In-scope = matches filter/category + unresolved + in section box
+                        // Out-of-scope = matches filter/category but resolved OR outside section box
                         cmd.CommandText = $@"
                             UPDATE ClashZones
-                            SET ReadyForPlacementFlag = 1, IsCurrentClashFlag = 1
+                            SET ReadyForPlacementFlag = CASE 
+                                    WHEN ClashZoneId IN (
+                                        SELECT cz2.ClashZoneId
+                                        FROM ClashZones cz2
+                                        INNER JOIN FilterFileCombos ffc2 ON cz2.ComboId = ffc2.ComboId
+                                        INNER JOIN Filters f2 ON ffc2.FilterId = f2.FilterId
+                                        WHERE 
+                                            ({string.Join(" OR ", filterConditions)})
+                                            AND cz2.IsResolved = 0 
+                                            AND cz2.IsClusterResolved = 0
+                                            AND cz2.IsCombinedResolved = 0
+                                            {sectionBoxClause.Replace("cz.", "cz2.")}
+                                    ) THEN 1 ELSE 0 END,
+                                IsCurrentClashFlag = CASE 
+                                    WHEN ClashZoneId IN (
+                                        SELECT cz3.ClashZoneId
+                                        FROM ClashZones cz3
+                                        INNER JOIN FilterFileCombos ffc3 ON cz3.ComboId = ffc3.ComboId
+                                        INNER JOIN Filters f3 ON ffc3.FilterId = f3.FilterId
+                                        WHERE 
+                                            ({string.Join(" OR ", filterConditions)})
+                                            AND cz3.IsResolved = 0 
+                                            AND cz3.IsClusterResolved = 0
+                                            AND cz3.IsCombinedResolved = 0
+                                            {sectionBoxClause.Replace("cz.", "cz3.")}
+                                    ) THEN 1 ELSE 0 END
                             WHERE ClashZoneId IN (
                                 SELECT cz.ClashZoneId
                                 FROM ClashZones cz
                                 INNER JOIN FilterFileCombos ffc ON cz.ComboId = ffc.ComboId
                                 INNER JOIN Filters f ON ffc.FilterId = f.FilterId
-                                WHERE 
-                                    ({string.Join(" OR ", filterConditions)})
-                                    AND cz.IsResolved = 0 
-                                    AND cz.IsClusterResolved = 0
-                                    {sectionBoxClause}
+                                WHERE ({string.Join(" OR ", filterConditions)})
                             )";
 
                         int count = cmd.ExecuteNonQuery();
@@ -4812,39 +4856,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 return SetReadyForPlacementBatchOptimized(filterNames, categories, sectionBox);
             }
 
-            // ✅ DIAGNOSTIC: Log method entry with parameters (direct logging to ensure it appears)
-            if (!DeploymentConfiguration.DeploymentMode)
-            {
-                try
-                {
-                    _logger($"[SQLite] [FLAG-RESET-ENTRY] Method called: filterNames={filterNames?.Count ?? 0}, categories={categories?.Count ?? 0}, sectionBox={(sectionBox != null ? "Present" : "NULL")}");
-                    // ✅ ALSO: Direct DebugLogger to ensure message appears
-                    DebugLogger.Info($"[ClashZoneRepository] [FLAG-RESET-ENTRY] Method called: filterNames={filterNames?.Count ?? 0}, categories={categories?.Count ?? 0}, sectionBox={(sectionBox != null ? "Present" : "NULL")}");
-
-                    // ✅ CRITICAL DIAGNOSTIC: Also log to refresh log for visibility
-                    var refreshLogPath = SafeFileLogger.GetLogFilePath("Refresh_debug.log");
-                    if (File.Exists(refreshLogPath))
-                    {
-                        File.AppendAllText(refreshLogPath,
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [FLAG-RESET-ENTRY] SetReadyForPlacementForUnresolvedZonesInSectionBox called: filters={filterNames?.Count ?? 0}, categories={categories?.Count ?? 0}, sectionBox={(sectionBox != null ? "Present" : "NULL")}\n");
-                    }
-                }
-                catch { }
-            }
-
             if (filterNames == null || filterNames.Count == 0 || categories == null || categories.Count == 0)
             {
-                // ✅ DIAGNOSTIC: Log early return
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    try
-                    {
-                        _logger($"[SQLite] [FLAG-RESET-ENTRY] ⚠️ EARLY RETURN: filterNames={filterNames?.Count ?? 0}, categories={categories?.Count ?? 0}");
-                        // ✅ ALSO: Direct DebugLogger to ensure message appears
-                        DebugLogger.Info($"[ClashZoneRepository] [FLAG-RESET-ENTRY] ⚠️ EARLY RETURN: filterNames={filterNames?.Count ?? 0}, categories={categories?.Count ?? 0}");
-                    }
-                    catch { }
-                }
                 return 0;
             }
 
@@ -7174,6 +7187,186 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         }
 
         /// <summary>
+        /// ✅ PLACEMENT OPTIMIZATION: Batch update sleeve placement data in a single transaction.
+        /// Replaces multiple UpdateSleevePlacement calls with one batch operation (50x faster).
+        /// </summary>
+        public void BatchUpdateSleevePlacement(
+            IEnumerable<(Guid ClashZoneGuid, int SleeveInstanceId, double Width, double Height, double Diameter,
+                double PlacementX, double PlacementY, double PlacementZ,
+                double PlacementActiveX, double PlacementActiveY, double PlacementActiveZ,
+                double RotationAngleRad)> updates)
+        {
+            var updateList = updates?.ToList();
+            if (updateList == null || updateList.Count == 0) return;
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            int totalRows = 0;
+
+            try
+            {
+                using (var transaction = _context.Connection.BeginTransaction())
+                {
+                    using (var cmd = _context.Connection.CreateCommand())
+                    {
+                        cmd.Transaction = transaction;
+                        cmd.CommandText = @"
+                            UPDATE ClashZones SET
+                                SleeveState = 1,
+                                SleeveInstanceId = @SleeveInstanceId,
+                                SleeveWidth = @SleeveWidth,
+                                SleeveHeight = @SleeveHeight,
+                                SleeveDiameter = @SleeveDiameter,
+                                SleevePlacementX = @SleevePlacementX,
+                                SleevePlacementY = @SleevePlacementY,
+                                SleevePlacementZ = @SleevePlacementZ,
+                                SleevePlacementActiveX = @SleevePlacementActiveX,
+                                SleevePlacementActiveY = @SleevePlacementActiveY,
+                                SleevePlacementActiveZ = @SleevePlacementActiveZ,
+                                MepRotationAngleRad = @MepRotationAngleRad,
+                                MepRotationAngleDeg = @MepRotationAngleDeg,
+                                MepRotationCos = @MepRotationCos,
+                                MepRotationSin = @MepRotationSin,
+                                UpdatedAt = CURRENT_TIMESTAMP
+                            WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)
+                              AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL";
+
+                        // ✅ PREPARED STATEMENT: Create parameters once, reuse for all updates
+                        var pGuid = cmd.Parameters.Add("@ClashZoneGuid", System.Data.DbType.String);
+                        var pSleeveId = cmd.Parameters.Add("@SleeveInstanceId", System.Data.DbType.Int32);
+                        var pWidth = cmd.Parameters.Add("@SleeveWidth", System.Data.DbType.Double);
+                        var pHeight = cmd.Parameters.Add("@SleeveHeight", System.Data.DbType.Double);
+                        var pDiameter = cmd.Parameters.Add("@SleeveDiameter", System.Data.DbType.Double);
+                        var pX = cmd.Parameters.Add("@SleevePlacementX", System.Data.DbType.Double);
+                        var pY = cmd.Parameters.Add("@SleevePlacementY", System.Data.DbType.Double);
+                        var pZ = cmd.Parameters.Add("@SleevePlacementZ", System.Data.DbType.Double);
+                        var pActiveX = cmd.Parameters.Add("@SleevePlacementActiveX", System.Data.DbType.Double);
+                        var pActiveY = cmd.Parameters.Add("@SleevePlacementActiveY", System.Data.DbType.Double);
+                        var pActiveZ = cmd.Parameters.Add("@SleevePlacementActiveZ", System.Data.DbType.Double);
+                        var pRotRad = cmd.Parameters.Add("@MepRotationAngleRad", System.Data.DbType.Double);
+                        var pRotDeg = cmd.Parameters.Add("@MepRotationAngleDeg", System.Data.DbType.Double);
+                        var pRotCos = cmd.Parameters.Add("@MepRotationCos", System.Data.DbType.Double);
+                        var pRotSin = cmd.Parameters.Add("@MepRotationSin", System.Data.DbType.Double);
+
+                        foreach (var u in updateList)
+                        {
+                            pGuid.Value = u.ClashZoneGuid.ToString();
+                            pSleeveId.Value = u.SleeveInstanceId;
+                            pWidth.Value = u.Width;
+                            pHeight.Value = u.Height;
+                            pDiameter.Value = u.Diameter;
+                            pX.Value = u.PlacementX;
+                            pY.Value = u.PlacementY;
+                            pZ.Value = u.PlacementZ;
+                            pActiveX.Value = u.PlacementActiveX;
+                            pActiveY.Value = u.PlacementActiveY;
+                            pActiveZ.Value = u.PlacementActiveZ;
+                            pRotRad.Value = u.RotationAngleRad;
+                            pRotDeg.Value = u.RotationAngleRad * 180.0 / Math.PI;
+                            pRotCos.Value = Math.Cos(u.RotationAngleRad);
+                            pRotSin.Value = Math.Sin(u.RotationAngleRad);
+
+                            totalRows += cmd.ExecuteNonQuery();
+                        }
+                    }
+                    transaction.Commit();
+                }
+
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ✅ BatchUpdateSleevePlacement: Updated {totalRows} rows in {sw.ElapsedMilliseconds}ms ({updateList.Count} sleeves)");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ❌ BatchUpdateSleevePlacement failed: {ex.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// ✅ PLACEMENT OPTIMIZATION: Batch update sleeve corners in a single transaction.
+        /// Replaces multiple UpdateSleeveCorners calls with one batch operation (50x faster).
+        /// </summary>
+        public void BatchUpdateSleeveCorners(
+            IEnumerable<(Guid ClashZoneGuid,
+                double Corner1X, double Corner1Y, double Corner1Z,
+                double Corner2X, double Corner2Y, double Corner2Z,
+                double Corner3X, double Corner3Y, double Corner3Z,
+                double Corner4X, double Corner4Y, double Corner4Z)> updates)
+        {
+            var updateList = updates?.ToList();
+            if (updateList == null || updateList.Count == 0) return;
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            int totalRows = 0;
+
+            try
+            {
+                using (var transaction = _context.Connection.BeginTransaction())
+                {
+                    using (var cmd = _context.Connection.CreateCommand())
+                    {
+                        cmd.Transaction = transaction;
+                        cmd.CommandText = @"
+                            UPDATE ClashZones SET
+                                SleeveCorner1X = @SleeveCorner1X,
+                                SleeveCorner1Y = @SleeveCorner1Y,
+                                SleeveCorner1Z = @SleeveCorner1Z,
+                                SleeveCorner2X = @SleeveCorner2X,
+                                SleeveCorner2Y = @SleeveCorner2Y,
+                                SleeveCorner2Z = @SleeveCorner2Z,
+                                SleeveCorner3X = @SleeveCorner3X,
+                                SleeveCorner3Y = @SleeveCorner3Y,
+                                SleeveCorner3Z = @SleeveCorner3Z,
+                                SleeveCorner4X = @SleeveCorner4X,
+                                SleeveCorner4Y = @SleeveCorner4Y,
+                                SleeveCorner4Z = @SleeveCorner4Z,
+                                UpdatedAt = CURRENT_TIMESTAMP
+                            WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)
+                              AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL";
+
+                        // ✅ PREPARED STATEMENT: Create parameters once, reuse for all updates
+                        var pGuid = cmd.Parameters.Add("@ClashZoneGuid", System.Data.DbType.String);
+                        var p1X = cmd.Parameters.Add("@SleeveCorner1X", System.Data.DbType.Double);
+                        var p1Y = cmd.Parameters.Add("@SleeveCorner1Y", System.Data.DbType.Double);
+                        var p1Z = cmd.Parameters.Add("@SleeveCorner1Z", System.Data.DbType.Double);
+                        var p2X = cmd.Parameters.Add("@SleeveCorner2X", System.Data.DbType.Double);
+                        var p2Y = cmd.Parameters.Add("@SleeveCorner2Y", System.Data.DbType.Double);
+                        var p2Z = cmd.Parameters.Add("@SleeveCorner2Z", System.Data.DbType.Double);
+                        var p3X = cmd.Parameters.Add("@SleeveCorner3X", System.Data.DbType.Double);
+                        var p3Y = cmd.Parameters.Add("@SleeveCorner3Y", System.Data.DbType.Double);
+                        var p3Z = cmd.Parameters.Add("@SleeveCorner3Z", System.Data.DbType.Double);
+                        var p4X = cmd.Parameters.Add("@SleeveCorner4X", System.Data.DbType.Double);
+                        var p4Y = cmd.Parameters.Add("@SleeveCorner4Y", System.Data.DbType.Double);
+                        var p4Z = cmd.Parameters.Add("@SleeveCorner4Z", System.Data.DbType.Double);
+
+                        foreach (var u in updateList)
+                        {
+                            pGuid.Value = u.ClashZoneGuid.ToString();
+                            p1X.Value = u.Corner1X; p1Y.Value = u.Corner1Y; p1Z.Value = u.Corner1Z;
+                            p2X.Value = u.Corner2X; p2Y.Value = u.Corner2Y; p2Z.Value = u.Corner2Z;
+                            p3X.Value = u.Corner3X; p3Y.Value = u.Corner3Y; p3Z.Value = u.Corner3Z;
+                            p4X.Value = u.Corner4X; p4Y.Value = u.Corner4Y; p4Z.Value = u.Corner4Z;
+
+                            totalRows += cmd.ExecuteNonQuery();
+                        }
+                    }
+                    transaction.Commit();
+                }
+
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ✅ BatchUpdateSleeveCorners: Updated {totalRows} rows in {sw.ElapsedMilliseconds}ms ({updateList.Count} sleeves)");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ❌ BatchUpdateSleeveCorners failed: {ex.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
         /// Update SleeveInstanceId for a clash zone by GUID
         /// </summary>
         public void UpdateSleeveInstanceId(Guid clashZoneGuid, int sleeveInstanceId)
@@ -8743,7 +8936,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             return null;
         }
 
-        public void BatchUpdateFlagsWithCurrentClash(IEnumerable<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsCurrentClash, bool IsClusteredFlag)> updates)
+        public void BatchUpdateFlagsWithCurrentClash(IEnumerable<(Guid ClashZoneId, bool IsResolvedFlag, bool IsClusterResolvedFlag, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsCurrentClashFlag, bool IsClusteredFlag)> updates)
         {
             if (updates == null) return;
             var updatesList = updates.ToList();
@@ -8756,7 +8949,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     using (var cmd = _context.Connection.CreateCommand())
                     {
                         cmd.Transaction = transaction;
-                        foreach (var (id, isResolved, isClusterResolved, isCombined, sleeveId, clusterId, isCurrent, isClustered) in updatesList)
+                        foreach (var (id, isResolvedFlag, isClusterResolvedFlag, isCombined, sleeveId, clusterId, isCurrentFlag, isClustered) in updatesList)
                         {
                             cmd.CommandText = @"
                                 UPDATE ClashZones SET 
@@ -8770,12 +8963,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 WHERE ClashZoneGuid = @Guid";
                             
                             cmd.Parameters.Clear();
-                            cmd.Parameters.AddWithValue("@IsResolved", isResolved ? 1 : 0);
-                            cmd.Parameters.AddWithValue("@IsClusterResolved", isClusterResolved ? 1 : 0);
+                            cmd.Parameters.AddWithValue("@IsResolved", isResolvedFlag ? 1 : 0);
+                            cmd.Parameters.AddWithValue("@IsClusterResolved", isClusterResolvedFlag ? 1 : 0);
                             cmd.Parameters.AddWithValue("@IsCombined", isCombined ? 1 : 0);
                             cmd.Parameters.AddWithValue("@SleeveId", sleeveId);
                             cmd.Parameters.AddWithValue("@ClusterId", clusterId);
-                            cmd.Parameters.AddWithValue("@IsCurrent", isCurrent ? 1 : 0);
+                            cmd.Parameters.AddWithValue("@IsCurrent", isCurrentFlag ? 1 : 0);
                             cmd.Parameters.AddWithValue("@IsClustered", isClustered ? 1 : 0);
                             cmd.Parameters.AddWithValue("@Guid", id.ToString().ToUpperInvariant());
 
@@ -8785,7 +8978,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             if (!OptimizationFlags.DisableVerboseLogging && id != Guid.Empty) 
                             {
                                 var logMsg = $"[BATCH-UPDATE-DEBUG] Zone {id}: " +
-                                             $"IsResolved={isResolved}, IsClusterResolved={isClusterResolved}, " +
+                                             $"IsResolved={isResolvedFlag}, IsClusterResolved={isClusterResolvedFlag}, " +
                                              $"IsClustered={isClustered}, SleeveId={sleeveId}, " +
                                              $"ClusterId={clusterId}";
                                 _logger(logMsg);

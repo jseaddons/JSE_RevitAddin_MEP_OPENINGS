@@ -60,6 +60,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
             
             return sleevesByCategory;
         }
+
+        /// <summary>
+        /// Collects all unique sleeve/opening family instance IDs in the document.
+        /// ✅ PERFORMANCE: Returns a HashSet for O(1) existence checks during refresh.
+        /// </summary>
+        public HashSet<int> CollectAllSleeveIds(Document document)
+        {
+            if (document == null)
+                throw new ArgumentNullException(nameof(document));
+
+            var allSleeveIds = new FilteredElementCollector(document)
+                .OfClass(typeof(FamilyInstance))
+                .Cast<FamilyInstance>()
+                .Where(s =>
+                {
+                    bool hasSleeveKeyword = s.Symbol?.FamilyName?.Contains("Sleeve", StringComparison.OrdinalIgnoreCase) == true ||
+                                           s.Symbol?.FamilyName?.Contains("Opening", StringComparison.OrdinalIgnoreCase) == true;
+                    string familyName = s.Symbol?.FamilyName ?? "";
+                    bool isKnownFamily = familyName.Contains("CircularOpening", StringComparison.OrdinalIgnoreCase) ||
+                                        familyName.Contains("RectangularOpening", StringComparison.OrdinalIgnoreCase);
+                    return (s.Category?.Name == "Generic Models" || s.Category?.Name == "Structural Connections") &&
+                           (hasSleeveKeyword || isKnownFamily);
+                })
+                .Select(s => s.Id.IntegerValue)
+                .ToList();
+
+            return new HashSet<int>(allSleeveIds);
+        }
         
         /// <summary>
         /// Collect sleeves for a specific category.

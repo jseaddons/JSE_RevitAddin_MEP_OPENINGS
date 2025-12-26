@@ -244,8 +244,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ DIAGNOSTIC: Log flag status of all zones (ALWAYS log)
             if (clashZones != null && clashZones.Count > 0)
             {
-                int resolvedCount = clashZones.Count(z => z.IsResolved);
-                int clusterResolvedCount = clashZones.Count(z => z.IsClusterResolved);
+                int resolvedCount = clashZones.Count(z => z.IsResolvedFlag);
+                int clusterResolvedCount = clashZones.Count(z => z.IsClusterResolvedFlag);
                 SafeFileLogger.SafeAppendText("placement_debug.log",
                     $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] 📊 ZONE FLAGS: Total={clashZones.Count}, IsResolved={resolvedCount}, IsClusterResolved={clusterResolvedCount}\n");
             }
@@ -440,8 +440,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // This prevents placing sleeves over existing sleeves (especially for dampers)
                     // ✅ CRITICAL: If IsClusterResolved=true, skip individual placement (zone is part of a cluster)
                     // ✅ CRITICAL: If ClusterSleeveInstanceId > 0, skip individual placement (cluster sleeve already exists)
-                    bool shouldSkip = clashZone.IsResolved || 
-                                     clashZone.IsClusterResolved || 
+                    bool shouldSkip = clashZone.IsResolvedFlag || 
+                                     clashZone.IsClusterResolvedFlag || 
                                      clashZone.SleeveInstanceId > 0 || 
                                      clashZone.ClusterSleeveInstanceId > 0;
                     
@@ -449,8 +449,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         // ✅ DIAGNOSTIC: Log why zone is being skipped (always log, even in deployment mode for debugging)
                         string skipReason = "";
-                        if (clashZone.IsResolved) skipReason += "IsResolved=true, ";
-                        if (clashZone.IsClusterResolved) skipReason += "IsClusterResolved=true, ";
+                        if (clashZone.IsResolvedFlag) skipReason += "IsResolved=true, ";
+                        if (clashZone.IsClusterResolvedFlag) skipReason += "IsClusterResolved=true, ";
                         if (clashZone.SleeveInstanceId > 0) skipReason += $"SleeveId={clashZone.SleeveInstanceId}, ";
                         if (clashZone.ClusterSleeveInstanceId > 0) skipReason += $"ClusterId={clashZone.ClusterSleeveInstanceId}, ";
                         skipReason = skipReason.TrimEnd(',', ' ');
@@ -577,7 +577,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // ✅ CRITICAL: Update ClashZone with new Sleeve ID and flag
                         // This ensures in-memory object is updated immediately (before batch flag update)
                         clashZone.SleeveInstanceId = placedSleeve.Id.IntegerValue;
-                        clashZone.IsResolved = true;
+                        clashZone.IsResolvedFlag = true;
                         
                         // ✅ DIAGNOSTIC: Log flag update for debugging
                         if (!DeploymentConfiguration.DeploymentMode)

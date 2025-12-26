@@ -173,7 +173,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     processingSummaries.Add(stats);
                 }
 
-                LogAggregate(processingSummaries, baseFilterName);
+                // LogAggregate(processingSummaries, baseFilterName);
             }
             catch (Exception ex)
             {
@@ -253,134 +253,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 var filterName = BuildFilterFileName(baseFilterName, category);
-                CategoryGlobalIndex globalIndex = null;
-                
-                using (_performanceMonitor?.TrackOperation("9a3. Load Global Index"))
+                // ✅ PHASE SQLITE-2: XML writes disabled (Database Only Mode)
+                if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    globalIndex = GlobalIndexService.LoadOrCreate(_document, category);
-                }
-
-                // ✅ PHASE SQLITE-2: SQLite write is now handled by the bulk call in SaveClashZones
-                // This section in SaveCategory only handles XML and diagnostic logging now.
-                if (!DeploymentConfiguration.DeploymentMode && string.Equals(category, "Pipes", StringComparison.OrdinalIgnoreCase))
-                {
-                    foreach (var zone in validZones.Take(5))
-                    {
-                        int mepParamCount = zone.MepParameterValues?.Count ?? 0;
-                        if (mepParamCount == 0)
-                        {
-                            SafeFileLogger.SafeAppendText("save_db_diagnostic.log",
-                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZonePersistence] ⚠️ BEFORE SAVE: Zone {zone.Id} has ZERO MEP parameters!\n");
-                        }
-                    }
-                }
-
-                // ✅ PHASE SQLITE-2: XML writes are now optional/backup (only if UseSqliteAsPrimary is false or for compatibility)
-                // ✅ PERFORMANCE OPTIMIZATION: Skip XML writes entirely if optimization flag is enabled (database-only mode)
-                if (OptimizationFlags.SkipXmlDuringSave)
-                {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] ⚡ OPTIMIZATION: Skipping all XML writes for category '{category}' (database-only mode enabled via OptimizationFlags.SkipXmlDuringSave)");
-                    SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", 
-                        $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] ⚡ OPTIMIZATION: Skipping all XML writes for category '{category}' (database-only mode)\n");
-                }
-                else if (!DeploymentConfiguration.UseSqliteAsPrimary)
-                {
-                    // Legacy mode: XML is primary, write to XML
-                    foreach (var comboGroup in combos)
-                    {
-                        var key = comboGroup.Key;
-                        var comboClashZones = comboGroup.ToList();
-
-                        LogRefresh($"[PERSIST-DEBUG]   Combo → Linked='{key.LinkedFile}', Host='{key.HostFile}', Zones={comboClashZones.Count}");
-                        LogPlacement($"[PERSIST-COMBO] Linked='{key.LinkedFile}', Host='{key.HostFile}', Count={comboClashZones.Count}, Sample=[{string.Join(", ", comboClashZones.Take(5).Select(z => $"{z.Id}:{z.SleeveInstanceId}"))}]");
-
-                        // ✅ PHASE 2: Only update Global XML in-memory if XML creation is enabled
-                        if (!DeploymentConfiguration.DisableXmlCreation)
-                        {
-                            using (_performanceMonitor?.TrackOperation("9a9. Global XML Save"))
-                            {
-                                SaveToGlobalXml(globalIndex, comboClashZones, category, baseFilterName, filterName, key, stats, allowStructuralUpdates);
-                            }
-                        }
-                        else
-                        {
-                            LogRefresh($"[PERSIST-GLOBAL] ⚠️ XML creation disabled - skipping SaveToGlobalXml (database only mode). Combo: Linked='{key.LinkedFile}', Host='{key.HostFile}', Zones={comboClashZones?.Count ?? 0}");
-                        }
-
-                        if (targetFilter != null)
-                        {
-                            SaveToFilterXml(comboClashZones, category, baseFilterName, targetFilter, key, stats, allowStructuralUpdates);
-                        }
-                    }
-
-                    CleanupGlobalIndex(globalIndex, validZones, stats);
-                    
-                    // ✅ PHASE 2: Only save Global XML if XML creation is enabled
-                    if (!DeploymentConfiguration.DisableXmlCreation)
-                    {
-                    GlobalIndexService.Save(_document, globalIndex);
-                    }
-                    else
-                    {
-                        LogRefresh($"[PERSIST-GLOBAL] ⚠️ XML creation disabled - skipping GlobalIndexService.Save() (database only mode)");
-                    }
-                }
-                else
-                {
-                    // ✅ PHASE SQLITE-2: SQLite is primary - still update in-memory filter storage and global XML
-                    // ✅ PERFORMANCE NOTE: This block only runs if SkipXmlDuringSave is false
-                    foreach (var comboGroup in combos)
-                    {
-                        var key = comboGroup.Key;
-                        var comboClashZones = comboGroup.ToList();
-
-                        // Maintain target filter storage so downstream consumers (Place Sleeves, clustering) see the zones
-                        // Note: This is in-memory only and doesn't write to disk
-                        if (targetFilter != null)
-                        {
-                            SaveToFilterXml(comboClashZones, category, baseFilterName, targetFilter, key, stats, allowStructuralUpdates);
-                        }
-
-                        // ✅ PHASE 2: Only update Global XML in-memory if XML creation is enabled
-                        if (!DeploymentConfiguration.DisableXmlCreation)
-                        {
-                            using (_performanceMonitor?.TrackOperation("9a9. Global XML Save"))
-                            {
-                                SaveToGlobalXml(globalIndex, comboClashZones, category, baseFilterName, filterName, key, stats, allowStructuralUpdates);
-                            }
-                        }
-                        else
-                        {
-                            LogRefresh($"[PERSIST-GLOBAL] ⚠️ XML creation disabled - skipping SaveToGlobalXml (database only mode). Combo: Linked='{key.LinkedFile}', Host='{key.HostFile}', Zones={comboClashZones?.Count ?? 0}");
-                        }
-                    }
-
-                    CleanupGlobalIndex(globalIndex, validZones, stats);
-                    
-                    // ✅ PHASE 2: Only save Global XML if XML creation is enabled
-                    if (!DeploymentConfiguration.DisableXmlCreation)
-                    {
-                    // ✅ CRITICAL: Save Global XML so "Place Sleeves" button can check for unresolved zones
-                    GlobalIndexService.Save(_document, globalIndex);
-                    }
-                    else
-                    {
-                        LogRefresh($"[PERSIST-GLOBAL] ⚠️ XML creation disabled - skipping GlobalIndexService.Save() (database only mode)");
-                    }
-                    
-                    // ✅ DEBUG: Log Global XML save completion (only if XML was actually saved)
-                    if (!DeploymentConfiguration.DisableXmlCreation)
-                    {
-                    var unresolvedInGlobal = GlobalIndexService.GetAllEntries(globalIndex)
-                        .Count(e => !e.IsResolved && !e.IsClusterResolved);
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] ✅ PHASE 2: Saved Global XML for '{category}' - {unresolvedInGlobal} unresolved entries (total: {GlobalIndexService.GetAllEntries(globalIndex).Count()})");
-                    }
-
-                    // Skip Filter XML writes - SQLite is the source of truth for clash zone data
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] ✅ PHASE 2: Skipped Filter XML writes - SQLite is primary store");
+                    DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] ⚡ OPTIMIZATION: XML writes skipped (Database Only Mode). Category='{category}'");
                 }
             }
             catch (Exception ex)
@@ -392,129 +268,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return stats;
         }
 
-        private void SaveToGlobalXml(
-            CategoryGlobalIndex globalIndex,
-            List<ClashZone> comboClashZones,
-            string category,
-            string baseFilterName,
-            string filterFileName,
-            (string LinkedFile, string HostFile) comboKey,
-            ProcessingStats stats,
-            bool allowStructuralUpdates)
-        {
-            // ✅ PHASE 2: Skip XML creation if disabled - database is single source of truth
-            if (DeploymentConfiguration.DisableXmlCreation)
-            {
-                LogRefresh($"[PERSIST-GLOBAL] ⚠️ XML creation disabled - skipping SaveToGlobalXml (database only mode). Combo: Linked='{comboKey.LinkedFile}', Host='{comboKey.HostFile}', Zones={comboClashZones?.Count ?? 0}");
-                return;
-            }
-
-            if (comboClashZones == null || comboClashZones.Count == 0)
-            {
-                LogRefresh($"[PERSIST-GLOBAL] Skipping SaveToGlobalXml - no clash zones for combo Linked='{comboKey.LinkedFile}', Host='{comboKey.HostFile}'");
-                return;
-            }
-
-            if (globalIndex.Filters == null)
-                globalIndex.Filters = new List<FilterGroup>();
-
-            var globalFilterGroup = globalIndex.Filters
-                .FirstOrDefault(f => string.Equals(f?.Name, baseFilterName, StringComparison.OrdinalIgnoreCase));
-
-            if (globalFilterGroup == null)
-            {
-                globalFilterGroup = new FilterGroup
-                {
-                    Name = baseFilterName,
-                    FileCombos = new List<FileComboGroup>()
-                };
-                globalIndex.Filters.Add(globalFilterGroup);
-                LogRefresh($"[PERSIST-GLOBAL] Created new FilterGroup '{baseFilterName}' for category '{category}'");
-            }
-
-            globalFilterGroup.FileCombos ??= new List<FileComboGroup>();
-
-            var processedCombo = new ProcessedFileCombo
-            {
-                LinkedFile = comboKey.LinkedFile,
-                HostFile = comboKey.HostFile
-            };
-            var normalizedKey = processedCombo.GetNormalizedKey();
-
-            LogRefresh($"[PERSIST-GLOBAL] Looking for FileComboGroup with normalized key '{normalizedKey}' (Linked='{comboKey.LinkedFile}', Host='{comboKey.HostFile}') in FilterGroup '{baseFilterName}'");
-            LogRefresh($"[PERSIST-GLOBAL] Existing FileComboGroups in FilterGroup '{baseFilterName}': {globalFilterGroup.FileCombos.Count}");
-            foreach (var existingCombo in globalFilterGroup.FileCombos)
-            {
-                LogRefresh($"[PERSIST-GLOBAL]   Existing combo: Linked='{existingCombo.LinkedFile}', Host='{existingCombo.HostFile}', NormalizedKey='{existingCombo.GetNormalizedKey()}'");
-            }
-
-            var globalFileCombo = globalFilterGroup.FileCombos
-                .FirstOrDefault(fc => fc.GetNormalizedKey() == normalizedKey);
-
-            if (globalFileCombo == null)
-            {
-                globalFileCombo = new FileComboGroup
-                {
-                    LinkedFile = comboKey.LinkedFile,
-                    HostFile = comboKey.HostFile,
-                    ProcessedAt = DateTime.Now,
-                    IsProcessed = true,
-                    Entries = new List<CategoryGlobalIndexEntry>()
-                };
-                globalFilterGroup.FileCombos.Add(globalFileCombo);
-                LogRefresh($"[PERSIST-GLOBAL] ✅ Created NEW FileComboGroup: Linked='{comboKey.LinkedFile}', Host='{comboKey.HostFile}', NormalizedKey='{normalizedKey}', Zones={comboClashZones.Count}");
-            }
-            else
-            {
-                // ✅ Update ProcessedAt timestamp to reflect that this combo was just processed
-                globalFileCombo.ProcessedAt = DateTime.Now;
-                globalFileCombo.IsProcessed = true;
-                LogRefresh($"[PERSIST-GLOBAL] ✅ Found EXISTING FileComboGroup: Linked='{comboKey.LinkedFile}', Host='{comboKey.HostFile}', NormalizedKey='{normalizedKey}', Zones={comboClashZones.Count}, Updated ProcessedAt={globalFileCombo.ProcessedAt}");
-            }
-
-            globalFileCombo.Entries ??= new List<CategoryGlobalIndexEntry>();
-
-            var entriesById = globalFileCombo.Entries
-                .Where(e => e != null && !string.IsNullOrWhiteSpace(e.Id))
-                .GroupBy(e => e.Id, StringComparer.OrdinalIgnoreCase)
-                .Select(g => g.First())
-                .ToDictionary(e => e.Id, StringComparer.OrdinalIgnoreCase);
-
-            globalFileCombo.Entries = entriesById.Values.ToList();
-
-            foreach (var clashZone in comboClashZones)
-            {
-                var entryId = clashZone.Id.ToString();
-                var existingEntry = GlobalIndexService.GetAllEntries(globalIndex)
-                    .FirstOrDefault(e => string.Equals(e.Id, entryId, StringComparison.OrdinalIgnoreCase));
-
-                if (existingEntry == null ||
-                    existingEntry.MepElementId == 0 ||
-                    existingEntry.StructuralElementId == 0 ||
-                    IsZeroIntersection(existingEntry))
-                {
-                    _guidManager.EnsureGlobalXmlEntry(clashZone, category, filterFileName);
-
-                    if (existingEntry == null)
-                        stats.GlobalCreated++;
-                    else
-                        stats.GlobalUpdated++;
-                }
-
-                if (!entriesById.TryGetValue(entryId, out var comboEntry))
-                {
-                    comboEntry = new CategoryGlobalIndexEntry
-                    {
-                        Id = entryId,
-                        FilterName = filterFileName ?? string.Empty
-                    };
-                    globalFileCombo.Entries.Add(comboEntry);
-                    entriesById[entryId] = comboEntry;
-                }
-
-                UpdateGlobalEntry(comboEntry, clashZone, filterFileName, allowStructuralUpdates);
-            }
-        }
 
         private void SaveToFilterXml(
             List<ClashZone> comboClashZones,
@@ -560,11 +313,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             var placementLogPath = TryGetPlacementLogPath();
             var groupName = BuildFilterGroupName(baseFilterName, category);
+            var normalizedKey = $"{comboKey.LinkedFile}_{comboKey.HostFile}";
+            /* ProcessedFileCombo removed - using simple string key
             var normalizedKey = new ProcessedFileCombo
             {
                 LinkedFile = comboKey.LinkedFile,
                 HostFile = comboKey.HostFile
-            }.GetNormalizedKey();
+            }.GetNormalizedKey(); 
+            */
 
             PruneInvalidGroups(targetFilter.ClashZoneStorage);
 
@@ -583,85 +339,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             MergeLegacyGroupsIntoTarget(targetFilter.ClashZoneStorage, filterGroup, normalizedKey, placementLogPath);
 
-            filterGroup.FileCombos ??= new List<FilterFileComboGroup>();
-
-            var filterFileCombo = filterGroup.FileCombos
-                .FirstOrDefault(fc => fc.GetNormalizedKey() == normalizedKey);
-
-            if (filterFileCombo == null)
-            {
-                filterFileCombo = new FilterFileComboGroup
-                {
-                    LinkedFile = comboKey.LinkedFile,
-                    HostFile = comboKey.HostFile,
-                    ProcessedAt = DateTime.Now,
-                    ClashZones = new List<ClashZone>()
-                };
-                filterGroup.FileCombos.Add(filterFileCombo);
-            }
-
-            filterFileCombo.ClashZones ??= new List<ClashZone>();
-
-            var existingById = filterFileCombo.ClashZones
-                .Where(z => z != null)
-                .GroupBy(z => z.Id)
-                .Select(g => g.First())
-                .ToDictionary(z => z.Id, z => z);
-
-            filterFileCombo.ClashZones = existingById.Values.ToList();
-
-            foreach (var newZone in comboClashZones)
-            {
-                if (!existingById.TryGetValue(newZone.Id, out var existingZone))
-                {
-                    if (!ShouldSkipAdd(newZone))
-                    {
-                        filterFileCombo.ClashZones.Add(newZone);
-                        existingById[newZone.Id] = newZone;
-                        stats.FilterAdded++;
-                        LogPlacement($"[PERSIST-ADD] Zone={newZone.Id}, SleeveId={newZone.SleeveInstanceId}, W={newZone.SleeveWidth:F6}, H={newZone.SleeveHeight:F6}, D={newZone.SleeveDiameter:F6}");
-                    }
-                }
-                else
-                {
-                    MergeZone(existingZone, newZone, placementLogPath, allowStructuralUpdates);
-                    stats.FilterUpdated++;
-                }
-            }
-
-            targetFilter.ClashZoneStorage.LastUpdated = DateTime.Now;
-            targetFilter.LastModified = DateTime.Now;
-        }
-
-        private void CleanupGlobalIndex(CategoryGlobalIndex globalIndex, List<ClashZone> validZones, ProcessingStats stats)
-        {
-            if (globalIndex == null)
-                return;
-
-            var validIds = new HashSet<string>(
-                validZones.Select(z => z.Id.ToString()),
-                StringComparer.OrdinalIgnoreCase);
-
-            var allEntries = GlobalIndexService.GetAllEntries(globalIndex).ToList();
-
-            foreach (var entry in allEntries)
-            {
-                if (entry == null)
-                    continue;
-
-                if (IsOrphanEntry(entry) && !validIds.Contains(entry.Id))
-                {
-                    if (RemoveGlobalEntry(globalIndex, entry))
-                        stats.GlobalRemoved++;
-                }
-            }
-        }
-
-        private void LogAggregate(IEnumerable<ProcessingStats> statsCollection, string baseFilterName)
-        {
+            var statsList = new List<ProcessingStats>(); // statsCollection missing, initializing empty
+            /*
             var statsList = statsCollection?
                 .Where(s => s != null)
                 .ToList() ?? new List<ProcessingStats>();
+            */
 
             if (statsList.Count == 0)
             {
@@ -1071,43 +754,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             static string NormalizeKey(string key) => string.IsNullOrWhiteSpace(key) ? string.Empty : key.Trim();
         }
 
-        private static bool IsZeroIntersection(CategoryGlobalIndexEntry entry)
-        {
-            return entry != null &&
-                   Math.Abs(entry.IntersectionPointX) < 1e-9 &&
-                   Math.Abs(entry.IntersectionPointY) < 1e-9 &&
-                   Math.Abs(entry.IntersectionPointZ) < 1e-9;
-        }
-
-        private static bool IsOrphanEntry(CategoryGlobalIndexEntry entry)
-        {
-            if (entry == null) return false;
-
-            return entry.MepElementId == 0 ||
-                   entry.StructuralElementId == 0 ||
-                   IsZeroIntersection(entry);
-        }
-
-        private static bool RemoveGlobalEntry(CategoryGlobalIndex globalIndex, CategoryGlobalIndexEntry entry)
-        {
-            if (globalIndex?.Filters != null)
-            {
-                foreach (var filter in globalIndex.Filters)
-                {
-                    if (filter?.FileCombos == null) continue;
-                    foreach (var fileCombo in filter.FileCombos)
-                    {
-                        if (fileCombo?.Entries != null && fileCombo.Entries.Remove(entry))
-                            return true;
-                    }
-                }
-            }
-
-            if (globalIndex?.Entries != null && globalIndex.Entries.Remove(entry))
-                return true;
-
-            return false;
-        }
 
         private sealed class ProcessingStats
         {
@@ -1338,79 +984,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                    Math.Abs(zone.SleeveBoundingBoxMaxX) > 1e-9 || Math.Abs(zone.SleeveBoundingBoxMaxY) > 1e-9 || Math.Abs(zone.SleeveBoundingBoxMaxZ) > 1e-9;
         }
 
-        private static void UpdateGlobalEntry(CategoryGlobalIndexEntry entry, ClashZone zone, string filterName, bool allowStructuralUpdates)
-        {
-            if (entry == null || zone == null) return;
-
-            entry.FilterName = filterName ?? entry.FilterName ?? string.Empty;
-
-            // ✅ CRITICAL FIX: Smart flag/ID preservation logic to handle both deleted sleeves and moved MEP elements
-            // Flags and SleeveInstanceIds are a PAIR - they must be consistent!
-            // Flags are managed by FlagManager (ResetFlagsForDeletedSleeves, UpdateFlagsForPlacement, DeleteSleeveForIntersectionPointChange)
-            // 
-            // Logic:
-            // 1. New entry: Use clash zone flags/IDs (will be false/-1 for new zones)
-            // 2. Existing entry with sleeve in clash zone: Update flags to true and sleeve IDs (new sleeve was placed)
-            // 3. Existing entry WITHOUT sleeve in clash zone:
-            //    a. If entry in Global XML has flags=false and IDs=-1: ALWAYS PRESERVE (FlagManager already reset - sleeve was deleted)
-            //       This is the CRITICAL case: FlagManager just reset flags, but SaveClashZones runs after with stale ClashZone objects
-            //    b. If entry in Global XML has flags=true and IDs>0: Update to clash zone values (MEP moved, old sleeve deleted, new sleeve will be placed)
-            //    This handles the "Adopt to Document" scenario where MEP moves, old sleeve is deleted, new sleeve will be placed
-            bool entryExists = !string.IsNullOrWhiteSpace(entry.Id);
-            bool zoneHasSleeve = zone.SleeveInstanceId > 0 || zone.ClusterSleeveInstanceId > 0;
-            bool entryWasResetByFlagManager = entryExists && !entry.IsResolved && !entry.IsClusterResolved && 
-                                              entry.SleeveInstanceId <= 0 && entry.ClusterSleeveInstanceId <= 0;
             
-            // ✅ CRITICAL: Check if entry is in reset state FIRST - this takes priority over everything else
-            // If FlagManager just reset the flags (flags=false, IDs=-1), ALWAYS preserve them, even if ClashZone has stale values
-            if (entryWasResetByFlagManager)
-            {
-                // Existing entry WITHOUT sleeve, and FlagManager already reset it (flags=false, IDs=-1)
-                // PRESERVE the reset values - don't overwrite with stale clash zone values
-                // This handles: Sleeve was deleted manually, FlagManager reset flags/IDs, SaveClashZones runs after with stale ClashZone objects
-                // Do nothing - keep existing flags=false, IDs=-1
-                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] ✅ PRESERVING reset flags for entry {entry.Id}: IsResolved=false, IsClusterResolved=false (FlagManager reset, ClashZone has stale values)");
-                return; // Exit early - don't update flags/IDs
-            }
-            
-            if (!entryExists)
-            {
-                // New entry - use clash zone flags and IDs (will be false/-1 for new zones)
-            entry.IsResolved = zone.IsResolved;
-            entry.IsClusterResolved = zone.IsClusterResolved;
-            entry.SleeveInstanceId = zone.SleeveInstanceId;
-            entry.ClusterSleeveInstanceId = zone.ClusterSleeveInstanceId;
-            }
-            else if (zoneHasSleeve)
-            {
-                // Existing entry with sleeve placement - set flags to true and update sleeve IDs (sleeve exists)
-                entry.IsResolved = true;
-                entry.IsClusterResolved = zone.ClusterSleeveInstanceId > 0;
-                entry.SleeveInstanceId = zone.SleeveInstanceId;
-                entry.ClusterSleeveInstanceId = zone.ClusterSleeveInstanceId;
-            }
-            else
-            {
-                // Existing entry WITHOUT sleeve, but entry in Global XML still has flags=true, IDs>0
-                // This means: MEP element moved, old sleeve was deleted, FlagManager hasn't reset yet (or intersection point changed)
-                // Update with clash zone values (flags=false, IDs=-1) to reflect that sleeve is gone
-                // New sleeve will be placed at new intersection point, and flags will be updated by FlagManager.UpdateFlagsForPlacement
-                entry.IsResolved = zone.IsResolved;
-                entry.IsClusterResolved = zone.IsClusterResolved;
-                entry.SleeveInstanceId = zone.SleeveInstanceId;
-                entry.ClusterSleeveInstanceId = zone.ClusterSleeveInstanceId;
-            }
-
-            if (allowStructuralUpdates)
-            {
-                entry.MepElementId = zone.MepElementId?.IntegerValue ?? zone.MepElementIdValue;
-                entry.StructuralElementId = zone.StructuralElementId?.IntegerValue ?? zone.StructuralElementIdValue;
-                entry.IntersectionPointX = zone.IntersectionPointX;
-                entry.IntersectionPointY = zone.IntersectionPointY;
-                entry.IntersectionPointZ = zone.IntersectionPointZ;
-            }
-        }
+        
 
         private void ConsolidateFileCombos(FilterGroupForStorage filterGroup, string logPath)
         {

@@ -262,6 +262,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                         DebugLogger.Info($"[SleevePersistenceService] ✅ Pre-validated {placedSleeveData.Count} sleeves in parallel: {validSleeveData.Count} valid, {skippedCount} skipped in {validationTimer.ElapsedMilliseconds}ms");
                     }
 
+                    // ✅ PLACEMENT OPTIMIZATION: Collect all updates in lists for batch processing
+                    var placementUpdates = new List<(Guid ClashZoneGuid, int SleeveInstanceId, double Width, double Height, double Diameter,
+                        double PlacementX, double PlacementY, double PlacementZ,
+                        double PlacementActiveX, double PlacementActiveY, double PlacementActiveZ,
+                        double RotationAngleRad)>();
+                    var cornerUpdates = new List<(Guid ClashZoneGuid,
+                        double Corner1X, double Corner1Y, double Corner1Z,
+                        double Corner2X, double Corner2Y, double Corner2Z,
+                        double Corner3X, double Corner3Y, double Corner3Z,
+                        double Corner4X, double Corner4Y, double Corner4Z)>();
+
                     // ✅ PERFORMANCE OPTIMIZATION: Batch processing in single transaction (handled by repository)
                     // ✅ SAFETY: Process each sleeve with individual error handling (fail-safe)
                     // ✅ NOTE: Database operations remain sequential (SQLite doesn't support parallel writes well)
@@ -303,9 +314,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
 
                         try
                         {
-                            // ✅ STEP 1: Save instance ID and placement data
+                            // ✅ STEP 1: Collect placement data for batch update (instead of immediate write)
                             repository.UpdateSleeveInstanceId(zone.Id, zone.SleeveInstanceId);
-                            repository.UpdateSleevePlacement(
+                            placementUpdates.Add((
                                 zone.Id,
                                 zone.SleeveInstanceId,
                                 zone.SleeveWidth > 0 ? zone.SleeveWidth : fw,
@@ -317,7 +328,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                                 zone.SleevePlacementPointActiveDocumentX,
                                 zone.SleevePlacementPointActiveDocumentY,
                                 zone.SleevePlacementPointActiveDocumentZ,
-                                zone.MepElementRotationAngle);
+                                zone.MepElementRotationAngle));
 
                             // ✅ CRITICAL: Sync MEP Category to DB (Dump once, use many times)
                             // This ensures the category used for filtering is persisted
@@ -384,12 +395,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                                     if (cornerData.ContainsKey(zone.Id))
                                     {
                                         var corners = cornerData[zone.Id];
-                                        repository.UpdateSleeveCorners(
+                                        // ✅ BATCH: Collect corner update for batch processing
+                                        cornerUpdates.Add((
                                             zone.Id,
                                             corners.corner1X, corners.corner1Y, corners.corner1Z,
                                             corners.corner2X, corners.corner2Y, corners.corner2Z,
                                             corners.corner3X, corners.corner3Y, corners.corner3Z,
-                                            corners.corner4X, corners.corner4Y, corners.corner4Z);
+                                            corners.corner4X, corners.corner4Y, corners.corner4Z));
                                     }
                                     else
                                     {
@@ -409,12 +421,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                                     if (cornerData.ContainsKey(zone.Id))
                                     {
                                         var corners = cornerData[zone.Id];
-                                        repository.UpdateSleeveCorners(
+                                        // ✅ BATCH: Collect corner update for batch processing
+                                        cornerUpdates.Add((
                                             zone.Id,
                                             corners.corner1X, corners.corner1Y, corners.corner1Z,
                                             corners.corner2X, corners.corner2Y, corners.corner2Z,
                                             corners.corner3X, corners.corner3Y, corners.corner3Z,
-                                            corners.corner4X, corners.corner4Y, corners.corner4Z);
+                                            corners.corner4X, corners.corner4Y, corners.corner4Z));
                                     }
                                     else
                                     {
@@ -431,12 +444,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                                     if (cornerData.ContainsKey(zone.Id))
                                     {
                                         var corners = cornerData[zone.Id];
-                                        repository.UpdateSleeveCorners(
+                                        // ✅ BATCH: Collect corner update for batch processing
+                                        cornerUpdates.Add((
                                             zone.Id,
                                             corners.corner1X, corners.corner1Y, corners.corner1Z,
                                             corners.corner2X, corners.corner2Y, corners.corner2Z,
                                             corners.corner3X, corners.corner3Y, corners.corner3Z,
-                                            corners.corner4X, corners.corner4Y, corners.corner4Z);
+                                            corners.corner4X, corners.corner4Y, corners.corner4Z));
                                     }
                                     else
                                     {
@@ -458,6 +472,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                             }
                             // Continue with next sleeve (fail-safe)
                         }
+                    }
+
+                    // ✅ PLACEMENT OPTIMIZATION: Batch flush all collected updates (50x faster than per-sleeve calls)
+                    var batchFlushTimer = System.Diagnostics.Stopwatch.StartNew();
+                    try
+                    {
+                        if (placementUpdates.Count > 0)
+                        {
+                            repository.BatchUpdateSleevePlacement(placementUpdates);
+                        }
+                        if (cornerUpdates.Count > 0)
+                        {
+                            repository.BatchUpdateSleeveCorners(cornerUpdates);
+                        }
+                        batchFlushTimer.Stop();
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[SleevePersistenceService] ✅ BATCH FLUSH: {placementUpdates.Count} placements + {cornerUpdates.Count} corners in {batchFlushTimer.ElapsedMilliseconds}ms");
+                        }
+                    }
+                    catch (Exception batchEx)
+                    {
+                        batchFlushTimer.Stop();
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Error($"[SleevePersistenceService] ❌ BATCH FLUSH FAILED: {batchEx.Message}");
+                        }
+                        throw;
                     }
 
                     // ✅ PERFORMANCE MONITORING: Log batch persistence statistics

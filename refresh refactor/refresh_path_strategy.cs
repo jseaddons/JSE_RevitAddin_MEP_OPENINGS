@@ -512,37 +512,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     }
                 }
                 
-                // Check Global XML
-                if (context.XmlCache.GlobalXml != null)
-                {
-                    foreach (var globalXml in context.XmlCache.GlobalXml.Values)
-                    {
-                        // ✅ FIX: CategoryGlobalIndex has Filters and Entries, not Categories
-                        // Check hierarchical structure first
-                        if (globalXml?.Filters != null)
-                        {
-                            foreach (var filterGroup in globalXml.Filters)
-                            {
-                                if (filterGroup?.FileCombos != null)
-                                {
-                                    foreach (var fileCombo in filterGroup.FileCombos)
-                                    {
-                                        if (fileCombo?.Entries != null && fileCombo.Entries.Count > 0)
-                                        {
-                                            return true;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // ✅ FALLBACK: Also check flat structure (backward compatibility)
-                        if (globalXml?.Entries != null && globalXml.Entries.Count > 0)
-                        {
-                            return true;
-                        }
-                    }
-                }
+                // ✅ LEGACY REMOVED: GlobalXml is deprecated - database is sole source of truth
+                // The GlobalXml property is a stub for backward compatibility.
+                // Previous code checking context.XmlCache.GlobalXml is removed.
             }
             
             return false;

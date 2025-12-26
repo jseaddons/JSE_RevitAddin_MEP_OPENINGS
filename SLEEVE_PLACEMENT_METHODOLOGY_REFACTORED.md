@@ -1086,29 +1086,46 @@ The clustering system is now organized into 10 distinct service phases, each wit
 - `UpdateSleeveInstanceId(Guid clashZoneGuid, int sleeveInstanceId)` - Updates SleeveInstanceId by GUID
 - `UpdateSleeveBoundingBoxes(Guid clashZoneGuid, double minX, minY, minZ, maxX, maxY, maxZ)` - Updates bounding box coordinates
 
-### 7.3 Flag Management
+### 7.3 Flag Management (Atomic Session Logic)
 
 **Service:** `FlagManager` & `ClashZoneRepository`
 
-**Database-First Operations:**
-- **READ**: Load flags from `ClashZones` table (PRIMARY)
-- **UPDATE**: Update flags in `ClashZones` table (PRIMARY)
-- **FALLBACK**: Use Global XML if database has no data
+**Critical Improvement: Atomic Session Flags**
+Instead of a two-step process (Reset All -> Set In-Scope), we now use a **Single Atomic UPDATE** operation during refresh. This eliminates timing issues and ensures perfect synchronization with the current section box and filters.
 
-**Flags Managed:**
-- `IsResolved` - Individual sleeve placed (checks if element exists in Revit)
-- `IsClusterResolved` - Cluster sleeve placed (checks if element exists in Revit)
-- `IsCombinedResolved` - Combined sleeve placed (resolves underlying individual/cluster zones)
-- `SleeveInstanceId` - Individual sleeve ElementId
-- `ClusterSleeveInstanceId` - Cluster sleeve ElementId
-- `CombinedClusterSleeveInstanceId` - Combined sleeve ElementId (virtual ID or mapped ID)
+**The Atomic Logic:**
+```sql
+UPDATE ClashZones
+SET ReadyForPlacementFlag = CASE 
+        WHEN (zone IN scope) THEN 1 
+        ELSE 0 END,
+    IsCurrentClashFlag = CASE 
+        WHEN (zone IN scope) THEN 1 
+        ELSE 0 END
+WHERE (zone matches filter + category)
+```
 
-**Important:** Flags are NOT used to skip clustering calculation. They only verify if sleeve elements still exist in Revit (for flag reset if deleted).
+**Definition of "IN SCOPE":**
+A zone is considered "In Scope" (Flag = 1) if it meets ALL conditions:
+1. Matches current **Filter**
+2. Matches current **Category**
+3. Is **Unresolved** (`IsResolved=0` AND `IsClusterResolved=0` AND `IsCombinedResolved=0`)
+4. Is within the current **Section Box**
+
+**Zones "OUT OF SCOPE" (Flag = 0):**
+Any zone that matches the filter/category but fails any other condition (e.g., is resolved OR is outside section box) automatically gets Flag = 0.
 
 **Flag Management by Path:**
-- **PATH 1:** Checks flags before placement (if sleeve exists → skip), updates flags after placement
-- **PATH 2:** No flag check before placement, updates flags after placement (`IsResolved = true`, `SleeveInstanceId`)
-- **PATH 3 Invalidated:** Resets flags for deleted sleeves (`IsResolved = true` to prevent re-placement), updates flags for placed sleeves (`IsResolved = true`, `SleeveInstanceId`)
+- **Refresh Phase:** `SetReadyForPlacementBatchOptimized` runs the atomic UPDATE.
+- **Placement Phase:** `VerifyExistingSleevesAndResetFlags` runs at start:
+  - Checks if resolved sleeves still exist in Revit.
+  - If deleted: Sets `IsResolved=0` AND `IsCurrentClashFlag=1` (forces it back into scope).
+- **After Placement:** `BulkResetReadyForPlacementFlags` runs to mark zones as consumed (Flag = 0).
+
+**Why This Works:**
+- **No Stale Data:** Moving the section box automatically clears flags for zones now outside it.
+- **No Timing Issues:** Set/Clear happens in one SQL statement.
+- **Deleted Sleeve Recovery:** `VerifyExisting` explicitly re-enables flags for deleted sleeves so they are placed again.
 
 #### 7.3.1 Combined Sleeve Flag Strategy (CRITICAL)
 
