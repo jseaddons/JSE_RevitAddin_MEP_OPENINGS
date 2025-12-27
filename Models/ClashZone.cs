@@ -1097,24 +1097,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
                 // For walls, we know the orientation from the sleeve placement logic
                 if (MepElementOrientationDirection == "X" || MepElementOrientationDirection == null)
                 {
-                    // Wall/Framing sleeves (X orientation): Use X,Z distance only (ignore Y coordinate)
+                    // Wall/Framing sleeves (Normal=X): Plane is YZ. Use Y,Z distance (ignore X/wall depth)
+                    minDistance = CalculateMinimumDistance2D(
+                        SleeveBoundingBoxMinY, SleeveBoundingBoxMinZ, SleeveBoundingBoxMaxY, SleeveBoundingBoxMaxZ,
+                        other.SleeveBoundingBoxMinY, other.SleeveBoundingBoxMinZ, other.SleeveBoundingBoxMaxY, other.SleeveBoundingBoxMaxZ);
+                }
+                else if (MepElementOrientationDirection == "Y")
+                {
+                    // Wall/Framing sleeves (Normal=Y): Plane is XZ. Use X,Z distance (ignore Y/wall depth)
                     minDistance = CalculateMinimumDistance2D(
                         SleeveBoundingBoxMinX, SleeveBoundingBoxMinZ, SleeveBoundingBoxMaxX, SleeveBoundingBoxMaxZ,
                         other.SleeveBoundingBoxMinX, other.SleeveBoundingBoxMinZ, other.SleeveBoundingBoxMaxX, other.SleeveBoundingBoxMaxZ);
                 }
-                else if (MepElementOrientationDirection == "Y")
-                {
-                    // Wall/Framing sleeves (Y orientation): Use Y,Z distance only (ignore X coordinate)
-                    minDistance = CalculateMinimumDistance2D(
-                        SleeveBoundingBoxMinY, SleeveBoundingBoxMinZ, SleeveBoundingBoxMaxY, SleeveBoundingBoxMaxZ,
-                        other.SleeveBoundingBoxMinY, other.SleeveBoundingBoxMinZ, other.SleeveBoundingBoxMaxY, other.SleeveBoundingBoxMaxZ);
-                }
                 else
                 {
-                    // Default for walls: Use Y,Z distance (most walls are Y-oriented)
+                    // Default for walls: Use X,Z distance (most walls are horizontal/vertical)
                     minDistance = CalculateMinimumDistance2D(
-                        SleeveBoundingBoxMinY, SleeveBoundingBoxMinZ, SleeveBoundingBoxMaxY, SleeveBoundingBoxMaxZ,
-                        other.SleeveBoundingBoxMinY, other.SleeveBoundingBoxMinZ, other.SleeveBoundingBoxMaxY, other.SleeveBoundingBoxMaxZ);
+                        SleeveBoundingBoxMinX, SleeveBoundingBoxMinZ, SleeveBoundingBoxMaxX, SleeveBoundingBoxMaxZ,
+                        other.SleeveBoundingBoxMinX, other.SleeveBoundingBoxMinZ, other.SleeveBoundingBoxMaxX, other.SleeveBoundingBoxMaxZ);
                 }
             }
             else

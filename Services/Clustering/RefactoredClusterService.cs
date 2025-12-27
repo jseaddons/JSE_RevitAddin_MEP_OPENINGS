@@ -330,42 +330,64 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     // ✅ STEP 4: Filter and prepare sleeves for clustering
                     SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 FILTERING: Starting with {allClashZones.Count} total clash zones\n");
 
-                    var withSleeveId = allClashZones.Where(cz => cz.SleeveInstanceId > 0).ToList();
-                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 FILTERING: {withSleeveId.Count} zones with SleeveInstanceId > 0\n");
-
-                    // ✅ SELF-HEALING: Verify cluster sleeves still exist before excluding zones
-                    // If IsClusterResolved=true but cluster sleeve was deleted, reset flags and allow re-clustering
+                    // ✅ SELF-HEALING FIRST: Check for deleted cluster sleeves BEFORE filtering by SleeveInstanceId
+                    // This allows zones with SleeveInstanceId=0 (after clustering) to have SleeveInstanceId restored
                     int resetCount = 0;
-                    var notClusterResolved = withSleeveId.Where(cz => 
+                    foreach (var cz in allClashZones)
                     {
-                        if (!cz.IsClusterResolved) 
-                            return true; // Not clustered yet - include for proximity check
-                        
-                        // If flagged as cluster-resolved, verify cluster sleeve still exists in Revit
-                        if (cz.ClusterSleeveInstanceId > 0)
+                        // Only process zones that were previously clustered
+                        if (cz.ClusterSleeveInstanceId > 0 && cz.IsClusterResolved)
                         {
                             var clusterSleeve = doc.GetElement(new ElementId(cz.ClusterSleeveInstanceId));
                             if (clusterSleeve == null || !clusterSleeve.IsValidObject)
                             {
                                 // ✅ SELF-HEALING: Cluster sleeve was deleted - reset flags and allow re-clustering
+                                // ✅ CRITICAL: Restore SleeveInstanceId from AfterClusterSleevePlacedSleeveInstanceId
+                                if (cz.AfterClusterSleevePlacedSleeveInstanceId > 0)
+                                {
+                                    cz.SleeveInstanceId = cz.AfterClusterSleevePlacedSleeveInstanceId;
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                        $"[{DateTime.Now:HH:mm:ss}] 🔄 SELF-HEALING: Restored SleeveInstanceId={cz.AfterClusterSleevePlacedSleeveInstanceId} for zone {cz.Id}\n");
+                                }
                                 cz.IsClusterResolved = false;
                                 cz.IsClusterResolvedFlag = false;
                                 cz.ClusterSleeveInstanceId = -1;
                                 cz.AfterClusterSleevePlacedSleeveInstanceId = 0;
+                                cz.MarkedForClusterProcess = true; // ✅ Mark for cluster process
                                 resetCount++;
                                 SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                                    $"[{DateTime.Now:HH:mm:ss}] 🔄 SELF-HEALING: Reset cluster flags for zone {cz.Id} (cluster sleeve {cz.ClusterSleeveInstanceId} deleted)\n");
-                                return true; // Allow re-clustering via proximity check
+                                    $"[{DateTime.Now:HH:mm:ss}] 🔄 SELF-HEALING: Reset cluster flags for zone {cz.Id} (cluster sleeve deleted)\n");
                             }
                         }
-                        
-                        return false; // Cluster sleeve exists, skip this zone
-                    }).ToList();
+                    }
                     
                     if (resetCount > 0)
                     {
                         SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔄 SELF-HEALING: Reset {resetCount} zones for re-clustering (deleted cluster sleeves)\n");
                     }
+
+                    // ✅ NOW filter by SleeveInstanceId > 0 (after self-healing restored SleeveInstanceId)
+                    var withSleeveId = allClashZones.Where(cz => cz.SleeveInstanceId > 0).ToList();
+                    
+                    // 🔍 TRACING: Check specific problematic IDs
+                    foreach (var czId in new[] { 1183693, 1183702 })
+                    {
+                        var found = allClashZones.FirstOrDefault(cz => cz.SleeveInstanceId == czId);
+                        if (found != null)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                $"[TRACE-FILTER] ID {czId}: Found=True, SleeveId={found.SleeveInstanceId}, IsResolved={found.IsClusterResolved}, IsCurrentClash={found.IsCurrentClash}, Category={found.MepElementCategory}\n");
+                        }
+                        else
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[TRACE-FILTER] ID {czId}: Found=False in allClashZones\n");
+                        }
+                    }
+
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 FILTERING: {withSleeveId.Count} zones with SleeveInstanceId > 0\n");
+
+                    // Filter by not cluster resolved
+                    var notClusterResolved = withSleeveId.Where(cz => !cz.IsClusterResolved).ToList();
                     SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 FILTERING: {notClusterResolved.Count} zones not cluster resolved (or reset for re-clustering)\n");
 
                     filteredClashZones = notClusterResolved
@@ -448,6 +470,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     int totalClustersWithMultipleSleeves = clustersByGroup?.Sum(g => g.Value?.Count(c => c.Count > 1) ?? 0) ?? 0;
                     SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅ CLUSTERING: Formed {clustersByGroup?.Count ?? 0} cluster groups, {totalClusters} total clusters, {totalClustersWithMultipleSleeves} clusters with >1 sleeve\n");
                     formTracker.SetItemCount(totalClusters);
+                    
+                    // ✅ Mark zones in multi-sleeve clusters with MarkedForClusterProcess = true
+                    if (clustersByGroup != null && allClashZones != null)
+                    {
+                        var sleeveIdToZone = allClashZones.Where(cz => cz.SleeveInstanceId > 0)
+                            .ToDictionary(cz => cz.SleeveInstanceId, cz => cz);
+                        
+                        foreach (var groupEntry in clustersByGroup)
+                        {
+                            foreach (var cluster in groupEntry.Value)
+                            {
+                                if (cluster.Count > 1) // Only clusters with >1 sleeve
+                                {
+                                    foreach (var sleeve in cluster)
+                                    {
+                                        int sleeveId = (int)sleeve.SleeveInstanceId;
+                                        if (sleeveIdToZone.TryGetValue(sleeveId, out var zone))
+                                        {
+                                            zone.MarkedForClusterProcess = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅ CLUSTERING: Marked zones in {totalClustersWithMultipleSleeves} multi-sleeve clusters with MarkedForClusterProcess=true\n");
+                    }
                 }
 
                 // ✅ STEP 11: Check timeout after clustering
@@ -2375,46 +2423,80 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             _actualPlacementPoints.TryGetValue(clusterInstanceId, out var actualPlacementPoint);
                             var placementPoint = actualPlacementPoint ?? (bboxMin + bboxMax) / 2.0;
 
-                            // ✅ CORNER PERISISTENCE (User Request: "Regen -> Collect -> Batch Save")
-                            // Calculate corners from dimensions and rotation
-                            // This ensures the DB has the exact corners of the placed sleeve
+                            // ✅ CORNER PERSISTENCE (USER REQUEST: "Database-Driven Sizing")
+                            // 1. Fetch constituent ClashZones from DB to get their accurate corners
+                            // 2. Aggregate corners to find the true envelope (Min/Max)
+                            // 3. Do NOT recalculate from placement point (avoids placement drift)
+                            
                             double c1x=0, c1y=0, c1z=0, c2x=0, c2y=0, c2z=0, c3x=0, c3y=0, c3z=0, c4x=0, c4y=0, c4z=0;
                             
                             try 
                             {
-                                // We use the placement point (center) and dimensions to calculate corners
-                                // This matches the logic used in UpdateClusterSleeveCorners but does it here for batch save
-                                var cornersResult = _cornerService.CalculateCorners(placementPoint, width, height, rotationAngleDeg);
-                                if (cornersResult.HasValue)
+                                // Fetch constituent zones
+                                var constituentZones = clashZoneRepository.GetClashZonesByGuids(clashZoneIds);
+
+                                if (constituentZones != null && constituentZones.Count > 0)
                                 {
-                                    var c = cornersResult.Value;
-                                    c1x = c.corner1.X; c1y = c.corner1.Y; c1z = c.corner1.Z;
-                                    c2x = c.corner2.X; c2y = c.corner2.Y; c2z = c.corner2.Z;
-                                    c3x = c.corner3.X; c3y = c.corner3.Y; c3z = c.corner3.Z;
-                                    c4x = c.corner4.X; c4y = c.corner4.Y; c4z = c.corner4.Z;
-                                    
-                                    // ✅ DEBUG LOG: Verify corners are calculated (bypass deployment mode)
-                                    try
+                                    double envMinX = double.MaxValue, envMinY = double.MaxValue, envMinZ = double.MaxValue;
+                                    double envMaxX = double.MinValue, envMaxY = double.MinValue, envMaxZ = double.MinValue;
+                                    bool hasValidCorners = false;
+
+                                    foreach (var cz in constituentZones)
                                     {
-                                        var versionTag = Helpers.VersionInfo.VersionTag;
-                                        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                                        var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
-                                        var logPath = Path.Combine(logDir, "cluster_debug.log");
-                                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔍 CORNER DEBUG: {clusterSleeve.Id} -> C1:({c1x:F2},{c1y:F2},{c1z:F2}), C2:({c2x:F2},{c2y:F2},{c2z:F2}), Rot:{rotationAngleDeg:F1}°\n");
+                                        // Check if zone has valid corners
+                                        if (cz.SleeveCorner1X == 0 && cz.SleeveCorner1Y == 0 && cz.SleeveCorner1Z == 0) continue;
+
+                                        hasValidCorners = true;
+                                        // Aggregate all 4 corners with null checks
+                                        double[] xs = { cz.SleeveCorner1X ?? 0.0, cz.SleeveCorner2X ?? 0.0, cz.SleeveCorner3X ?? 0.0, cz.SleeveCorner4X ?? 0.0 };
+                                        double[] ys = { cz.SleeveCorner1Y ?? 0.0, cz.SleeveCorner2Y ?? 0.0, cz.SleeveCorner3Y ?? 0.0, cz.SleeveCorner4Y ?? 0.0 };
+                                        double[] zs = { cz.SleeveCorner1Z ?? 0.0, cz.SleeveCorner2Z ?? 0.0, cz.SleeveCorner3Z ?? 0.0, cz.SleeveCorner4Z ?? 0.0 };
+
+                                        foreach (var x in xs) { if (x < envMinX) envMinX = x; if (x > envMaxX) envMaxX = x; }
+                                        foreach (var y in ys) { if (y < envMinY) envMinY = y; if (y > envMaxY) envMaxY = y; }
+                                        foreach (var z in zs) { if (z < envMinZ) envMinZ = z; if (z > envMaxZ) envMaxZ = z; }
                                     }
-                                    catch { }
-                                }
-                                else
-                                {
-                                    try
+
+                                    if (hasValidCorners)
                                     {
-                                        var versionTag = Helpers.VersionInfo.VersionTag;
-                                        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                                        var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
-                                        var logPath = Path.Combine(logDir, "cluster_debug.log");
-                                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ⚠️ CORNER DEBUG: {clusterSleeve.Id} -> Calculation returned NULL\n");
+                                        // Construct AABB corners from envelope
+                                        // This ensures the cluster covers all parts regardless of rotation oddities
+                                        // C1: Min-Min
+                                        c1x = envMinX; c1y = envMinY; c1z = envMinZ;
+                                        // C2: Max-Min
+                                        c2x = envMaxX; c2y = envMinY; c2z = envMinZ;
+                                        // C3: Min-Max
+                                        c3x = envMinX; c3y = envMaxY; c3z = envMinZ; // Note: corners often coplanar Z, typically base
+                                        // C4: Max-Max
+                                        c4x = envMaxX; c4y = envMaxY; c4z = envMinZ;
+                                        
+                                        // Update width/height/depth from this envelope for data consistency?
+                                        // The user said: "Cluster corners should be derived... not recalculate"
+                                        // We should probably trust the "envelope" dimensions more than the Revit parameters if the Revit family is misbehaving?
+                                        // But for now, we leave 'width', 'height' as read from Revit (lines 2372+), 
+                                        // and only override the *stored corners*.
+                                        
+                                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                            $"[{DateTime.Now:HH:mm:ss}] 📏 CONSTITUENT ENVELOPE (Cluster {clusterInstanceId}): " +
+                                            $"Based on {constituentZones.Count} zones. " +
+                                            $"Min=({envMinX:F3},{envMinY:F3},{envMinZ:F3}) Max=({envMaxX:F3},{envMaxY:F3},{envMaxZ:F3}) " +
+                                            $"-> Size: W={(envMaxX-envMinX)*304.8:F1}mm, H={(envMaxY-envMinY)*304.8:F1}mm\n");
                                     }
-                                    catch { }
+                                    else
+                                    {
+                                         SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ CORNER WARNING: Cluster {clusterInstanceId} has {constituentZones.Count} zones but NO valid corners found in DB. Falling back to calculation.\n");
+                                         // Fallback to calculation if DB corners are missing
+                                         var cornersResult = _cornerService.CalculateCorners(placementPoint, width, height, rotationAngleDeg);
+                                         if (cornersResult.HasValue)
+                                         {
+                                             var c = cornersResult.Value;
+                                             c1x = c.corner1.X; c1y = c.corner1.Y; c1z = c.corner1.Z;
+                                             c2x = c.corner2.X; c2y = c.corner2.Y; c2z = c.corner2.Z;
+                                             c3x = c.corner3.X; c3y = c.corner3.Y; c3z = c.corner3.Z;
+                                             c4x = c.corner4.X; c4y = c.corner4.Y; c4z = c.corner4.Z;
+                                         }
+                                    }
                                 }
                             }
                             catch (Exception cornerEx)
@@ -2425,11 +2507,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                     var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                                     var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                                     var logPath = Path.Combine(logDir, "cluster_debug.log");
-                                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ CORNER DEBUG: {clusterSleeve.Id} -> Error: {cornerEx.Message}\n");
+                                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ CORNER ERROR: {clusterSleeve.Id} -> Error fetching constituents: {cornerEx.Message}\n");
                                 }
                                 catch { }
                                 if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Warning($"[RefactoredClusterService] Failed to calculate corners for cluster {clusterInstanceId}: {cornerEx.Message}");
+                                    DebugLogger.Warning($"[RefactoredClusterService] Failed to aggregate corners: {cornerEx.Message}");
                             }
                             
                             // ✅ DIAGNOSTIC: Log bounding box values before saving
@@ -3351,11 +3433,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         {
             try
             {
+                // ✅ Use SleeveBoundingBox (same as first run)
                 if (cz.SleeveBoundingBoxMinX == 0 && cz.SleeveBoundingBoxMaxX == 0 &&
                     cz.SleeveBoundingBoxMinY == 0 && cz.SleeveBoundingBoxMaxY == 0 &&
                     cz.SleeveBoundingBoxMinZ == 0 && cz.SleeveBoundingBoxMaxZ == 0)
                 {
-                    return null; // Invalid bounding box
+                    return null;
+                }
+                
+                // ✅ DIAGNOSTIC: Log for dampers
+                if (cz.MepElementCategory != null && (cz.MepElementCategory.IndexOf("Accessories", StringComparison.OrdinalIgnoreCase) >= 0 || cz.MepElementCategory.IndexOf("Duct", StringComparison.OrdinalIgnoreCase) >= 0))
+                {
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss}] 📦 [GetBBox] Zone={cz.ClashZoneId}, SleeveId={cz.SleeveInstanceId}: SleeveBBox=({cz.SleeveBoundingBoxMinX:F6},{cz.SleeveBoundingBoxMinY:F6},{cz.SleeveBoundingBoxMinZ:F6}) to ({cz.SleeveBoundingBoxMaxX:F6},{cz.SleeveBoundingBoxMaxY:F6},{cz.SleeveBoundingBoxMaxZ:F6})\n");
                 }
                 
                 return new BoundingBoxXYZ

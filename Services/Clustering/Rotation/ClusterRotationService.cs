@@ -804,9 +804,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             else
                             {
                                 SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                    $"[{DateTime.Now:HH:mm:ss}]   ✅ Sleeve {sleeveId}: Corner Z coordinates found in database! " +
-                                    $"Corner1Z={corner1Z.Value:F6}, Corner2Z={corner2Z.Value:F6}, Corner3Z={corner3Z.Value:F6}, Corner4Z={corner4Z.Value:F6}, " +
-                                    $"PlacementPointZ={clashZone.SleevePlacementPointActiveDocumentZ:F6}, BBoxMinZ={clashZone.SleeveBoundingBoxMinZ:F6}\n");
+                                        $"[{DateTime.Now:HH:mm:ss}]   ✅ Sleeve {sleeveId}: Corner Z coordinates found in database! " +
+                                        $"Corner1Z={corner1Z.GetValueOrDefault():F6}, Corner2Z={corner2Z.GetValueOrDefault():F6}, Corner3Z={corner3Z.GetValueOrDefault():F6}, Corner4Z={corner4Z.GetValueOrDefault():F6}, " +
+                                        $"PlacementPointZ={clashZone.SleevePlacementPointActiveDocumentZ:F6}, BBoxMinZ={clashZone.SleeveBoundingBoxMinZ:F6}\n");
+
                             }
                             
                             if (hasCorners)

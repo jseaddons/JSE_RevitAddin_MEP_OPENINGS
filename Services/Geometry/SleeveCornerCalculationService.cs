@@ -124,6 +124,141 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Geometry
                 height,
                 zone.MepElementRotationAngle);
         }
+
+        /// <summary>
+        /// ✅ REFACTORED: Calculates corners directly from the placed Revit FamilyInstance geometry.
+        /// This ensures the stored corners match the actual physical element in the model,
+        /// regardless of any calculation drift or parameter mismatches.
+        /// REQUIRES MAIN THREAD ACCESS (Revit API).
+        /// </summary>
+        public (XYZ corner1, XYZ corner2, XYZ corner3, XYZ corner4)? CalculateCornersFromInstance(FamilyInstance sleeve)
+        {
+            try
+            {
+                if (sleeve == null || !sleeve.IsValidObject) return null;
+
+                // 1. Get Geometry (ComputeReferences = true to ensure accuracy)
+                Options opt = new Options { ComputeReferences = true, DetailLevel = ViewDetailLevel.Fine };
+                GeometryElement geomElem = sleeve.get_Geometry(opt);
+
+                if (geomElem == null) return null;
+
+                Solid solid = null;
+
+                foreach (GeometryObject obj in geomElem)
+                {
+                    if (obj is Solid s && s.Volume > 0)
+                    {
+                        solid = s;
+                        break; // Use the first valid solid
+                    }
+                    else if (obj is GeometryInstance gi)
+                    {
+                        // Handle geometry inside instances (nested families)
+                        foreach (GeometryObject obj2 in gi.SymbolGeometry)
+                        {
+                            if (obj2 is Solid s2 && s2.Volume > 0)
+                            {
+                                // We need to transform this solid to world coordinates
+                                solid = SolidUtils.CreateTransformed(s2, gi.Transform);
+                                break;
+                            }
+                        }
+                    }
+                    if (solid != null) break;
+                }
+
+                if (solid == null)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[SleeveCornerCalculationService] ⚠️ No solid with volume found for sleeve {sleeve.Id}");
+                    return null;
+                }
+
+                // ... (existing comments)
+
+                Transform trf = sleeve.GetTransform();
+                
+                BoundingBoxXYZ localBox = null;
+                foreach (GeometryObject obj in geomElem)
+                {
+                     if (obj is GeometryInstance gi)
+                     {
+                         // Symbol geometry is defined in local space!
+                         localBox = GetGeometryBoundingBox(gi.SymbolGeometry);
+                         if (localBox != null && !DeploymentConfiguration.DeploymentMode)
+                         {
+                             // LOG LOCALS
+                             double w = localBox.Max.X - localBox.Min.X;
+                             double h = localBox.Max.Y - localBox.Min.Y;
+                             double d = localBox.Max.Z - localBox.Min.Z;
+                             DebugLogger.Info($"[SleeveCornerCalculationService] 📏 Sleeve {sleeve.Id} Geometry Bounds (Local): " +
+                                 $"X=[{localBox.Min.X:F4}, {localBox.Max.X:F4}] ({w:F4}), " +
+                                 $"Y=[{localBox.Min.Y:F4}, {localBox.Max.Y:F4}] ({h:F4}), " +
+                                 $"Z=[{localBox.Min.Z:F4}, {localBox.Max.Z:F4}] ({d:F4})");
+                         }
+                         break; // Assuming one main instance
+                     }
+                }
+                
+                if (localBox == null)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                         DebugLogger.Warning($"[SleeveCornerCalculationService] ⚠️ Failed to get local bounding box for sleeve {sleeve.Id}");
+                    return null; 
+                }
+                
+                // Now we have the exact local bounds of the geometry!
+                // localBox.Min and localBox.Max give us the extent width/height/depth logic.
+                // Corners in local space:
+                // Z is usually depth (or Y depending on family).
+                // Assuming standard MEP families (Up is Z, Facing is Y, Right is X).
+                // Usually Width is X-axis, Height is Y-axis (or Z?).
+                
+                // Let's assume standard local bounds:
+                XYZ p1_local = new XYZ(localBox.Min.X, localBox.Min.Y, localBox.Min.Z); // Min-Min
+                XYZ p2_local = new XYZ(localBox.Max.X, localBox.Min.Y, localBox.Min.Z); // Max-Min
+                XYZ p3_local = new XYZ(localBox.Min.X, localBox.Max.Y, localBox.Min.Z); // Min-Max
+                XYZ p4_local = new XYZ(localBox.Max.X, localBox.Max.Y, localBox.Min.Z); // Max-Max
+                
+                // Transform to World
+                XYZ c1 = trf.OfPoint(p1_local);
+                XYZ c2 = trf.OfPoint(p2_local);
+                XYZ c3 = trf.OfPoint(p3_local);
+                XYZ c4 = trf.OfPoint(p4_local);
+                
+                return (c1, c2, c3, c4);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+        
+        private BoundingBoxXYZ GetGeometryBoundingBox(GeometryElement geom)
+        {
+            double minX = double.MaxValue, minY = double.MaxValue, minZ = double.MaxValue;
+            double maxX = double.MinValue, maxY = double.MinValue, maxZ = double.MinValue;
+            bool found = false;
+            
+            foreach (GeometryObject obj in geom)
+            {
+                if (obj is Solid s && s.Volume > 0)
+                {
+                    BoundingBoxXYZ bbox = s.GetBoundingBox();
+                    if (bbox != null)
+                    {
+                        minX = Math.Min(minX, bbox.Min.X); minY = Math.Min(minY, bbox.Min.Y); minZ = Math.Min(minZ, bbox.Min.Z);
+                        maxX = Math.Max(maxX, bbox.Max.X); maxY = Math.Max(maxY, bbox.Max.Y); maxZ = Math.Max(maxZ, bbox.Max.Z);
+                        found = true;
+                    }
+                }
+            }
+            
+            if (!found) return null;
+            
+            return new BoundingBoxXYZ { Min = new XYZ(minX, minY, minZ), Max = new XYZ(maxX, maxY, maxZ) };
+        }
     }
 }
 

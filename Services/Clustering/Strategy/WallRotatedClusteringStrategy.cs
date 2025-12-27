@@ -96,12 +96,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
                     return new WallAxisAlignedStrategy().CheckProximity(sleeve1, sleeve2, tolerance, orientation, document);
                 }
 
-                // ✅ Use RotatedProximityChecker from Phase 2
-                // Use first sleeve's axis direction (not average)
-                double axisRotationAngle = rotationAngle1;
-                var checker = new RotatedProximityChecker(axisRotationAngle);
-                
-                // ✅ Use correct IProximityChecker interface signature
+                // ✅ DECISION: Delegate to factory to ensure corner-based logic is used for rectangular sleeves
+                var checker = ProximityCheckerFactory.CreateChecker(sleeve1, sleeve2, rotationAngle1, true);
                 return checker.CheckProximity(sleeve1, sleeve2, tolerance);
             }
             catch (Exception ex)

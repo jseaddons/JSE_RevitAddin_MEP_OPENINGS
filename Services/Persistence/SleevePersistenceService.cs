@@ -118,34 +118,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                                     var rotationAngleDeg = Math.Abs(rotationAngleRad * 180.0 / Math.PI);
                                     bool isStraightAxisAligned = IsStraightAxisAligned(rotationAngleDeg);
 
-                                    // ✅ CORNERS: Calculate if rotation is non-zero
+                                    // ✅ CORNERS: ENABLED Revit-based reading (User Request)
+                                    // Parallel calculation uses pure math and might be inaccurate.
+                                    // We DISABLE parallel corner calc here to force the main thread
+                                    // to use CalculateCornersFromInstance (Revit Geometry).
                                     (Guid zoneId, (double corner1X, double corner1Y, double corner1Z,
                                         double corner2X, double corner2Y, double corner2Z,
                                         double corner3X, double corner3Y, double corner3Z,
                                         double corner4X, double corner4Y, double corner4Z) corners)? cornerResult = null;
-                                    if (Math.Abs(rotationAngleRad) > 1e-6)
+                                    
+                                    // ✅ Restore variable definitions needed for rotated bbox calculation
+                                    double actualWidth = zone.SleeveWidth > 0 ? zone.SleeveWidth : fw;
+                                    double actualHeight = zone.SleeveHeight > 0 ? zone.SleeveHeight : fh;
+                                    
+                                    /* ⚠️ DISABLED: Math-based calculation (suspected inaccurate by user)
+                                    var corners = _cornerCalculationService.CalculateCornersFromZone(zone, actualWidth, actualHeight);
+                                    if (corners.HasValue)
                                     {
-                                        double actualWidth = zone.SleeveWidth > 0 ? zone.SleeveWidth : fw;
-                                        double actualHeight = zone.SleeveHeight > 0 ? zone.SleeveHeight : fh;
-                                        
-                                        var corners = _cornerCalculationService.CalculateCornersFromZone(zone, actualWidth, actualHeight);
-                                        if (corners.HasValue)
-                                        {
-                                            cornerResult = (zone.Id, (
-                                                corners.Value.corner1.X, corners.Value.corner1.Y, corners.Value.corner1.Z,
-                                                corners.Value.corner2.X, corners.Value.corner2.Y, corners.Value.corner2.Z,
-                                                corners.Value.corner3.X, corners.Value.corner3.Y, corners.Value.corner3.Z,
-                                                corners.Value.corner4.X, corners.Value.corner4.Y, corners.Value.corner4.Z
-                                            ));
-                                        }
+                                        cornerResult = (zone.Id, (
+                                            corners.Value.corner1.X, corners.Value.corner1.Y, corners.Value.corner1.Z,
+                                            corners.Value.corner2.X, corners.Value.corner2.Y, corners.Value.corner2.Z,
+                                            corners.Value.corner3.X, corners.Value.corner3.Y, corners.Value.corner3.Z,
+                                            corners.Value.corner4.X, corners.Value.corner4.Y, corners.Value.corner4.Z
+                                        ));
                                     }
+                                    */
 
                                     // ✅ ROTATED BBOX: Calculate if rotation is non-zero and not axis-aligned
                                     (Guid zoneId, (double minX, double minY, double minZ, double maxX, double maxY, double maxZ) bbox)? bboxResult = null;
                                     if (Math.Abs(rotationAngleRad) > 1e-6 && !isStraightAxisAligned)
                                     {
-                                        double actualWidth = zone.SleeveWidth > 0 ? zone.SleeveWidth : fw;
-                                        double actualHeight = zone.SleeveHeight > 0 ? zone.SleeveHeight : fh;
                                         double actualDepth = zone.SleeveBoundingBoxMaxZ - zone.SleeveBoundingBoxMinZ;
 
                                         var rotatedBbox = _rotatedBboxService.CalculateRotatedBoundingBoxFromZone(zone, actualWidth, actualHeight, actualDepth);
@@ -163,7 +165,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                                     {
                                         DebugLogger.Warning($"[SleevePersistenceService] Error calculating geometry in parallel: {ex.Message}");
                                     }
-                                    return (default, default);
+                                    // ✅ Explicitly typed nulls to help inference (Names MUST match exactly)
+                                    (Guid zoneId, (double corner1X, double corner1Y, double corner1Z, double corner2X, double corner2Y, double corner2Z, double corner3X, double corner3Y, double corner3Z, double corner4X, double corner4Y, double corner4Z) corners)? nullCorner = null;
+                                    (Guid zoneId, (double minX, double minY, double minZ, double maxX, double maxY, double maxZ) bbox)? nullBbox = null;
+                                    return (nullCorner, nullBbox);
                                 }
                             }))
                             .ToArray();
@@ -392,24 +397,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                                     // ✅ CRITICAL: These corners are saved AFTER regeneration and used by cluster calculation
                                     // - Cluster calculation reads corners from database (SleeveCorner1X/Y/Z through Corner4X/Y/Z)
                                     // - NO recalculation needed during clustering - corners are already saved
-                                    if (cornerData.ContainsKey(zone.Id))
-                                    {
-                                        var corners = cornerData[zone.Id];
-                                        // ✅ BATCH: Collect corner update for batch processing
-                                        cornerUpdates.Add((
-                                            zone.Id,
-                                            corners.corner1X, corners.corner1Y, corners.corner1Z,
-                                            corners.corner2X, corners.corner2Y, corners.corner2Z,
-                                            corners.corner3X, corners.corner3Y, corners.corner3Z,
-                                            corners.corner4X, corners.corner4Y, corners.corner4Z));
-                                    }
-                                    else
-                                    {
-                                        // ✅ FIX: Calculate dimensions from zone or use passed values
-                                        double actualWidth = zone.SleeveWidth > 0 ? zone.SleeveWidth : fw;
-                                        double actualHeight = zone.SleeveHeight > 0 ? zone.SleeveHeight : fh;
-                                        SaveSleeveCorners(zone, sleeve, repository, rotationAngleRad, actualWidth, actualHeight);
-                                    }
+                                    // ✅ DISABLED: Corner calculation moved to BatchSleeveCornerExtractor (after placement + regeneration)
+                                    // Corners are now extracted from actual Revit geometry, not calculated from math.
+                                    // See OpeningCommandOrchestrator.ExecuteCommandSequence for the correct extraction flow.
                                 }
                                 else if (Math.Abs(rotationAngleRad) > 1e-6 && isStraightAxisAligned)
                                 {
@@ -418,21 +408,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                                     double axisAlignedHeight = zone.SleeveHeight > 0 ? zone.SleeveHeight : fh;
                                     
                                     // Use pre-calculated corners if available
-                                    if (cornerData.ContainsKey(zone.Id))
-                                    {
-                                        var corners = cornerData[zone.Id];
-                                        // ✅ BATCH: Collect corner update for batch processing
-                                        cornerUpdates.Add((
-                                            zone.Id,
-                                            corners.corner1X, corners.corner1Y, corners.corner1Z,
-                                            corners.corner2X, corners.corner2Y, corners.corner2Z,
-                                            corners.corner3X, corners.corner3Y, corners.corner3Z,
-                                            corners.corner4X, corners.corner4Y, corners.corner4Z));
-                                    }
-                                    else
-                                    {
-                                        SaveSleeveCorners(zone, sleeve, repository, rotationAngleRad, axisAlignedWidth, axisAlignedHeight);
-                                    }
+                                    // ✅ DISABLED: Corner calculation moved to BatchSleeveCornerExtractor
                                 }
                                 else
                                 {
@@ -441,21 +417,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                                     double zeroRotationHeight = zone.SleeveHeight > 0 ? zone.SleeveHeight : fh;
                                     
                                     // Use pre-calculated corners if available
-                                    if (cornerData.ContainsKey(zone.Id))
-                                    {
-                                        var corners = cornerData[zone.Id];
-                                        // ✅ BATCH: Collect corner update for batch processing
-                                        cornerUpdates.Add((
-                                            zone.Id,
-                                            corners.corner1X, corners.corner1Y, corners.corner1Z,
-                                            corners.corner2X, corners.corner2Y, corners.corner2Z,
-                                            corners.corner3X, corners.corner3Y, corners.corner3Z,
-                                            corners.corner4X, corners.corner4Y, corners.corner4Z));
-                                    }
-                                    else
-                                    {
-                                        SaveSleeveCorners(zone, sleeve, repository, 0.0, zeroRotationWidth, zeroRotationHeight);
-                                    }
+                                    // ✅ DISABLED: Corner calculation moved to BatchSleeveCornerExtractor
                                 }
                             }
 
@@ -577,11 +539,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
             }
             
             // ✅ SRP: Delegate corner calculation to specialized service
-            var corners = _cornerCalculationService.CalculateCorners(
-                zone.SleevePlacementPoint,
-                cornerWidth,
-                cornerHeight,
-                rotationAngleRad);
+            // ✅ IMPROVEMENT (User Request): "Read corners from Revit"
+            // prioritized: Extract exact corners from placed element geometry (Solids)
+            // Fallback: Calculate from parameters (original logic)
+            
+            (XYZ corner1, XYZ corner2, XYZ corner3, XYZ corner4)? corners = null;
+            
+            // 1. Try extracting from geometry (Most trusted source)
+            if (sleeve != null && sleeve.IsValidObject)
+            {
+               try 
+               {
+                   corners = _cornerCalculationService.CalculateCornersFromInstance(sleeve);
+                   if (corners.HasValue && !DeploymentConfiguration.DeploymentMode)
+                   {
+                         // Optional: Log success
+                         DebugLogger.Info($"[SaveSleeveCorners] ✅ Sleeve {sleeve.Id} GEOMETRY extraction success. C1=({corners.Value.corner1.X:F4},{corners.Value.corner1.Y:F4},{corners.Value.corner1.Z:F4})...");
+                   }
+               }
+               catch (Exception ex)
+               {
+                   if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[SaveSleeveCorners] ⚠️ Sleeve {sleeve.Id} GEOMETRY extraction failed: {ex.Message}");
+               }
+            }
+            
+            // 2. Fallback to math calculation if geometry failed
+            if (!corners.HasValue)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[SaveSleeveCorners] ⚠️ Sleeve {sleeve.Id} - Falling back to MATH calculation.");
+                
+                corners = _cornerCalculationService.CalculateCorners(
+                    zone.SleevePlacementPoint,
+                    cornerWidth,
+                    cornerHeight,
+                    rotationAngleRad);
+            }
                 
             if (corners.HasValue)
             {

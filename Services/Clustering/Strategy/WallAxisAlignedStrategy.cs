@@ -70,9 +70,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
                     return false;
                 }
 
-                // ✅ Use BoundingBoxProximityChecker from Phase 2
-                var checker = new BoundingBoxProximityChecker();
-                // ✅ Use correct IProximityChecker interface signature
+                // ✅ DECISION: Delegate to factory to ensure corner-based logic is used for rectangular sleeves
+                var cz1 = sleeve1.ClashZone as ClashZone;
+                double angle1 = cz1?.MepElementRotationAngle ?? 0.0;
+                bool isRotated = Math.Abs(angle1) > 1e-6 && !IsStraightAxisAlignedAngle(angle1);
+                
+                var checker = ProximityCheckerFactory.CreateChecker(sleeve1, sleeve2, angle1, isRotated);
                 return checker.CheckProximity(sleeve1, sleeve2, tolerance);
             }
             catch (Exception ex)

@@ -338,6 +338,95 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                     }
                 }
+
+                // ✅ FIX: Corner Extraction - Force READ from Revit Geometry (Solids) immediately after placement
+                // This ensures "Corner1X...Corner4Z" in the DB are accurate for the next step (Clustering)
+                // ✅ CRITICAL FIX: Run for ALL sleeves in DB (not just newly placed) to fix existing bad data
+                
+                // ✅ FORCED LOG: Always log this to confirm code path is reached
+                SafeFileLogger.SafeAppendText("corner_extraction.log",
+                    $"[{DateTime.Now:HH:mm:ss}] [ORCHESTRATOR] ⚙️ Corner Extraction block ENTERED for category {filter.Category}\n");
+                
+                try
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                         DebugLogger.Info($"[OpeningCommandOrchestrator] 🔄 Starting Corner Extraction (Regenerate skipped - already done during placement)...");
+                    }
+                    
+                    // NOTE: Document.Regenerate() removed - it requires open transaction
+                    // Placement already regenerates the document within its transaction
+                    
+                    // 2. Run Batch Extractor
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                         DebugLogger.Info($"[OpeningCommandOrchestrator] 📏 Starting BatchSleeveCornerExtractor for {filter.Category}...");
+                    }
+                    
+                    // Determine category name string
+                    string catName = filter.Category switch
+                    {
+                        Models.MepCategory.Ducts => "Ducts",
+                        Models.MepCategory.DuctAccessories => "Duct Accessories",
+                        Models.MepCategory.Pipes => "Pipes",
+                        Models.MepCategory.CableTrays => "Cable Trays",
+                        _ => filter.Category.ToString()
+                    };
+
+                    // Initialize Extractor (stateless)
+                    var cornerExtractor = new JSE_RevitAddin_MEP_OPENINGS.Services.Persistence.BatchSleeveCornerExtractor();
+                    int extractedCount = 0;
+
+                    // Create local context/repo to fetch zones and save results
+                    using (var dbContext = new SleeveDbContext(_document))
+                    {
+                        var clashZoneRepository = new ClashZoneRepository(dbContext);
+                        
+                        // A. Fetch Zones
+                        var zones = clashZoneRepository.GetClashZonesByCategory(catName)
+                            .Where(z => z.SleeveInstanceId > 0)
+                            .ToList();
+                        
+                        // ✅ FORCED LOG: Show zones count
+                        SafeFileLogger.SafeAppendText("corner_extraction.log",
+                            $"[{DateTime.Now:HH:mm:ss}] [INFO] Found {zones.Count} zones with SleeveInstanceId > 0 for category '{catName}'\n");
+
+                        // B. Extract Corners (Pure Geometry Logic)
+                        var extractionResults = cornerExtractor.ExtractCorners(_document, zones);
+                        extractedCount = extractionResults.Count;
+
+                        // C. Save Results (Repository Logic)
+                        if (extractedCount > 0)
+                        {
+                            SafeFileLogger.SafeAppendText("corner_extraction.log",
+                                $"[{DateTime.Now:HH:mm:ss}] [SAVE] 📝 Calling BatchUpdateSleeveCorners with {extractedCount} results...\n");
+                            
+                            clashZoneRepository.BatchUpdateSleeveCorners(extractionResults);
+                            
+                            SafeFileLogger.SafeAppendText("corner_extraction.log",
+                                $"[{DateTime.Now:HH:mm:ss}] [SAVE] ✅ BatchUpdateSleeveCorners completed.\n");
+                        }
+                        else
+                        {
+                            SafeFileLogger.SafeAppendText("corner_extraction.log",
+                                $"[{DateTime.Now:HH:mm:ss}] [SKIP] ⚠️ No extraction results to save (count=0).\n");
+                        }
+                    }
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                         DebugLogger.Info($"[OpeningCommandOrchestrator] ✅ BatchSleeveCornerExtractor completed: Updated {extractedCount} sleeves.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // ✅ FORCED LOG: Always log exceptions to diagnose issues
+                    SafeFileLogger.SafeAppendText("corner_extraction.log",
+                        $"[{DateTime.Now:HH:mm:ss}] [ERROR] ❌ Corner Extraction FAILED: {ex.Message}\n{ex.StackTrace}\n");
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                         DebugLogger.Warning($"[OpeningCommandOrchestrator] ⚠️ Batch Corner Extraction failed: {ex.Message}");
+                }
                 
                 // ✅ LOGGING: Wrap with SafeFileLogger
                 SafeFileLogger.SafeAppendText("orchestrator_debug.log", 

@@ -650,8 +650,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 CombinedClusterSleeveInstanceId = CASE WHEN @isCombined = 0 THEN NULL ELSE CombinedClusterSleeveInstanceId END,
                                 ClusterInstanceId = CASE WHEN @isCluster = 0 THEN -1 ELSE ClusterInstanceId END,
                                 SleeveInstanceId = CASE WHEN @isIndividual = 0 THEN -1 ELSE SleeveInstanceId END,
-                                MarkedForClusterProcess = CASE WHEN @isCluster = 0 THEN 0 ELSE MarkedForClusterProcess END,
+                                MarkedForClusterProcess = CASE WHEN @isCluster = 0 THEN 1 ELSE MarkedForClusterProcess END,
                                 IsClusteredFlag = CASE WHEN @isCluster = 0 THEN 0 ELSE IsClusteredFlag END,
+                                AfterClusterSleeveId = CASE WHEN @isCluster = 0 THEN 0 ELSE AfterClusterSleeveId END,
                                 IsCurrentClashFlag = 1,
                                 ReadyForPlacementFlag = 1,
                                 UpdatedAt = CURRENT_TIMESTAMP

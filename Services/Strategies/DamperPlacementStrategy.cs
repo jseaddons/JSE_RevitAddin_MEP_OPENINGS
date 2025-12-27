@@ -18,7 +18,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
         /// PERFORMANCE: Enable/disable detailed debug logging (default: false for production)
         /// Set to true only when debugging damper placement issues
         /// </summary>
-        public static bool EnableDebugLogging { get; set; } = false;
+        public static bool EnableDebugLogging { get; set; } = true;
         
         private readonly Document _doc;
         private readonly IDamperTypeDetector _damperTypeDetector;

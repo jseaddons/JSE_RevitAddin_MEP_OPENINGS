@@ -1,5 +1,6 @@
 using Autodesk.Revit.UI;
 using Autodesk.Revit.DB;
+using System.Diagnostics;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
@@ -105,8 +106,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         {
             try
             {
-                // ✅ CRITICAL FIX: Reset Logger Context to prevent bleeding into 'combinesleeveplacer.log'
-                // If CombinedSleeveViewModel ran previously, the static logger might still point to its log file.
+                // ✅ CRITICAL FIX: Reset Logger Context and FORCE ENABLE for debugging
+                DebugLogger.IsEnabled = true;
                 DebugLogger.SetServiceContext($"UniversalSleeve_{_category}");
                 
                 // Explicitly set the log file based on category
@@ -147,7 +148,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 
                     var normalizedCategory = MepCategoryConstants.Normalize(_category);
                     var normalizedFilter = FilterNameHelper.NormalizeBaseName(_filterName, _filterName, normalizedCategory);
+                    var normalizationTimer = Stopwatch.StartNew();
                     var loadedZones = dataService.LoadClashZonesForCategory(normalizedFilter, normalizedCategory);
+                    normalizationTimer.Stop();
+                    
+                    DebugLogger.Info($"{_logPrefix} Loaded {loadedZones?.Count ?? 0} zones from database in {normalizationTimer.ElapsedMilliseconds}ms");
+
+                    // 🔍 TRACING: Log all loaded IDs and check for problematic ones
+                    if (loadedZones != null)
+                    {
+                        foreach (var cz in loadedZones)
+                        {
+                            if (cz.SleeveInstanceId == 1183693 || cz.SleeveInstanceId == 1183702)
+                            {
+                                DebugLogger.Info($"[TRACE-FOUND] Zone {cz.Id} matches Revit ID {cz.SleeveInstanceId}. IsCurrentClash={cz.IsCurrentClash}, ReadyForPlacement={cz.ReadyForPlacementFlag}, IsClusterResolved={cz.IsClusterResolvedFlag}");
+                            }
+                        }
+                    }
 
                     if (loadedZones.Count > 0)
                     {

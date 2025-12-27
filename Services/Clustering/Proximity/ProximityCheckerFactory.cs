@@ -31,7 +31,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                     return new BoundingBoxProximityChecker(); // Default fallback
                 }
 
-                // ✅ DECISION 1: Check for round pipes/ducts → use edge-to-edge distance
+                // ✅ DECISION 1: Check for rectangular sleeves (all categories) → use corner-based proximity
+                // This is the most accurate for any rectangular geometry where Revit BBoxes are erratic
+                var helper = new SleeveCornerProximityHelper();
+                var cz1 = sleeve1.ClashZone as Models.ClashZone;
+                
+                if (cz1 != null && helper.IsRectangularSleeve(cz1))
+                {
+                    return new CornerProximityChecker();
+                }
+
+                // ✅ DECISION 2: Check for round pipes/ducts → use edge-to-edge distance
                 string systemType = sleeve1.SystemType ?? "";
                 bool isRoundPipeOrDuct = (systemType.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0 ||
                                          systemType.IndexOf("Duct", StringComparison.OrdinalIgnoreCase) >= 0) &&
@@ -43,14 +53,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                     return new EdgeToEdgeProximityChecker();
                 }
 
-                // ✅ DECISION 2: Check for rotated sleeves → use rotated proximity checker
+                // ✅ DECISION 3: Check for rotated sleeves → use rotated proximity checker
                 if (isRotated && Math.Abs(rotationAngle) > 1e-6)
                 {
                     // Rotated sleeves: Use rotated proximity checker with rotation angle
                     return new RotatedProximityChecker(rotationAngle);
                 }
 
-                // ✅ DECISION 3: Default fallback → use bounding box proximity checker
+                // ✅ DECISION 4: Default fallback → use bounding box proximity checker
                 // This handles axis-aligned rectangular sleeves on floors, walls, etc.
                 return new BoundingBoxProximityChecker();
             }
@@ -59,7 +69,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                 // ✅ CRASH-SAFE: Return safe default on exception
                 SafeFileLogger.SafeAppendText("geometry_errors.log",
                     $"[ProximityCheckerFactory] Exception in CreateChecker: {ex.Message}, StackTrace: {ex.StackTrace}");
-                return new BoundingBoxProximityChecker(); // Safe fallback
+                return new CornerProximityChecker(); // 🏆 Preferred fallback now is Corners if possible
             }
         }
     }
