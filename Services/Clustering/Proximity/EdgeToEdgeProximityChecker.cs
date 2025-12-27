@@ -69,7 +69,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                 }
 
                 // ✅ DATABASE-ONLY: Get sleeve radii from ClashZone (SleeveDiameter)
-                var radiiResult = GetSleeveRadiiFromSleeves(sleeve1, sleeve2);
+                // Fix CS8133: Explicitly cast dynamic result to tuple type
+                (double radius1, double radius2) radiiResult = GetSleeveRadiiFromSleeves(sleeve1, sleeve2);
                 double radius1 = radiiResult.radius1;
                 double radius2 = radiiResult.radius2;
 
@@ -123,6 +124,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                 // Formula: edgeToEdge = centerToCenter - (radius1 + radius2)
                 // This is the actual gap between the two sleeves
                 double edgeToEdgeDistance = centerToCenterDistance - (radius1 + radius2);
+
+                // ✅ DIAGNOSTIC LOGGING: Log distance for pipes/ducts to verify clustering
+                string category = (sleeve1 as ClashZone)?.MepElementCategory;
+                if (string.IsNullOrEmpty(category))
+                {
+                    try { category = sleeve1.Category?.ToString(); } catch { }
+                }
+
+                if (!string.IsNullOrEmpty(category) && 
+                   (category.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    category.IndexOf("Duct", StringComparison.OrdinalIgnoreCase) >= 0))
+                {
+                    double distMM = edgeToEdgeDistance * 304.8;
+                    double centerDistMM = centerToCenterDistance * 304.8;
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        $"[EdgeToEdge] 📏 {category} Proximity: Dist={distMM:F1}mm (CenterDist={centerDistMM:F1}mm) vs Tol=??mm. Result: {edgeToEdgeDistance <= 0.328}"); // 0.328ft approx 100mm
+                }
 
                 // ✅ Ensure non-negative (sleeves can overlap)
                 return Math.Max(0, edgeToEdgeDistance);

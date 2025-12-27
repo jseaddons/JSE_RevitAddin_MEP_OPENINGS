@@ -334,8 +334,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 double? rotatedMaxZ = cz.RotatedBoundingBoxMaxZ;
                                 
                                 // ✅ Get flags
-                                bool? isClustered = cz.MarkedForClusteringSleeveProcess;
-                                bool? markedForCluster = cz.MarkedForClusteringSleeveProcess;
+                                bool? isClustered = cz.MarkedForClusterProcess;
+                                bool? markedForCluster = cz.MarkedForClusterProcess;
                                 
                                 repository.UpdateClusterPlacement(
                                     cz.Id, // ✅ CRITICAL: Pass GUID directly
@@ -1281,7 +1281,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var allSleeves = new FilteredElementCollector(_doc)
                 .OfClass(typeof(FamilyInstance))
                 .Cast<FamilyInstance>()
-                .Where(s => s.Symbol.FamilyName.Contains("Opening"))
+                .Where(s => s.Symbol.FamilyName.Contains("Opening") || s.Symbol.FamilyName.Contains("Damper"))
                 .ToList();
             
             // ✅ DEPLOYMENT: Wrapped in deployment mode check

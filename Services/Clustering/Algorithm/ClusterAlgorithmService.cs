@@ -8,87 +8,80 @@ using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity;
+
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
 {
-    /// <summary>
-    /// Phase 8: Extracted clustering algorithms (XML-based proximity + spatial grid flood-fill).
-    /// Keeps logic identical to legacy UniversalClusterService methods; minimal surface changes.
-    /// </summary>
     public class ClusterAlgorithmService : IClusterAlgorithmService
     {
-        private readonly object _logLock = new object();
-        private int _processedGroupsCount = 0;
-
         public Dictionary<SleeveGroupKey, List<List<dynamic>>> FormClusters(
             IEnumerable<IGrouping<SleeveGroupKey, dynamic>> sleeveGroups,
             double toleranceDist,
             Document doc,
             bool enableParallel)
         {
-            var clustersByGroup = new Dictionary<SleeveGroupKey, List<List<dynamic>>>();
-            var groupsList = sleeveGroups.ToList();
-            var clustersConcurrent = new ConcurrentDictionary<SleeveGroupKey, List<List<dynamic>>>();
-            _processedGroupsCount = 0;
+            var result = new Dictionary<SleeveGroupKey, List<List<dynamic>>>();
+            var lockObj = new object();
 
             Action<IGrouping<SleeveGroupKey, dynamic>> processGroup = group =>
             {
-                var xmlSleeves = group.ToList();
-                var groupClusters = new List<List<dynamic>>();
+                var clusters = new List<List<dynamic>>();
+                var sleeves = group.ToList();
+                var visited = new HashSet<dynamic>(); // Objects are assumed distinct references in the dynamic list
 
-                Interlocked.Increment(ref _processedGroupsCount);
-
-                var clusters = CalculateClustersUsingXmlData(xmlSleeves, toleranceDist, group.Key.orientation, doc);
-                if (clusters.Count > 0)
+                for (int i = 0; i < sleeves.Count; i++)
                 {
-                    groupClusters.AddRange(clusters);
-                }
-                clustersConcurrent[group.Key] = groupClusters;
-            };
+                    var seed = sleeves[i];
+                    if (visited.Contains(seed)) continue;
 
-            try
-            {
-                // ✅ PERFORMANCE: Measure multi-threading benefit
-                var singleThreadedTime = 0L;
-                var multiThreadedTime = 0L;
-                
+                    var cluster = new List<dynamic> { seed };
+                    visited.Add(seed);
+                    var queue = new Queue<dynamic>();
+                    queue.Enqueue(seed);
+
+                    while (queue.Count > 0)
+                    {
+                        var current = queue.Dequeue();
+                        // O(N^2) within group is acceptable as groups are usually small
+                        foreach (var other in sleeves)
+                        {
+                            if (visited.Contains(other)) continue;
+                            if (ShouldClusterSleeves(current, other, toleranceDist))
+                            {
+                                visited.Add(other);
+                                cluster.Add(other);
+                                queue.Enqueue(other);
+                            }
+                        }
+                    }
+                    clusters.Add(cluster);
+                }
+
                 if (enableParallel)
                 {
-                    var sw = System.Diagnostics.Stopwatch.StartNew();
-                    System.Threading.Tasks.Parallel.ForEach(groupsList, new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, processGroup);
-                    sw.Stop();
-                    multiThreadedTime = sw.ElapsedMilliseconds;
-                    
-                    if (!DeploymentConfiguration.DeploymentMode)
+                    lock (lockObj)
                     {
-                        SafeFileLogger.SafeAppendText("cluster_performance.log",
-                            $"[{DateTime.Now:HH:mm:ss}] ⚡ MULTI-THREADING: Processed {groupsList.Count} groups in {multiThreadedTime}ms using {Environment.ProcessorCount} cores\n");
+                        result[group.Key] = clusters;
                     }
                 }
                 else
                 {
-                    var sw = System.Diagnostics.Stopwatch.StartNew();
-                    foreach (var g in groupsList) processGroup(g);
-                    sw.Stop();
-                    singleThreadedTime = sw.ElapsedMilliseconds;
-                    
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_performance.log",
-                            $"[{DateTime.Now:HH:mm:ss}] 🐌 SINGLE-THREADED: Processed {groupsList.Count} groups in {singleThreadedTime}ms\n");
-                    }
+                    result[group.Key] = clusters;
                 }
+            };
 
-                clustersByGroup = clustersConcurrent.ToDictionary(k => k.Key, v => v.Value);
-            }
-            catch (AggregateException)
+            if (enableParallel)
             {
-                // Fallback to single-threaded if parallel processing fails
-                clustersByGroup = new Dictionary<SleeveGroupKey, List<List<dynamic>>>();
-                foreach (var g in groupsList) processGroup(g); // fallback single-threaded
-                clustersByGroup = clustersConcurrent.ToDictionary(k => k.Key, v => v.Value);
+                System.Threading.Tasks.Parallel.ForEach(sleeveGroups, processGroup);
             }
-
-            return clustersByGroup;
+            else
+            {
+                foreach (var group in sleeveGroups)
+                {
+                    processGroup(group);
+                }
+            }
+            return result;
         }
 
         public Dictionary<(int x, int y, int z), List<FamilyInstance>> BuildSpatialGrid(
@@ -97,37 +90,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
             Dictionary<FamilyInstance, XYZ> centers,
             double cellSize)
         {
-            var grid = new Dictionary<(int, int, int), List<FamilyInstance>>();
-            foreach (var s in familySleeves)
+            var grid = new Dictionary<(int x, int y, int z), List<FamilyInstance>>();
+            foreach (var inst in familySleeves)
             {
-                BoundingBoxXYZ? bb = null;
-                try { bb = bboxes.ContainsKey(s) ? bboxes[s] : s.get_BoundingBox(null); } catch { }
-                if (bb != null)
+                BoundingBoxXYZ bbox = null;
+                if (bboxes.TryGetValue(inst, out var b)) bbox = b;
+                else bbox = inst.get_BoundingBox(null);
+
+                if (bbox != null)
                 {
-                    int min_ix = (int)Math.Floor(bb.Min.X / cellSize);
-                    int max_ix = (int)Math.Floor(bb.Max.X / cellSize);
-                    int min_iy = (int)Math.Floor(bb.Min.Y / cellSize);
-                    int max_iy = (int)Math.Floor(bb.Max.Y / cellSize);
-                    int min_iz = (int)Math.Floor(bb.Min.Z / cellSize);
-                    int max_iz = (int)Math.Floor(bb.Max.Z / cellSize);
-                    for (int gx = min_ix; gx <= max_ix; gx++)
-                        for (int gy = min_iy; gy <= max_iy; gy++)
-                            for (int gz = min_iz; gz <= max_iz; gz++)
+                    int minX = (int)Math.Floor(bbox.Min.X / cellSize);
+                    int maxX = (int)Math.Floor(bbox.Max.X / cellSize);
+                    int minY = (int)Math.Floor(bbox.Min.Y / cellSize);
+                    int maxY = (int)Math.Floor(bbox.Max.Y / cellSize);
+                    int minZ = (int)Math.Floor(bbox.Min.Z / cellSize);
+                    int maxZ = (int)Math.Floor(bbox.Max.Z / cellSize);
+
+                    for (int x = minX; x <= maxX; x++)
+                        for (int y = minY; y <= maxY; y++)
+                            for (int z = minZ; z <= maxZ; z++)
                             {
-                                var key = (gx, gy, gz);
-                                if (!grid.TryGetValue(key, out var list)) { list = new List<FamilyInstance>(); grid[key] = list; }
-                                list.Add(s);
+                                var key = (x, y, z);
+                                if (!grid.ContainsKey(key)) grid[key] = new List<FamilyInstance>();
+                                grid[key].Add(inst);
                             }
                 }
-                else
+                else if (centers.ContainsKey(inst))
                 {
-                    var c = centers[s];
-                    int ix = (int)Math.Floor(c.X / cellSize);
-                    int iy = (int)Math.Floor(c.Y / cellSize);
-                    int iz = (int)Math.Floor(c.Z / cellSize);
-                    var key = (ix, iy, iz);
-                    if (!grid.TryGetValue(key, out var list)) { list = new List<FamilyInstance>(); grid[key] = list; }
-                    list.Add(s);
+                    var c = centers[inst];
+                    int x = (int)Math.Floor(c.X / cellSize);
+                    int y = (int)Math.Floor(c.Y / cellSize);
+                    int z = (int)Math.Floor(c.Z / cellSize);
+                    var key = (x, y, z);
+                    if (!grid.ContainsKey(key)) grid[key] = new List<FamilyInstance>();
+                    grid[key].Add(inst);
                 }
             }
             return grid;
@@ -142,61 +138,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
             double toleranceDist,
             SleeveGroupKey groupKey)
         {
-            var groupClusters = new List<List<FamilyInstance>>();
-            var unprocessedSet = new HashSet<FamilyInstance>(familySleeves);
-            while (unprocessedSet.Count > 0)
+            var clusters = new List<List<FamilyInstance>>();
+            var visited = new HashSet<FamilyInstance>();
+
+            foreach (var seed in familySleeves)
             {
-                var start = unprocessedSet.First();
+                if (visited.Contains(seed)) continue;
+
+                var cluster = new List<FamilyInstance> { seed };
+                visited.Add(seed);
                 var queue = new Queue<FamilyInstance>();
-                var cluster = new List<FamilyInstance>();
-                queue.Enqueue(start);
-                unprocessedSet.Remove(start);
+                queue.Enqueue(seed);
+
+                BoundingBoxXYZ seedBbox = null;
+                if (bboxes.TryGetValue(seed, out var b)) seedBbox = b;
+                else seedBbox = seed.get_BoundingBox(null);
+
                 while (queue.Count > 0)
                 {
-                    var inst = queue.Dequeue();
-                    cluster.Add(inst);
-                    BoundingBoxXYZ o1_bbox = bboxes.ContainsKey(inst) ? bboxes[inst] : inst.get_BoundingBox(null);
-                    var candidates = GetCandidatesFromGrid(inst, o1_bbox, centers, grid, cellSize, toleranceDist);
-                    var neighbors = FilterNeighborsByBoundingBox(inst, candidates, o1_bbox, bboxes, unprocessedSet, toleranceDist, groupKey);
-                    foreach (var n in neighbors)
-                    {
-                        if (unprocessedSet.Remove(n)) queue.Enqueue(n);
-                    }
-                }
-                groupClusters.Add(cluster);
-            }
-            return groupClusters;
-        }
+                    var current = queue.Dequeue();
+                    BoundingBoxXYZ currBbox = null;
+                    if (bboxes.TryGetValue(current, out var cb)) currBbox = cb;
+                    else currBbox = current.get_BoundingBox(null);
 
-        // --- Private legacy logic copied from UniversalClusterService ---
-        private List<List<dynamic>> CalculateClustersUsingXmlData(List<dynamic> xmlSleeves, double toleranceDist, string orientation, Document doc)
-        {
-            var clusters = new List<List<dynamic>>();
-            var processed = new HashSet<int>();
-            foreach (var sleeve in xmlSleeves)
-            {
-                if (processed.Contains(sleeve.SleeveInstanceId)) continue;
-                var cluster = new List<dynamic> { sleeve };
-                processed.Add(sleeve.SleeveInstanceId);
-                bool foundNewNeighbors = true;
-                while (foundNewNeighbors)
-                {
-                    foundNewNeighbors = false;
-                    foreach (var clusterSleeve in cluster.ToList())
+                    // Get candidates from grid
+                    var candidates = GetCandidatesFromGrid(current, currBbox, centers, grid, cellSize, toleranceDist);
+                    
+                    // Filter candidates
+                    var neighbors = FilterNeighborsByBoundingBox(current, candidates, currBbox, bboxes, visited, toleranceDist, groupKey);
+                    
+                    foreach (var neighbor in neighbors)
                     {
-                        foreach (var otherSleeve in xmlSleeves)
-                        {
-                            if (processed.Contains(otherSleeve.SleeveInstanceId)) continue;
-                            if (ShouldClusterSleeves(clusterSleeve, otherSleeve, toleranceDist))
-                            {
-                                cluster.Add(otherSleeve);
-                                processed.Add(otherSleeve.SleeveInstanceId);
-                                foundNewNeighbors = true;
-                            }
-                        }
+                        if (visited.Contains(neighbor)) continue;
+                        visited.Add(neighbor);
+                        cluster.Add(neighbor);
+                        queue.Enqueue(neighbor);
                     }
                 }
-                if (cluster.Count > 1) clusters.Add(cluster);
+                clusters.Add(cluster);
             }
             return clusters;
         }
@@ -210,38 +189,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
                 var host2Id = s2.ClashZone?.StructuralElementIdValue ?? -1;
                 if (host1Id > 0 && host2Id > 0 && host1Id != host2Id) return false;
             }
-            // Round pipe/duct skip rotated path
-            bool isRoundPipeOrDuct = false;
-            var cz1 = s1.ClashZone as ClashZone; var cz2 = s2.ClashZone as ClashZone;
-            if (cz1 != null)
-            {
-                bool isPipe = cz1.MepElementCategory != null && cz1.MepElementCategory.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0;
-                bool isRoundDuct = cz1.MepElementCategory != null && cz1.MepElementCategory.IndexOf("Duct", StringComparison.OrdinalIgnoreCase) >= 0 &&
-                    (string.Equals(cz1.DuctShape, "Round", StringComparison.OrdinalIgnoreCase) || (cz1.MepElementSizeData != null && (string.Equals(cz1.MepElementSizeData.Shape, "Round", StringComparison.OrdinalIgnoreCase) || string.Equals(cz1.MepElementSizeData.Shape, "Circular", StringComparison.OrdinalIgnoreCase))));
-                if (isPipe || isRoundDuct) isRoundPipeOrDuct = true;
-            }
-            bool shouldUseRotated = false;
+
+            // ✅ SOLID REFACTORING: Delegate to ProximityCheckerFactory
+            // This ensures consistent logic with Phase 2 refactoring (handling 2D distance for walls/floors)
+            var cz1 = s1.ClashZone as ClashZone;
             double angle1 = cz1?.MepElementRotationAngle ?? 0.0;
-            double angle2 = cz2?.MepElementRotationAngle ?? 0.0;
-            if (!isRoundPipeOrDuct && cz1 != null && cz2 != null)
-            {
-                bool isRotated1 = Math.Abs(angle1) > 1e-6 && !IsAxisAlignedAngle(angle1);
-                bool isRotated2 = Math.Abs(angle2) > 1e-6 && !IsAxisAlignedAngle(angle2);
-                if (isRotated1 && isRotated2)
-                {
-                    double a1 = NormalizeAngleDeg(angle1 * 180.0 / Math.PI);
-                    double a2 = NormalizeAngleDeg(angle2 * 180.0 / Math.PI);
-                    double diff = Math.Abs(a1 - a2);
-                    if (diff > 180.0) diff = 360.0 - diff;
-                    bool sameAxis = diff <= 1.0 || Math.Abs(diff - 180.0) <= 1.0;
-                    if (sameAxis) shouldUseRotated = true;
-                }
-            }
-            if (shouldUseRotated)
-            {
-                return CheckRotatedSleeveProximity(s1, s2, angle1, toleranceDist);
-            }
-            return BoundingBoxesOverlapFromXml(s1, s2, toleranceDist);
+            
+            // Check if rotated (using existing helper)
+            bool isRotated = Math.Abs(angle1) > 1e-6 && !IsAxisAlignedAngle(angle1);
+
+            // Create appropriate checker
+            var checker = ProximityCheckerFactory.CreateChecker(s1, s2, angle1, isRotated);
+            
+            // Perform check
+            return checker.CheckProximity(s1, s2, toleranceDist);
         }
 
         private static double NormalizeAngleDeg(double deg)

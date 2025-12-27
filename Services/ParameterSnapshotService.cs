@@ -56,7 +56,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             "Schedule of Level",
             "Schedule Level", // alias for schedule of level
             "Size",           // ✅ CRITICAL: Size must always be captured for MEP elements
-            "Service Type"    // ✅ CRITICAL: For Cable Trays
+            "Service Type",    // ✅ CRITICAL: For Cable Trays
+            "Fire Rating"     // ✅ CRITICAL: User requested for Host Walls
         };
 
         private static readonly ISet<string> _commonMepKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -402,8 +403,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                        actualKey.Equals("Service Type", StringComparison.OrdinalIgnoreCase) ||
                                        actualKey.Equals("System Name", StringComparison.OrdinalIgnoreCase) ||
                                        actualKey.Equals("System Abbreviation", StringComparison.OrdinalIgnoreCase) ||
+                                       actualKey.Equals("System Abbreviation", StringComparison.OrdinalIgnoreCase) ||
                                        actualKey.Equals("Schedule of Level", StringComparison.OrdinalIgnoreCase) ||
-                                       actualKey.Equals("Schedule Level", StringComparison.OrdinalIgnoreCase)))
+                                       actualKey.Equals("Schedule Level", StringComparison.OrdinalIgnoreCase) ||
+                                       actualKey.Equals("Fire Rating", StringComparison.OrdinalIgnoreCase)))
                     {
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
@@ -459,8 +462,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                        actualKey.Equals("System Abbreviation", StringComparison.OrdinalIgnoreCase) ||
                                        actualKey.Equals("Level", StringComparison.OrdinalIgnoreCase) ||
                                        actualKey.Equals("Reference Level", StringComparison.OrdinalIgnoreCase) ||
+                                       actualKey.Equals("Reference Level", StringComparison.OrdinalIgnoreCase) ||
                                        actualKey.Equals("Schedule Level", StringComparison.OrdinalIgnoreCase) ||
-                                       actualKey.Equals("Schedule of Level", StringComparison.OrdinalIgnoreCase)))
+                                       actualKey.Equals("Schedule of Level", StringComparison.OrdinalIgnoreCase) ||
+                                       actualKey.Equals("Fire Rating", StringComparison.OrdinalIgnoreCase)))
                     {
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
@@ -504,8 +509,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                    actualKey.Equals("Service Type", StringComparison.OrdinalIgnoreCase) ||
                                    actualKey.Equals("System Name", StringComparison.OrdinalIgnoreCase) ||
                                    actualKey.Equals("System Abbreviation", StringComparison.OrdinalIgnoreCase) ||
+                                   actualKey.Equals("System Abbreviation", StringComparison.OrdinalIgnoreCase) ||
                                    actualKey.Equals("Schedule of Level", StringComparison.OrdinalIgnoreCase) ||
-                                   actualKey.Equals("Schedule Level", StringComparison.OrdinalIgnoreCase)))
+                                   actualKey.Equals("Schedule Level", StringComparison.OrdinalIgnoreCase) ||
+                                   actualKey.Equals("Fire Rating", StringComparison.OrdinalIgnoreCase)))
                 {
                     if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
                     {

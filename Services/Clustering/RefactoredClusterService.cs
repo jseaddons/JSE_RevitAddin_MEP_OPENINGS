@@ -333,8 +333,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     var withSleeveId = allClashZones.Where(cz => cz.SleeveInstanceId > 0).ToList();
                     SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 FILTERING: {withSleeveId.Count} zones with SleeveInstanceId > 0\n");
 
-                    var notClusterResolved = withSleeveId.Where(cz => !cz.IsClusterResolved).ToList();
-                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 FILTERING: {notClusterResolved.Count} zones not cluster resolved\n");
+                    // ✅ SELF-HEALING: Verify cluster sleeves still exist before excluding zones
+                    // If IsClusterResolved=true but cluster sleeve was deleted, reset flags and allow re-clustering
+                    int resetCount = 0;
+                    var notClusterResolved = withSleeveId.Where(cz => 
+                    {
+                        if (!cz.IsClusterResolved) 
+                            return true; // Not clustered yet - include for proximity check
+                        
+                        // If flagged as cluster-resolved, verify cluster sleeve still exists in Revit
+                        if (cz.ClusterSleeveInstanceId > 0)
+                        {
+                            var clusterSleeve = doc.GetElement(new ElementId(cz.ClusterSleeveInstanceId));
+                            if (clusterSleeve == null || !clusterSleeve.IsValidObject)
+                            {
+                                // ✅ SELF-HEALING: Cluster sleeve was deleted - reset flags and allow re-clustering
+                                cz.IsClusterResolved = false;
+                                cz.IsClusterResolvedFlag = false;
+                                cz.ClusterSleeveInstanceId = -1;
+                                cz.AfterClusterSleevePlacedSleeveInstanceId = 0;
+                                resetCount++;
+                                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] 🔄 SELF-HEALING: Reset cluster flags for zone {cz.Id} (cluster sleeve {cz.ClusterSleeveInstanceId} deleted)\n");
+                                return true; // Allow re-clustering via proximity check
+                            }
+                        }
+                        
+                        return false; // Cluster sleeve exists, skip this zone
+                    }).ToList();
+                    
+                    if (resetCount > 0)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔄 SELF-HEALING: Reset {resetCount} zones for re-clustering (deleted cluster sleeves)\n");
+                    }
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 FILTERING: {notClusterResolved.Count} zones not cluster resolved (or reset for re-clustering)\n");
 
                     filteredClashZones = notClusterResolved
                         .Where(cz => string.IsNullOrEmpty(targetCategory) ||
@@ -1240,7 +1272,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         HostType = hostType,
                         Orientation = orientation,
                         BoundingBox = bbox,
-                        ClashZone = cz
+                        ClashZone = cz,
+                        // ✅ FIX: Populate properties expected by ProximityCheckerFactory
+                        SystemType = cz.MepElementCategory, 
+                        IsCircular = !string.IsNullOrEmpty(cz.DuctShape) && (cz.DuctShape.IndexOf("Round", StringComparison.OrdinalIgnoreCase) >= 0 || cz.DuctShape.IndexOf("Circular", StringComparison.OrdinalIgnoreCase) >= 0) || (cz.MepElementCategory != null && cz.MepElementCategory.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0)
                     };
                     
                     rawSleeves.Add(sleeveData);
@@ -2368,14 +2403,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                         File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔍 CORNER DEBUG: {clusterSleeve.Id} -> C1:({c1x:F2},{c1y:F2},{c1z:F2}), C2:({c2x:F2},{c2y:F2},{c2z:F2}), Rot:{rotationAngleDeg:F1}°\n");
                                     }
                                     catch { }
-                                    
-                                    // ✅ CRITICAL: Update corners in database (same pattern as individual sleeves)
-                                    clashZoneRepository.UpdateClusterSleeveCorners(
-                                        clusterInstanceId,
-                                        c1x, c1y, c1z,
-                                        c2x, c2y, c2z,
-                                        c3x, c3y, c3z,
-                                        c4x, c4y, c4z);
                                 }
                                 else
                                 {
@@ -2654,6 +2681,133 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             _actualPlacementPoints.TryGetValue(clusterInstanceId, out var actualPlacementPoint);
                             var placementPoint = actualPlacementPoint ?? (bboxMin + bboxMax) / 2.0;
                             
+                            // ✅ CORRECT CORNER CALCULATION:
+                            // We need to calculate the 4 corners of the sleeve in WORLD COORDINATES.
+                            // If rotated, these corners will reflect the rotation.
+                            // If not rotated, they will align with the bounding box.
+                            
+                            // 1. Get the transform of the instance
+                            Transform transform = clusterSleeve.GetTransform();
+                            
+                            // 2. Get geometry to find the solid solid
+                            Options opt = new Options { DetailLevel = ViewDetailLevel.Fine, ComputeReferences = true };
+                            GeometryElement geoElem = clusterSleeve.get_Geometry(opt);
+                            Solid solid = null;
+                            if (geoElem != null)
+                            {
+                                foreach (GeometryObject obj in geoElem)
+                                {
+                                    if (obj is Solid s && s.Volume > 0.0001)
+                                    {
+                                        solid = s;
+                                        break;
+                                    }
+                                    else if (obj is GeometryInstance gi)
+                                    {
+                                        foreach (GeometryObject obj2 in gi.SymbolGeometry)
+                                        {
+                                            if (obj2 is Solid s2 && s2.Volume > 0.0001)
+                                            {
+                                                solid = s2;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // 3. Calculate Corners
+                            // Default to bbox corners if solid not found (fallback)
+                            XYZ c1 = new XYZ(bboxMin.X, bboxMin.Y, bboxMin.Z);
+                            XYZ c2 = new XYZ(bboxMax.X, bboxMin.Y, bboxMin.Z);
+                            XYZ c3 = new XYZ(bboxMax.X, bboxMax.Y, bboxMin.Z);
+                            XYZ c4 = new XYZ(bboxMin.X, bboxMax.Y, bboxMin.Z);
+                            
+                            if (solid != null)
+                            {
+                                // Use refined logic if available, or just BBox of solid if simple
+                                // For cluster sleeves (rect/round), we want the 4 corners of the base or the "footprint" on the host
+                                // A simple robust way: Get BBox of the solid (transformed)
+                                var sBox = solid.GetBoundingBox();
+                                if (sBox != null)
+                                {
+                                    // Transform is already applied if we got solid from instance geometry? 
+                                    // If we got it from symbol geometry, we need to apply transform.
+                                    // Let's assume standard instance geometry retrieval works best.
+                                    // Actually, simpler fallback that works 99%: Use the Rotated BBox from RotationService if available
+                                    
+                                    if (isRotated && rotationData.HasValue && rotationData.Value.rotatedBboxMin != null)
+                                    {
+                                        // This is already what we want? 
+                                        // NO, we need 4 explicit corners for the "Width" dimension logic in Manual adapter.
+                                        // Let's assume planar corners on the Z-plane of the insertion point.
+                                        
+                                        // Better yet: Use the stored rotation to calculate corners from the center/width/height/depth
+                                        // Center is placementPoint.
+                                        // We know Width/Depth based on Orientation.
+                                        
+                                        // Let's allow the repository/adapter to calculate from Width/Height/Rotation if corners are 0?
+                                        // NO, the user wants explicit corners saved.
+                                        
+                                        // Let's try to get actual corners from the solid's bottom face?
+                                        // Too complex and brittle.
+                                        
+                                        // ROBUST APPROACH: Calculate corners mathematically from Center, Width, Depth, Rotation.
+                                        // Assuming Z-axis rotation (common for walls/floors)
+                                        
+                                        double w = width;
+                                        double d = depth;
+                                        // Adjust W/D based on orientation? 
+                                        // Width is usually "along wall", Depth is "through wall".
+                                        
+                                        // Let's use clean math based on the saved dimensions and rotation.
+                                        // This ensures consistency between "Size" log and "Corners" log.
+                                        
+                                        double angleRad = rotationAngleDeg * Math.PI / 180.0;
+                                        XYZ center = placementPoint;
+                                        
+                                        // Calculate offsets for 4 corners (unrotated locally)
+                                        // Assuming standard box centered at 0,0
+                                        // C1: -W/2, -D/2
+                                        // C2: +W/2, -D/2
+                                        // C3: +W/2, +D/2
+                                        // C4: -W/2, +D/2
+                                        // (Ignoring Height/Z for "footprint" corners)
+                                        
+                                        double halfW = width / 2.0;
+                                        double halfD = depth / 2.0;
+                                        
+                                        // Rotate these offsets
+                                        double cos = Math.Cos(angleRad);
+                                        double sin = Math.Sin(angleRad);
+                                        
+                                        // C1
+                                        c1 = new XYZ(
+                                            center.X + (-halfW * cos - -halfD * sin),
+                                            center.Y + (-halfW * sin + -halfD * cos),
+                                            center.Z); // Keep Z flat
+                                            
+                                        // C2
+                                        c2 = new XYZ(
+                                            center.X + (halfW * cos - -halfD * sin),
+                                            center.Y + (halfW * sin + -halfD * cos),
+                                            center.Z);
+                                            
+                                        // C3
+                                        c3 = new XYZ(
+                                            center.X + (halfW * cos - halfD * sin),
+                                            center.Y + (halfW * sin + halfD * cos),
+                                            center.Z);
+                                            
+                                        // C4
+                                        c4 = new XYZ(
+                                            center.X + (-halfW * cos - halfD * sin),
+                                            center.Y + (-halfW * sin + halfD * cos),
+                                            center.Z);
+                                    }
+                                }
+                            }
+
                             // Save to database
                             clusterRepository.SaveClusterSleeve(
                                 clusterInstanceId: clusterInstanceId,
@@ -2676,13 +2830,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                 placementZ: placementPoint.Z,
                                 hostType: hostType,
                                 hostOrientation: hostOrientation ?? "Unknown",
-                                clashZoneIds: clashZoneIds);
+                                clashZoneIds: clashZoneIds,
+                                // ✅ Pass Calculated Corners
+                                corner1X: c1.X, corner1Y: c1.Y, corner1Z: c1.Z,
+                                corner2X: c2.X, corner2Y: c2.Y, corner2Z: c2.Z,
+                                corner3X: c3.X, corner3Y: c3.Y, corner3Z: c3.Z,
+                                corner4X: c4.X, corner4Y: c4.Y, corner4Z: c4.Z);
                             
                             if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[RefactoredClusterService] ✅ Saved cluster {clusterInstanceId} to database (ComboId={comboId}, FilterId={filterId}, Category={targetCategory})");
                             
                             SafeFileLogger.SafeAppendText("cluster_debug.log", 
                                 $"[{DateTime.Now:HH:mm:ss}] ✅ SAVED cluster {clusterInstanceId} to ClusterSleeves table: ComboId={comboId}, FilterId={filterId}, Category={targetCategory}, ClashZoneIds={clashZoneIds.Count}\n");
+                            
+                            // ✅ CRITICAL FIX: Update ClashZones flags for each constituent zone
+                            // This ensures IsClusterResolvedFlag=1, IsClusteredFlag=1, ClusterInstanceId are set
+                            var clashZoneRepo = new ClashZoneRepository(dbContext);
+                            foreach (var zoneGuid in clashZoneIds)
+                            {
+                                try
+                                {
+                                    clashZoneRepo.UpdateClusterPlacement(
+                                        clashZoneId: zoneGuid,
+                                        clusterInstanceId: clusterInstanceId,
+                                        minX: bboxMin.X, minY: bboxMin.Y, minZ: bboxMin.Z,
+                                        maxX: bboxMax.X, maxY: bboxMax.Y, maxZ: bboxMax.Z,
+                                        isClustered: true,
+                                        markedForCluster: false);
+                                }
+                                catch (Exception czEx)
+                                {
+                                    SafeFileLogger.SafeAppendText("cluster_errors.log",
+                                        $"[{DateTime.Now:HH:mm:ss.fff}] ⚠️ Error updating ClashZone {zoneGuid} flags: {czEx.Message}\n");
+                                }
+                            }
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ UPDATED {clashZoneIds.Count} ClashZone flags for cluster {clusterInstanceId}\n");
+                            
                             savedCount++;
                         }
                         catch (Exception saveEx)

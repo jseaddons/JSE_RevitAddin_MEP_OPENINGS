@@ -949,7 +949,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             target.IsResolved = source.IsResolved || target.IsResolved;
             target.IsClusterResolved = source.IsClusterResolved || target.IsClusterResolved;
-            target.MarkedForClusteringSleeveProcess = source.MarkedForClusteringSleeveProcess ?? target.MarkedForClusteringSleeveProcess;
+            target.MarkedForClusterProcess = source.MarkedForClusterProcess ?? target.MarkedForClusterProcess;
 
             if (!string.IsNullOrWhiteSpace(source.SleeveFamilyName))
                 target.SleeveFamilyName = source.SleeveFamilyName;

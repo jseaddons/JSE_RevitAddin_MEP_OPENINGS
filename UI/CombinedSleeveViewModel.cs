@@ -625,18 +625,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                                 var zonesToProcess = _repo.GetClashZonesBySleeveIds(involvedSleeveIds);
                                 if (zonesToProcess != null && zonesToProcess.Count > 0)
                                 {
-                                    var updates = new List<(Guid, bool, bool, bool, int, int, bool, bool)>();
+                                    var updates = new List<(Guid, int, bool, bool, bool, int, int, bool, bool, bool?, int)>();
                                     foreach(var z in zonesToProcess)
                                     {
                                         updates.Add((
-                                            z.Id, 
+                                            z.Id,
+                                            z.ClashZoneId, // ClashZoneIntId
                                             true, // IsResolved
                                             true, // IsClusterResolved
                                             true, // IsCombinedResolved
                                             masterIntId, // SleeveInstanceId
                                             masterIntId, // ClusterInstanceId
                                             z.IsCurrentClashFlag, 
-                                            true // IsClusteredFlag
+                                            true, // IsClusteredFlag
+                                            false, // MarkedForClusterProcess (Reset)
+                                            0 // AfterClusterSleeveId
                                         ));
                                     }
                                     _repo.BatchUpdateFlagsWithCurrentClash(updates);

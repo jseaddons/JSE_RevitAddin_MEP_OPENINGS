@@ -511,25 +511,60 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 double circularHeight = circularMaxY - circularMinY;
                 double circularDepth = circularMaxZ - circularMinZ;
 
+                // ✅ CRITICAL FIX: For pipes, use actual sleeve diameter for Height, not bounding box Z-range
+                // Get the maximum sleeve diameter from all sleeves in the cluster
+                double maxSleeveDiameter = 0.0;
+                double maxStructuralThickness = 0.0;
+                foreach (var sleeveData in cluster)
+                {
+                    if (sleeveData == null) continue;
+                    try
+                    {
+                        int sleeveId = sleeveData.SleeveInstanceId;
+                        var cz = GetCachedClashZone(sleeveId, xmlFilePath);
+                        if (cz != null)
+                        {
+                            // Use SleeveDiameter if available (this is the actual calculated diameter)
+                            if (cz.SleeveDiameter > maxSleeveDiameter)
+                                maxSleeveDiameter = cz.SleeveDiameter;
+                            
+                            // Get structural thickness for depth
+                            if (cz.StructuralElementThickness > maxStructuralThickness)
+                                maxStructuralThickness = cz.StructuralElementThickness;
+                            
+                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                $"[{DateTime.Now:HH:mm:ss}]   Sleeve {sleeveId}: W={cz.SleeveWidth * 304.8:F1}mm, H={cz.SleeveHeight * 304.8:F1}mm, Depth={cz.StructuralElementThickness * 304.8:F1}mm, Diameter={cz.SleeveDiameter * 304.8:F1}mm\n");
+                        }
+                    }
+                    catch { continue; }
+                }
+
                 // Determine wall direction to assign width correctly
                 bool isYWall = Math.Abs(circularMaxY - circularMinY) > Math.Abs(circularMaxX - circularMinX);
                 if (isYWall)
                 {
                     // Y-wall: width is along Y axis
                     circularWidth = circularMaxY - circularMinY;
-                    circularHeight = circularMaxZ - circularMinZ;
+                    // ✅ Use actual sleeve diameter for height (not Z-range)
+                    circularHeight = maxSleeveDiameter > 0 ? maxSleeveDiameter : (circularMaxZ - circularMinZ);
                 }
                 else
                 {
                     // X-wall: width is along X axis
                     circularWidth = circularMaxX - circularMinX;
-                    circularHeight = circularMaxZ - circularMinZ;
+                    // ✅ Use actual sleeve diameter for height (not Z-range)
+                    circularHeight = maxSleeveDiameter > 0 ? maxSleeveDiameter : (circularMaxZ - circularMinZ);
                 }
+
+                // ✅ Use structural thickness for depth (not Z-range)
+                circularDepth = maxStructuralThickness > 0 ? maxStructuralThickness : circularDepth;
 
                 SafeFileLogger.SafeAppendText("cluster_sizing.log",
                     $"[{DateTime.Now:HH:mm:ss}] 🔵 CIRCULAR CLUSTER RESULT (Pipes/Round Ducts): Width={circularWidth * 304.8:F1}mm, Height={circularHeight * 304.8:F1}mm, Depth={circularDepth * 304.8:F1}mm\n");
                 SafeFileLogger.SafeAppendText("cluster_sizing.log",
                     $"[{DateTime.Now:HH:mm:ss}]   Extents: X=[{circularMinX:F6},{circularMaxX:F6}], Y=[{circularMinY:F6},{circularMaxY:F6}], Z=[{circularMinZ:F6},{circularMaxZ:F6}]\n");
+                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                    $"[{DateTime.Now:HH:mm:ss}]   MaxSleeveDiameter={maxSleeveDiameter * 304.8:F1}mm, MaxStructuralThickness={maxStructuralThickness * 304.8:F1}mm, IsYWall={isYWall}\n");
 
                 // Cache the result
                 try

@@ -367,7 +367,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// null = not yet processed for clustering
         /// This replaces the confusing IsClustered flag logic
         /// </summary>
-        public bool? MarkedForClusteringSleeveProcess { get; set; } = null;
+        public bool? MarkedForClusterProcess { get; set; } = null;
         
         /// <summary>
         /// The individual sleeve element ID if resolved

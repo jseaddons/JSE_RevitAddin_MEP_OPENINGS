@@ -108,6 +108,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // 🔥 DIAGNOSTIC: Log verification entry
                 SafeFileLogger.SafeAppendText("orchestrator_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔥 BEFORE VERIFICATION CALL\n");
                 
+                /* ⚠️ DISABLED BY USER REQUEST: Verification should only run in Refresh
                 // ✅ CRITICAL: Verify all sleeve types (individual, cluster, combined) still exist in Revit
                 // Reset flags for deleted sleeves BEFORE loading zones to prevent duplicate placement
                 if (!DeploymentConfiguration.DeploymentMode)
@@ -131,8 +132,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     SafeFileLogger.SafeAppendText("orchestrator_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔥 VERIFICATION RETURNED: resetCount={resetCount}\n");
                 }
-                
-                SafeFileLogger.SafeAppendText("orchestrator_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔥 AFTER VERIFICATION CALL\n");
+                */
 
                 // Group filters by name for memory management
                 var disciplineGroups = GroupFiltersByName(filters);

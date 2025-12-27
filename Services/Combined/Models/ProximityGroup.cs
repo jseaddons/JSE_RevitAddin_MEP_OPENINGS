@@ -100,75 +100,107 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
         /// </summary>
         public (double width, double height, double depth) CalculateCombinedDimensions()
         {
-            var bbox = CalculateCombinedBoundingBox();
-            
-            var xRange = bbox.Max.X - bbox.Min.X;
-            var yRange = bbox.Max.Y - bbox.Min.Y;
-            var zRange = bbox.Max.Z - bbox.Min.Z;
-            
-            var orientation = GetHostOrientation();
-            
-            // LOGIC: Use Union Range for Width/Height (Face Dimensions).
-            // FIX: Prioritize explicit DB WallThickness/FramingThickness/ClusterDepth from ANY sleeve.
-            // Search for the first valid thickness (> 0) to use as the Source of Truth.
-            
+            // ✅ LIGHTWEIGHT OBB LOGIC (Use Rotation Vector Projection)
+            // Projects corners onto the wall's local axes defined by RotationAngle.
+            // Matches Cluster Sleeve logic: Efficiently handles rotated walls (45 deg) without 'Too Big' AABB.
+
+            var referenceSleeve = Sleeves.First();
+            double rotationRad = referenceSleeve.RotationAngleDeg * (Math.PI / 180.0);
+            string orientation = GetHostOrientation();
+            string hostType = GetHostType();
+
+            // 1. Define Projection Vectors (Rotated Axes)
+            XYZ vecU = new XYZ(Math.Cos(rotationRad), Math.Sin(rotationRad), 0); // "Rotated X" / Along Rotated X-Wall
+            XYZ vecV = new XYZ(-Math.Sin(rotationRad), Math.Cos(rotationRad), 0); // "Rotated Y" / Normal to Rotated X-Wall (or Along Rotated Y-Wall)
+            XYZ vecZ = XYZ.BasisZ;
+
+            // 2. Project all corners
+            var allCorners = Sleeves
+                .Where(s => s.Corners != null && s.Corners.Count > 0)
+                .SelectMany(s => s.Corners)
+                .ToList();
+
+            if (allCorners.Count == 0) // Fallback
+            {
+                 allCorners = Sleeves.Where(s => s.BoundingBox != null)
+                     .SelectMany(s => new[] { 
+                         s.BoundingBox.Min, 
+                         s.BoundingBox.Max,
+                         new XYZ(s.BoundingBox.Max.X, s.BoundingBox.Min.Y, s.BoundingBox.Min.Z),
+                         new XYZ(s.BoundingBox.Min.X, s.BoundingBox.Max.Y, s.BoundingBox.Min.Z)
+                     }).ToList();
+            }
+
+            double minU = double.MaxValue, maxU = double.MinValue;
+            double minV = double.MaxValue, maxV = double.MinValue;
+            double minZ = double.MaxValue, maxZ = double.MinValue;
+
+            foreach (var pt in allCorners)
+            {
+                double u = pt.DotProduct(vecU);
+                double v = pt.DotProduct(vecV);
+                double z = pt.DotProduct(vecZ);
+
+                if (u < minU) minU = u; if (u > maxU) maxU = u;
+                if (v < minV) minV = v; if (v > maxV) maxV = v;
+                if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+            }
+
+            // 3. Determine Dimensions based on Host Type & Orientation
+            double rangeU = maxU - minU; // Rotated X-Range
+            double rangeV = maxV - minV; // Rotated Y-Range
+            double rangeZ = maxZ - minZ; // Z-Range (Vertical)
+
+            double calculatedWidth, calculatedHeight, calculatedDepth;
+
+            // Database Thickness Check (Source of Truth)
             double? dbThickness = null;
-            
-            // 1. Try to find valid thickness in Individual Sleeves first (most accurate)
-            foreach (var s in Sleeves.Where(x => x.Type == SleeveType.Individual))
+            foreach (var s in Sleeves)
             {
                 if (s.SourceData is JSE_RevitAddin_MEP_OPENINGS.Models.ClashZone cz)
                 {
                     if (cz.WallThickness > 0.001) dbThickness = cz.WallThickness;
                     else if (cz.FramingThickness > 0.001) dbThickness = cz.FramingThickness;
-                    else if (cz.StructuralElementThickness > 0.001) dbThickness = cz.StructuralElementThickness;
-                    
                     if (dbThickness.HasValue) break;
                 }
-            }
-            
-            // 2. If no valid thickness found, check Cluster Sleeves
-            if (!dbThickness.HasValue)
-            {
-                foreach (var s in Sleeves.Where(x => x.Type == SleeveType.Cluster))
+                else if (s.SourceData is JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClusterSleeveData csd && csd.ClusterDepth > 0.001)
                 {
-                    if (s.SourceData is JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClusterSleeveData csd && csd.ClusterDepth > 0.001)
-                    {
-                        dbThickness = csd.ClusterDepth;
-                        break;
-                    }
+                    dbThickness = csd.ClusterDepth;
+                    break;
                 }
             }
 
-            var referenceSleeve = Sleeves.FirstOrDefault(s => s.Type == SleeveType.Individual) ?? Sleeves.First();
-            var refBbox = referenceSleeve.BoundingBox;
-
-            double width, height, depth;
-            
-            if (string.Equals(orientation, "Y", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(hostType, "Floor", StringComparison.OrdinalIgnoreCase))
             {
-                // Y-Wall
-                width = yRange;  // Length along wall (Union)
-                height = zRange; // Vertical height (Union)
-                depth = dbThickness ?? (refBbox.Max.X - refBbox.Min.X); // DB Thickness or BBox X-dim
-            }
-            else if (string.Equals(orientation, "Z", StringComparison.OrdinalIgnoreCase) || 
-                     string.Equals(GetHostType(), "Floor", StringComparison.OrdinalIgnoreCase))
-            {
-                // Floor
-                width = xRange;
-                height = yRange;
-                depth = dbThickness ?? (refBbox.Max.Z - refBbox.Min.Z); // DB Thickness or BBox Z-dim
+                // Floor: Planar dimensions are U/V
+                // Width -> Range U (Rotated X)
+                // Height -> Range V (Rotated Y) - Note: Height param usually maps to "Depth" in plan
+                // Depth -> Range Z (Thickness)
+                calculatedWidth = rangeU;
+                calculatedHeight = rangeV; 
+                calculatedDepth = rangeZ;
             }
             else
             {
-                // Default / X-Wall
-                width = xRange;  // Length along wall
-                height = zRange; // Vertical height
-                depth = dbThickness ?? (refBbox.Max.Y - refBbox.Min.Y); // DB Thickness or BBox Y-dim
+                // Wall: Use Orientation to swap U/V for Width vs Depth
+                // Z is always Height
+                calculatedHeight = rangeZ;
+
+                if (string.Equals(orientation, "Y", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Y-Wall (North-South): Width is along Y-axis (vecV)
+                    calculatedWidth = rangeV;
+                    calculatedDepth = dbThickness ?? rangeU; // Depth is Thickness (X-axis / vecU)
+                }
+                else
+                {
+                    // X-Wall (East-West) or Default: Width is along X-axis (vecU)
+                    calculatedWidth = rangeU;
+                    calculatedDepth = dbThickness ?? rangeV; // Depth is Thickness (Y-axis / vecV)
+                }
             }
-            
-            return (width, height, depth);
+
+            return (calculatedWidth, calculatedHeight, calculatedDepth);
         }
         
         /// <summary>

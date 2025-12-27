@@ -129,6 +129,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                         bbox2.Min.X, bbox2.Min.Y, bbox2.Min.Z, bbox2.Max.X, bbox2.Max.Y, bbox2.Max.Z);
                 }
 
+                // ✅ DIAGNOSTIC LOGGING: Log distance for Duct Accessories to verify clustering
+                if (sleeve1.Category?.ToString().IndexOf("Accessories", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    double distMM = (minDistance ?? 0) * 304.8;
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        $"[BBoxChecker] 📏 Duct Accessories Proximity: Dist={distMM:F1}mm vs Tol=??mm. Result: {(minDistance ?? 999) <= 0.328}"); // 0.328ft approx 100mm
+                }
+
                 return minDistance;
             }
             catch (Exception ex)

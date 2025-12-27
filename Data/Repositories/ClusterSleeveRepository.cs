@@ -266,7 +266,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             double placementX, double placementY, double placementZ,
             string hostType,
             string hostOrientation,
-            List<Guid> clashZoneIds)
+            List<Guid> clashZoneIds,
+            // ✅ CORNER PERISISTENCE (Added for proper cluster sizing)
+            double corner1X, double corner1Y, double corner1Z,
+            double corner2X, double corner2Y, double corner2Z,
+            double corner3X, double corner3Y, double corner3Z,
+            double corner4X, double corner4Y, double corner4Z)
         {
             if (clusterInstanceId <= 0)
                 throw new ArgumentException("ClusterInstanceId must be greater than 0", nameof(clusterInstanceId));
@@ -380,10 +385,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     rotationAngleDeg, isRotated,
                                     placementX, placementY, placementZ,
                                     hostType, hostOrientation, clashZoneIds,
-                                    0.0, 0.0, 0.0, // Corner1
-                                    0.0, 0.0, 0.0, // Corner2
-                                    0.0, 0.0, 0.0, // Corner3
-                                    0.0, 0.0, 0.0, // Corner4
+                                    corner1X, corner1Y, corner1Z,
+                                    corner2X, corner2Y, corner2Z,
+                                    corner3X, corner3Y, corner3Z,
+                                    corner4X, corner4Y, corner4Z,
                                     clusterGuid);
 
                                 // Add ClusterGuid parameter for WHERE clause
@@ -432,10 +437,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     rotationAngleDeg, isRotated,
                                     placementX, placementY, placementZ,
                                     hostType, hostOrientation, clashZoneIds,
-                                    0.0, 0.0, 0.0, // Corner1
-                                    0.0, 0.0, 0.0, // Corner2
-                                    0.0, 0.0, 0.0, // Corner3
-                                    0.0, 0.0, 0.0, // Corner4
+                                    corner1X, corner1Y, corner1Z,
+                                    corner2X, corner2Y, corner2Z,
+                                    corner3X, corner3Y, corner3Z,
+                                    corner4X, corner4Y, corner4Z,
                                     clusterGuid);
 
                                 var rowsAffected = insertCmd.ExecuteNonQuery();

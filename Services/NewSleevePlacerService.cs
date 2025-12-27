@@ -39,57 +39,57 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly bool _isReplayPath;
         private readonly string _filterName;
         
-        // ✅ OOP METHOD: Insulation-aware sizing service (SOLID principles)
+        // ? OOP METHOD: Insulation-aware sizing service (SOLID principles)
         private readonly IInsulationAwareSizingService _sizingService;
         
-        // ✅ SRP COMPLIANCE: Clearance calculation service (delegates clearance logic)
+        // ? SRP COMPLIANCE: Clearance calculation service (delegates clearance logic)
         private readonly ClearanceCalculationService _clearanceService;
         
-        // ✅ SRP COMPLIANCE: RCS bounding box service (delegates clustering geometry logic)
+        // ? SRP COMPLIANCE: RCS bounding box service (delegates clustering geometry logic)
         private readonly RcsBoundingBoxService _rcsBoundingBoxService;
         
-        // ✅ SRP COMPLIANCE: Sleeve persistence service (delegates all database persistence operations)
+        // ? SRP COMPLIANCE: Sleeve persistence service (delegates all database persistence operations)
         private readonly SleevePersistenceService _persistenceService;
         
-        // ✅ SRP COMPLIANCE: Sleeve rotation service (delegates rotation calculation logic)
+        // ? SRP COMPLIANCE: Sleeve rotation service (delegates rotation calculation logic)
         private readonly SleeveRotationService _rotationService;
         
-        // ✅ SRP COMPLIANCE: Sleeve parameter service (delegates all parameter setting operations)
+        // ? SRP COMPLIANCE: Sleeve parameter service (delegates all parameter setting operations)
         // Note: Not readonly because it needs to be recreated with performance monitor when available
         private SleeveParameterService _parameterService;
         
-        // ✅ SRP COMPLIANCE: Placement point adjustment service (delegates all placement point adjustment logic)
+        // ? SRP COMPLIANCE: Placement point adjustment service (delegates all placement point adjustment logic)
         // Note: Not readonly because it needs to be recreated with performance monitor when available
         private PlacementPointAdjustmentService _placementPointAdjustmentService;
         
-        // ✅ PHASE 1 OPTIMIZATION: Caching for performance improvements
+        // ? PHASE 1 OPTIMIZATION: Caching for performance improvements
         private Dictionary<ElementId, XYZ> _placementPointCache = new Dictionary<ElementId, XYZ>();
         private Dictionary<string, Level> _levelCache = new Dictionary<string, Level>();
         private Dictionary<string, FamilySymbol> _familySymbolCache = new Dictionary<string, FamilySymbol>();
         
-        // ✅ SOLID REFACTORED: Optional refactored command services (injected when flag enabled)
+        // ? SOLID REFACTORED: Optional refactored command services (injected when flag enabled)
         private readonly IFileNameNormalizer? _fileNameNormalizer;
         private readonly ISectionBoxChecker? _sectionBoxChecker;
         
-        // ✅ CRASH-SAFE: Crash-safe executor for timeout protection and error handling
+        // ? CRASH-SAFE: Crash-safe executor for timeout protection and error handling
         private readonly CrashSafeExecutor? _crashSafeExecutor;
         
-        // ✅ PERFORMANCE MONITORING: Performance monitor for tracking operations
+        // ? PERFORMANCE MONITORING: Performance monitor for tracking operations
         private Services.Placement.PlacementPerformanceMonitor? _performanceMonitor;
         
-        // ✅ DAMPER CLEARANCE VALUES: Stores clearance values for damper parameter setting
+        // ? DAMPER CLEARANCE VALUES: Stores clearance values for damper parameter setting
         // Key: ClashZone ID (Guid - for matching zone to its calculated clearances)
         // Value: (finalWidth, finalHeight, clearanceLeft, clearanceRight, clearanceTop, clearanceBottom, offsetVector)
-        // ✅ CRITICAL FIX: offsetVector is now stored to apply connector-side offset during placement
+        // ? CRITICAL FIX: offsetVector is now stored to apply connector-side offset during placement
         private Dictionary<Guid, (double finalWidth, double finalHeight, double clearanceLeft, double clearanceRight, double clearanceTop, double clearanceBottom, XYZ offsetVector)> _damperPlacementAdjustments = 
             new Dictionary<Guid, (double, double, double, double, double, double, XYZ)>();
         
-        // ✅ PARALLEL PLANNING: Optional planner for parallel pre-computation (OOP, DI-ready)
+        // ? PARALLEL PLANNING: Optional planner for parallel pre-computation (OOP, DI-ready)
         // When enabled via DeploymentConfiguration.EnableParallelPlanning, pre-computes dimensions, clearance, and risk in parallel
         // Includes dampers (Duct Accessories) - ParallelSleevePlacementPlanner handles all categories
         private readonly ISleevePlacementPlanner? _planner;
         
-        // ✅ FORCE DETECTION MODE: Flag to force recalculation of placement points
+        // ? FORCE DETECTION MODE: Flag to force recalculation of placement points
         private readonly bool _isForceDetectionMode;
 
         public NewSleevePlacerService(
@@ -103,28 +103,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             Services.Interfaces.Refactor.IFlagManager? flagManager,
             bool isReplayPath = false,
             string filterName = null,
-            IInsulationAwareSizingService sizingService = null,  // ✅ OOP METHOD: Optional sizing service injection (SOLID)
-            // ✅ SOLID REFACTORED: Optional refactored command services (injected when flag enabled)
+            IInsulationAwareSizingService sizingService = null,  // ? OOP METHOD: Optional sizing service injection (SOLID)
+            // ? SOLID REFACTORED: Optional refactored command services (injected when flag enabled)
             IFileNameNormalizer? fileNameNormalizer = null,
             ISectionBoxChecker? sectionBoxChecker = null,
-            // ✅ CRASH-SAFE: Optional crash-safe executor (created if not provided when flag enabled)
+            // ? CRASH-SAFE: Optional crash-safe executor (created if not provided when flag enabled)
             CrashSafeExecutor? crashSafeExecutor = null,
-            // ✅ PARALLEL PLANNING: Optional planner for parallel pre-computation (enabled via safety flag)
+            // ? PARALLEL PLANNING: Optional planner for parallel pre-computation (enabled via safety flag)
             ISleevePlacementPlanner? planner = null,
-            // ✅ FORCE DETECTION MODE
+            // ? FORCE DETECTION MODE
             bool isForceDetectionMode = false)
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _conditions = conditions ?? new OpeningConditions();
             
-            // ✅ DIAGNOSTIC: Log conditions object state at construction
+            // ? DIAGNOSTIC: Log conditions object state at construction
             if (!DeploymentConfiguration.DeploymentMode)
             {
-                DebugLogger.Info($"[NewSleevePlacer] 🔍 CONDITIONS CHECK: conditions={(_conditions != null ? "NOT NULL" : "NULL")}, " +
+                DebugLogger.Info($"[NewSleevePlacer] ?? CONDITIONS CHECK: conditions={(_conditions != null ? "NOT NULL" : "NULL")}, " +
                     $"ClearanceSettings={(_conditions?.ClearanceSettings != null ? "NOT NULL" : "NULL")}");
                 if (_conditions?.ClearanceSettings != null)
                 {
-                    DebugLogger.Info($"[NewSleevePlacer] 🔍 CLEARANCE VALUES: RectNormal={_conditions.ClearanceSettings.RectangularNormal}mm, " +
+                    DebugLogger.Info($"[NewSleevePlacer] ?? CLEARANCE VALUES: RectNormal={_conditions.ClearanceSettings.RectangularNormal}mm, " +
                         $"RoundNormal={_conditions.ClearanceSettings.RoundNormal}mm, " +
                         $"PipesNormal={_conditions.ClearanceSettings.PipesNormal}mm, " +
                         $"CableTrayTop={_conditions.ClearanceSettings.CableTrayTop}mm, " +
@@ -144,28 +144,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _filterName = filterName;
             _isForceDetectionMode = isForceDetectionMode;
             
-            // ✅ OOP METHOD: Initialize sizing service (create if not provided - Dependency Injection)
+            // ? OOP METHOD: Initialize sizing service (create if not provided - Dependency Injection)
             _sizingService = sizingService ?? new InsulationAwareSizingService();
             
-            // ✅ SRP COMPLIANCE: Initialize clearance and RCS services (delegate to specialized services)
+            // ? SRP COMPLIANCE: Initialize clearance and RCS services (delegate to specialized services)
             _clearanceService = new ClearanceCalculationService();
             _rcsBoundingBoxService = new RcsBoundingBoxService();
             
-            // ✅ SRP COMPLIANCE: Initialize persistence service
+            // ? SRP COMPLIANCE: Initialize persistence service
             _persistenceService = new SleevePersistenceService(doc);
             
-            // ✅ SRP COMPLIANCE: Initialize rotation service (delegates wall/floor rotation logic)
+            // ? SRP COMPLIANCE: Initialize rotation service (delegates wall/floor rotation logic)
             _rotationService = new SleeveRotationService();
             
-            // ✅ SRP COMPLIANCE: Initialize parameter service (delegates all parameter setting operations)
+            // ? SRP COMPLIANCE: Initialize parameter service (delegates all parameter setting operations)
             // Note: Performance monitor will be set later in PlaceAllSleevesInTransaction, so we pass null here
             _parameterService = new SleeveParameterService(doc, isReplayPath, null);
             
-            // ✅ SRP COMPLIANCE: Initialize placement point adjustment service
+            // ? SRP COMPLIANCE: Initialize placement point adjustment service
             // Note: Performance monitor will be set later in PlaceAllSleevesInTransaction, so we pass null here
             _placementPointAdjustmentService = new PlacementPointAdjustmentService(doc, null, _isForceDetectionMode);
             
-            // ✅ SOLID REFACTORED: Initialize refactored services (create if not provided when flag enabled)
+            // ? SOLID REFACTORED: Initialize refactored services (create if not provided when flag enabled)
             if (OptimizationFlags.UseRefactoredCommandServices)
             {
                 _fileNameNormalizer = fileNameNormalizer ?? new Services.Refactored.FileNameNormalizerService();
@@ -177,7 +177,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 _sectionBoxChecker = sectionBoxChecker;
             }
             
-            // ✅ CRASH-SAFE: Initialize crash-safe executor (create if not provided when flag enabled)
+            // ? CRASH-SAFE: Initialize crash-safe executor (create if not provided when flag enabled)
             if (OptimizationFlags.UseCrashSafeExecution)
             {
                 _crashSafeExecutor = crashSafeExecutor ?? new CrashSafeExecutor();
@@ -187,7 +187,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 _crashSafeExecutor = null;
             }
             
-            // ✅ PARALLEL PLANNING: Initialize planner (create if not provided and flag enabled)
+            // ? PARALLEL PLANNING: Initialize planner (create if not provided and flag enabled)
             // Safety flag: DeploymentConfiguration.EnableParallelPlanning controls whether planner is used
             if (DeploymentConfiguration.EnableParallelPlanning)
             {
@@ -206,7 +206,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         public (int placed, int skipped, int errors) PlaceAllSleevesInTransaction(List<ClashZone> clashZones)
         {
-            // ✅ SAFE TRANSACTION MANAGEMENT: Validate document state before starting
+            // ? SAFE TRANSACTION MANAGEMENT: Validate document state before starting
             if (OptimizationFlags.UseSafeTransactionManagement)
             {
                 if (!_doc.IsModifiable)
@@ -219,7 +219,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
             
-            // ✅ PERFORMANCE MONITORING: Initialize performance monitor if enabled
+            // ? PERFORMANCE MONITORING: Initialize performance monitor if enabled
             if (OptimizationFlags.UsePerformanceMonitoring)
             {
                 string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
@@ -231,30 +231,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 _placementPointAdjustmentService = new PlacementPointAdjustmentService(_doc, _performanceMonitor, _isForceDetectionMode);
             }
             
-            // ✅ PARAMETER BATCHING: Reset flags at start of each placement run
+            // ? PARAMETER BATCHING: Reset flags at start of each placement run
             _parameterService.ResetFlushFlag();
             
-            // ✅ DAMPER PLACEMENT OFFSET: Clear stored offsets at start of each placement run
+            // ? DAMPER PLACEMENT OFFSET: Clear stored offsets at start of each placement run
             _damperPlacementAdjustments?.Clear();
             
-            // ✅ DIAGNOSTIC: Log batching flag status at placement start (ALWAYS log, even in deployment mode)
+            // ? DIAGNOSTIC: Log batching flag status at placement start (ALWAYS log, even in deployment mode)
             SafeFileLogger.SafeAppendText("placement_debug.log",
-                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ═══ PLACEMENT START ═══ UseBatchedParameterWrites={OptimizationFlags.UseBatchedParameterWrites}, Zones={clashZones?.Count ?? 0}\n");
+                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] --- PLACEMENT START --- UseBatchedParameterWrites={OptimizationFlags.UseBatchedParameterWrites}, Zones={clashZones?.Count ?? 0}\n");
             
-            // ✅ DIAGNOSTIC: Log flag status of all zones (ALWAYS log)
+            // ? DIAGNOSTIC: Log flag status of all zones (ALWAYS log)
             if (clashZones != null && clashZones.Count > 0)
             {
                 int resolvedCount = clashZones.Count(z => z.IsResolvedFlag);
                 int clusterResolvedCount = clashZones.Count(z => z.IsClusterResolvedFlag);
                 SafeFileLogger.SafeAppendText("placement_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] 📊 ZONE FLAGS: Total={clashZones.Count}, IsResolved={resolvedCount}, IsClusterResolved={clusterResolvedCount}\n");
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ?? ZONE FLAGS: Total={clashZones.Count}, IsResolved={resolvedCount}, IsClusterResolved={clusterResolvedCount}\n");
             }
             
             int placed = 0;
             int skipped = 0;
             int errors = 0;
             
-            // ✅ CRASH-SAFE: Execute with timeout protection if enabled
+            // ? CRASH-SAFE: Execute with timeout protection if enabled
             if (OptimizationFlags.UseCrashSafeExecution && _crashSafeExecutor != null)
             {
                 try
@@ -290,7 +290,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 (placed, skipped, errors) = ExecutePlacementInternal(clashZones);
             }
             
-            // ✅ PERFORMANCE MONITORING: Generate report if enabled
+            // ? PERFORMANCE MONITORING: Generate report if enabled
             if (OptimizationFlags.UsePerformanceMonitoring && _performanceMonitor != null)
             {
                 _performanceMonitor.GenerateReport(placed, 0); // Individual sleeves only, no clusters
@@ -300,7 +300,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
-        /// ✅ INTERNAL: Core placement logic (extracted for crash-safe wrapper)
+        /// ? INTERNAL: Core placement logic (extracted for crash-safe wrapper)
         /// </summary>
         private (int placed, int skipped, int errors) ExecutePlacementInternal(List<ClashZone> clashZones)
         {
@@ -308,19 +308,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             int skipped = 0;
             int errors = 0;
             
-            // ✅ CRITICAL FIX: Store dimensions with placed sleeves for bounding box calculation when batching is enabled
+            // ? CRITICAL FIX: Store dimensions with placed sleeves for bounding box calculation when batching is enabled
             // When UseBatchedParameterWrites=true, sleeve.get_BoundingBox() returns STALE values because parameters
             // haven't been flushed yet. We need to calculate bounding boxes from the stored dimensions instead.
             var placedSleeveData = new List<(FamilyInstance sleeve, ClashZone zone, double width, double height, double depth)>();
             var processedZoneGuids = new List<Guid>();
             
-            // ✅ DEDUPLICATION: Track placed locations to prevent duplicates
+            // ? DEDUPLICATION: Track placed locations to prevent duplicates
             var placedLocationKeys = new HashSet<string>();
 
-            // ✅ Use injected ZoneFilterService if available to pre-filter zones
+            // ? Use injected ZoneFilterService if available to pre-filter zones
             List<ClashZone> filteredZones = clashZones;
             
-            // ✅ FAMILY SYMBOL CACHING: Pre-cache family symbols with validation
+            // ? FAMILY SYMBOL CACHING: Pre-cache family symbols with validation
             if (OptimizationFlags.UseFamilySymbolCache && filteredZones.Count > 0)
             {
                 PreCacheFamilySymbols(filteredZones);
@@ -331,11 +331,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (!DeploymentConfiguration.DeploymentMode && filteredZones.Count != clashZones.Count)
                 {
-                    DebugLogger.Info($"[NewSleevePlacer] ZoneFilterService filtered {clashZones.Count} → {filteredZones.Count} zones");
+                    DebugLogger.Info($"[NewSleevePlacer] ZoneFilterService filtered {clashZones.Count} ? {filteredZones.Count} zones");
                 }
             }
             
-            // ✅ PARALLEL PLANNING: Pre-compute all sleeve data in parallel (includes dampers)
+            // ? PARALLEL PLANNING: Pre-compute all sleeve data in parallel (includes dampers)
             // Safety flag: DeploymentConfiguration.EnableParallelPlanning controls this feature
             // When enabled: Pre-computes dimensions, clearance, rotation, and risk classification in parallel
             // Benefits: Early skip detection, risk-based reordering, parallel computation, better diagnostics
@@ -350,10 +350,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Info($"[NewSleevePlacer] 🚀 PARALLEL PLANNING: Starting parallel pre-computation for {filteredZones.Count} zones (including dampers)");
+                            DebugLogger.Info($"[NewSleevePlacer] ?? PARALLEL PLANNING: Starting parallel pre-computation for {filteredZones.Count} zones (including dampers)");
                         }
                         
-                        // ✅ PARALLEL PROCESSING: Run planning in parallel (pure computations, no Revit API calls)
+                        // ? PARALLEL PROCESSING: Run planning in parallel (pure computations, no Revit API calls)
                         // This includes dampers (Duct Accessories) - ParallelSleevePlacementPlanner handles all categories
                         planningResult = _planner.Plan(filteredZones);
                         planningTracker?.SetItemCount(planningResult.TotalCount);
@@ -362,7 +362,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         planningMap = planningResult.Items
                             .ToDictionary(dto => dto.ClashZoneId, dto => dto);
                         
-                        // ✅ EARLY SKIP: Filter out zones marked for skip (avoids Revit API calls)
+                        // ? EARLY SKIP: Filter out zones marked for skip (avoids Revit API calls)
                         var skipGuids = planningResult.Items
                             .Where(dto => dto.ShouldSkip)
                             .Select(dto => dto.ClashZoneId)
@@ -373,7 +373,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             .Where(cz => !skipGuids.Contains(cz.Id))
                             .ToList();
                         
-                        // ✅ REORDERING: Sort by risk (low risk first, high risk last)
+                        // ? REORDERING: Sort by risk (low risk first, high risk last)
                         // This ensures problematic zones are processed last (less likely to block good zones)
                         filteredZones = filteredZones
                             .OrderBy(cz => planningMap.ContainsKey(cz.Id) 
@@ -386,12 +386,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Info($"[NewSleevePlacer] ✅ PARALLEL PLANNING: Completed in {planningResult.PlanningDurationMs:F1}ms - " +
+                            DebugLogger.Info($"[NewSleevePlacer] ? PARALLEL PLANNING: Completed in {planningResult.PlanningDurationMs:F1}ms - " +
                                 $"Processed: {planningResult.TotalCount}, Skipped: {planningResult.SkippedCount}, " +
                                 $"High Risk: {planningResult.HighRiskCount}, Critical: {planningResult.CriticalRiskCount}, " +
                                 $"Remaining: {filteredZones.Count}");
                             
-                            // ✅ BATCH LOGGING: Log all planning results at once (performance optimization)
+                            // ? BATCH LOGGING: Log all planning results at once (performance optimization)
                             if (planningResult.Items.Count > 0)
                             {
                                 var logLines = planningResult.Items
@@ -403,10 +403,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     catch (Exception ex)
                     {
-                        // ✅ GRACEFUL FALLBACK: If planning fails, continue with sequential processing
+                        // ? GRACEFUL FALLBACK: If planning fails, continue with sequential processing
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Warning($"[NewSleevePlacer] ⚠️ Parallel planning failed: {ex.Message} - Falling back to sequential processing");
+                            DebugLogger.Warning($"[NewSleevePlacer] ?? Parallel planning failed: {ex.Message} - Falling back to sequential processing");
                         }
                         planningMap = null;
                         planningResult = null;
@@ -415,20 +415,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             else if (!DeploymentConfiguration.EnableParallelPlanning && !DeploymentConfiguration.DeploymentMode)
             {
-                DebugLogger.Info($"[NewSleevePlacer] ⏭️ PARALLEL PLANNING: Disabled via safety flag (DeploymentConfiguration.EnableParallelPlanning=false) - Using sequential processing");
+                DebugLogger.Info($"[NewSleevePlacer] ?? PARALLEL PLANNING: Disabled via safety flag (DeploymentConfiguration.EnableParallelPlanning=false) - Using sequential processing");
             }
             
-            // ✅ TIMEOUT PROTECTION: Check timeout periodically
+            // ? TIMEOUT PROTECTION: Check timeout periodically
             foreach (var clashZone in filteredZones)
             {
-                // ✅ TIMEOUT PROTECTION: Check if operation has exceeded timeout
+                // ? TIMEOUT PROTECTION: Check if operation has exceeded timeout
                 if (OptimizationFlags.UseTimeoutProtection && _crashSafeExecutor != null)
                 {
                     if (_crashSafeExecutor.CheckTimeout("Place Individual Sleeves"))
                     {
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Warning($"[NewSleevePlacer] ⏱️ Timeout detected - stopping placement. Processed {placed + skipped + errors} out of {filteredZones.Count} zones");
+                            DebugLogger.Warning($"[NewSleevePlacer] ?? Timeout detected - stopping placement. Processed {placed + skipped + errors} out of {filteredZones.Count} zones");
                         }
                         break; // Stop processing on timeout
                     }
@@ -436,10 +436,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 try
                 {
-                    // ✅ CRITICAL FIX: Skip if already resolved OR if SleeveInstanceId > 0 (even if IsResolved flag is not set)
+                    // ? CRITICAL FIX: Skip if already resolved OR if SleeveInstanceId > 0 (even if IsResolved flag is not set)
                     // This prevents placing sleeves over existing sleeves (especially for dampers)
-                    // ✅ CRITICAL: If IsClusterResolved=true, skip individual placement (zone is part of a cluster)
-                    // ✅ CRITICAL: If ClusterSleeveInstanceId > 0, skip individual placement (cluster sleeve already exists)
+                    // ? CRITICAL: If IsClusterResolved=true, skip individual placement (zone is part of a cluster)
+                    // ? CRITICAL: If ClusterSleeveInstanceId > 0, skip individual placement (cluster sleeve already exists)
                     bool shouldSkip = clashZone.IsResolvedFlag || 
                                      clashZone.IsClusterResolvedFlag || 
                                      clashZone.SleeveInstanceId > 0 || 
@@ -447,7 +447,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     if (shouldSkip)
                     {
-                        // ✅ DIAGNOSTIC: Log why zone is being skipped (always log, even in deployment mode for debugging)
+                        // ? DIAGNOSTIC: Log why zone is being skipped (always log, even in deployment mode for debugging)
                         string skipReason = "";
                         if (clashZone.IsResolvedFlag) skipReason += "IsResolved=true, ";
                         if (clashZone.IsClusterResolvedFlag) skipReason += "IsClusterResolved=true, ";
@@ -456,12 +456,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         skipReason = skipReason.TrimEnd(',', ' ');
                         
                         SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ⏭️ SKIP Zone {clashZone.Id}: {skipReason}\n");
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ?? SKIP Zone {clashZone.Id}: {skipReason}\n");
                         skipped++;
                         continue;
                     }
 
-                    // ✅ DEDUPLICATION: Check if we've already processed a zone at this location
+                    // ? DEDUPLICATION: Check if we've already processed a zone at this location
                     // This prevents placing multiple sleeves at the exact same point (e.g. duplicate clashes or pre-clustered zones)
                     // Key includes: Category, HostID, and Rounded Coordinates (to 1mm approx)
                     string locationKey = $"{clashZone.MepElementCategory}_{clashZone.StructuralElementId}_" +
@@ -472,7 +472,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             SafeFileLogger.SafeAppendText("placement_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ⏭️ SKIP DUPLICATE: Zone {clashZone.Id} at same location as previous zone ({locationKey})\n");
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ?? SKIP DUPLICATE: Zone {clashZone.Id} at same location as previous zone ({locationKey})\n");
                         }
                         skipped++;
                         continue;
@@ -522,30 +522,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // If not placed via Smart Replay, proceed with Normal Placement
                     if (!isSleevePlaced)
                     {
-                        // ✅ DIAGNOSTIC: Log before attempting normal placement
+                        // ? DIAGNOSTIC: Log before attempting normal placement
                         SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] 🔨 ATTEMPTING PLACEMENT: Zone {clashZone.Id}, IsReplayPath={_isReplayPath}, SleeveId={clashZone.SleeveInstanceId}\n");
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ?? ATTEMPTING PLACEMENT: Zone {clashZone.Id}, IsReplayPath={_isReplayPath}, SleeveId={clashZone.SleeveInstanceId}\n");
                         
                         placedSleeve = PlaceSleeveNormal(clashZone);
                         if (placedSleeve != null)
                         {
                             SafeFileLogger.SafeAppendText("placement_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ✅ PLACED: Zone {clashZone.Id}, SleeveId={placedSleeve.Id.IntegerValue}\n");
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ? PLACED: Zone {clashZone.Id}, SleeveId={placedSleeve.Id.IntegerValue}\n");
                             placed++;
                         }
                         else
                         {
-                            // ✅ DIAGNOSTIC: Log why placement failed
+                            // ? DIAGNOSTIC: Log why placement failed
                             SafeFileLogger.SafeAppendText("placement_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ❌ PLACEMENT FAILED: Zone {clashZone.Id}, PlaceSleeveNormal returned null\n");
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ? PLACEMENT FAILED: Zone {clashZone.Id}, PlaceSleeveNormal returned null\n");
                             skipped++; // Failed to place for some reason (e.g. invalid dimensions)
                         }
                     }
 
                     if (placedSleeve != null)
                     {
-                        // ✅ SAFE ELEMENT VALIDATION: Validate element by ID (avoids document mismatch bug)
-                        // ⚠️ CRITICAL: Do NOT compare documents by reference (causes false positives)
+                        // ? SAFE ELEMENT VALIDATION: Validate element by ID (avoids document mismatch bug)
+                        // ?? CRITICAL: Do NOT compare documents by reference (causes false positives)
                         // Use element ID validation instead - if doc.GetElement() succeeds, element is in correct document
                         if (OptimizationFlags.UseSafeElementValidation)
                         {
@@ -557,7 +557,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 {
                                     if (!DeploymentConfiguration.DeploymentMode)
                                     {
-                                        DebugLogger.Warning($"[NewSleevePlacer] ⚠️ Element {placedSleeve.Id.IntegerValue} is invalid after placement - skipping");
+                                        DebugLogger.Warning($"[NewSleevePlacer] ?? Element {placedSleeve.Id.IntegerValue} is invalid after placement - skipping");
                                     }
                                     errors++;
                                     continue;
@@ -574,19 +574,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                         }
                         
-                        // ✅ CRITICAL: Update ClashZone with new Sleeve ID and flag
+                        // ? CRITICAL: Update ClashZone with new Sleeve ID and flag
                         // This ensures in-memory object is updated immediately (before batch flag update)
                         clashZone.SleeveInstanceId = placedSleeve.Id.IntegerValue;
                         clashZone.IsResolvedFlag = true;
                         
-                        // ✅ DIAGNOSTIC: Log flag update for debugging
+                        // ? DIAGNOSTIC: Log flag update for debugging
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             SafeFileLogger.SafeAppendText("placement_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ✅ SET FLAG: Zone {clashZone.Id}: IsResolved=true, SleeveId={clashZone.SleeveInstanceId}\n");
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ? SET FLAG: Zone {clashZone.Id}: IsResolved=true, SleeveId={clashZone.SleeveInstanceId}\n");
                         }
                         
-                        // ✅ CRITICAL FIX: Immediately update SleeveInstanceId in database
+                        // ? CRITICAL FIX: Immediately update SleeveInstanceId in database
                         // This ensures the database is updated even if batch persistence is skipped or fails
                         // Required for cleanup service to identify individual sleeves correctly
                         try
@@ -602,12 +602,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // Continue - batch persistence will try again later
                         }
                         
-                        // ✅ CRITICAL FIX: Store dimensions for bounding box calculation when batching is enabled
+                        // ? CRITICAL FIX: Store dimensions for bounding box calculation when batching is enabled
                         // Get dimensions from zone (already set in PlaceSleeveNormal or PlaceSleeveFromSavedData)
                         double storedWidth = clashZone.SleeveWidth > 0 ? clashZone.SleeveWidth : 0;
                         double storedHeight = clashZone.SleeveHeight > 0 ? clashZone.SleeveHeight : 0;
                         
-                        // ✅ CRITICAL FIX: Calculate depth from wall/structural thickness (same logic as SetSleeveParameters)
+                        // ? CRITICAL FIX: Calculate depth from wall/structural thickness (same logic as SetSleeveParameters)
                         double storedDepth = 0.0;
                         if (clashZone.SleeveDiameter > 0)
                         {
@@ -633,7 +633,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 storedDepth = clashZone.StructuralElementThickness;
                             }
                             
-                            // ✅ ROBUST: No fallback - depth MUST be valid
+                            // ? ROBUST: No fallback - depth MUST be valid
                             if (storedDepth <= 0)
                             {
                                 string errorMsg = $"[DEPTH-ERROR] Zone {clashZone.Id} (MEP={clashZone.MepElementId}, StructuralElement={clashZone.StructuralElementId}): " +
@@ -656,7 +656,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             storedHeight = _parameterService.GetParameterValueWithBatchingSupport(placedSleeve, "Height", storedHeight);
                         }
                         
-                        // ✅ CRITICAL: Also check deferred parameters for Depth/Wall Width (set by SetSleeveParameters)
+                        // ? CRITICAL: Also check deferred parameters for Depth/Wall Width (set by SetSleeveParameters)
                         double depthFromParams = _parameterService.GetParameterValueWithBatchingSupport(placedSleeve, "Depth", 0.0);
                         if (depthFromParams <= 0.0)
                         {
@@ -670,10 +670,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         placedSleeveData.Add((placedSleeve, clashZone, storedWidth, storedHeight, storedDepth));
                         processedZoneGuids.Add(clashZone.Id);
                         
-                        // ✅ DEDUPLICATION: Add location to tracker
+                        // ? DEDUPLICATION: Add location to tracker
                         placedLocationKeys.Add(locationKey);
                         
-                        // ✅ NOTE: Database persistence is now handled in batch after bounding boxes are calculated
+                        // ? NOTE: Database persistence is now handled in batch after bounding boxes are calculated
                         // This ensures all data (instance ID, placement, bounding boxes, corners, snapshots) is saved together
                     }
                 }
@@ -685,7 +685,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
 
-            // ✅ PERFORMANCE OPTIMIZATION: Batch regeneration after ALL sleeves placed
+            // ? PERFORMANCE OPTIMIZATION: Batch regeneration after ALL sleeves placed
             if (placedSleeveData.Count > 0)
             {
                 var regenTimer = System.Diagnostics.Stopwatch.StartNew();
@@ -693,9 +693,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     DebugLogger.Info($"[NewSleevePlacer] [BATCH-REGEN] Regenerating document for {placedSleeveData.Count} sleeves...");
                 }
-                _doc.Regenerate(); // ✅ Single regeneration for all sleeves
+                _doc.Regenerate(); // ? Single regeneration for all sleeves
                 
-                // ✅ CRITICAL FIX: Clear family symbol cache after regeneration
+                // ? CRITICAL FIX: Clear family symbol cache after regeneration
                 // Regeneration invalidates ALL element references, including cached FamilySymbol objects
                 if (OptimizationFlags.UseFamilySymbolCache)
                 {
@@ -706,10 +706,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 regenTimer.Stop();
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    DebugLogger.Info($"[NewSleevePlacer] [BATCH-REGEN] ✅ Regenerated {placedSleeveData.Count} sleeves in {regenTimer.ElapsedMilliseconds}ms");
+                    DebugLogger.Info($"[NewSleevePlacer] [BATCH-REGEN] ? Regenerated {placedSleeveData.Count} sleeves in {regenTimer.ElapsedMilliseconds}ms");
                 }
                 
-                // ✅ CRITICAL FIX: Calculate bounding boxes from deferred parameters when batching is enabled
+                // ? CRITICAL FIX: Calculate bounding boxes from deferred parameters when batching is enabled
                 // When UseBatchedParameterWrites=true, sleeve.get_BoundingBox() returns STALE values because parameters
                 // haven't been flushed yet. We must calculate bounding boxes from stored dimensions instead.
                 var bboxTimer = System.Diagnostics.Stopwatch.StartNew();
@@ -718,15 +718,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     try
                     {
-                        // ✅ Validate sleeve still exists (may have been deleted by clustering)
+                        // ? Validate sleeve still exists (may have been deleted by clustering)
                         if (!sleeve.IsValidObject) continue;
 
-                        // ✅ CRITICAL FIX: When batch writing is enabled, calculate bounding box from stored dimensions
+                        // ? CRITICAL FIX: When batch writing is enabled, calculate bounding box from stored dimensions
                         // instead of reading from Revit (which returns stale values)
                         BoundingBoxXYZ actualBbox = null;
                         if (OptimizationFlags.UseBatchedParameterWrites && storedWidth > 0 && storedHeight > 0)
                         {
-                            // ✅ BATCHING ENABLED: Calculate bounding box from stored dimensions
+                            // ? BATCHING ENABLED: Calculate bounding box from stored dimensions
                             actualBbox = CalculateBoundingBoxFromDimensions(sleeve, storedWidth, storedHeight, storedDepth, zone);
                             
                             if (!DeploymentConfiguration.DeploymentMode)
@@ -736,7 +736,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                         }
                         
-                        // ✅ FALLBACK: If batching disabled or calculation failed, read from Revit
+                        // ? FALLBACK: If batching disabled or calculation failed, read from Revit
                         if (actualBbox == null)
                         {
                             actualBbox = sleeve.get_BoundingBox(null);
@@ -744,10 +744,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         if (actualBbox != null)
                         {
-                            // ✅ SRP COMPLIANCE: Delegate RCS transformation to specialized service
+                            // ? SRP COMPLIANCE: Delegate RCS transformation to specialized service
                             _rcsBoundingBoxService.ProcessBoundingBox(zone, actualBbox);
 
-                            // ✅ CRITICAL FIX: ONLY update placement point for INDIVIDUAL sleeves, NOT cluster sleeves
+                            // ? CRITICAL FIX: ONLY update placement point for INDIVIDUAL sleeves, NOT cluster sleeves
                             // Cluster sleeves cover multiple zones - their bounding box center is NOT the individual placement point
                             if (zone.ClusterSleeveInstanceId <= 0)
                             {
@@ -783,11 +783,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 bboxTimer.Stop();
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    DebugLogger.Info($"[NewSleevePlacer] [BATCH-BBOX] ✅ Retrieved {bboxCount} bounding boxes in {bboxTimer.ElapsedMilliseconds}ms (avg: {bboxTimer.ElapsedMilliseconds / Math.Max(1, bboxCount):F1}ms per sleeve)");
+                    DebugLogger.Info($"[NewSleevePlacer] [BATCH-BBOX] ? Retrieved {bboxCount} bounding boxes in {bboxTimer.ElapsedMilliseconds}ms (avg: {bboxTimer.ElapsedMilliseconds / Math.Max(1, bboxCount):F1}ms per sleeve)");
                 }
                 
-                // ✅ SRP COMPLIANCE: Persist all sleeve data to database in batch (instance ID, placement, bounding boxes, corners, snapshots)
-                // ✅ CRITICAL: Batch save corners to database AFTER regeneration
+                // ? SRP COMPLIANCE: Persist all sleeve data to database in batch (instance ID, placement, bounding boxes, corners, snapshots)
+                // ? CRITICAL: Batch save corners to database AFTER regeneration
                 // - Corners are pre-calculated in parallel during PersistSleeveData
                 // - All 4 corners (Corner1X/Y/Z through Corner4X/Y/Z) are saved to database
                 // - Cluster calculation will use these saved corners directly (NO recalculation needed)
@@ -799,7 +799,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         int persistedCount = _persistenceService.PersistSleeveData(placedSleeveData, _filterName);
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Info($"[NewSleevePlacer] ✅ Persisted {persistedCount} sleeves to database (instance ID, placement, bounding boxes, corners, snapshots)");
+                            DebugLogger.Info($"[NewSleevePlacer] ? Persisted {persistedCount} sleeves to database (instance ID, placement, bounding boxes, corners, snapshots)");
                         }
                     }
                     catch (Exception persistEx)
@@ -812,11 +812,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
             
-            // ✅ CRITICAL PERFORMANCE FIX: Batch operations for 8x faster performance
+            // ? CRITICAL PERFORMANCE FIX: Batch operations for 8x faster performance
             // Instead of individual operations per sleeve, batch all operations together
             if (placedSleeveData.Count > 0)
             {
-                // ✅ BATCH FLAG MANAGEMENT: Update flags in single operation
+                // ? BATCH FLAG MANAGEMENT: Update flags in single operation
                 if (_flagManager != null)
                 {
                     try
@@ -837,7 +837,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                DebugLogger.Info($"[NewSleevePlacer] ✅ BATCH FLAG UPDATE: Updated {batchUpdates.Count} sleeves");
+                                DebugLogger.Info($"[NewSleevePlacer] ? BATCH FLAG UPDATE: Updated {batchUpdates.Count} sleeves");
                             }
                         }
                     }
@@ -845,12 +845,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Error($"[NewSleevePlacer] ❌ Error updating flags: {ex.Message}");
+                            DebugLogger.Error($"[NewSleevePlacer] ? Error updating flags: {ex.Message}");
                         }
                     }
                 }
                 
-                // ✅ BATCH PARAMETER FLUSH: Flush all parameters in single operation
+                // ? BATCH PARAMETER FLUSH: Flush all parameters in single operation
                 if (OptimizationFlags.UseBatchedParameterWrites)
                 {
                     try
@@ -858,20 +858,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         int flushedCount = _parameterService.FlushDeferredParameters();
                         if (!DeploymentConfiguration.DeploymentMode && flushedCount > 0)
                         {
-                            DebugLogger.Info($"[NewSleevePlacer] ✅ BATCH PARAMETER FLUSH: {flushedCount} parameters");
+                            DebugLogger.Info($"[NewSleevePlacer] ? BATCH PARAMETER FLUSH: {flushedCount} parameters");
                         }
                     }
                     catch (Exception ex)
                     {
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Error($"[NewSleevePlacer] ❌ Error flushing parameters: {ex.Message}");
+                            DebugLogger.Error($"[NewSleevePlacer] ? Error flushing parameters: {ex.Message}");
                         }
                     }
                 }
             }
             
-            // ✅ REMOVED: ReadyForPlacementFlag reset after placement
+            // ? REMOVED: ReadyForPlacementFlag reset after placement
             // This flag is redundant - IsResolved flag is sufficient to track placement status
             // Zone eligibility = IsCurrentClashFlag=1 AND IsResolved=0
             // Keeping this code commented for reference during deprecation period:
@@ -911,32 +911,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Place Instance
             XYZ placementPoint = new XYZ(zone.SleevePlacementPointX, zone.SleevePlacementPointY, zone.SleevePlacementPointZ);
             
-            // ✅ SRP: Use rotation service to determine correct rotation for host type
+            // ? SRP: Use rotation service to determine correct rotation for host type
             double rotation = _rotationService.DetermineRotation(zone); 
 
             FamilyInstance instance = PlaceSleeveInstance(symbol, placementPoint, zone, rotation);
             
             if (instance != null)
             {
-                // ✅ CRITICAL FIX: Round dimensions ONCE here (for all categories including dampers)
+                // ? CRITICAL FIX: Round dimensions ONCE here (for all categories including dampers)
                 // This ensures both the Revit parameters AND the saved zone dimensions are rounded (consistent with cluster sleeves)
                 // Rounding is applied to ALL categories (dampers, pipes, ducts, cable trays, etc.)
-                // ✅ REFACTOR: Use saved dimensions directly (respecting persistence)
+                // ? REFACTOR: Use saved dimensions directly (respecting persistence)
                 var roundedWidth = width;
                 var roundedHeight = height;
                 double roundedDiameter = diameter;
                 
-                // ✅ CRITICAL FIX: Pass ROUNDED dimensions to SetSleeveParameters (no rounding inside SetSleeveParameters to prevent double rounding)
+                // ? CRITICAL FIX: Pass ROUNDED dimensions to SetSleeveParameters (no rounding inside SetSleeveParameters to prevent double rounding)
                 // This ensures Revit parameters are set with rounded values
                 _parameterService.SetSleeveParameters(instance, roundedWidth, roundedHeight, roundedDiameter, isCircular, zone);
                 
-                // ✅ CRITICAL FIX: Update zone with ROUNDED dimensions for bounding box calculation and database saving
+                // ? CRITICAL FIX: Update zone with ROUNDED dimensions for bounding box calculation and database saving
                 // This ensures dimensions are available when batching is enabled AND replay mode uses rounded dimensions
                 zone.SleeveWidth = roundedWidth;
                 zone.SleeveHeight = roundedHeight;
                 zone.SleeveDiameter = roundedDiameter;
 
-                // ✅ CRITICAL FIX: Only update placement point for individual sleeves, not cluster sleeves
+                // ? CRITICAL FIX: Only update placement point for individual sleeves, not cluster sleeves
                 if (zone.ClusterSleeveInstanceId <= 0)
                 {
                     zone.SleevePlacementPoint = placementPoint;
@@ -956,52 +956,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         private FamilyInstance PlaceSleeveNormal(ClashZone zone, SleevePlacementPlanningDto? planningDto = null)
         {
-            // ✅ DIAGNOSTIC: Log entry into PlaceSleeveNormal
+            // ? DIAGNOSTIC: Log entry into PlaceSleeveNormal
             SafeFileLogger.SafeAppendText("placement_debug.log",
-                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] 🔨 PlaceSleeveNormal START: Zone {zone.Id}, HasPlanningDto={planningDto != null}\n");
+                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ?? PlaceSleeveNormal START: Zone {zone.Id}, HasPlanningDto={planningDto != null}\n");
             
-            // ✅ PARALLEL PLANNING: Pass planningDto to dimension calculation
+            // ? PARALLEL PLANNING: Pass planningDto to dimension calculation
             // If planningDto is provided, CalculateSleeveDimensions will use pre-computed values (faster)
             // This includes dampers - parallel planning handles all categories
             var (width, height, diameter, isCircular) = CalculateSleeveDimensions(zone, planningDto);
             
-            // ✅ DIAGNOSTIC: Log calculated dimensions (in both feet and mm for readability)
+            // ? DIAGNOSTIC: Log calculated dimensions (in both feet and mm for readability)
             double widthMm = width * 304.8;
             double heightMm = height * 304.8;
             double diameterMm = diameter * 304.8;
             SafeFileLogger.SafeAppendText("placement_debug.log",
-                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] 📐 FINAL DIMENSIONS: Zone {zone.Id}, " +
+                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ?? FINAL DIMENSIONS: Zone {zone.Id}, " +
                 $"W={width:F6}ft ({widthMm:F1}mm), H={height:F6}ft ({heightMm:F1}mm), D={diameter:F6}ft ({diameterMm:F1}mm), Circular={isCircular}\n");
             
             if (width <= 0 && height <= 0 && diameter <= 0)
             {
                 SafeFileLogger.SafeAppendText("placement_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ❌ INVALID DIMENSIONS: Zone {zone.Id}, all dimensions <= 0\n");
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ? INVALID DIMENSIONS: Zone {zone.Id}, all dimensions <= 0\n");
                 return null; // Invalid dimensions
             }
 
             // Select Family
             string familyName = GetSleeveFamilyName(zone, isCircular);
             SafeFileLogger.SafeAppendText("placement_debug.log",
-                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] 🏠 FAMILY: Zone {zone.Id}, FamilyName='{familyName}'\n");
+                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ?? FAMILY: Zone {zone.Id}, FamilyName='{familyName}'\n");
             
             FamilySymbol symbol = LoadFamilySymbol(familyName);
             
             if (symbol == null)
             {
                 SafeFileLogger.SafeAppendText("placement_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ❌ SYMBOL NULL: Zone {zone.Id}, FamilyName='{familyName}' - LoadFamilySymbol returned null\n");
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ? SYMBOL NULL: Zone {zone.Id}, FamilyName='{familyName}' - LoadFamilySymbol returned null\n");
                 return null;
             }
 
             // Determine Placement Point (Intersection Point)
             XYZ placementPoint = zone.IntersectionPoint ?? new XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ);
             
-            // ✅ SRP COMPLIANCE: Delegate placement point adjustment to dedicated service
+            // ? SRP COMPLIANCE: Delegate placement point adjustment to dedicated service
             // PlacementPointAdjustmentService handles non-dampers, DamperPlacementPointService handles dampers
             // This keeps NewSleevePlacerService focused on orchestration, not geometric calculations
             
-            // ✅ EXTRACT CLEARANCE VALUES: Store individual clearance values in zone for later parameter setting
+            // ? EXTRACT CLEARANCE VALUES: Store individual clearance values in zone for later parameter setting
             // This is done BEFORE placement point adjustment so values are available for parameter setting
             XYZ damperOffsetVector = XYZ.Zero;
             if (_damperPlacementAdjustments.ContainsKey(zone.Id))
@@ -1009,22 +1009,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var (finalWidth, finalHeight, clearanceLeft, clearanceRight, clearanceTop, clearanceBottom, offsetVector) = 
                     _damperPlacementAdjustments[zone.Id];
                 
-                // ✅ SOLID ISP: Store individual clearance values in zone for later parameter setting
+                // ? SOLID ISP: Store individual clearance values in zone for later parameter setting
                 // This allows SetSleeveParameters to set clearance parameters without strategy dependency
                 zone.ClearanceLeft = clearanceLeft;
                 zone.ClearanceRight = clearanceRight;
                 zone.ClearanceTop = clearanceTop;
                 zone.ClearanceBottom = clearanceBottom;
                 
-                // ✅ CRITICAL FIX: Store offset vector for later application
+                // ? CRITICAL FIX: Store offset vector for later application
                 damperOffsetVector = offsetVector;
             }
             
-            // ✅ DELEGATE TO SERVICE: PlacementPointAdjustmentService delegates to DamperPlacementPointService for dampers
+            // ? DELEGATE TO SERVICE: PlacementPointAdjustmentService delegates to DamperPlacementPointService for dampers
             // This maintains SRP - one class handles damper placement, another handles other MEP elements
             placementPoint = _placementPointAdjustmentService.AdjustPlacementPoint(zone, placementPoint, null);
             
-            // ✅ CRITICAL FIX: Apply connector-side offset for dampers with MEP connector
+            // ? CRITICAL FIX: Apply connector-side offset for dampers with MEP connector
             // The offset shifts the sleeve toward the connector side to achieve:
             // - 100mm clearance on connector side (MEP clearance)
             // - 50mm clearance on other side (Other clearance)
@@ -1038,17 +1038,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ✅ APPLIED DAMPER OFFSET: Zone {zone.Id}, " +
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ? APPLIED DAMPER OFFSET: Zone {zone.Id}, " +
                         $"Offset=({damperOffsetVector.X*304.8:F1}, {damperOffsetVector.Y*304.8:F1}, {damperOffsetVector.Z*304.8:F1})mm, " +
                         $"AfterOffset=({placementPoint.X:F3}, {placementPoint.Y:F3}, {placementPoint.Z:F3})\n");
                 }
             }
                     
-                    // ✅ DIAGNOSTIC: Log placement point
+                    // ? DIAGNOSTIC: Log placement point
                     SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] 📍 PLACEMENT POINT: Zone {zone.Id}, Point=({placementPoint.X:F3}, {placementPoint.Y:F3}, {placementPoint.Z:F3})\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ?? PLACEMENT POINT: Zone {zone.Id}, Point=({placementPoint.X:F3}, {placementPoint.Y:F3}, {placementPoint.Z:F3})\n");
             
-            // ✅ SRP: Use rotation service to determine correct rotation for host type
+            // ? SRP: Use rotation service to determine correct rotation for host type
             double rotation = _rotationService.DetermineRotation(zone);
 
             // Place Instance
@@ -1057,32 +1057,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (instance == null)
             {
                 SafeFileLogger.SafeAppendText("placement_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ❌ INSTANCE NULL: Zone {zone.Id}, PlaceSleeveInstance returned null\n");
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ? INSTANCE NULL: Zone {zone.Id}, PlaceSleeveInstance returned null\n");
                 return null;
             }
             
             SafeFileLogger.SafeAppendText("placement_debug.log",
-                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ✅ INSTANCE CREATED: Zone {zone.Id}, InstanceId={instance.Id.IntegerValue}\n");
+                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ? INSTANCE CREATED: Zone {zone.Id}, InstanceId={instance.Id.IntegerValue}\n");
             
             if (instance != null)
             {
-                // ✅ CRITICAL FIX: Round dimensions ONCE here (for all categories including dampers)
+                // ? CRITICAL FIX: Round dimensions ONCE here (for all categories including dampers)
                 // This ensures both the Revit parameters AND the saved zone dimensions are rounded (consistent with cluster sleeves)
                 // Rounding is applied to ALL categories (dampers, pipes, ducts, cable trays, etc.)
-                // ✅ REFACTOR: Dimensions are already rounded by CalculateSleeveDimensions (via SizingService)
+                // ? REFACTOR: Dimensions are already rounded by CalculateSleeveDimensions (via SizingService)
                 var roundedWidth = width;
                 var roundedHeight = height;
                 double roundedDiameter = diameter;
                 
-                // ✅ CRITICAL FIX: Pass ROUNDED dimensions to SetSleeveParameters (it will round again, but rounding already-rounded values is idempotent)
+                // ? CRITICAL FIX: Pass ROUNDED dimensions to SetSleeveParameters (it will round again, but rounding already-rounded values is idempotent)
                 // This ensures Revit parameters are set with rounded values
                 _parameterService.SetSleeveParameters(instance, roundedWidth, roundedHeight, roundedDiameter, isCircular, zone);
                 
-                // ✅ CRITICAL FIX: Update zone with ROUNDED dimensions for saving to database
-                // This ensures replay mode uses rounded dimensions (consistent with cluster sleeves)
-                zone.SleeveWidth = roundedWidth;
-                zone.SleeveHeight = roundedHeight;
-                zone.SleeveDiameter = roundedDiameter;
+                // ? CRITICAL FIX: Update zone with ROUNDED dimensions for saving to database
+                // For circular pipes/ducts, SleeveWidth and SleeveHeight should BOTH equal the diameter
+                // This ensures correct persistence to database (not bounding box dimensions)
+                if (isCircular && roundedDiameter > 0)
+                {
+                    // For circular elements, width = height = diameter
+                    zone.SleeveWidth = roundedDiameter;
+                    zone.SleeveHeight = roundedDiameter;
+                    zone.SleeveDiameter = roundedDiameter;
+                }
+                else
+                {
+                    // For rectangular elements, use calculated width/height
+                    zone.SleeveWidth = roundedWidth;
+                    zone.SleeveHeight = roundedHeight;
+                    zone.SleeveDiameter = roundedDiameter;
+                }
                 zone.SleevePlacementPoint = placementPoint;
                 zone.SleevePlacementPointX = placementPoint.X;
                 zone.SleevePlacementPointY = placementPoint.Y;
@@ -1093,55 +1105,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// ✅ CRITICAL FIX: Calculate sleeve dimensions with proper clearance handling.
+        /// ? CRITICAL FIX: Calculate sleeve dimensions with proper clearance handling.
         /// When batch parameter writing is enabled, this ensures:
         /// 1. Cable trays use GetCableTrayPlacementAdjustment which correctly reads clearances from conditions.ClearanceSettings (database)
         /// 2. Other categories use GetClearance which may read from strategy or fallback
         /// 3. All parameter reads during placement use GetParameterValueWithBatchingSupport to prevent stale reads
         /// 
-        /// ✅ PARALLEL PLANNING: If planningDto is provided (from parallel planning phase), use pre-computed dimensions.
+        /// ? PARALLEL PLANNING: If planningDto is provided (from parallel planning phase), use pre-computed dimensions.
         /// This includes dampers - parallel planning handles all categories including Duct Accessories.
         /// </summary>
         private (double width, double height, double diameter, bool isCircular) CalculateSleeveDimensions(ClashZone zone, SleevePlacementPlanningDto? planningDto = null)
         {
-            // ✅ PERFORMANCE MONITORING: Track dimension calculation
+            // ? PERFORMANCE MONITORING: Track dimension calculation
             using (var tracker = _performanceMonitor?.TrackOperation("Calculate Sleeve Dimensions"))
             {
-                // ✅ PARALLEL PLANNING: Use pre-computed dimensions if available (from parallel planning phase)
+                // ? PARALLEL PLANNING: Use pre-computed dimensions if available (from parallel planning phase)
                 // This includes dampers - ParallelSleevePlacementPlanner handles Duct Accessories category
                 // Safety: Only use planning data if EnableParallelPlanning flag is enabled and planningDto is valid
                 if (DeploymentConfiguration.EnableParallelPlanning && planningDto != null && !planningDto.ShouldSkip)
                 {
-                    // ✅ USE PRE-COMPUTED DIMENSIONS: From parallel planning (includes dampers)
+                    // ? USE PRE-COMPUTED DIMENSIONS: From parallel planning (includes dampers)
                     // Note: For dampers with asymmetric clearance, we still need strategy for offset calculation
                     // But dimensions can come from planning phase
                     bool isDamper = string.Equals(zone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase);
                     
                     if (!isDamper)
                     {
-                        // ✅ NON-DAMPER: Use pre-computed dimensions directly (faster, already calculated in parallel)
+                        // ? NON-DAMPER: Use pre-computed dimensions directly (faster, already calculated in parallel)
                         tracker?.SetItemCount(1);
                         return (planningDto.TargetWidthFt, planningDto.TargetHeightFt, Math.Max(planningDto.TargetWidthFt, planningDto.TargetHeightFt), false);
                     }
                     else
                     {
-                        // ✅ DAMPER: Use pre-computed dimensions but still need strategy for offset calculation
+                        // ? DAMPER: Use pre-computed dimensions but still need strategy for offset calculation
                         // Planning phase calculated dimensions, but we need strategy for asymmetric clearance offset
                         // Fall through to strategy-based calculation below
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Info($"[NewSleevePlacer] 📋 DAMPER: Using pre-computed dimensions from planning: " +
+                            DebugLogger.Info($"[NewSleevePlacer] ?? DAMPER: Using pre-computed dimensions from planning: " +
                                 $"W={planningDto.TargetWidthFt * 304.8:F1}mm, H={planningDto.TargetHeightFt * 304.8:F1}mm, " +
                                 $"but still need strategy for offset calculation");
                         }
                     }
                 }
                 
-                // ✅ DAMPER PLACEMENT STRATEGY: Handle dampers with connector-aware asymmetric clearance
+                // ? DAMPER PLACEMENT STRATEGY: Handle dampers with connector-aware asymmetric clearance
                 // Dampers with MEP connectors require special offset calculation to achieve 100mm on connector side, 50mm on other
                 if (_strategy is DamperPlacementStrategy damperStrategy)
                 {
-                    // ✅ COMPREHENSIVE LOGGING: Log raw MEP dimensions and clearance settings BEFORE strategy call
+                    // ? COMPREHENSIVE LOGGING: Log raw MEP dimensions and clearance settings BEFORE strategy call
                     double rawWidthMm = zone.MepElementWidth * 304.8;
                     double rawHeightMm = zone.MepElementHeight * 304.8;
                     if (!DeploymentConfiguration.DeploymentMode)
@@ -1154,7 +1166,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             $"IsInsulated={zone.IsInsulated}, HasConditions={_conditions != null}, HasClearanceSettings={_conditions?.ClearanceSettings != null}\n");
                     }
                     
-                    // ✅ OOP METHOD: Get damper placement adjustment including offset and individual clearances (SOLID DIP)
+                    // ? OOP METHOD: Get damper placement adjustment including offset and individual clearances (SOLID DIP)
                     // This method handles:
                     // 1. Connector detection (which side has MEP connector)
                     // 2. Asymmetric clearance mapping (100mm MEP side, 50mm other side)
@@ -1162,7 +1174,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // 4. Wall-specific handling (Z-axis swap for vertical connectors, axis-based offset)
                     var damperAdj = damperStrategy.GetDamperPlacementAdjustment(zone, _conditions);
                     
-                    // ✅ COMPREHENSIVE LOGGING: Log final dimensions AFTER strategy call
+                    // ? COMPREHENSIVE LOGGING: Log final dimensions AFTER strategy call
                     double finalWidthMm = damperAdj.finalWidth * 304.8;
                     double finalHeightMm = damperAdj.finalHeight * 304.8;
                     if (!DeploymentConfiguration.DeploymentMode)
@@ -1173,19 +1185,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             $"ClearanceApplied W={finalWidthMm - rawWidthMm:F1}mm, H={finalHeightMm - rawHeightMm:F1}mm\n");
                     }
                     
-                    // ✅ SOLID ISP: Extract individual clearance values from damper strategy result
+                    // ? SOLID ISP: Extract individual clearance values from damper strategy result
                     // These will be stored in ClashZone and set as sleeve parameters later
                     // This allows placement service to use zone data without direct strategy dependency
-                    // ✅ CRITICAL FIX: Use values directly from zone properties (populated by strategy)
+                    // ? CRITICAL FIX: Use values directly from zone properties (populated by strategy)
                     // Do NOT overwrite with finalWidth/finalHeight which are total dimensions!
                     double clearanceLeft = zone.ClearanceLeft;
                     double clearanceRight = zone.ClearanceRight;
                     double clearanceTop = zone.ClearanceTop;
                     double clearanceBottom = zone.ClearanceBottom;
                     
-                    // ✅ CRITICAL: Store damper clearance values for later parameter setting
+                    // ? CRITICAL: Store damper clearance values for later parameter setting
                     // Key: zone.Id (Guid) for matching, Value: final dimensions + individual clearances + offsetVector
-                    // ✅ CRITICAL FIX: offsetVector is now stored to apply connector-side offset during placement
+                    // ? CRITICAL FIX: offsetVector is now stored to apply connector-side offset during placement
                     // The offset shifts sleeve toward connector side to achieve 100mm/50mm clearance (not 75mm/75mm)
                     _damperPlacementAdjustments[zone.Id] = (
                         damperAdj.finalWidth,
@@ -1194,15 +1206,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         clearanceRight,
                         clearanceTop,
                         clearanceBottom,
-                        damperAdj.offsetVector // ✅ Store offset for later application
+                        damperAdj.offsetVector // ? Store offset for later application
                     );
                     
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        DebugLogger.Info($"[NewSleevePlacer] ✅ DAMPER STRATEGY: Zone {zone.Id}, Final W={damperAdj.finalWidth:F6}ft, H={damperAdj.finalHeight:F6}ft (placement point handled by DamperPlacementPointService)");
+                        DebugLogger.Info($"[NewSleevePlacer] ? DAMPER STRATEGY: Zone {zone.Id}, Final W={damperAdj.finalWidth:F6}ft, H={damperAdj.finalHeight:F6}ft (placement point handled by DamperPlacementPointService)");
                     }
                     
-                    // ✅ CRITICAL FIX: Round dimensions to obey global rounding rules (e.g. nearest 50mm)
+                    // ? CRITICAL FIX: Round dimensions to obey global rounding rules (e.g. nearest 50mm)
                     // Dampers calculate "exact" clearance (e.g. +150mm), but we must round the TOTAL dimension to the module
                     // This creates the "extra" clearance the user might see (e.g. 150mm -> 175mm total gap -> 12.5mm extra/side)
                     var profileSettings = ApplicationProfileService.Instance.GetCurrentSettings();
@@ -1213,7 +1225,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         damperAdj.finalWidth, 
                         damperAdj.finalHeight);
                     
-                    // ✅ COMPREHENSIVE LOGGING: Log rounding effect
+                    // ? COMPREHENSIVE LOGGING: Log rounding effect
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         double finalWidthMmPreRound = damperAdj.finalWidth * 304.8;
@@ -1235,27 +1247,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return (roundedWidth, roundedHeight, 0, false); // Dampers are always rectangular (false = not circular)
                 }
                 
-                // ✅ CRITICAL FIX: Cable trays need special handling to read clearances directly from database
+                // ? CRITICAL FIX: Cable trays need special handling to read clearances directly from database
                 // When batch parameter writing is enabled, we MUST read clearances from _conditions.ClearanceSettings (database)
                 // NOT from any cached/stale values or parameter reads
                 if (_strategy is CableTrayPlacementStrategy cableTrayStrategy)
                 {
-                    // ✅ VALIDATE: Ensure _conditions has ClearanceSettings populated from database
+                    // ? VALIDATE: Ensure _conditions has ClearanceSettings populated from database
                     if (_conditions?.ClearanceSettings == null)
                     {
                         if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Warning($"[NewSleevePlacer] ⚠️ _conditions.ClearanceSettings is NULL for cable tray zone {zone.Id} - using fallback clearances");
+                            DebugLogger.Warning($"[NewSleevePlacer] ?? _conditions.ClearanceSettings is NULL for cable tray zone {zone.Id} - using fallback clearances");
                     }
                     else
                     {
-                        // ✅ DIAGNOSTIC: Log that we're using database clearances (critical for debugging batching issues)
+                        // ? DIAGNOSTIC: Log that we're using database clearances (critical for debugging batching issues)
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Info($"[NewSleevePlacer] ✅ Using DATABASE clearances: CableTrayTop={_conditions.ClearanceSettings.CableTrayTop}mm, CableTrayOther={_conditions.ClearanceSettings.CableTrayOther}mm");
+                            DebugLogger.Info($"[NewSleevePlacer] ? Using DATABASE clearances: CableTrayTop={_conditions.ClearanceSettings.CableTrayTop}mm, CableTrayOther={_conditions.ClearanceSettings.CableTrayOther}mm");
                         }
                     }
                     
-                    // ✅ CABLE TRAY: Use strategy's GetCableTrayPlacementAdjustment (reads from conditions.ClearanceSettings - database)
+                    // ? CABLE TRAY: Use strategy's GetCableTrayPlacementAdjustment (reads from conditions.ClearanceSettings - database)
                     // This method prioritizes _conditions.ClearanceSettings (database) over UI settings
                     var ctRawWidth = zone.MepElementWidth;
                     var ctRawHeight = zone.MepElementHeight;
@@ -1263,7 +1275,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[NewSleevePlacer] CABLE TRAY STRATEGY: Raw={RevitUnitConversionService.Instance.FromInternalMillimeters(ctRawWidth):F1}x{RevitUnitConversionService.Instance.FromInternalMillimeters(ctRawHeight):F1}mm");
                     
-                    // ✅ CRITICAL: Pass _conditions (with database ClearanceSettings) to strategy
+                    // ? CRITICAL: Pass _conditions (with database ClearanceSettings) to strategy
                     // Strategy will read CableTrayTop and CableTrayOther from _conditions.ClearanceSettings (database)
                     var adj = cableTrayStrategy.GetCableTrayPlacementAdjustment(zone, _conditions, _clearanceSettings);
                     double ctFinalWidth = adj.finalWidth;
@@ -1277,12 +1289,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return (ctFinalWidth, ctFinalHeight, ctFinalDiameter, false); // Cable trays are always rectangular
                 }
                 
-                // ✅ OOP METHOD: Use strategy to calculate clearance for other categories
+                // ? OOP METHOD: Use strategy to calculate clearance for other categories
                 double rawWidth = zone.MepElementWidth;
                 double rawHeight = zone.MepElementHeight;
                 double rawDiameter = zone.MepElementOuterDiameter > 0 ? zone.MepElementOuterDiameter : 0;
                 
-                // ✅ COMPREHENSIVE LOGGING: Log raw dimensions BEFORE clearance calculation
+                // ? COMPREHENSIVE LOGGING: Log raw dimensions BEFORE clearance calculation
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("clearance_calculation_trace.log",
@@ -1294,7 +1306,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 double clearance = _clearanceService.GetClearance(zone, _conditions, _clearanceSettings, _strategy);
                 double clearanceMm = clearance * 304.8; // Convert feet (internal units) to mm (1ft = 304.8mm)
                 
-                // ✅ COMPREHENSIVE LOGGING: Log clearance value AFTER retrieval
+                // ? COMPREHENSIVE LOGGING: Log clearance value AFTER retrieval
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("clearance_calculation_trace.log",
@@ -1302,15 +1314,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         $"Clearance={clearance:F6}ft ({clearanceMm:F1}mm)\n");
                 }
             
-                // ✅ OOP METHOD: Use insulation-aware sizing service for consistent calculation (SOLID principles)
-                // Formula: RawSize + (2 × InsulationThickness) + (2 × Clearance)
-                // ✅ CRITICAL REFACTOR: Use ROUNDED calculation directly in the service
+                // ? OOP METHOD: Use insulation-aware sizing service for consistent calculation (SOLID principles)
+                // Formula: RawSize + (2 � InsulationThickness) + (2 � Clearance)
+                // ? CRITICAL REFACTOR: Use ROUNDED calculation directly in the service
                 // This centralizes rounding logic and ensures dimensions are final and consistent
                 var settings = ApplicationProfileService.Instance.GetCurrentSettings();
                 (double finalWidth, double finalHeight, double finalDiameter) = _sizingService.CalculateFinalDimensionsFromClashZoneRounded(
                     rawWidth, rawHeight, rawDiameter, zone, clearance, settings.RoundingValue, settings.RoundAlwaysUp);
                 
-                // ✅ COMPREHENSIVE LOGGING: Log final dimensions AFTER sizing calculation
+                // ? COMPREHENSIVE LOGGING: Log final dimensions AFTER sizing calculation
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("clearance_calculation_trace.log",
@@ -1320,7 +1332,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         $"ClearanceApplied W={finalWidth * 304.8 - rawWidth * 304.8:F1}mm, H={finalHeight * 304.8 - rawHeight * 304.8:F1}mm\n");
                 }
             
-                // ✅ GLOBAL SETTINGS: Determine opening type (circular vs rectangular) using global configuration rules
+                // ? GLOBAL SETTINGS: Determine opening type (circular vs rectangular) using global configuration rules
                 // This matches the legacy UniversalSleevePlacerService.SelectUniversalFamily() logic
                 bool isCircular = DetermineOpeningType(zone, rawDiameter, finalDiameter);
 
@@ -1330,14 +1342,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// ✅ GLOBAL SETTINGS: Determine opening type (circular vs rectangular) based on global configuration rules
+        /// ? GLOBAL SETTINGS: Determine opening type (circular vs rectangular) based on global configuration rules
         /// Matches legacy UniversalSleevePlacerService.SelectUniversalFamily() logic
         /// </summary>
         private bool DetermineOpeningType(ClashZone zone, double rawDiameter, double finalDiameter)
         {
             try
             {
-                // ✅ Pipes: Use ConfigurationResolutionService to check global rules
+                // ? Pipes: Use ConfigurationResolutionService to check global rules
                 // Rules checked:
                 // 1. RoundOpeningsBecomeRectangularIfDiameterGreaterThan (default 200mm) - if diameter > threshold, make rectangular
                 // 2. Structural framing rule - pipes on structural framing are always circular
@@ -1366,7 +1378,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Info($"[NewSleevePlacer] PIPE opening type resolved: Host={hostType}, UI='{pipeType}' → Global Rule='{resolvedType}' → isCircular={isCircularResult}");
+                            DebugLogger.Info($"[NewSleevePlacer] PIPE opening type resolved: Host={hostType}, UI='{pipeType}' ? Global Rule='{resolvedType}' ? isCircular={isCircularResult}");
                         }
                         
                         return isCircularResult;
@@ -1377,12 +1389,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         bool isCircularResult = rawDiameter > 0;
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Info($"[NewSleevePlacer] PIPE opening type (fallback): rawDiameter={rawDiameter:F6}ft → isCircular={isCircularResult}");
+                            DebugLogger.Info($"[NewSleevePlacer] PIPE opening type (fallback): rawDiameter={rawDiameter:F6}ft ? isCircular={isCircularResult}");
                         }
                         return isCircularResult;
                     }
                 }
-                // ✅ Round Ducts: Check user preference from CONDITIONS XML
+                // ? Round Ducts: Check user preference from CONDITIONS XML
                 else if (string.Equals(zone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase) ||
                          string.Equals(zone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
                 {
@@ -1401,7 +1413,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Info($"[NewSleevePlacer] ROUND DUCT opening type from CONDITIONS XML: '{roundDuctType}' → isCircular={isCircularResult}");
+                            DebugLogger.Info($"[NewSleevePlacer] ROUND DUCT opening type from CONDITIONS XML: '{roundDuctType}' ? isCircular={isCircularResult}");
                         }
                         
                         return isCircularResult;
@@ -1411,7 +1423,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // Rectangular ducts: always rectangular opening
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Info($"[NewSleevePlacer] RECTANGULAR DUCT → isCircular=false");
+                            DebugLogger.Info($"[NewSleevePlacer] RECTANGULAR DUCT ? isCircular=false");
                         }
                         return false;
                     }
@@ -1421,7 +1433,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Other categories (cable trays, accessories): always rectangular
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        DebugLogger.Info($"[NewSleevePlacer] OTHER CATEGORY ({zone.MepElementCategory}) → isCircular=false");
+                        DebugLogger.Info($"[NewSleevePlacer] OTHER CATEGORY ({zone.MepElementCategory}) ? isCircular=false");
                     }
                     return false;
                 }
@@ -1437,12 +1449,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
-        // ✅ SRP COMPLIANCE: GetClearance() method removed - now delegated to ClearanceCalculationService
+        // ? SRP COMPLIANCE: GetClearance() method removed - now delegated to ClearanceCalculationService
         // This ensures NewSleevePlacerService focuses on placement logic, not clearance calculation
 
         private string GetSleeveFamilyName(ClashZone zone, bool isCircular)
         {
-            // ✅ FIX: Use correct family names matching UniversalSleevePlacerService
+            // ? FIX: Use correct family names matching UniversalSleevePlacerService
             // Determine host type (check both singular and plural forms, plus Structural Framing)
             bool isWallOrFraming = zone.StructuralElementType == "Wall" || 
                                   zone.StructuralElementType == "Walls" ||
@@ -1462,15 +1474,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         private FamilySymbol LoadFamilySymbol(string familyName)
         {
-            // ✅ PERFORMANCE MONITORING: Track family symbol loading
+            // ? PERFORMANCE MONITORING: Track family symbol loading
             using (var tracker = _performanceMonitor?.TrackOperation("Load Family Symbol"))
             {
-                // ✅ CACHE VALIDATION: Check cache first, but validate before returning
+                // ? CACHE VALIDATION: Check cache first, but validate before returning
             if (_familySymbolCache.ContainsKey(familyName))
             {
                 var cachedSymbol = _familySymbolCache[familyName];
                 
-                // ✅ CRITICAL SAFETY: Validate symbol before use (prevents stale reference errors)
+                // ? CRITICAL SAFETY: Validate symbol before use (prevents stale reference errors)
                 if (cachedSymbol != null && cachedSymbol.IsValidObject)
                 {
                     try
@@ -1508,7 +1520,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 bool familyLoaded = _familyManager.LoadFamily(_doc, familyName);
                 if (familyLoaded)
                 {
-                    // ✅ FIX: After loading, find the symbol using Family.Name (not FamilyName property)
+                    // ? FIX: After loading, find the symbol using Family.Name (not FamilyName property)
                     foundSymbol = new FilteredElementCollector(_doc)
                         .OfClass(typeof(FamilySymbol))
                         .Cast<FamilySymbol>()
@@ -1516,7 +1528,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
             
-            // ✅ FIX: Fallback to simple lookup if FamilyManager didn't find it
+            // ? FIX: Fallback to simple lookup if FamilyManager didn't find it
             // Use Family.Name (not FamilyName property) to match UniversalSleevePlacerService
             if (foundSymbol == null)
             {
@@ -1526,7 +1538,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     .FirstOrDefault(x => x.Family.Name.Equals(familyName, StringComparison.OrdinalIgnoreCase));
             }
             
-            // ✅ CACHE VALIDATION: Only cache if symbol is valid
+            // ? CACHE VALIDATION: Only cache if symbol is valid
             if (foundSymbol != null && foundSymbol.IsValidObject)
             {
                 try
@@ -1552,10 +1564,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         private FamilyInstance PlaceSleeveInstance(FamilySymbol symbol, XYZ point, ClashZone zone, double rotation)
         {
-            // ✅ PERFORMANCE MONITORING: Track family symbol placement
+            // ? PERFORMANCE MONITORING: Track family symbol placement
             using (var tracker = _performanceMonitor?.TrackOperation("Place Sleeve Instance"))
             {
-                // ✅ CRITICAL SAFETY: Validate symbol before accessing IsActive
+                // ? CRITICAL SAFETY: Validate symbol before accessing IsActive
                 if (symbol == null || !symbol.IsValidObject)
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
@@ -1581,7 +1593,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return null;
                 }
 
-            // ✅ CRITICAL FIX: Use absolute placement point (do NOT pass level to NewFamilyInstance)
+            // ? CRITICAL FIX: Use absolute placement point (do NOT pass level to NewFamilyInstance)
             // When level is passed, Revit interprets Z coordinate as relative to level elevation
             // But our placement point is ABSOLUTE (already in host document coordinates)
             // Solution: Create instance without level, then set level parameter separately
@@ -1607,7 +1619,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     .FirstOrDefault();
             }
 
-                // ✅ SAFE TRANSACTION MANAGEMENT: Validate document is still modifiable
+                // ? SAFE TRANSACTION MANAGEMENT: Validate document is still modifiable
                 if (OptimizationFlags.UseSafeTransactionManagement && !_doc.IsModifiable)
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
@@ -1617,12 +1629,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return null;
                 }
                 
-                // ✅ CRITICAL FIX: Place instance WITHOUT level parameter to preserve absolute coordinates
+                // ? CRITICAL FIX: Place instance WITHOUT level parameter to preserve absolute coordinates
                 // The placement point is ABSOLUTE (already transformed to host document coordinates)
                 // Passing level to NewFamilyInstance causes Revit to interpret Z as relative to level elevation
                 FamilyInstance instance = _doc.Create.NewFamilyInstance(point, symbol, StructuralType.NonStructural);
                 
-                // ✅ Set level parameter separately (for schedule consistency, not for placement)
+                // ? Set level parameter separately (for schedule consistency, not for placement)
                 if (instance != null && level != null)
                 {
                     try
@@ -1647,12 +1659,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             SafeFileLogger.SafeAppendText("placement_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ⚠️ Failed to set level parameter for zone {zone.Id}: {levelEx.Message}\n");
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ?? Failed to set level parameter for zone {zone.Id}: {levelEx.Message}\n");
                         }
                     }
                 }
                 
-                // ✅ SAFE ELEMENT VALIDATION: Validate instance was created successfully
+                // ? SAFE ELEMENT VALIDATION: Validate instance was created successfully
                 if (OptimizationFlags.UseSafeElementValidation)
                 {
                     if (instance == null || !instance.IsValidObject)
@@ -1677,11 +1689,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
-        // ✅ SRP COMPLIANCE: All parameter setting methods have been moved to SleeveParameterService
+        // ? SRP COMPLIANCE: All parameter setting methods have been moved to SleeveParameterService
         // The service is injected via constructor and used throughout this class
         
         /// <summary>
-        /// ✅ FAMILY SYMBOL CACHING: Pre-cache family symbols with validation.
+        /// ? FAMILY SYMBOL CACHING: Pre-cache family symbols with validation.
         /// Validates symbols before caching to prevent stale references.
         /// </summary>
         private void PreCacheFamilySymbols(List<ClashZone> clashZones)
@@ -1750,7 +1762,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// ✅ CRITICAL FIX: Immediately updates SleeveInstanceId in database after placement.
+        /// ? CRITICAL FIX: Immediately updates SleeveInstanceId in database after placement.
         /// This ensures the database is updated even if batch persistence is skipped or fails.
         /// Required for cleanup service to identify individual sleeves correctly.
         /// </summary>
@@ -1766,7 +1778,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ✅ IMMEDIATE DB UPDATE: Set SleeveInstanceId={sleeveInstanceId} for zone {zoneId}\n");
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ? IMMEDIATE DB UPDATE: Set SleeveInstanceId={sleeveInstanceId} for zone {zoneId}\n");
                     }
                 }
             }
@@ -1791,7 +1803,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Update Instance ID
                     repository.UpdateSleeveInstanceId(zone.Id, sleeve.Id.IntegerValue);
                     
-                    // ✅ CRITICAL FIX: Get actual placement point from sleeve instance
+                    // ? CRITICAL FIX: Get actual placement point from sleeve instance
                     // Don't rely on zone.SleevePlacementPointX/Y/Z which might be (0,0,0)
                     XYZ actualPlacementPoint = null;
                     if (sleeve.Location is LocationPoint locationPoint)
@@ -1858,7 +1870,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
-        /// ✅ CRITICAL FIX: Calculate bounding box from Width/Height/Depth dimensions when batch writing is enabled.
+        /// ? CRITICAL FIX: Calculate bounding box from Width/Height/Depth dimensions when batch writing is enabled.
         /// When UseBatchedParameterWrites=true, sleeve.get_BoundingBox() returns STALE values because parameters
         /// haven't been flushed yet. This method constructs the bounding box from the calculated dimensions.
         /// </summary>
@@ -1893,7 +1905,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     );
                 }
                 
-                // ✅ Calculate bounding box centered at placement point
+                // ? Calculate bounding box centered at placement point
                 // For rectangular openings: width (X), depth (Y), height (Z)
                 var bbox = new BoundingBoxXYZ
                 {
@@ -1927,7 +1939,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
 
         /// <summary>
-        /// ✅ PHASE 1.5 OPTIMIZATION: Pre-cache all required family symbols before placement.
+        /// ? PHASE 1.5 OPTIMIZATION: Pre-cache all required family symbols before placement.
         /// When UsePreCachedFamilySymbols=true, pre-loads and validates all required family symbols before placement loop.
         /// Eliminates loading overhead and reduces variance (7x improvement in symbol operations).
         /// </summary>
@@ -1975,7 +1987,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    DebugLogger.Info($"[NewSleevePlacer] ✅ Pre-cached {uniqueFamilyNames.Count} family symbols");
+                    DebugLogger.Info($"[NewSleevePlacer] ? Pre-cached {uniqueFamilyNames.Count} family symbols");
                 }
             }
             catch (Exception ex)
@@ -1988,7 +2000,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// ✅ PHASE 1.5 OPTIMIZATION: Memory leak detection and automatic garbage collection.
+        /// ? PHASE 1.5 OPTIMIZATION: Memory leak detection and automatic garbage collection.
         /// When UseMemoryLeakDetection=true, monitors memory usage and forces garbage collection to prevent leaks.
         /// Targets the -1.57 MB memory leak identified in performance analysis.
         /// </summary>
@@ -2031,7 +2043,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// ✅ PHASE 1.5 OPTIMIZATION: Operation variance reduction with warm-up and consistent data structures.
+        /// ? PHASE 1.5 OPTIMIZATION: Operation variance reduction with warm-up and consistent data structures.
         /// When UseVarianceReduction=true, pre-warms operations and uses consistent data structures to reduce variance.
         /// Targets the 2.5-4.6x variance issues identified in performance analysis.
         /// </summary>
@@ -2046,7 +2058,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    DebugLogger.Info($"[NewSleevePlacer] 🔥 WARMING UP OPERATIONS...");
+                    DebugLogger.Info($"[NewSleevePlacer] ?? WARMING UP OPERATIONS...");
                 }
 
                 // Pre-load family symbols
@@ -2067,7 +2079,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    DebugLogger.Info($"[NewSleevePlacer] ✅ WARM-UP COMPLETE");
+                    DebugLogger.Info($"[NewSleevePlacer] ? WARM-UP COMPLETE");
                 }
             }
             catch (Exception ex)
@@ -2080,7 +2092,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// ✅ PHASE 1.5 OPTIMIZATION: Get sample zones for warm-up operations.
+        /// ? PHASE 1.5 OPTIMIZATION: Get sample zones for warm-up operations.
         /// Returns a small set of zones for pre-calculating dimensions and warming up operations.
         /// </summary>
         private List<ClashZone> GetSampleZones()
@@ -2112,7 +2124,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// ✅ PHASE 1.5 OPTIMIZATION: Pre-calculate all dimensions upfront before placement loop.
+        /// ? PHASE 1.5 OPTIMIZATION: Pre-calculate all dimensions upfront before placement loop.
         /// When UsePreCalculatedDimensions=true, calculates all dimensions upfront before placement loop.
         /// Eliminates repeated calculations and reduces variance (2.6x improvement in placement point adjustment).
         /// </summary>
@@ -2168,7 +2180,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         #region Phase 1 Performance Optimizations
 
         /// <summary>
-        /// ✅ PHASE 1 OPTIMIZATION: Get cached placement point for element (eliminates LocationPoint/LocationCurve queries)
+        /// ? PHASE 1 OPTIMIZATION: Get cached placement point for element (eliminates LocationPoint/LocationCurve queries)
         /// When UseElementLocationCaching=true, caches placement points during batch placement (70-80% reduction in location queries)
         /// </summary>
         private XYZ GetCachedPlacementPoint(FamilyInstance sleeve)
@@ -2188,7 +2200,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// ✅ PHASE 1 OPTIMIZATION: Calculate placement point from sleeve location (supports caching)
+        /// ? PHASE 1 OPTIMIZATION: Calculate placement point from sleeve location (supports caching)
         /// </summary>
         private XYZ CalculatePlacementPoint(FamilyInstance sleeve)
         {
@@ -2204,7 +2216,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// ✅ PHASE 1 OPTIMIZATION: Get cached level reference (eliminates repeated level lookups)
+        /// ? PHASE 1 OPTIMIZATION: Get cached level reference (eliminates repeated level lookups)
         /// When UseLevelReferenceCaching=true, caches level references and batches level parameter setting (80-90% reduction in level lookups)
         /// </summary>
         private Level GetCachedLevel(string levelName)
@@ -2231,7 +2243,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// ✅ PHASE 1 OPTIMIZATION: Batch level parameter setting (reduces individual parameter operations)
+        /// ? PHASE 1 OPTIMIZATION: Batch level parameter setting (reduces individual parameter operations)
         /// When UseLevelReferenceCaching=true, batches level parameter setting for better performance
         /// </summary>
         private void BatchSetLevels(List<FamilyInstance> sleeves, Level level)
@@ -2253,7 +2265,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// ✅ PHASE 1 OPTIMIZATION: Pre-calculate all dimensions before placement (eliminates repeated calculations)
+        /// ? PHASE 1 OPTIMIZATION: Pre-calculate all dimensions before placement (eliminates repeated calculations)
         /// When UsePreCalculatedDimensions=true, calculates all dimensions upfront before placement loop (eliminates repeated calculations)
         /// </summary>
         private List<(ClashZone zone, double width, double height, double depth)> PreCalculateDimensions(List<ClashZone> zones)
@@ -2300,7 +2312,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// ✅ PHASE 1 OPTIMIZATION: Batch parameter operations (reduces individual parameter reads/writes)
+        /// ? PHASE 1 OPTIMIZATION: Batch parameter operations (reduces individual parameter reads/writes)
         /// When UseBatchParameterOperations=true, batches parameter operations for better performance (50-60% reduction in parameter operations)
         /// </summary>
         private void BatchSetSleeveParameters(List<(FamilyInstance instance, double width, double height, double diameter, bool isCircular, ClashZone zone)> sleeveData)
@@ -2325,7 +2337,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         #endregion
 
-        // ✅ NOTE: NewSleevePlacerService does NOT need section box filtering
+        // ? NOTE: NewSleevePlacerService does NOT need section box filtering
         // It processes clash zones that are already in the database, so it doesn't need to find MEP elements from the model
         // Section box filtering is only needed for services that query the Revit model to find elements
     }
