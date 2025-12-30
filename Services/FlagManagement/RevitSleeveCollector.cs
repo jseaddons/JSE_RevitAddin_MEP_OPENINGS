@@ -36,7 +36,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                     string familyName = s.Symbol?.FamilyName ?? "";
                     bool isKnownFamily = familyName.Contains("CircularOpening", StringComparison.OrdinalIgnoreCase) ||
                                         familyName.Contains("RectangularOpening", StringComparison.OrdinalIgnoreCase);
-                    return (s.Category?.Name == "Generic Models" || s.Category?.Name == "Structural Connections") &&
+                    return (s.Category?.Name == "Generic Models" || 
+                            s.Category?.Name == "Structural Connections" ||
+                            s.Category?.Name == "Duct Accessories" ||
+                            s.Category?.Name == "Pipe Accessories" ||
+                            s.Category?.Name == "Mechanical Equipment") &&
                            (hasSleeveKeyword || isKnownFamily);
                 })
                 .ToList();
@@ -80,7 +84,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                     string familyName = s.Symbol?.FamilyName ?? "";
                     bool isKnownFamily = familyName.Contains("CircularOpening", StringComparison.OrdinalIgnoreCase) ||
                                         familyName.Contains("RectangularOpening", StringComparison.OrdinalIgnoreCase);
-                    return (s.Category?.Name == "Generic Models" || s.Category?.Name == "Structural Connections") &&
+                    return (s.Category?.Name == "Generic Models" || 
+                            s.Category?.Name == "Structural Connections" ||
+                            s.Category?.Name == "Duct Accessories" ||
+                            s.Category?.Name == "Pipe Accessories" ||
+                            s.Category?.Name == "Mechanical Equipment") &&
                            (hasSleeveKeyword || isKnownFamily);
                 })
                 .Select(s => s.Id.IntegerValue)

@@ -172,6 +172,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             Dictionary<string, double> clearanceSettings = null,
             List<string> selectedCategories = null)
         {
+            // ✅ CRITICAL FIX: Update Section Box in DB BEFORE detection
+            // This ensures logic relying on "IsPointInBoundingBox" (SetReadyForPlacement) uses the FRESH section box
+            try
+            {
+                if (document.ActiveView is View3D view3D && view3D.IsSectionBoxActive)
+                {
+                    using (var dbContext = new JSE_RevitAddin_MEP_OPENINGS.Data.SleeveDbContext(document))
+                    {
+                        var sectionBoxService = new SectionBoxService();
+                        sectionBoxService.CaptureAndStore(view3D, dbContext.Connection);
+                        _log?.Invoke($"[SECTION-BOX] Updated DB Section Box from View: {view3D.Name}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log?.Invoke($"[SECTION-BOX] Failed to update section box: {ex.Message}");
+            }
+
             _log($"[METHOD3] DEBUG: DetectNewClashZones called with {currentIntersections?.Count ?? 0} intersections");
             
             // ✅ PERFORMANCE OPTIMIZATION: Streamlined fast-path for validated intersections
@@ -4155,23 +4174,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     double height = 0;
                     double diameter = 0;
 
+                    // Try paramCache first if available
                     if (paramCache != null)
                     {
                         if (paramCache.TryGetValue("Width", out var wStr) && double.TryParse(wStr, out var wVal)) width = wVal / 304.8;
                         if (paramCache.TryGetValue("Height", out var hStr) && double.TryParse(hStr, out var hVal)) height = hVal / 304.8;
                         if (paramCache.TryGetValue("Diameter", out var dStr) && double.TryParse(dStr, out var dVal)) diameter = dVal / 304.8;
+                        
+                        // ✅ DEBUG: Log paramCache keys for ducts if no dimensions found
+                        if (!DeploymentConfiguration.DeploymentMode && width <= 0 && height <= 0 && diameter <= 0)
+                        {
+                            var keys = string.Join(", ", paramCache.Keys.Take(10));
+                            SafeFileLogger.SafeAppendText("pipe_dimension_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] DUCT {duct.Id}: paramCache FAILED, W='{wStr ?? "null"}', H='{hStr ?? "null"}', D='{dStr ?? "null"}', Keys=[{keys}] - Falling back to API\n");
+                        }
                     }
-                    else
+                    
+                    // ✅ FIX: Fall back to direct Revit API if paramCache didn't provide values
+                    if (width <= 0 && height <= 0 && diameter <= 0)
                     {
                         width = duct.get_Parameter(BuiltInParameter.RBS_CURVE_WIDTH_PARAM)?.AsDouble() ?? 0;
                         height = duct.get_Parameter(BuiltInParameter.RBS_CURVE_HEIGHT_PARAM)?.AsDouble() ?? 0;
                         diameter = duct.get_Parameter(BuiltInParameter.RBS_CURVE_DIAMETER_PARAM)?.AsDouble() ?? 0;
+                        
+                        // ✅ DEBUG: Log direct API access for ducts
+                        if (!DeploymentConfiguration.DeploymentMode && (width > 0 || height > 0 || diameter > 0))
+                        {
+                            SafeFileLogger.SafeAppendText("pipe_dimension_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] DUCT {duct.Id}: Direct API fallback OK, W={width * 304.8:F1}mm, H={height * 304.8:F1}mm, D={diameter * 304.8:F1}mm\n");
+                        }
                     }
                     
                     if ((width <= 0.0 || height <= 0.0) && diameter > 0.0)
                     {
                         width = diameter;
                         height = diameter;
+                        
+                        // ✅ DEBUG: Log round duct using diameter
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("pipe_dimension_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] DUCT {duct.Id}: ROUND DUCT - Using diameter={diameter:F6}ft ({diameter * 304.8:F1}mm) for W/H\n");
+                        }
+                    }
+                    
+                    // ✅ DEBUG: Log final result if still 0
+                    if (!DeploymentConfiguration.DeploymentMode && width <= 0 && height <= 0)
+                    {
+                        SafeFileLogger.SafeAppendText("pipe_dimension_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] DUCT {duct.Id}: ⚠️ ZERO DIMENSIONS! W={width:F6}, H={height:F6}, D={diameter:F6}, UsedCache={paramCache != null}\n");
                     }
                     
                     return (width, height);
@@ -4181,21 +4232,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     double outerDiameter = 0;
                     double nominalDiameter = 0;
 
+                    // Try paramCache first if available
                     if (paramCache != null)
                     {
                         if (paramCache.TryGetValue("Outside Diameter", out var odStr) && double.TryParse(odStr, out var odVal)) outerDiameter = odVal / 304.8;
+                        // Try "Nominal Diameter" first, then "Diameter" as fallback (Revit uses both names)
                         if (paramCache.TryGetValue("Nominal Diameter", out var ndStr) && double.TryParse(ndStr, out var ndVal)) nominalDiameter = ndVal / 304.8;
+                        else if (paramCache.TryGetValue("Diameter", out var dStr) && double.TryParse(dStr, out var dVal)) nominalDiameter = dVal / 304.8;
+                        
+                        // ✅ DEBUG: Log paramCache keys for pipes
+                        if (!DeploymentConfiguration.DeploymentMode && (outerDiameter <= 0 && nominalDiameter <= 0))
+                        {
+                            var keys = string.Join(", ", paramCache.Keys.Take(10));
+                            SafeFileLogger.SafeAppendText("pipe_dimension_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] PIPE {pipe.Id}: paramCache FAILED, OD='{odStr ?? "null"}', ND='{ndStr ?? "null"}', Keys=[{keys}] - Falling back to API\n");
+                        }
                     }
-                    else
+                    
+                    // ✅ FIX: Fall back to direct Revit API if paramCache didn't provide values
+                    if (outerDiameter <= 0 && nominalDiameter <= 0)
                     {
                         outerDiameter = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_OUTER_DIAMETER)?.AsDouble() ?? 0;
                         nominalDiameter = pipe.get_Parameter(BuiltInParameter.RBS_PIPE_DIAMETER_PARAM)?.AsDouble() ?? 0;
+                        
+                        // ✅ DEBUG: Log direct API access for pipes
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("pipe_dimension_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] PIPE {pipe.Id}: Direct API used, OD={outerDiameter:F6}ft ({outerDiameter * 304.8:F1}mm), ND={nominalDiameter:F6}ft, Doc={pipe.Document?.Title}\n");
+                        }
                     }
                     
                     var diameter = outerDiameter;
                     if (diameter <= 0)
                     {
                         diameter = nominalDiameter;
+                    }
+                    
+                    // ✅ DEBUG: Log final result if still 0
+                    if (!DeploymentConfiguration.DeploymentMode && diameter <= 0)
+                    {
+                        SafeFileLogger.SafeAppendText("pipe_dimension_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] PIPE {pipe.Id}: ⚠️ ZERO DIAMETER! OD={outerDiameter:F6}, ND={nominalDiameter:F6}, UsedCache={paramCache != null}\n");
                     }
                     
                     return (diameter, diameter);
@@ -4205,16 +4283,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     double width = 0;
                     double height = 0;
 
+                    // Try paramCache first if available
                     if (paramCache != null)
                     {
                         if (paramCache.TryGetValue("Width", out var wStr) && double.TryParse(wStr, out var wVal)) width = wVal / 304.8;
                         if (paramCache.TryGetValue("Height", out var hStr) && double.TryParse(hStr, out var hVal)) height = hVal / 304.8;
+                        
+                        // ✅ DEBUG: Log paramCache keys for cable trays if no dimensions found
+                        if (!DeploymentConfiguration.DeploymentMode && width <= 0 && height <= 0)
+                        {
+                            var keys = string.Join(", ", paramCache.Keys.Take(10));
+                            SafeFileLogger.SafeAppendText("pipe_dimension_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] CABLETRAY {cableTray.Id}: paramCache FAILED, W='{wStr ?? "null"}', H='{hStr ?? "null"}', Keys=[{keys}] - Falling back to API\n");
+                        }
                     }
-                    else
+                    
+                    // ✅ FIX: Fall back to direct Revit API if paramCache didn't provide values
+                    if (width <= 0 && height <= 0)
                     {
                         width = cableTray.get_Parameter(BuiltInParameter.RBS_CABLETRAY_WIDTH_PARAM)?.AsDouble() ?? 0;
                         height = cableTray.get_Parameter(BuiltInParameter.RBS_CABLETRAY_HEIGHT_PARAM)?.AsDouble() ?? 0;
+                        
+                        // ✅ DEBUG: Log direct API access
+                        if (!DeploymentConfiguration.DeploymentMode && (width > 0 || height > 0))
+                        {
+                            SafeFileLogger.SafeAppendText("pipe_dimension_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] CABLETRAY {cableTray.Id}: Direct API fallback OK, W={width * 304.8:F1}mm, H={height * 304.8:F1}mm\n");
+                        }
                     }
+                    
                     return (width, height);
                 }
                 else if (mepElement is Conduit conduit)
@@ -4222,16 +4319,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     double width = 0;
                     double height = 0;
 
+                    // Try paramCache first if available
                     if (paramCache != null)
                     {
                         if (paramCache.TryGetValue("Width", out var wStr) && double.TryParse(wStr, out var wVal)) width = wVal / 304.8;
                         if (paramCache.TryGetValue("Height", out var hStr) && double.TryParse(hStr, out var hVal)) height = hVal / 304.8;
                     }
-                    else
+                    
+                    // ✅ FIX: Fall back to direct Revit API if paramCache didn't provide values
+                    if (width <= 0 && height <= 0)
                     {
                         width = conduit.get_Parameter(BuiltInParameter.RBS_CABLETRAY_WIDTH_PARAM)?.AsDouble() ?? 0;
                         height = conduit.get_Parameter(BuiltInParameter.RBS_CABLETRAY_HEIGHT_PARAM)?.AsDouble() ?? 0;
                     }
+                    
                     return (width, height);
                 }
                 else if (mepElement is FamilyInstance famInst)
@@ -4239,6 +4340,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     double width = 0;
                     double height = 0;
 
+                    // Try paramCache first if available
                     if (paramCache != null)
                     {
                         if (paramCache.TryGetValue("Damper Width", out var dwStr) && double.TryParse(dwStr, out var dwVal)) width = dwVal / 304.8;
@@ -4247,7 +4349,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (paramCache.TryGetValue("Damper Height", out var dhStr) && double.TryParse(dhStr, out var dhVal)) height = dhVal / 304.8;
                         else if (paramCache.TryGetValue("Height", out var hStr) && double.TryParse(hStr, out var hVal)) height = hVal / 304.8;
                     }
-                    else
+                    
+                    // ✅ FIX: Fall back to direct Revit API if paramCache didn't provide values
+                    if (width <= 0 && height <= 0)
                     {
                         var widthParam = famInst.LookupParameter("Damper Width") ?? famInst.LookupParameter("Width") ?? famInst.LookupParameter("width");
                         var heightParam = famInst.LookupParameter("Damper Height") ?? famInst.LookupParameter("Height") ?? famInst.LookupParameter("height");
@@ -4845,7 +4949,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Get MEP element orientation vector
         /// </summary>
-        private XYZ GetMepElementOrientation(Element mepElement)
+        public XYZ GetMepElementOrientation(Element mepElement)
         {
             try
             {
@@ -5521,7 +5625,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         ///      instead of using GetWallOrientationFromType (which is for walls/framing only)
         /// Status: WORKING - VERIFIED IN placement_debug.log (2025-10-27 20:11:40)
         /// </summary>
-        private string GetMepOrientationDirection(string structuralElementType, XYZ mepOrientation, string wallDirectionType)
+        public string GetMepOrientationDirection(string structuralElementType, XYZ mepOrientation, string wallDirectionType)
         {
             try
             {
@@ -5587,7 +5691,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         ///   - Vertical elements: Gets rotation from element's transform BasisX/BasisY vectors
         /// For walls/framing: Returns 0 (rotation handled differently)
         /// </summary>
-        private double CalculateMepElementRotationAngle(string structuralElementType, XYZ mepOrientation, Element mepElement)
+        public double CalculateMepElementRotationAngle(string structuralElementType, XYZ mepOrientation, Element mepElement)
         {
             try
             {

@@ -6845,6 +6845,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 var document = GetCurrentDocument();
                 if (document != null)
                 {
+                    // ✅ CRITICAL FIX: Capture Section Box BEFORE any other logic
+                    // This ensures the database has the FRESH section box bounds for the current view
+                    if (document.ActiveView is View3D view3D && view3D.IsSectionBoxActive)
+                    {
+                        try
+                        {
+                            using (var dbContext = new JSE_RevitAddin_MEP_OPENINGS.Data.SleeveDbContext(document))
+                            {
+                                var sectionBoxService = new JSE_RevitAddin_MEP_OPENINGS.Services.SectionBoxService();
+                                sectionBoxService.CaptureAndStore(view3D, dbContext.Connection);
+                                DebugLogger.Info($"[SECTION-BOX] PRE-REFRESH: Updated DB Section Box from View: {view3D.Name}");
+                                JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [SECTION-BOX] PRE-REFRESH: Updated DB Section Box from View: {view3D.Name}\n");
+                            }
+                        }
+                        catch (Exception sbEx)
+                        {
+                             DebugLogger.Warning($"[SECTION-BOX] PRE-REFRESH: Failed to update section box: {sbEx.Message}");
+                             JSE_RevitAddin_MEP_OPENINGS.Services.LoggingConfiguration.ConditionalAppendAllText(SafeFileLogger.GetLogFilePath("logger_debug.txt"), $"[{DateTime.Now}] [SECTION-BOX] PRE-REFRESH: Failed to update section box: {sbEx.Message}\n");
+                        }
+                    }
                     // Get actual UI selections
                     var selectedFilterItems = GetSelectedFilterItems();
                     var selectedMepCategories = GetSelectedMepCategories();

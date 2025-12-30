@@ -1,4 +1,3 @@
-
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -247,6 +246,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 int i = 0;
                 foreach (var zone in zones)
                 {
+                    if (!comboMap.ContainsKey(zone.Id)) continue;
+                    
                     int cid = comboMap[zone.Id];
                     int mid = zone.MepElementId?.IntegerValue ?? zone.MepElementIdValue;
                     int hid = zone.StructuralElementId?.IntegerValue ?? zone.StructuralElementIdValue;
@@ -254,7 +255,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     double y = zone.IntersectionPoint?.Y ?? zone.IntersectionPointY;
                     double z = zone.IntersectionPoint?.Z ?? zone.IntersectionPointZ;
 
-                    conditions.Add($"(ComboId={cid} AND MepElementId={mid} AND HostElementId={hid} AND ABS(IntersectionX-{x}) < 0.0001 AND ABS(IntersectionY-{y}) < 0.0001 AND ABS(IntersectionZ-{z}) < 0.0001)");
+                    // Skip zones with invalid coordinates (NaN/Infinity cause SQL errors)
+                    if (double.IsNaN(x) || double.IsInfinity(x) ||
+                        double.IsNaN(y) || double.IsInfinity(y) ||
+                        double.IsNaN(z) || double.IsInfinity(z))
+                    {
+                        _logger?.Invoke($"[SQLite] ⚠️ Skipping zone with invalid coordinates: {zone.Id}");
+                        continue;
+                    }
+
+                    // Use parameterized query to avoid locale/formatting issues with doubles
+                    conditions.Add($"(ComboId=@cid{i} AND MepElementId=@mid{i} AND HostElementId=@hid{i} AND ABS(IntersectionX-@x{i}) < 0.0001 AND ABS(IntersectionY-@y{i}) < 0.0001 AND ABS(IntersectionZ-@z{i}) < 0.0001)");
+                    cmd.Parameters.AddWithValue($"@cid{i}", cid);
+                    cmd.Parameters.AddWithValue($"@mid{i}", mid);
+                    cmd.Parameters.AddWithValue($"@hid{i}", hid);
+                    cmd.Parameters.AddWithValue($"@x{i}", x);
+                    cmd.Parameters.AddWithValue($"@y{i}", y);
+                    cmd.Parameters.AddWithValue($"@z{i}", z);
+                    
                     if (++i > 100) break; // Limit to 100 per check to avoid giant SQL
                 }
 
@@ -828,7 +846,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             HostParameterValuesJson TEXT,
                             WallCenterlinePointX REAL,
                             WallCenterlinePointY REAL,
-                            WallCenterlinePointZ REAL
+                            WallCenterlinePointZ REAL,
+                            MepOrientationX REAL,
+                            MepOrientationY REAL,
+                            MepOrientationZ REAL,
+                            MepRotationAngleRad REAL,
+                            MepRotationAngleDeg REAL,
+                            MepOrientationDirection TEXT
                         )";
                     cmd.ExecuteNonQuery();
                     cmd.CommandText = "DELETE FROM BulkUpdateZones";
@@ -845,8 +869,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                     // 3. Insert update data into Temp Table
                     cmd.CommandText = @"
-                        INSERT INTO BulkUpdateZones (ClashZoneId, IsResolvedFlag, IsClusterResolvedFlag, IsCombinedResolved, SleeveInstanceId, ClusterInstanceId, MepParameterValuesJson, HostParameterValuesJson, WallCenterlinePointX, WallCenterlinePointY, WallCenterlinePointZ) 
-                        VALUES (@ClashZoneId, @IsResolvedFlag, @IsClusterResolvedFlag, @IsCombinedResolved, @SleeveInstanceId, @ClusterInstanceId, @MepParameterValuesJson, @HostParameterValuesJson, @WallCenterlinePointX, @WallCenterlinePointY, @WallCenterlinePointZ)";
+                        INSERT INTO BulkUpdateZones (ClashZoneId, IsResolvedFlag, IsClusterResolvedFlag, IsCombinedResolved, SleeveInstanceId, ClusterInstanceId, MepParameterValuesJson, HostParameterValuesJson, WallCenterlinePointX, WallCenterlinePointY, WallCenterlinePointZ, MepOrientationX, MepOrientationY, MepOrientationZ, MepRotationAngleRad, MepRotationAngleDeg, MepOrientationDirection) 
+                        VALUES (@ClashZoneId, @IsResolvedFlag, @IsClusterResolvedFlag, @IsCombinedResolved, @SleeveInstanceId, @ClusterInstanceId, @MepParameterValuesJson, @HostParameterValuesJson, @WallCenterlinePointX, @WallCenterlinePointY, @WallCenterlinePointZ, @MepOrientationX, @MepOrientationY, @MepOrientationZ, @MepRotationAngleRad, @MepRotationAngleDeg, @MepOrientationDirection)";
 
                     var pId = cmd.Parameters.Add("@ClashZoneId", System.Data.DbType.Int32);
                     var pRes = cmd.Parameters.Add("@IsResolvedFlag", System.Data.DbType.Int32);
@@ -859,6 +883,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     var pCX = cmd.Parameters.Add("@WallCenterlinePointX", System.Data.DbType.Double);
                     var pCY = cmd.Parameters.Add("@WallCenterlinePointY", System.Data.DbType.Double);
                     var pCZ = cmd.Parameters.Add("@WallCenterlinePointZ", System.Data.DbType.Double);
+                    var pMX = cmd.Parameters.Add("@MepOrientationX", System.Data.DbType.Double);
+                    var pMY = cmd.Parameters.Add("@MepOrientationY", System.Data.DbType.Double);
+                    var pMZ = cmd.Parameters.Add("@MepOrientationZ", System.Data.DbType.Double);
+                    var pRotRad = cmd.Parameters.Add("@MepRotationAngleRad", System.Data.DbType.Double);
+                    var pRotDeg = cmd.Parameters.Add("@MepRotationAngleDeg", System.Data.DbType.Double);
+                    var pDir = cmd.Parameters.Add("@MepOrientationDirection", System.Data.DbType.String);
 
                     foreach (var zone in validZones)
                     {
@@ -876,6 +906,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         pCX.Value = zone.WallCenterlinePointX;
                         pCY.Value = zone.WallCenterlinePointY;
                         pCZ.Value = zone.WallCenterlinePointZ;
+                        pMX.Value = zone.MepOrientationX;
+                        pMY.Value = zone.MepOrientationY;
+                        pMZ.Value = zone.MepOrientationZ;
+                        pRotRad.Value = zone.MepElementRotationAngle; // In radians
+                        pRotDeg.Value = zone.MepElementRotationAngle * 180.0 / Math.PI; // Convert to degrees
+                        pDir.Value = zone.MepElementOrientationDirection ?? string.Empty;
                         cmd.ExecuteNonQuery();
                     }
 
@@ -893,6 +929,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             WallCenterlinePointX = (SELECT WallCenterlinePointX FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
                             WallCenterlinePointY = (SELECT WallCenterlinePointY FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
                             WallCenterlinePointZ = (SELECT WallCenterlinePointZ FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
+                            MepOrientationX = (SELECT MepOrientationX FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
+                            MepOrientationY = (SELECT MepOrientationY FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
+                            MepOrientationZ = (SELECT MepOrientationZ FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
+                            MepRotationAngleRad = (SELECT MepRotationAngleRad FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
+                            MepRotationAngleDeg = (SELECT MepRotationAngleDeg FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
+                            MepOrientationDirection = (SELECT MepOrientationDirection FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
                             UpdatedAt = CURRENT_TIMESTAMP
                         WHERE ClashZoneId IN (SELECT ClashZoneId FROM BulkUpdateZones)";
                     cmd.ExecuteNonQuery();
@@ -1031,11 +1073,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         updateCmd.CommandText = @"
                             UPDATE ClashZones
                             SET 
-                                IsResolvedFlag = (SELECT IsResolvedFlag FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneId),
-                                IsClusterResolvedFlag = (SELECT IsClusterResolvedFlag FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneId),
-                                IsCombinedResolved = (SELECT IsCombinedResolved FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneId),
-                                SleeveInstanceId = (SELECT SleeveInstanceId FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneId),
-                                ClusterInstanceId = (SELECT ClusterInstanceId FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneId),
+                                IsResolvedFlag = CASE WHEN (SELECT IsResolvedFlag FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneId) = 1 THEN 1 ELSE IsResolvedFlag END,
+                                IsClusterResolvedFlag = CASE WHEN (SELECT IsClusterResolvedFlag FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneId) = 1 THEN 1 ELSE IsClusterResolvedFlag END,
+                                IsCombinedResolved = CASE WHEN (SELECT IsCombinedResolved FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneId) = 1 THEN 1 ELSE IsCombinedResolved END,
+                                SleeveInstanceId = CASE WHEN (SELECT SleeveInstanceId FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneId) > 0 THEN (SELECT SleeveInstanceId FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneId) ELSE SleeveInstanceId END,
+                                ClusterInstanceId = CASE WHEN (SELECT ClusterInstanceId FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneId) > 0 THEN (SELECT ClusterInstanceId FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneId) ELSE ClusterInstanceId END,
                                 IsCurrentClashFlag = (SELECT IsCurrentClashFlag FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneId),
                                 IsClusteredFlag = (SELECT IsClusteredFlag FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneId),
                                 ReadyForPlacementFlag = (SELECT IsCurrentClashFlag FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneId),
@@ -1817,12 +1859,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         cmd.Parameters.AddWithValue($"@HDK{j}", zone.HostDocKey ?? string.Empty);
                         cmd.Parameters.AddWithValue($"@UID{j}", zone.MepElementUniqueId ?? string.Empty);
                         cmd.Parameters.AddWithValue($"@HO{j}", zone.HostOrientation ?? string.Empty);
-                        cmd.Parameters.AddWithValue($"@MOD{j}", string.Empty); // MepOrientationDirection - populated later
-                        cmd.Parameters.AddWithValue($"@MOX{j}", 0.0); // MepOrientationX - populated later
-                        cmd.Parameters.AddWithValue($"@MOY{j}", 0.0); // MepOrientationY - populated later
-                        cmd.Parameters.AddWithValue($"@MOZ{j}", 0.0); // MepOrientationZ - populated later
-                        cmd.Parameters.AddWithValue($"@MRAR{j}", 0.0); // MepRotationAngleRad - populated later
-                        cmd.Parameters.AddWithValue($"@MRAD{j}", 0.0); // MepRotationAngleDeg - populated later
+                        
+                        // ✅ MEP ORIENTATION DIRECTION: Populated in enrichment loop
+                        cmd.Parameters.AddWithValue($"@MOD{j}", zone.MepElementOrientationDirection ?? string.Empty);
+                        
+                        // ✅ MEP ORIENTATION FIX: Use actual orientation vector from ClashZone (calculated during refresh)
+                        cmd.Parameters.AddWithValue($"@MOX{j}", zone.MepOrientationX);
+                        cmd.Parameters.AddWithValue($"@MOY{j}", zone.MepOrientationY);
+                        cmd.Parameters.AddWithValue($"@MOZ{j}", zone.MepOrientationZ);
+                        
+                        // ✅ FLOOR ROTATION FIX: Use actual rotation angle from ClashZone (calculated during refresh)
+                        double rotationAngleRad = zone.MepElementRotationAngle; // In radians
+                        double rotationAngleDeg = rotationAngleRad * 180.0 / Math.PI; // Convert to degrees
+                        cmd.Parameters.AddWithValue($"@MRAR{j}", rotationAngleRad);
+                        cmd.Parameters.AddWithValue($"@MRAD{j}", rotationAngleDeg);
+                        
                         cmd.Parameters.AddWithValue($"@MAXR{j}", 0.0); // MepAngleToXRad - populated later
                         cmd.Parameters.AddWithValue($"@MAXD{j}", 0.0); // MepAngleToXDeg - populated later
                         cmd.Parameters.AddWithValue($"@MAYR{j}", 0.0); // MepAngleToYRad - populated later
@@ -2067,6 +2118,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
         private int GetOrCreateFilter(string filterName, string category, SQLiteTransaction transaction)
         {
+            // ✅ NORMALIZE: Remove category suffixes from filter name to prevent duplicates
+            // This ensures "Plumbing_pipes" and "Plumbing" both resolve to "Plumbing"
+            filterName = FilterNameHelper.NormalizeBaseName(filterName, filterName, category);
+            
             if (string.IsNullOrWhiteSpace(filterName) || string.IsNullOrWhiteSpace(category))
             {
                 _logger($"[SQLite] ⚠️ Invalid filter metadata (Name='{filterName}', Category='{category}').");
@@ -2308,10 +2363,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 }
 
                 _logger($"[SQLite][BATCH] Found {existingCombos.Count}/{uniqueCombos.Count} existing file combos");
+                if (existingCombos.Count > 0)
+                    _logger($"[SQLite][BATCH-DEBUG] Sample existing combo key: {existingCombos.Keys.First()}");
             }
 
             // STEP 3: Single multi-row INSERT for new combos
             var newCombos = uniqueCombos.Where(kvp => !existingCombos.ContainsKey(kvp.Key)).ToList();
+            _logger($"[SQLite][BATCH-DEBUG] New combos to insert: {newCombos.Count}");
+            if (newCombos.Count > 0)
+                _logger($"[SQLite][BATCH-DEBUG] Sample new combo: Linked='{newCombos[0].Value.LinkedFile}', Host='{newCombos[0].Value.HostFile}', Cat='{newCombos[0].Value.Category}'");
 
             if (newCombos.Count > 0)
             {
@@ -2350,7 +2410,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         INSERT INTO FileCombos (FilterId, Category, SelectedHostCategories, LinkedFileKey, HostFileKey, IsFilterComboNew, ProcessedAt, CreatedAt, UpdatedAt)
                         VALUES {string.Join(", ", valuesClauses)}";
 
-                    cmd.ExecuteNonQuery();
+                    var insertedRows = cmd.ExecuteNonQuery();
+                    _logger($"[SQLite][BATCH-DEBUG] INSERT executed, rows affected: {insertedRows}");
 
                     // Retrieve the new ComboIds
                     cmd.Parameters.Clear();
@@ -2411,6 +2472,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             }
 
             sw.Stop();
+            _logger($"[SQLite][BATCH-DEBUG] Mapped {result.Count}/{zones.Count} zones to ComboIds");
+            if (result.Count < zones.Count)
+            {
+                _logger($"[SQLite][BATCH-WARNING] ❌ {zones.Count - result.Count} zones NOT mapped to ComboIds!");
+            }
             _logger($"[SQLite][BATCH] ⚡ BatchGetOrCreateFileCombos completed in {sw.ElapsedMilliseconds}ms for {zones.Count} zones ({sw.ElapsedMilliseconds / (double)zones.Count:F1}ms per zone)");
 
             return result;
@@ -4496,12 +4562,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             {
                 withoutExtension = trimmed;
             }
-
             return withoutExtension.Trim();
         }
 
         public List<ClashZone> GetClashZonesByFilter(string filterName, string category, bool unresolvedOnly = false, bool readyForPlacementOnly = false)
         {
+            // ✅ NORMALIZE: Remove category suffixes from filter name before querying
+            // This ensures "Plumbing_pipes" and "Plumbing" both resolve to "Plumbing"
+            filterName = FilterNameHelper.NormalizeBaseName(filterName, filterName, category);
+            
             var result = new List<ClashZone>();
 
             if (string.IsNullOrWhiteSpace(filterName) || string.IsNullOrWhiteSpace(category))
@@ -4578,6 +4647,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 }
             }
 
+            return result;
+        }
+
+        /// <summary>
+        /// Returns all ClashZones matching the given filter names and categories.
+        /// </summary>
+        public List<ClashZone> GetClashZonesByFilterAndCategory(List<string> filterNames, List<string> categories)
+        {
+            if (filterNames == null || filterNames.Count == 0 || categories == null || categories.Count == 0)
+                return new List<ClashZone>();
+
+            var result = new List<ClashZone>();
+            try
+            {
+                foreach (var filterName in filterNames)
+                {
+                    foreach (var category in categories)
+                    {
+                        var zones = GetClashZonesByFilter(filterName, category, unresolvedOnly: false);
+                        if (zones != null) result.AddRange(zones);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ❌ GetClashZonesByFilterAndCategory error: {ex.Message}");
+            }
             return result;
         }
 
@@ -4689,6 +4785,114 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         {
             BulkSetReadyForPlacementFlags(clashZoneGuids, false);
         }
+
+        public void ResetIsCurrentClashFlag()
+        {
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = "UPDATE ClashZones SET IsCurrentClashFlag = 0 WHERE IsCurrentClashFlag = 1";
+                    int rows = cmd.ExecuteNonQuery();
+                    if (!DeploymentConfiguration.DeploymentMode && rows > 0)
+                        _logger($"[SQLite] 🔄 ResetIsCurrentClashFlag: Cleared flag for {rows} zones.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ❌ Error in ResetIsCurrentClashFlag: {ex.Message}");
+            }
+        }
+
+        public void BulkSetIsCurrentClashFlag(List<Guid> guids, bool value) 
+        {
+             if (guids == null || guids.Count == 0) return;
+             
+             var unique = guids.Distinct().ToList();
+             const int batchSize = 100;
+             int totalUpdated = 0;
+
+             for (int i = 0; i < unique.Count; i += batchSize)
+             {
+                 var batch = unique.Skip(i).Take(batchSize).Select(g => $"UPPER('{g.ToString().ToUpperInvariant()}')");
+                 using (var cmd = _context.Connection.CreateCommand())
+                 {
+                     cmd.CommandText = $"UPDATE ClashZones SET IsCurrentClashFlag = {(value ? 1 : 0)}, UpdatedAt = CURRENT_TIMESTAMP WHERE UPPER(ClashZoneGuid) IN ({string.Join(",", batch)})";
+                     totalUpdated += cmd.ExecuteNonQuery();
+                 }
+             }
+             if (!DeploymentConfiguration.DeploymentMode && totalUpdated > 0)
+                _logger($"[SQLite] ✅ BulkSetIsCurrentClashFlag: Set {value} for {totalUpdated} zones.");
+        }
+
+        // ====================================================================================
+        // ✅ 2-STEP FLAG LOGIC (USER REQUESTED)
+        // 1. ResetIsCurrentClashFlag: Reset ALL zones to 0 initially.
+        // 2. SetIsCurrentClashFlagForSectionBox: Set to 1 based on Filters + SectionBox.
+        // 3. SetReadyForPlacementForUnresolvedZonesInSectionBox: Set R4P=1 based on Step 2.
+        // ====================================================================================
+
+
+        public int SetIsCurrentClashFlagForSectionBox(
+            List<string> filterNames,
+            List<string> categories,
+            BoundingBoxXYZ sectionBox)
+        {
+            if (filterNames == null || filterNames.Count == 0 || categories == null || categories.Count == 0)
+                return 0;
+
+            int markedCount = 0;
+
+            try
+            {
+                // We'll iterate through filters and categories and use GetClashZonesByFilter
+                var zonesToCheck = new List<ClashZone>();
+                foreach (var filterName in filterNames)
+                {
+                    foreach (var category in categories)
+                    {
+                        var zones = GetClashZonesByFilter(filterName, category, unresolvedOnly: false);
+                        if (zones != null) zonesToCheck.AddRange(zones);
+                    }
+                }
+
+                if (zonesToCheck.Count == 0) return 0;
+
+                // Apply Section Box Check
+                var zonesToMark = new List<Guid>();
+                foreach (var zone in zonesToCheck)
+                {
+                    // Spatial Check
+                    if (sectionBox != null) 
+                    {
+                        var pt = zone.IntersectionPoint;
+                        // Reconstruct if needed
+                        if (pt == null && (Math.Abs(zone.IntersectionPointX) > 1e-9 || Math.Abs(zone.IntersectionPointY) > 1e-9))
+                            pt = new XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ);
+
+                        if (pt == null || !JSE_RevitAddin_MEP_OPENINGS.Helpers.SectionBoxHelper.IsPointInBoundingBox(pt, sectionBox))
+                            continue;
+                    }
+
+                    zonesToMark.Add(zone.Id);
+                }
+
+                if (zonesToMark.Count > 0)
+                {
+                    // Bulk Update to 1
+                    BulkSetIsCurrentClashFlag(zonesToMark, true);
+                    markedCount = zonesToMark.Count;
+                }
+            }
+            catch (Exception ex)
+            {
+                 _logger($"[SQLite] ❌ Error in SetIsCurrentClashFlagForSectionBox: {ex.Message}");
+            }
+
+            return markedCount;
+        }
+
+
 
         /// <summary>
         /// ✅ PERFORMANCE FIX: Bulk set ReadyForPlacementFlag for a collection of GUIDs. Batches to avoid oversized SQL.
@@ -4881,433 +5085,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// <param name="categories">List of categories to process</param>
         /// <param name="sectionBox">Section box bounds (null if no section box active)</param>
         /// <returns>Number of zones marked as ready</returns>
+        /// <summary>
+        /// Update ReadyForPlacementFlag based *solely* on IsCurrentClashFlag (set by SessionContextService).
+        /// This method no longer performs spatial or category filtering itself.
+        /// </summary>
         public int SetReadyForPlacementForUnresolvedZonesInSectionBox(
-            List<string> filterNames,
-            List<string> categories,
-            BoundingBoxXYZ sectionBox)
+            List<string> ignoredData1 = null,
+            List<string> ignoredData2 = null,
+            BoundingBoxXYZ ignoredData3 = null)
         {
-            // ✅ OPTIMIZATION: Use single-query batch UPDATE if flag is enabled
-            if (OptimizationFlags.UseBatchReadyForPlacementUpdate)
-            {
-                return SetReadyForPlacementBatchOptimized(filterNames, categories, sectionBox);
-            }
+            // ✅ SIMPLIFIED: Pure SQL update based on IsCurrentClashFlag.
+            // Logic moved to SessionContextService to adhere to SOLID / User Request.
 
-            if (filterNames == null || filterNames.Count == 0 || categories == null || categories.Count == 0)
-            {
-                return 0;
-            }
-
-            int totalMarked = 0;
-            const double tol = 0.1; // Tolerance to avoid precision misses (in feet ~ 30mm)
-
+            int updatedCount = 0;
             try
             {
-                // ✅ CRITICAL FIX: After SaveClashZones, newly saved zones may not be in R-tree index yet
-                // Temporarily disable R-tree to force B-tree query (which will find newly saved zones)
-                // R-tree indexing happens asynchronously or on next refresh, so we need B-tree for immediate queries
-                // ✅ R-TREE OPTIMIZATION: Use R-tree spatial query if enabled and section box is active
-                // BUT: Disable R-tree if this is called immediately after SaveClashZones (zones not indexed yet)
-                bool useRTree = Services.OptimizationFlags.UseRTreeDatabaseIndex && sectionBox != null;
-
-                // ✅ CRITICAL: If R-tree is enabled but we just saved zones, they may not be indexed yet
-                // Force B-tree query to ensure newly saved zones are found
-                // Note: This is a conservative approach - we could check if zones were just saved, but simpler to always use B-tree after SaveClashZones
-                // The performance impact is minimal since this only runs once per refresh
-                if (useRTree && !DeploymentConfiguration.DeploymentMode)
+                using (var cmd = _context.Connection.CreateCommand())
                 {
-                    _logger($"[SQLite] [FLAG-RESET] ⚠️ R-tree enabled but may miss newly saved zones - will fallback to B-tree if R-tree returns 0");
-                }
+                    cmd.CommandText = @"
+                        UPDATE ClashZones 
+                        SET ReadyForPlacementFlag = 1, 
+                            UpdatedAt = CURRENT_TIMESTAMP
+                        WHERE IsCurrentClashFlag = 1 
+                          AND IsResolvedFlag = 0 
+                          AND IsClusterResolvedFlag = 0 
+                          AND IsCombinedResolved = 0";
+                    
+                    updatedCount = cmd.ExecuteNonQuery();
 
-                foreach (var filterName in filterNames)
-                {
-                    foreach (var category in categories)
+                    if (!DeploymentConfiguration.DeploymentMode && updatedCount > 0)
                     {
-                        if (string.IsNullOrWhiteSpace(filterName) || string.IsNullOrWhiteSpace(category))
-                            continue;
-
-                        List<ClashZone> zones;
-                        var zonesToMark = new List<Guid>();
-
-                        // ✅ DIAGNOSTIC: Log which path will be used (direct logging to ensure it appears)
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            try
-                            {
-                                _logger($"[SQLite] [FLAG-RESET] Filter='{filterName}', Category='{category}', UseRTree={useRTree}, SectionBox={(sectionBox != null ? "Present" : "NULL")}, OptimizationFlag={Services.OptimizationFlags.UseRTreeDatabaseIndex}");
-                                // ✅ ALSO: Direct DebugLogger to ensure message appears
-                                DebugLogger.Info($"[ClashZoneRepository] [FLAG-RESET] Filter='{filterName}', Category='{category}', UseRTree={useRTree}, SectionBox={(sectionBox != null ? "Present" : "NULL")}, OptimizationFlag={Services.OptimizationFlags.UseRTreeDatabaseIndex}");
-                            }
-                            catch { }
-                        }
-
-                        if (useRTree)
-                        {
-                            // ✅ R-TREE PATH: Query using R-tree spatial index (O(log n))
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                _logger($"[SQLite] [FLAG-RESET] Using R-tree query path for filter '{filterName}', category '{category}'");
-                            }
-
-                            try
-                            {
-                                zones = GetClashZonesInSectionBoxRTree(filterName, category, sectionBox) ?? new List<ClashZone>();
-
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    _logger($"[SQLite] ✅ R-tree query returned {zones.Count} zones for filter '{filterName}', category '{category}'");
-                                    DebugLogger.Info($"[ClashZoneRepository] [FLAG-RESET] R-tree query returned {zones.Count} zones");
-                                }
-
-                                // ⚠️⚠️⚠️ CRITICAL FIX - DO NOT REMOVE OR MODIFY ⚠️⚠️⚠️
-                                // ============================================================
-                                // PROBLEM: After SaveClashZones, newly saved zones may not be indexed in R-tree yet.
-                                //          R-tree indexing happens asynchronously or on next refresh, so immediate
-                                //          queries after SaveClashZones will return 0 zones even though zones exist.
-                                //
-                                // SOLUTION: If R-tree returns 0 zones, automatically fall back to B-tree query.
-                                //           B-tree loads ALL zones and filters in memory, ensuring newly saved zones
-                                //           are found even if not yet indexed in R-tree.
-                                //
-                                // IMPACT IF REMOVED: 
-                                //   - Newly created zones won't be found by SetReadyForPlacementForUnresolvedZonesInSectionBox
-                                //   - ReadyForPlacementFlag won't be set
-                                //   - Placement won't find eligible zones
-                                //   - Sleeves won't be placed for newly detected clashes
-                                //
-                                // TESTED: 2025-12-05 - Confirmed working after rebuild
-                                // ============================================================
-                                if (zones.Count == 0)
-                                {
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        _logger($"[SQLite] ⚠️ R-tree returned 0 zones - falling back to B-tree (newly saved zones may not be indexed yet)");
-                                        DebugLogger.Warning($"[ClashZoneRepository] [FLAG-RESET] R-tree returned 0 zones for filter '{filterName}', category '{category}' - using B-tree fallback");
-                                    }
-
-                                    useRTree = false; // Disable R-tree for remaining iterations
-                                    zones = GetClashZonesByFilter(filterName, category, unresolvedOnly: false) ?? new List<ClashZone>();
-
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        _logger($"[SQLite] ✅ B-tree fallback returned {zones.Count} zones for filter '{filterName}', category '{category}'");
-                                        DebugLogger.Info($"[ClashZoneRepository] [FLAG-RESET] B-tree fallback returned {zones.Count} zones");
-                                    }
-                                }
-                            }
-                            catch (Exception rtreeEx)
-                            {
-                                // ✅ FALLBACK: If R-tree query fails, fall back to B-tree + in-memory filtering
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    _logger($"[SQLite] ⚠️ R-tree query failed, falling back to B-tree: {rtreeEx.Message}");
-                                    DebugLogger.Warning($"[ClashZoneRepository] R-tree query failed for filter '{filterName}', category '{category}': {rtreeEx.Message}");
-                                }
-
-                                useRTree = false; // Disable R-tree for remaining iterations
-                                zones = GetClashZonesByFilter(filterName, category, unresolvedOnly: false) ?? new List<ClashZone>();
-
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    _logger($"[SQLite] ✅ B-tree fallback returned {zones.Count} zones for filter '{filterName}', category '{category}'");
-                                    DebugLogger.Info($"[ClashZoneRepository] [FLAG-RESET] B-tree fallback returned {zones.Count} zones");
-                                }
-                            }
-                        }
-                        else
-                        {
-                            // ✅ B-TREE PATH: Load all zones, filter in memory (O(n))
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                _logger($"[SQLite] [FLAG-RESET] Using B-tree fallback path for filter '{filterName}', category '{category}' (useRTree={useRTree}, sectionBox={(sectionBox != null ? "Present" : "NULL")})");
-                            }
-
-                            zones = GetClashZonesByFilter(filterName, category, unresolvedOnly: false) ?? new List<ClashZone>();
-
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                _logger($"[SQLite] ✅ B-tree query returned {zones.Count} zones for filter '{filterName}', category '{category}'");
-                                DebugLogger.Info($"[ClashZoneRepository] [FLAG-RESET] B-tree query returned {zones.Count} zones");
-                            }
-                        }
-
-                        // ✅ DIAGNOSTIC: Log zone resolution status
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            if (zones.Count > 0)
-                            {
-                                int resolvedCount = zones.Count(z => z.IsResolved || z.IsClusterResolved);
-                                int unresolvedCount = zones.Count(z => !z.IsResolved && !z.IsClusterResolved);
-                                _logger($"[SQLite] [FLAG-RESET] Zone status: Total={zones.Count}, Resolved={resolvedCount}, Unresolved={unresolvedCount}");
-                                DebugLogger.Info($"[ClashZoneRepository] [FLAG-RESET] Zone status: Total={zones.Count}, Resolved={resolvedCount}, Unresolved={unresolvedCount}");
-                            }
-                            else
-                            {
-                                // ✅ CRITICAL DIAGNOSTIC: If no zones found, query database directly to verify zones exist
-                                try
-                                {
-                                    using (var diagCmd = _context.Connection.CreateCommand())
-                                    {
-                                        diagCmd.CommandText = @"
-                                            SELECT COUNT(*) FROM ClashZones cz
-                                            INNER JOIN Filters f ON cz.FilterId = f.FilterId
-                                            WHERE f.FilterName = @FilterName AND cz.MepElementCategory = @Category";
-                                        diagCmd.Parameters.AddWithValue("@FilterName", filterName);
-                                        diagCmd.Parameters.AddWithValue("@Category", category);
-                                        var totalInDb = Convert.ToInt32(diagCmd.ExecuteScalar());
-
-                                        diagCmd.CommandText = @"
-                                            SELECT COUNT(*) FROM ClashZones cz
-                                            INNER JOIN Filters f ON cz.FilterId = f.FilterId
-                                            WHERE f.FilterName = @FilterName AND cz.MepElementCategory = @Category
-                                            AND cz.IsResolved = 0 AND cz.IsClusterResolved = 0";
-                                        var unresolvedInDb = Convert.ToInt32(diagCmd.ExecuteScalar());
-
-                                        _logger($"[SQLite] [FLAG-RESET] ⚠️ DIAGNOSTIC: Query returned 0 zones, but database has {totalInDb} total zones ({unresolvedInDb} unresolved) for filter '{filterName}', category '{category}'");
-                                        DebugLogger.Warning($"[ClashZoneRepository] [FLAG-RESET] ⚠️ DIAGNOSTIC: Query returned 0 zones, but database has {totalInDb} total zones ({unresolvedInDb} unresolved) for filter '{filterName}', category '{category}'");
-                                    }
-                                }
-                                catch (Exception diagEx)
-                                {
-                                    _logger($"[SQLite] [FLAG-RESET] ⚠️ Diagnostic query failed: {diagEx.Message}");
-                                }
-                            }
-                        }
-
-                        int zonesChecked = 0;
-                        int zonesUnresolved = 0;
-                        int zonesWithinSectionBox = 0;
-                        int zonesMarked = 0;
-
-                        foreach (var zone in zones)
-                        {
-                            if (zone == null) continue;
-                            zonesChecked++;
-
-                            // Simplified logging (only in Diagnostic mode)
-                            if (OptimizationFlags.UseDiagnosticMode)
-                            {
-                                SafeFileLogger.SafeAppendText("flag_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss.fff}] [FLAG-STATUS] Zone {zone.Id}: " +
-                                    $"Category={zone.MepElementCategory}, " +
-                                    $"IsResolved={zone.IsResolved}, IsClusterResolved={zone.IsClusterResolved}, " +
-                                    $"IsCurrentClash={zone.IsCurrentClash}, ReadyForPlacement={zone.ReadyForPlacement}, " +
-                                    $"IntersectionPoint=({zone.IntersectionPointX:F2},{zone.IntersectionPointY:F2},{zone.IntersectionPointZ:F2})\n");
-                            }
-
-                            // ⚠️⚠️⚠️ CRITICAL FIX - DO NOT REMOVE OR MODIFY ⚠️⚠️⚠️
-                            // ============================================================
-                            // PROBLEM: Zones loaded from database may have IntersectionPoint = null even though
-                            //          IntersectionPointX/Y/Z coordinates exist. This causes section box checks
-                            //          to fail (isWithinSectionBox = false) because IntersectionPoint is null.
-                            //
-                            // SOLUTION: Reconstruct IntersectionPoint from database coordinates if it's null
-                            //           but coordinates exist. This is a safety check in case GetClashZonesByFilter
-                            //           didn't reconstruct it properly.
-                            //
-                            // IMPACT IF REMOVED:
-                            //   - Zones with null IntersectionPoint will fail section box checks
-                            //   - ReadyForPlacementFlag won't be set for these zones
-                            //   - Placement won't find eligible zones
-                            //   - Sleeves won't be placed
-                            //
-                            // TESTED: 2025-12-05 - Confirmed working after rebuild
-                            // ============================================================
-                            if (zone.IntersectionPoint == null && (Math.Abs(zone.IntersectionPointX) > 1e-9 || Math.Abs(zone.IntersectionPointY) > 1e-9 || Math.Abs(zone.IntersectionPointZ) > 1e-9))
-                            {
-                                zone.IntersectionPoint = new XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ);
-                            }
-
-                            // ✅ CHECK 1: Is zone unresolved? (AFTER flag manager reset)
-                            bool isUnresolved = !zone.IsResolved && !zone.IsClusterResolved;
-                            if (isUnresolved) zonesUnresolved++;
-
-                            // ✅ CHECK 2: Is zone within section box? (if section box is active and not using R-tree)
-                            // Note: If using R-tree, spatial filtering already done at database level
-                            bool isWithinSectionBox = true; // Default: true if no section box
-                            if (sectionBox != null) // ✅ CRITICAL FIX: Always check section box strictly in memory (R-tree has padding)
-                            {
-                                var intersectionPoint = zone.IntersectionPoint;
-                                if (intersectionPoint != null)
-                                {
-                                    var sb = sectionBox;
-
-                                    // ⚠️ DEBUG: Log section box test only in Diagnostic mode
-                                    if (OptimizationFlags.UseDiagnosticMode)
-                                    {
-                                        SafeFileLogger.SafeAppendText("flag_debug.log",
-                                            $"[{DateTime.Now:HH:mm:ss.fff}] [SECTION-BOX-TEST] Zone {zone.Id}: " +
-                                            $"IntersectionPoint=({intersectionPoint.X:F2},{intersectionPoint.Y:F2},{intersectionPoint.Z:F2}), " +
-                                            $"SectionBox Min=({sb.Min.X:F2},{sb.Min.Y:F2},{sb.Min.Z:F2}) Max=({sb.Max.X:F2},{sb.Max.Y:F2},{sb.Max.Z:F2})\n");
-                                    }
-
-                                    // ✅ CRITICAL FIX: Use OVERLAP check instead of POINT check
-                                    // This selects pipes that are "long" and overlap the box even if center is outside
-
-                                    // 1. Get Zone Bounding Box
-                                    double zMinX, zMaxX, zMinY, zMaxY, zMinZ, zMaxZ;
-
-                                    bool hasValidSleeveBox =
-                                        Math.Abs(zone.SleeveBoundingBoxMinX) > 1e-9 || Math.Abs(zone.SleeveBoundingBoxMaxX) > 1e-9;
-
-                                    if (hasValidSleeveBox)
-                                    {
-                                        zMinX = zone.SleeveBoundingBoxMinX; zMaxX = zone.SleeveBoundingBoxMaxX;
-                                        zMinY = zone.SleeveBoundingBoxMinY; zMaxY = zone.SleeveBoundingBoxMaxY;
-                                        zMinZ = zone.SleeveBoundingBoxMinZ; zMaxZ = zone.SleeveBoundingBoxMaxZ;
-                                    }
-                                    else
-                                    {
-                                        // Fallback: Use IntersectionPoint +/- 1.0ft (approx 300mm)
-                                        double padding = 1.0;
-                                        zMinX = intersectionPoint.X - padding; zMaxX = intersectionPoint.X + padding;
-                                        zMinY = intersectionPoint.Y - padding; zMaxY = intersectionPoint.Y + padding;
-                                        zMinZ = intersectionPoint.Z - padding; zMaxZ = intersectionPoint.Z + padding;
-                                    }
-
-                                    // 2. Check Overlap (Standard AABB Intersection)
-                                    // !(Max1 < Min2 || Min1 > Max2)
-                                    isWithinSectionBox = !(
-                                        zMaxX < sb.Min.X - tol || zMinX > sb.Max.X + tol ||
-                                        zMaxY < sb.Min.Y - tol || zMinY > sb.Max.Y + tol ||
-                                        zMaxZ < sb.Min.Z - tol || zMinZ > sb.Max.Z + tol
-                                    );
-
-                                    // ⚠️ DEBUG: Log section box test RESULT for ALL zones
-                                    SafeFileLogger.SafeAppendText("flag_debug.log",
-                                        $"[{DateTime.Now:HH:mm:ss.fff}] [SECTION-BOX-RESULT] Zone {zone.Id}: isWithinSectionBox={isWithinSectionBox} (Overlap Check)\n");
-
-                                    if (isWithinSectionBox) zonesWithinSectionBox++;
-                                }
-                                else
-                                {
-                                    isWithinSectionBox = false; // Can't check without intersection point
-                                    {
-                                        _logger($"[SQLite] [FLAG-RESET] ⚠️ Zone {zone.Id} rejected: IsUnresolved={isUnresolved}, IntersectionPoint=NULL (X={zone.IntersectionPointX}, Y={zone.IntersectionPointY}, Z={zone.IntersectionPointZ})");
-                                    }
-                                }
-                            }
-                            else if (sectionBox == null)
-                            {
-                                zonesWithinSectionBox++; // All zones are "within" if no section box
-                            }
-                            else if (useRTree)
-                            {
-                                zonesWithinSectionBox++; // R-tree already filtered spatially
-                            }
-
-                            // ✅ SET FLAG: Only if BOTH conditions are true
-                            if (isUnresolved && isWithinSectionBox)
-                            {
-                                zonesToMark.Add(zone.Id);
-                                zonesMarked++;
-
-                                // ⚠️ DEBUG: Log which zone is being MARKED
-                                SafeFileLogger.SafeAppendText("flag_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss.fff}] [ZONE-MARKED] ✅ Zone {zone.Id} MARKED: Category={zone.MepElementCategory}, IsUnresolved={isUnresolved}, IsWithinSectionBox={isWithinSectionBox}\n");
-                            }
-                            else
-                            {
-                                // ⚠️ DEBUG: Log why zone is NOT being marked
-                                SafeFileLogger.SafeAppendText("flag_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss.fff}] [ZONE-SKIPPED] ❌ Zone {zone.Id} NOT marked: Category={zone.MepElementCategory}, IsUnresolved={isUnresolved}, IsWithinSectionBox={isWithinSectionBox}\n");
-                            }
-                        }
-
-                        // ✅ DIAGNOSTIC: Log filtering breakdown with sample zone details
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            _logger($"[SQLite] [FLAG-RESET] Filtering breakdown: Checked={zonesChecked}, Unresolved={zonesUnresolved}, WithinSectionBox={zonesWithinSectionBox}, ToMark={zonesMarked}");
-                            DebugLogger.Info($"[ClashZoneRepository] [FLAG-RESET] Filtering breakdown: Checked={zonesChecked}, Unresolved={zonesUnresolved}, WithinSectionBox={zonesWithinSectionBox}, ToMark={zonesMarked}");
-
-                            // ✅ CRITICAL DIAGNOSTIC: Log sample zones that were NOT marked (for debugging)
-                            if (zonesChecked > 0 && zonesMarked == 0)
-                            {
-                                var sampleNotMarked = zones
-                                    .Where(z => z != null)
-                                    .Take(5)
-                                    .Select(z => $"GUID={z.Id}, IsResolved={z.IsResolved}, IsClusterResolved={z.IsClusterResolved}, IntersectionPoint={z.IntersectionPoint?.ToString() ?? "NULL"}, ReadyForPlacement={z.ReadyForPlacement}")
-                                    .ToList();
-
-                                _logger($"[SQLite] [FLAG-RESET] ⚠️ WARNING: {zonesChecked} zones checked but 0 marked! Sample zones: {string.Join("; ", sampleNotMarked)}");
-                                DebugLogger.Warning($"[ClashZoneRepository] [FLAG-RESET] ⚠️ WARNING: {zonesChecked} zones checked but 0 marked! Sample zones: {string.Join("; ", sampleNotMarked)}");
-                            }
-                        }
-
-                        // ✅ UPDATE DB: Set ReadyForPlacementFlag=1 for zones that meet criteria
-                        // ✅ PERFORMANCE FIX: Use batch update instead of individual updates
-                        if (zonesToMark.Count > 0)
-                        {
-                            try
-                            {
-                                // ✅ BATCH UPDATE: Update all zones in a single SQL statement (much faster)
-                                BulkSetReadyForPlacementFlags(zonesToMark, true);
-                                totalMarked += zonesToMark.Count;
-
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    try
-                                    {
-                                        _logger($"[SQLite] ✅ Batch set ReadyForPlacementFlag=1 for {zonesToMark.Count} zones (out of {zones.Count} total) in filter '{filterName}', category '{category}' (unresolved + within section box)");
-                                        _logger($"[SQLite] [FLAG-RESET-BATCH] ✅ Batch update completed: {zonesToMark.Count} zones marked, totalMarked={totalMarked}");
-                                        // ✅ ALSO: Direct DebugLogger to ensure message appears
-                                        DebugLogger.Info($"[ClashZoneRepository] [FLAG-RESET-BATCH] ✅ Batch update completed: {zonesToMark.Count} zones marked, totalMarked={totalMarked} for filter '{filterName}', category '{category}'");
-                                    }
-                                    catch { }
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                // ✅ FALLBACK: If batch update fails, fall back to individual updates
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    _logger($"[SQLite] ⚠️ Batch update failed, falling back to individual updates: {ex.Message}");
-                                    DebugLogger.Warning($"[ClashZoneRepository] Batch update failed, using fallback: {ex.Message}");
-                                }
-
-                                // Fallback to individual updates
-                                int successCount = 0;
-                                foreach (var guid in zonesToMark)
-                                {
-                                    try
-                                    {
-                                        SetReadyForPlacementFlag(guid, true);
-                                        successCount++;
-                                    }
-                                    catch (Exception individualEx)
-                                    {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        {
-                                            _logger($"[SQLite] ❌ Failed to set ReadyForPlacementFlag=1 for GUID {guid}: {individualEx.Message}");
-                                            DebugLogger.Error($"[ClashZoneRepository] Failed to set ReadyForPlacementFlag for GUID {guid}: {individualEx.Message}");
-                                        }
-                                    }
-                                }
-                                totalMarked += successCount;
-
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    _logger($"[SQLite] ✅ Set ReadyForPlacementFlag=1 for {successCount}/{zonesToMark.Count} zones (fallback mode) in filter '{filterName}', category '{category}'");
-                                }
-                            }
-                        }
-                        else if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            _logger($"[SQLite] ⚠️ No zones to mark as ReadyForPlacement in filter '{filterName}', category '{category}' (total zones: {zones.Count}, unresolved: {zones.Count(z => !z.IsResolved && !z.IsClusterResolved)}, within section box: checked)");
-                        }
+                         _logger($"[SQLite] ✅ SetReadyForPlacement (SQL): Marked {updatedCount} zones based on IsCurrentClashFlag=1.");
                     }
                 }
             }
             catch (Exception ex)
             {
-                _logger($"[SQLite] ❌ Error setting ReadyForPlacementFlag for unresolved zones: {ex.Message}");
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    DebugLogger.Error($"[ClashZoneRepository] Error setting ReadyForPlacementFlag: {ex.Message}");
-                }
+                 _logger($"[SQLite] ❌ Error in SetReadyForPlacementForUnresolvedZonesInSectionBox: {ex.Message}");
             }
-
-            return totalMarked;
+            return updatedCount;
         }
+
+
+
 
         /// <summary>
         /// ✅ R-TREE OPTIMIZATION: Query clash zones within section box using R-tree spatial index

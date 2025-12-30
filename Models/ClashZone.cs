@@ -245,6 +245,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public double? SleeveCorner4Z { get; set; }
         
         /// <summary>
+        /// ✅ MEP ORIENTATION VECTOR: MEP element orientation direction (from GetMepElementOrientation)
+        /// Used to calculate rotation angles and determine sleeve placement orientation
+        /// For vertical elements on floors: BasisX/BasisY (horizontal cross-section orientation)
+        /// For horizontal elements: Direction of the centerline
+        /// Pre-calculated during refresh to avoid Revit API calls during placement
+        /// </summary>
+        public double MepOrientationX { get; set; } = 0.0;
+        public double MepOrientationY { get; set; } = 0.0;
+        public double MepOrientationZ { get; set; } = 0.0;
+        
+
+
+        /// <summary>
         /// The diameter/size of the MEP element at this clash point
         /// </summary>
         public double MepElementSize { get; set; }

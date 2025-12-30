@@ -151,6 +151,62 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     using (var bulkOp = _performanceMonitor?.TrackOperation("9a8. Repo Bulk Save"))
                     {
                         var validZones = allClashZones.Where(z => z != null && !string.IsNullOrWhiteSpace(z.MepElementCategory)).ToList();
+                        
+                        // ✅ FLOOR ROTATION FIX: Enrich zones with MEP orientation and rotation angle BEFORE saving
+                        // This populates MepOrientationX/Y/Z and MepElementRotationAngle for database storage
+                        using (var enrichOp = _performanceMonitor?.TrackOperation("9a7. Enrich Orientation"))
+                        {
+                            // ClashZoneService constructor ambiguity resolution:
+                            // We call the one with most parameters (6 args) using nulls to avoid ambiguity
+                            // (ClashZoneStorage?, Action<string>?, IFlagManager?, GuidManager?, ISectionBoxService?, DbConnection?)
+                            var clashZoneService = new ClashZoneService(null, null, null, null, null, null);
+                            int enriched = 0;
+                            
+                            foreach (var zone in validZones)
+                            {
+                                try
+                                {
+                                    // Get MEP element from document
+                                    var mepElement = _document.GetElement(zone.MepElementId);
+                                    if (mepElement == null) continue;
+                                    
+                                    // Calculate MEP orientation vector
+                                    var orientation = clashZoneService.GetMepElementOrientation(mepElement);
+                                    zone.MepOrientationX = orientation.X;
+                                    zone.MepOrientationY = orientation.Y;
+                                    zone.MepOrientationZ = orientation.Z;
+                                    
+                                    // Calculate rotation angle (for floors only, 0.0 for walls/framing)
+                                    zone.MepElementRotationAngle = clashZoneService.CalculateMepElementRotationAngle(
+                                        zone.StructuralElementType,
+                                        orientation,
+                                        mepElement
+                                    );
+                                    
+                                    // ✅ POPULATE STRING DIRECTION: Required for legacy compatibility and DB completeness
+                                    // User reported this column was empty, causing rotation issues in some strategies
+                                    zone.MepElementOrientationDirection = clashZoneService.GetMepOrientationDirection(
+                                        zone.StructuralElementType,
+                                        orientation,
+                                        zone.HostOrientation ?? string.Empty
+                                    );
+                                    
+                                    enriched++;
+                                }
+                                catch (Exception ex)
+                                {
+                                    // Non-fatal: Log and continue with default values (0.0)
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Warning($"[CLASH-ZONE-PERSISTENCE] Failed to enrich zone {zone.Id}: {ex.Message}");
+                                }
+                            }
+                            
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] Enriched {enriched}/{validZones.Count} zones with MEP orientation and rotation angle");
+                            SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", 
+                                $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] Enriched {enriched}/{validZones.Count} zones with MEP orientation\\n");
+                        }
+                        
                         _sqliteRepository.InsertOrUpdateClashZonesBulk(validZones, baseFilterName);
                         if (bulkOp is PerformanceMonitor.OperationTracker tracker) tracker.SetItemCount(validZones.Count);
                     }
@@ -252,12 +308,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
 
+
                 var filterName = BuildFilterFileName(baseFilterName, category);
                 // ✅ PHASE SQLITE-2: XML writes disabled (Database Only Mode)
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] ⚡ OPTIMIZATION: XML writes skipped (Database Only Mode). Category='{category}'");
                 }
+
             }
             catch (Exception ex)
             {

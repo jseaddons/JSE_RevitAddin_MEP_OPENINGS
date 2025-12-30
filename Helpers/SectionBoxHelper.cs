@@ -317,5 +317,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                      max1.Y < min2.Y || min1.Y > max2.Y ||
                      max1.Z < min2.Z || min1.Z > max2.Z);
         }
+
+        /// <summary>
+        /// Checks if a point is within a bounding box.
+        /// </summary>
+        public static bool IsPointInBoundingBox(XYZ point, BoundingBoxXYZ bbox)
+        {
+            if (point == null || bbox == null) return false;
+            return point.X >= bbox.Min.X && point.X <= bbox.Max.X &&
+                   point.Y >= bbox.Min.Y && point.Y <= bbox.Max.Y &&
+                   point.Z >= bbox.Min.Z && point.Z <= bbox.Max.Z;
+        }
     }
 }

@@ -539,32 +539,105 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     catch { continue; }
                 }
 
-                // Determine wall direction to assign width correctly
-                bool isYWall = Math.Abs(circularMaxY - circularMinY) > Math.Abs(circularMaxX - circularMinX);
-                if (isYWall)
+                // ✅ ROBUST SIZING: Determine wall direction explicitly from database properties
+                // Do NOT guess based on aspect ratio (Math.Abs(dY) > Math.Abs(dX)) because for square grids or combined clusters it fails.
+                bool isYWall = false;
+                bool isXWall = false;
+                
+                // Inspect first few elements to find authoritative wall direction
+                foreach (var sleeveData in cluster)
                 {
-                    // Y-wall: width is along Y axis
-                    circularWidth = circularMaxY - circularMinY;
-                    // ✅ Use actual sleeve diameter for height (not Z-range)
-                    circularHeight = maxSleeveDiameter > 0 ? maxSleeveDiameter : (circularMaxZ - circularMinZ);
+                    if (sleeveData == null) continue;
+                    try
+                    {
+                        int sleeveId = sleeveData.SleeveInstanceId;
+                        var cz = GetCachedClashZone(sleeveId, xmlFilePath);
+                        if (cz != null)
+                        {
+                            string wDir = cz.WallDirectionType ?? "";
+                            string hOri = cz.HostOrientation ?? "";
+                            
+                            // Check explicit flags first
+                            isXWall = wDir.Contains("X-WALL", StringComparison.OrdinalIgnoreCase) || hOri.Equals("X", StringComparison.OrdinalIgnoreCase);
+                            isYWall = wDir.Contains("Y-WALL", StringComparison.OrdinalIgnoreCase) || hOri.Equals("Y", StringComparison.OrdinalIgnoreCase);
+                            
+                            if (isXWall || isYWall) break; // Found authoritative direction
+                        }
+                    }
+                    catch { }
+                }
+
+                // Fallback heuristic ONLY if explicit flags missing
+                if (!isXWall && !isYWall)
+                {
+                    // If height is dominant (vertical/stacked), aspect ratio of X/Y might be misleading about wall direction
+                    // But we have no choice but to guess if DB lacks info.
+                    isYWall = (circularMaxY - circularMinY) > (circularMaxX - circularMinX); 
+                    isXWall = !isYWall;
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ Wall direction unknown, guessing: IsYWall={isYWall} (based on aspect ratio)\n");
+                }
+                
+                // Calculate raw bounding box dimensions
+                double rawWidthX = circularMaxX - circularMinX;
+                double rawWidthY = circularMaxY - circularMinY;
+                double rawHeightZ = circularMaxZ - circularMinZ;
+                
+                // ✅ Z-HEIGHT LOGIC (COMMON):
+                // If Z-range is larger than max diameter (vertical stack), use Z-range.
+                // Otherwise use MaxDiameter (for precision on horizontal runs).
+                // Factor 1.05 provides a 5% tolerance.
+                circularHeight = rawHeightZ > (maxSleeveDiameter * 1.05) ? rawHeightZ : maxSleeveDiameter;
+                // Safety clamp
+                if (circularHeight < maxSleeveDiameter) circularHeight = maxSleeveDiameter;
+
+                if (isXWall)
+                {
+                    // X-WALL (Normal X, Length along Y):
+                    // Width is along Y axis
+                    // Depth is along X axis (Wall Thickness)
+                    circularWidth = rawWidthY;
+                    
+                    // Depth logic: Use structural thickness if valid, else fallback to BBox X-depth
+                    double bboxDepth = rawWidthX;
+                    circularDepth = maxStructuralThickness > 0 ? maxStructuralThickness : bboxDepth;
                 }
                 else
                 {
-                    // X-wall: width is along X axis
-                    circularWidth = circularMaxX - circularMinX;
-                    // ✅ Use actual sleeve diameter for height (not Z-range)
-                    circularHeight = maxSleeveDiameter > 0 ? maxSleeveDiameter : (circularMaxZ - circularMinZ);
+                    // Y-WALL (Normal Y, Length along X):
+                    // Width is along X axis
+                    // Depth is along Y axis (Wall Thickness)
+                    circularWidth = rawWidthX;
+
+                    // Depth logic: Use structural thickness if valid, else fallback to BBox Y-depth
+                    double bboxDepth = rawWidthY;
+                    circularDepth = maxStructuralThickness > 0 ? maxStructuralThickness : bboxDepth;
                 }
 
-                // ✅ Use structural thickness for depth (not Z-range)
-                circularDepth = maxStructuralThickness > 0 ? maxStructuralThickness : circularDepth;
+                // ✅ FAILSAFE: Swap Width and Depth if Depth is unrealistically large compared to Width
+                // This catches cases where wall direction is misidentified (e.g. Y-Wall identified as X-Wall)
+                // A sleeve is typically Wider (along wall) than it is Deep (wall thickness).
+                // If Depth > 1.5 * Width AND Depth > 300mm (1ft), it's likely the dimensions are swapped.
+                // Exception: If structural thickness is explicitly large (e.g. > 500mm), don't swap.
+                bool explicitLargeThickness = maxStructuralThickness > 0.5; // > 500mm
+                if (!explicitLargeThickness && circularDepth > (circularWidth * 1.5) && circularDepth > 0.3)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                         SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ SUSPICIOUS DIMENSIONS: Depth ({circularDepth*304.8:F0}mm) > Width ({circularWidth*304.8:F0}mm). Swapping Width/Depth (assuming misidentified wall direction).\n");
+                    
+                    double temp = circularWidth;
+                    circularWidth = circularDepth;
+                    // For the new depth, use the smaller dimension (was width) OR rely on maxStructuralThickness if valid
+                    circularDepth = maxStructuralThickness > 0 ? maxStructuralThickness : temp;
+                }
 
                 SafeFileLogger.SafeAppendText("cluster_sizing.log",
                     $"[{DateTime.Now:HH:mm:ss}] 🔵 CIRCULAR CLUSTER RESULT (Pipes/Round Ducts): Width={circularWidth * 304.8:F1}mm, Height={circularHeight * 304.8:F1}mm, Depth={circularDepth * 304.8:F1}mm\n");
                 SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                    $"[{DateTime.Now:HH:mm:ss}]   Extents: X=[{circularMinX:F6},{circularMaxX:F6}], Y=[{circularMinY:F6},{circularMaxY:F6}], Z=[{circularMinZ:F6},{circularMaxZ:F6}]\n");
+                    $"[{DateTime.Now:HH:mm:ss}]   IsXWall={isXWall}, IsYWall={isYWall}, RawBBox=({rawWidthX*304.8:F0}x{rawWidthY*304.8:F0}x{rawHeightZ*304.8:F0})\n");
                 SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                    $"[{DateTime.Now:HH:mm:ss}]   MaxSleeveDiameter={maxSleeveDiameter * 304.8:F1}mm, MaxStructuralThickness={maxStructuralThickness * 304.8:F1}mm, IsYWall={isYWall}\n");
+                    $"[{DateTime.Now:HH:mm:ss}]   MaxSleeveDiameter={maxSleeveDiameter * 304.8:F1}mm, MaxStructuralThickness={maxStructuralThickness * 304.8:F1}mm\n");
 
                 // Cache the result
                 try

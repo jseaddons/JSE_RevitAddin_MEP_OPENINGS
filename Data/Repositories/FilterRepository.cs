@@ -26,6 +26,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
         public int EnsureFilter(string filterName, string category)
         {
+            // ✅ NORMALIZE: Remove category suffixes from filter name to prevent duplicates
+            // This ensures "Plumbing_pipes" and "Plumbing" both resolve to "Plumbing"
+            filterName = FilterNameHelper.NormalizeBaseName(filterName, filterName, category);
+            
             if (string.IsNullOrWhiteSpace(filterName) || string.IsNullOrWhiteSpace(category))
                 return -1;
 

@@ -1389,17 +1389,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 $"[{DateTime.Now}] [HIERARCHICAL-RESET] ✅ Reset flags for {resetCount} zones\n");
                         }
 
-                        // ✅ STEP 2: Set ReadyForPlacementFlag=1 for unresolved zones within section box
-                        int markedCount = repository.SetReadyForPlacementForUnresolvedZonesInSectionBox(
+                        // ✅ STEP 2: Session Context (SOLID Refactor)
+                        // Orchestrates the 2-step flag setting logic:
+                        // 1. Reset & Set IsCurrentClashFlag based on Filters + Section Box
+                        // 2. Set ReadyForPlacementFlag based on IsCurrentClashFlag + Unresolved Status
+                        var sessionContext = new SessionContextService(repository);
+                        int markedCount = sessionContext.UpdateSessionFlags(
                             context.SelectedFilterNames ?? new List<string>(),
                             context.SelectedMepCategories ?? new List<string>(),
                             sectionBoxNullable);
 
                         if (!context.IsDeploymentMode)
                         {
-                            DebugLogger.Info($"[REFRESH-REFACTORED] [SECTION-BOX-FILTER] ✅ Set ReadyForPlacementFlag=1 for {markedCount} unresolved zones within section box");
+                            DebugLogger.Info($"[REFRESH-REFACTORED] [SESSION-CONTEXT] ✅ Applied section box context. Marked {markedCount} zones as ReadyForPlacement.");
                             SafeFileLogger.SafeAppendText(context.RefreshLogName,
-                                $"[{DateTime.Now}] [SECTION-BOX-FILTER] ✅ Set ReadyForPlacementFlag=1 for {markedCount} zones\n");
+                                $"[{DateTime.Now}] [SESSION-CONTEXT] ✅ Applied section box context. Marked {markedCount} zones\n");
                         }
                         
                         op?.SetItemCount(resetCount + markedCount);

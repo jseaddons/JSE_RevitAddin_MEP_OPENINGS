@@ -1516,42 +1516,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
         /// </summary>
         private void EnsureCombinedSleevesTables(SQLiteTransaction transaction)
         {
-            // ✅ CRITICAL FIX: Drop any legacy triggers that reference CombinedSleeves_Old
-            // These triggers were created by old migration code and cause "no such table" errors
-            try
-            {
-                using (var cmd = _connection.CreateCommand())
-                {
-                    cmd.Transaction = transaction;
-                    
-                    // Get all trigger names for CombinedSleeves table
-                    cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='CombinedSleeves'";
-                    var triggerNames = new List<string>();
-                    
-                    using (var reader = cmd.ExecuteReader())
-                    {
-                        while (reader.Read())
-                        {
-                            triggerNames.Add(reader.GetString(0));
-                        }
-                    }
-                    
-                    // Drop each trigger
-                    foreach (var triggerName in triggerNames)
-                    {
-                        ExecuteCommand($"DROP TRIGGER IF EXISTS {triggerName}", transaction);
-                        _logger($"[SQLite] 🧹 Dropped legacy trigger: {triggerName}");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger($"[SQLite] ⚠️ Error dropping legacy triggers: {ex.Message}");
-            }
-            
-            // ✅ MIGRATION: Add DeterministicGuid column if it doesn't exist
-            AddColumnIfMissing("CombinedSleeves", "DeterministicGuid", "TEXT", transaction);
-            
+            // ✅ CRITICAL FIX: Ensure table exists BEFORE adding columns
             // Table 1: Combined Sleeves
             // ✅ CROSS-FILTER SUPPORT: ComboId and FilterId are nullable because combined sleeves
             // can span multiple filters/combos (e.g., Pipes from Filter A + Duct Accessories from Filter B)
@@ -1593,6 +1558,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     UpdatedAt           DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes'))
                 )", transaction);
 
+            // ✅ CRITICAL FIX: Drop any legacy triggers that reference CombinedSleeves_Old
+            // These triggers were created by old migration code and cause "no such table" errors
+            try
+            {
+                using (var cmd = _connection.CreateCommand())
+                {
+                    cmd.Transaction = transaction;
+                    
+                    // Get all trigger names for CombinedSleeves table
+                    cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='CombinedSleeves'";
+                    var triggerNames = new List<string>();
+                    
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            triggerNames.Add(reader.GetString(0));
+                        }
+                    }
+                    
+                    // Drop each trigger
+                    foreach (var triggerName in triggerNames)
+                    {
+                        ExecuteCommand($"DROP TRIGGER IF EXISTS {triggerName}", transaction);
+                        _logger($"[SQLite] 🧹 Dropped legacy trigger: {triggerName}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ⚠️ Error dropping legacy triggers: {ex.Message}");
+            }
+            
+            // ✅ MIGRATION: Add DeterministicGuid column if it doesn't exist (SAFE now that table exists)
+            AddColumnIfMissing("CombinedSleeves", "DeterministicGuid", "TEXT", transaction);
+            
             // Table 2: Constituents (One-to-many relationship)
             ExecuteCommand(@"CREATE TABLE IF NOT EXISTS CombinedSleeveConstituents (
                     ConstituentId       INTEGER PRIMARY KEY AUTOINCREMENT,
