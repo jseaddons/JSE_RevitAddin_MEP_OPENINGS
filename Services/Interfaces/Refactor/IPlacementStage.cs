@@ -1,4 +1,5 @@
 using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor
 {
@@ -19,8 +20,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor
         /// <param name="context">Immutable context; stage returns new context via With* methods</param>
         /// <param name="perf">Performance monitor to report stage timing</param>
         /// <returns>Result containing success status, updated context, and any errors</returns>
-        JSE_RevitAddin_MEP_OPENINGS.Services.Placement.StageResult Execute(
-            JSE_RevitAddin_MEP_OPENINGS.Services.Placement.PlacementContext context, 
+        StageResult Execute(
+            PlacementContext context, 
             IPerformanceMonitor perf);
     }
 }

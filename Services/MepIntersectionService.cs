@@ -5,6 +5,8 @@ using Autodesk.Revit.DB.Plumbing;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
+using JSE_RevitAddin_MEP_OPENINGS.Models;
 // ========================================================================================================
 #if REVIT2024_OR_GREATER
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
@@ -12,30 +14,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     // Restored from backup: MepIntersectionService.cs.backup_before_logging_replace
     #pragma warning disable CS0168, CS0219, CS0649, CS8600, CS8602, CS8603, CS8618, CS8629, CS8765, CS1998, CS4014
 
-    using System;
-    using System.Collections.Generic;
-    using System.Linq;
-    using Autodesk.Revit.DB;
-    using Autodesk.Revit.DB.Mechanical;
-    using Autodesk.Revit.DB.Plumbing;
-    using Autodesk.Revit.DB.Electrical;
-    using JSE_RevitAddin_MEP_OPENINGS.Helpers;
-    using JSE_RevitAddin_MEP_OPENINGS.Models;
-
-    namespace JSE_RevitAddin_MEP_OPENINGS.Services
+    // Interface implementation - instance class with thin wrappers
+    public class MepIntersectionServiceImpl : IMepIntersectionService
     {
-        public class MepIntersectionService : IMepIntersectionService
+        public Transform GetCachedTransform(Document doc, List<RevitLinkInstance> links, Action<string>? log = null)
         {
+            return MepIntersectionService.GetCachedTransform(doc, links, log);
+        }
 
+        public List<(Element, Element, BoundingBoxXYZ, XYZ)> FindIntersectionsBatch(
+            List<(Element, Transform?)> mepElements,
+            List<(Element, Transform?)> structuralElements,
+            Action<string> log,
+            View3D? view3D = null,
+            HashSet<(int mepId, int structuralId)>? knownValidPairs = null,
+            bool skipKnownPairsGeometryCheck = false)
+        {
+            return MepIntersectionService.FindIntersectionsBatch(mepElements, structuralElements, log, view3D, knownValidPairs, skipKnownPairsGeometryCheck);
         }
     }
-    public static partial class MepIntersectionService
+
+    // Static utility methods
+    public static class MepIntersectionServiceStatic
     {
         /// <summary>
         /// Gets the centerline of an MEP element and indicates whether it's from the fallback path.
         /// Returns (line, isFallbackLine) where isFallbackLine=true means line is already in host coordinates.
         /// </summary>
-        static (Line? line, bool isFallbackLine) GetElementLineWithSource(Element element, BoundingBoxXYZ mepBBox, Action<string> log)
+        internal static (Line? line, bool isFallbackLine) GetElementLineWithSource(Element element, BoundingBoxXYZ mepBBox, Action<string> log)
         {
             if (element is FamilyInstance fi && fi.Symbol?.Family?.Name?.IndexOf("Damper", StringComparison.OrdinalIgnoreCase) >= 0)
             {
@@ -403,7 +409,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             List<(Element, Transform?)> structuralElements,
             Action<string> log,
             View3D? view3D = null,
-            HashSet<(int mepId, int structuralId)> knownValidPairs = null,
+            HashSet<(int mepId, int structuralId)>? knownValidPairs = null,
             bool skipKnownPairsGeometryCheck = false)
         {
             var results = new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
@@ -2173,6 +2179,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             // CRITICAL FIX: Also collect damper family instances that might not be properly categorized
             // as OST_DuctAccessory but are still dampers based on family name
+
+            // Collect damper FamilyInstances and cache all parameters in one pass
             var damperFamilyInstances = new FilteredElementCollector(doc)
                 .OfClass(typeof(FamilyInstance))
                 .Cast<FamilyInstance>()
@@ -2182,10 +2190,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (bbox == null) return false;
                     return BoundingBoxService.BoundingBoxesIntersect(modelMin, modelMax, bbox.Min, bbox.Max);
                 })
-                .Cast<Element>()
                 .ToList();
-            
-            mepElements.AddRange(damperFamilyInstances);
+
+            // Cache all damper parameters in a dictionary for downstream use
+            var damperParameterCache = new Dictionary<ElementId, Helpers.MepParameterHelper.MepParameterSnapshot>();
+            foreach (var fi in damperFamilyInstances)
+            {
+                damperParameterCache[fi.Id] = Helpers.MepParameterHelper.CaptureParameters(fi);
+                mepElements.Add(fi);
+            }
+
+            // The damperParameterCache can now be passed or used downstream for all parameter access
 
             // Collect walls and filter by minimum thickness if setting is enabled
             var collectedWalls = new FilteredElementCollector(doc)
@@ -3004,6 +3019,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             List<(Element, Transform?)> mepElements,
             List<(Element, Transform?)> structuralElements,
             Action<string> log,
+            View3D? view3D = null,
             HashSet<(int mepId, int structuralId)>? knownValidPairs = null,
             bool skipKnownPairsGeometryCheck = false)
         {
@@ -3299,7 +3315,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var mepBBox = mepElement.get_BoundingBox(null);
                     if (mepBBox == null) continue;
 
-                    var lineResult = GetElementLineWithSource(mepElement, mepBBox, null);
+                    var lineResult = MepIntersectionServiceStatic.GetElementLineWithSource(mepElement, mepBBox, null);
                     var line = lineResult.line;
                     
                     if (line == null) continue;

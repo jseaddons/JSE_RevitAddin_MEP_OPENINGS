@@ -1,4 +1,5 @@
 using Autodesk.Revit.DB;
+using JSE_RevitAddin_MEP_OPENINGS.Models;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces
 {
@@ -21,6 +22,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces
         /// <summary>
         /// Pre-cache family symbols for all clash zones.
         /// </summary>
-        void PreCacheFamilySymbols(Document doc, System.Collections.Generic.List<JSE_RevitAddin_MEP_OPENINGS.Models.ClashZone> clashZones);
+        void PreCacheFamilySymbols(Document doc, System.Collections.Generic.List<ClashZone> clashZones);
     }
 }

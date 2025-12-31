@@ -2623,10 +2623,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ WALL-AWARE DETECTION: Get wall orientation EARLY for BBox logic
             string wallOrientation = WallDirectionService.GetHostOrientation(structuralElement);
             
-            // ✅ Fix CS0103: Declare finalDiameter, finalWidth, finalHeight
+            // ✅ Fix CS0103: Initialize finalDiameter (finalWidth/finalHeight already declared above)
             double finalDiameter = 0.0;
-            double finalWidth = mepWidth;
-            double finalHeight = mepHeight;
             
             MepElementSize mepElementSize = GetMepElementSizeWithStrategy(mepElement, mepCategory);
             

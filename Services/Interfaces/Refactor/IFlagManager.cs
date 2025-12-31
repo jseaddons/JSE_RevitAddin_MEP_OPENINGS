@@ -102,7 +102,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor
         /// <summary>
         /// Syncs flags from database (or Global XML fallback) to in-memory clash zones.
         /// </summary>
-        void SyncFlagsFromGlobal(List<JSE_RevitAddin_MEP_OPENINGS.Models.ClashZone> clashZones, string category);
+        void SyncFlagsFromGlobal(List<ClashZone> clashZones, string category);
 
         /// <summary>
         /// Verifies existing sleeves in model and resets flags for missing ones.

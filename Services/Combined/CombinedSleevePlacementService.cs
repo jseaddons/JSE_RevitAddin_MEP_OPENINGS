@@ -44,8 +44,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
         /// <param name="proximityThreshold">Proximity threshold in feet (default: 1.0)</param>
         /// <returns>List of placed combined sleeves</returns>
         public List<CombinedSleeve> PlaceCombinedSleeves(
-            List<JSE_RevitAddin_MEP_OPENINGS.Models.ClashZone> individualSleeves,
-            List<JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClusterSleeveData> clusterSleeves,
+            List<ClashZone> individualSleeves,
+            List<ClusterSleeveData> clusterSleeves,
             int comboId,
             int filterId,
             double proximityThreshold = 1.0)
@@ -95,8 +95,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
         /// Converts individual and cluster sleeves to unified sleeve abstraction
         /// </summary>
         private List<UnifiedSleeve> ConvertToUnifiedSleeves(
-            List<JSE_RevitAddin_MEP_OPENINGS.Models.ClashZone> individualSleeves,
-            List<JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClusterSleeveData> clusterSleeves)
+            List<ClashZone> individualSleeves,
+            List<ClusterSleeveData> clusterSleeves)
         {
             var unified = new List<UnifiedSleeve>();
             
@@ -361,11 +361,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                                 string levelName = null;
                                 
                                 // Extract level name from first sleeve (Individual or Cluster)
-                                if (firstSleeve.SourceData is JSE_RevitAddin_MEP_OPENINGS.Models.ClashZone cz)
+                                if (firstSleeve.SourceData is ClashZone cz)
                                 {
                                     levelName = cz.MepElementLevelName;
                                 }
-                                else if (firstSleeve.SourceData is JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClusterSleeveData cluster)
+                                else if (firstSleeve.SourceData is ClusterSleeveData cluster)
                                 {
                                     // For cluster sleeves, try to get level from first constituent
                                     // This is a simplified approach - ideally we'd query the ClashZone for the cluster
@@ -595,7 +595,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                 if (sleeve.Type == SleeveType.Individual)
                 {
                     // Individual sleeve
-                    if (sleeve.SourceData is JSE_RevitAddin_MEP_OPENINGS.Models.ClashZone clashZone)
+                    if (sleeve.SourceData is ClashZone clashZone)
                     {
                         constituent.ClashZoneGuid = clashZone.Id;
                     }
@@ -603,11 +603,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                 else if (sleeve.Type == SleeveType.Cluster)
                 {
                     // Cluster sleeve
-                    if (sleeve.SourceData is JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClusterSleeveData cluster)
+                    if (sleeve.SourceData is ClusterSleeveData cluster)
                     {
                         constituent.ClusterInstanceId = cluster.ClusterInstanceId;
                     }
-                    else if (sleeve.SourceData is JSE_RevitAddin_MEP_OPENINGS.Models.ClashZone cz && cz.ClusterSleeveInstanceId > 0)
+                    else if (sleeve.SourceData is ClashZone cz && cz.ClusterSleeveInstanceId > 0)
                     {
                         // Supports ClusterSleeveInfo -> ClashZone mapping
                         constituent.ClusterInstanceId = cz.ClusterSleeveInstanceId;
@@ -635,7 +635,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                 {
                     if (sleeve.Type == SleeveType.Individual)
                     {
-                        if (sleeve.SourceData is JSE_RevitAddin_MEP_OPENINGS.Models.ClashZone cz)
+                        if (sleeve.SourceData is ClashZone cz)
                         {
                             // ✅ CRITICAL FIX: Check if zone is part of a cluster
                             // If IsClusterResolved=true, the original individual sleeve was already deleted
@@ -676,12 +676,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                         // For clusters, Id property holds the Revit Element ID as string
                         // Also check SourceData for robustness
                         int cid = -1;
-                        if (sleeve.SourceData is JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClusterSleeveData csd && csd.ClusterInstanceId > 0)
+                        if (sleeve.SourceData is ClusterSleeveData csd && csd.ClusterInstanceId > 0)
                         {
                             cid = csd.ClusterInstanceId;
                             _logger($"[CombinedSleeveCleanup]   MARKED: Cluster Sleeve {cid} (from SourceData ClusterData)");
                         }
-                        else if (sleeve.SourceData is JSE_RevitAddin_MEP_OPENINGS.Models.ClashZone cz && cz.ClusterSleeveInstanceId > 0)
+                        else if (sleeve.SourceData is ClashZone cz && cz.ClusterSleeveInstanceId > 0)
                         {
                             cid = cz.ClusterSleeveInstanceId;
                             _logger($"[CombinedSleeveCleanup]   MARKED: Cluster Sleeve {cid} (from SourceData ClashZone)");

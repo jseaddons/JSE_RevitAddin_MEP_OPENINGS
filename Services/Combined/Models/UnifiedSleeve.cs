@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
+using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
 {
@@ -144,7 +146,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
         /// <summary>
         /// Creates a UnifiedSleeve from a ClashZone (individual sleeve)
         /// </summary>
-        public static UnifiedSleeve FromClashZone(JSE_RevitAddin_MEP_OPENINGS.Models.ClashZone clashZone)
+        public static UnifiedSleeve FromClashZone(ClashZone clashZone)
         {
             if (clashZone == null)
                 throw new ArgumentNullException(nameof(clashZone));
@@ -214,7 +216,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
         /// <summary>
         /// Creates a UnifiedSleeve from a ClusterSleeveData (cluster sleeve)
         /// </summary>
-        public static UnifiedSleeve FromClusterSleeve(JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClusterSleeveData clusterSleeve)
+        public static UnifiedSleeve FromClusterSleeve(ClusterSleeveData clusterSleeve)
         {
             if (clusterSleeve == null)
                 throw new ArgumentNullException(nameof(clusterSleeve));

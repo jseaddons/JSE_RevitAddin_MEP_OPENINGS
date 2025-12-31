@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
+using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor;
 using JSE_RevitAddin_MEP_OPENINGS.Utils;
@@ -46,14 +48,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement.Stages
                     ExcludePlacedZones = true
                 };
 
-                List<JSE_RevitAddin_MEP_OPENINGS.Models.ClashZone> filtered;
+                List<ClashZone> filtered;
                 if (_preFilterService != null)
                 {
                     // ✅ FIX: Convert IReadOnlyList to IList for Filter method
                     var inputList = input.ToList();
                     var filteredResult = _preFilterService.Filter(inputList, criteria);
                     // ✅ FIX: Ensure we have a List<T> (not just IList<T>) for type compatibility
-                    filtered = filteredResult as List<JSE_RevitAddin_MEP_OPENINGS.Models.ClashZone> ?? filteredResult.ToList();
+                    filtered = filteredResult as List<ClashZone> ?? filteredResult.ToList();
                 }
                 else
                 {

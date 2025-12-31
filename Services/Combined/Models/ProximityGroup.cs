@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
+using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
 {
@@ -157,13 +159,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
             double? dbThickness = null;
             foreach (var s in Sleeves)
             {
-                if (s.SourceData is JSE_RevitAddin_MEP_OPENINGS.Models.ClashZone cz)
+                if (s.SourceData is ClashZone cz)
                 {
                     if (cz.WallThickness > 0.001) dbThickness = cz.WallThickness;
                     else if (cz.FramingThickness > 0.001) dbThickness = cz.FramingThickness;
                     if (dbThickness.HasValue) break;
                 }
-                else if (s.SourceData is JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClusterSleeveData csd && csd.ClusterDepth > 0.001)
+                else if (s.SourceData is ClusterSleeveData csd && csd.ClusterDepth > 0.001)
                 {
                     dbThickness = csd.ClusterDepth;
                     break;
