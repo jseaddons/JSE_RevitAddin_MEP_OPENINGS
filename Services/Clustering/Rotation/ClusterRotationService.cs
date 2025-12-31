@@ -605,13 +605,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 }
                 else
                 {
-                    // Y-WALL (Normal Y, Length along X):
-                    // Width is along X axis
-                    // Depth is along Y axis (Wall Thickness)
-                    circularWidth = rawWidthX;
+                    // Y-WALL (wall runs ALONG Y-axis, normal is along X):
+                    // Width is the span ALONG the wall = Y-axis = rawWidthY
+                    // Depth is THROUGH the wall = X-axis = rawWidthX (wall thickness)
+                    // ✅ FIX: Was backwards - had Width=rawWidthX, Depth=rawWidthY (wrong!)
+                    circularWidth = rawWidthY;
 
-                    // Depth logic: Use structural thickness if valid, else fallback to BBox Y-depth
-                    double bboxDepth = rawWidthY;
+                    // Depth logic: Use structural thickness if valid, else fallback to BBox X-depth
+                    double bboxDepth = rawWidthX;
                     circularDepth = maxStructuralThickness > 0 ? maxStructuralThickness : bboxDepth;
                 }
 
@@ -1299,6 +1300,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                         // Corner centroid works correctly when MEP elements have different orientations
                                         originX = allCorners.Average(c => c.X);
                                         originY = allCorners.Average(c => c.Y);
+                                        
+                                        // ✅ CRITICAL FIX: Update placement point to match rotation origin (centroid)
+                                        // This ensures the cluster is placed exactly at the centroid of the corners used for sizing, preventing misalignment
+                                        double placementZ = placementPoint.Z;
+                                        
+                                        // Consistency with Straight Axis logic: fetch Z from first sleeve to ensure alignment with host plane
+                                        if (sleeveIdsInCluster.Count > 0)
+                                        {
+                                            var firstCz = GetCachedClashZone(sleeveIdsInCluster[0], xmlFilePath);
+                                            if (firstCz != null)
+                                            {
+                                                double z = firstCz.SleevePlacementPointActiveDocumentZ;
+                                                if (z == 0.0) z = firstCz.IntersectionPointZ;
+                                                if (z != 0.0) placementZ = z;
+                                            }
+                                        }
+                                        
+                                        placementPoint = new XYZ(originX, originY, placementZ);
                                         
                                         SafeFileLogger.SafeAppendText("cluster_sizing.log",
                                             $"[{DateTime.Now:HH:mm:ss}]   Origin (corner centroid): ({originX:F6}, {originY:F6}), PlacementPoint=({placementPoint.X:F6}, {placementPoint.Y:F6}), cosA={cosA:F6}, sinA={sinA:F6}\n");

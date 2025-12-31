@@ -934,17 +934,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     }
                 }
 
-                // ✅ CRITICAL: Clear deferred parameters AFTER cleanup (not during flush) so cleanup can read from dictionary if needed
-                // This ensures cleanup has access to deferred parameters even if flush already happened
-                if (_deferredClusterParameters.Count > 0)
-                {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Clearing {_deferredClusterParameters.Count} deferred cluster parameters AFTER cleanup\n");
-                    }
-                    _deferredClusterParameters.Clear();
-                }
+                // ✅ NOTE: Do NOT clear _deferredClusterParameters here!
+                // The FlushDeferredClusterParameters() method needs to read this data later.
+                // The flush method will clear it after writing parameters to Revit elements.
+                // Clearing here was causing cluster sleeves to default to standard size.
 
                 // ✅ DIAGNOSTIC: Verify all cluster sleeves exist AFTER cleanup
                 SafeFileLogger.SafeAppendText("cluster_debug.log",
@@ -1583,6 +1576,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         bboxResult.width,
                         bboxResult.height,
                         bboxResult.depth);
+                        
+                    // ✅ CRITICAL FIX: Add Width/Height/Depth to deferred parameters for batch flush
+                    // This ensures cluster sleeves get correct size instead of defaulting to standard size
+                    if (placedClusterSleeve != null)
+                    {
+                        if (!_deferredClusterParameters.ContainsKey(placedClusterSleeve.Id))
+                            _deferredClusterParameters[placedClusterSleeve.Id] = new Dictionary<string, object>();
+                        
+                        _deferredClusterParameters[placedClusterSleeve.Id]["Width"] = bboxResult.width;
+                        _deferredClusterParameters[placedClusterSleeve.Id]["Height"] = bboxResult.height;
+                        _deferredClusterParameters[placedClusterSleeve.Id]["Depth"] = bboxResult.depth;
+                        
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] ✅ DEFERRED: Added W={bboxResult.width * 304.8:F1}mm, H={bboxResult.height * 304.8:F1}mm, D={bboxResult.depth * 304.8:F1}mm to deferred params for cluster {placedClusterSleeve.Id.IntegerValue}\n");
+                    }
                 }
                 
                 // ✅ Step 5: Update flags for clash zones BEFORE deleting individual sleeves
@@ -2285,9 +2293,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             SafeFileLogger.SafeAppendText("cluster_param_timing.log",
                 $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-PARAMS] ✅ Flushed {successCount} cluster sleeves in {sw.ElapsedMilliseconds}ms ({errorCount} errors)\n");
 
-            // ✅ CRITICAL FIX: DO NOT clear deferred parameters here - cleanup service needs them!
-            // Dictionary will be cleared AFTER cleanup in ClusterSleeves method
-            // This ensures cleanup can read correct dimensions from deferred dictionary if batching is enabled
+            // ✅ CRITICAL: Clear deferred parameters AFTER writing - prevents memory leak and ensures fresh data for next batch
+            _deferredClusterParameters.Clear();
             
             return successCount;
         }
@@ -2460,15 +2467,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                     if (hasValidCorners)
                                     {
                                         // Construct AABB corners from envelope
-                                        // This ensures the cluster covers all parts regardless of rotation oddities
-                                        // C1: Min-Min
+                                        // C1: Bottom-Left, C2: Bottom-Right, C3: Top-Left, C4: Top-Right
+                                        // C1: Min-Min-Min
                                         c1x = envMinX; c1y = envMinY; c1z = envMinZ;
-                                        // C2: Max-Min
+                                        // C2: Max-Min-Min
                                         c2x = envMaxX; c2y = envMinY; c2z = envMinZ;
-                                        // C3: Min-Max
-                                        c3x = envMinX; c3y = envMaxY; c3z = envMinZ; // Note: corners often coplanar Z, typically base
-                                        // C4: Max-Max
-                                        c4x = envMaxX; c4y = envMaxY; c4z = envMinZ;
+                                        // C3: Min-Max-Max (TOP corner - use maxZ!)
+                                        c3x = envMinX; c3y = envMaxY; c3z = envMaxZ;
+                                        // C4: Max-Max-Max (TOP corner - use maxZ!)
+                                        c4x = envMaxX; c4y = envMaxY; c4z = envMaxZ;
                                         
                                         // Update width/height/depth from this envelope for data consistency?
                                         // The user said: "Cluster corners should be derived... not recalculate"

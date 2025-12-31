@@ -549,6 +549,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     EnsureCategoryProcessingMarkersTable(transaction);
                     EnsureClusterSleevesTable(transaction);
                     
+                    // ✅ CRITICAL: Call EnsureCombinedSleevesTables BEFORE any AddColumnIfMissing calls
+                    // This ensures the CombinedSleeves table exists before any code tries to modify it
+                    // Fixes "no such table: CombinedSleeves" error on fresh installations
+                    EnsureCombinedSleevesTables(transaction);
+                    
                     // ✅ R-TREE: Create R-tree table for existing databases (if enabled)
                     EnsureRTreeTable(transaction);
 
@@ -822,8 +827,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     // ✅ TEMPORARILY DISABLED: Views causing SQL logic errors
                     // EnsureGuidManagementViews(transaction);
 
-                    // ✅ COMBINED SLEEVES: Ensure tables exist (Phase 4)
-                    EnsureCombinedSleevesTables(transaction);
+                    // ✅ COMBINED SLEEVES: EnsureCombinedSleevesTables is now called EARLIER (before AddColumnIfMissing)
+                    // to fix "no such table: CombinedSleeves" error on fresh installations
 
                     // ✅ MIGRATION: Make ComboId and FilterId nullable for cross-filter support
                     // SQLite doesn't support ALTER COLUMN, so we need to check if FK constraints exist
@@ -842,18 +847,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                             {
                                 _logger("[SQLite] 🧹 Found orphaned CombinedSleeves_Old table from failed migration - cleaning up");
                                 
-                                // Check if current CombinedSleeves table exists and has data
-                                checkCmd.CommandText = "SELECT COUNT(*) FROM CombinedSleeves";
-                                var currentCount = Convert.ToInt32(checkCmd.ExecuteScalar());
+                                // ✅ DEFENSIVE: First check if CombinedSleeves table exists before querying it
+                                checkCmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='CombinedSleeves'";
+                                var combinedSleevesExists = checkCmd.ExecuteScalar() != null;
                                 
-                                checkCmd.CommandText = "SELECT COUNT(*) FROM CombinedSleeves_Old";
-                                var oldCount = Convert.ToInt32(checkCmd.ExecuteScalar());
-                                
-                                // If old table has data but current doesn't, restore from old
-                                if (oldCount > 0 && currentCount == 0)
+                                if (combinedSleevesExists)
                                 {
-                                    _logger($"[SQLite] 🔄 Restoring {oldCount} records from CombinedSleeves_Old");
-                                    ExecuteCommand("INSERT INTO CombinedSleeves SELECT * FROM CombinedSleeves_Old", transaction);
+                                    // Check if current CombinedSleeves table exists and has data
+                                    checkCmd.CommandText = "SELECT COUNT(*) FROM CombinedSleeves";
+                                    var currentCount = Convert.ToInt32(checkCmd.ExecuteScalar());
+                                    
+                                    checkCmd.CommandText = "SELECT COUNT(*) FROM CombinedSleeves_Old";
+                                    var oldCount = Convert.ToInt32(checkCmd.ExecuteScalar());
+                                    
+                                    // If old table has data but current doesn't, restore from old
+                                    if (oldCount > 0 && currentCount == 0)
+                                    {
+                                        _logger($"[SQLite] 🔄 Restoring {oldCount} records from CombinedSleeves_Old");
+                                        ExecuteCommand("INSERT INTO CombinedSleeves SELECT * FROM CombinedSleeves_Old", transaction);
+                                    }
+                                }
+                                else
+                                {
+                                    _logger("[SQLite] ⚠️ CombinedSleeves table doesn't exist - calling EnsureCombinedSleevesTables first");
+                                    EnsureCombinedSleevesTables(transaction);
                                 }
                                 
                                 // Drop the orphaned table
@@ -1591,8 +1608,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                 _logger($"[SQLite] ⚠️ Error dropping legacy triggers: {ex.Message}");
             }
             
-            // ✅ MIGRATION: Add DeterministicGuid column if it doesn't exist (SAFE now that table exists)
-            AddColumnIfMissing("CombinedSleeves", "DeterministicGuid", "TEXT", transaction);
+            // ✅ NOTE: DeterministicGuid is now included in CREATE TABLE schema above (line 1538)
+            // AddColumnIfMissing is NOT needed for fresh databases - only for migrating old DBs that lack this column
+            // Wrapped in try-catch to handle edge cases where table creation might have failed
+            try
+            {
+                AddColumnIfMissing("CombinedSleeves", "DeterministicGuid", "TEXT", transaction);
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ⚠️ Could not add DeterministicGuid column (may already exist): {ex.Message}");
+            }
             
             // Table 2: Constituents (One-to-many relationship)
             ExecuteCommand(@"CREATE TABLE IF NOT EXISTS CombinedSleeveConstituents (

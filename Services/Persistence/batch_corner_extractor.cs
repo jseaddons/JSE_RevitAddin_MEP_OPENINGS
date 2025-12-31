@@ -68,7 +68,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                         continue;
                     }
 
-                    var corners = ExtractCornersFromRevitElement(sleeve);
+                    var corners = ExtractCornersFromRevitElement(sleeve, zone);
 
                     if (corners == null)
                     {
@@ -110,33 +110,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
             return results;
         }
 
-        private (XYZ c1, XYZ c2, XYZ c3, XYZ c4)? ExtractCornersFromRevitElement(FamilyInstance sleeve)
+        private (XYZ c1, XYZ c2, XYZ c3, XYZ c4)? ExtractCornersFromRevitElement(FamilyInstance sleeve, ClashZone zone)
         {
             try
             {
-                // ✅ FIX: Void families have no positive volume solids
-                // Use element BoundingBox directly - it's already in World Coordinates
-                BoundingBoxXYZ bbox = sleeve.get_BoundingBox(null);
+                // ✅ REUSE: Use existing SleeveCornerCalculationService (Methodology compliant)
+                var calculator = new JSE_RevitAddin_MEP_OPENINGS.Services.Geometry.SleeveCornerCalculationService();
                 
-                if (bbox == null)
+                // ✅ CRITICAL: Pass HostOrientation from database to use correct projection
+                var corners = calculator.CalculateCornersFromInstance(sleeve, zone?.HostOrientation);
+                
+                if (corners.HasValue)
                 {
-                    SafeFileLogger.SafeAppendText("corner_extraction.log",
-                        $"[{DateTime.Now:HH:mm:ss}] [WARN] No BoundingBox for sleeve {sleeve.Id}\n");
-                    return null;
+                     var c = corners.Value;
+                     SafeFileLogger.SafeAppendText("corner_extraction.log",
+                        $"[{DateTime.Now:HH:mm:ss}] [SUCCESS] Extracted corners using SleeveCornerCalculationService for {sleeve.Id}\n" + 
+                        $"   -> C1=({c.corner1.X:F3},{c.corner1.Y:F3},{c.corner1.Z:F3}), C2=({c.corner2.X:F3},{c.corner2.Y:F3},{c.corner2.Z:F3})\n" +
+                        $"   -> C3=({c.corner3.X:F3},{c.corner3.Y:F3},{c.corner3.Z:F3}), C4=({c.corner4.X:F3},{c.corner4.Y:F3},{c.corner4.Z:F3})\n");
+                     return corners;
                 }
                 
-                // ✅ FIX: Use Min.Z for corners 1-2 (bottom), Max.Z for corners 3-4 (top)
-                // This captures the full Z range for proper 3D overlap detection
-                XYZ c1 = new XYZ(bbox.Min.X, bbox.Min.Y, bbox.Min.Z);  // Bottom-left
-                XYZ c2 = new XYZ(bbox.Max.X, bbox.Min.Y, bbox.Min.Z);  // Bottom-right
-                XYZ c3 = new XYZ(bbox.Max.X, bbox.Max.Y, bbox.Max.Z);  // Top-right
-                XYZ c4 = new XYZ(bbox.Min.X, bbox.Max.Y, bbox.Max.Z);  // Top-left
-                
+                // Fallback to AABB if service fails (e.g. no solids)
                 SafeFileLogger.SafeAppendText("corner_extraction.log",
-                    $"[{DateTime.Now:HH:mm:ss}] [SUCCESS] Extracted corners for {sleeve.Id}: " +
-                    $"C1=({c1.X:F4},{c1.Y:F4},{c1.Z:F4}) C3=({c3.X:F4},{c3.Y:F4},{c3.Z:F4}) ZRange={bbox.Min.Z:F4}-{bbox.Max.Z:F4}\n");
+                    $"[{DateTime.Now:HH:mm:ss}] [WARN] SleeveCornerCalculationService returned null for {sleeve.Id}. Extraction Failed (AABB Fallback DISABLED).\n");
+                    
+                // DEBUG: Why did it fail?
+                try 
+                {
+                    var pW = sleeve.LookupParameter("Element Width");
+                    var pH = sleeve.LookupParameter("Element Height");
+                    var pD = sleeve.LookupParameter("Element Diameter");
+                    var loc = sleeve.Location as LocationPoint;
+                    SafeFileLogger.SafeAppendText("corner_extraction.log",
+                        $"   -> DEBUG: W={pW?.AsDouble() ?? -1}, H={pH?.AsDouble() ?? -1}, Dia={pD?.AsDouble() ?? -1}, Loc={loc?.Point?.ToString() ?? "NULL"}\n");
+                }
+                catch {}
 
-                return (c1, c2, c3, c4);
+                // USER REQUEST: NO FALLBACK AABB. Strict refusal if strategy fails.
+                // The Strategy Pattern in SleeveCornerCalculationService handles both Void and Wall logic now.
+                // If it returns null, we respect it and do NOT fabricate generic bounds.
+                return null;
             }
             catch (Exception ex)
             {

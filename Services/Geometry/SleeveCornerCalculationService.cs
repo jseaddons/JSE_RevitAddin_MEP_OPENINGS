@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 
@@ -29,96 +30,255 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Geometry
         /// <param name="height">Height of the sleeve (in internal units, feet)</param>
         /// <param name="rotationAngleRad">Rotation angle in radians (around Z-axis)</param>
         /// <returns>Tuple of 4 corner coordinates (corner1, corner2, corner3, corner4) or null if invalid</returns>
-        public (XYZ corner1, XYZ corner2, XYZ corner3, XYZ corner4)? CalculateCorners(
-            XYZ placementPoint, double width, double height, double rotationAngleRad)
+        // =========================================================
+        // ✅ SOLID STRATEGY PATTERN IMPLEMENTATION
+        // =========================================================
+
+        /// <summary>
+        /// Strategy interface for retrieving/calculating sleeve corners in World Coordinates.
+        /// </summary>
+        private interface ICornerRetrievalStrategy
         {
-            try
+            (XYZ c1, XYZ c2, XYZ c3, XYZ c4)? RetrieveCorners(XYZ placementPoint, double width, double height, double rotationRad);
+            (XYZ c1, XYZ c2, XYZ c3, XYZ c4)? RetrieveCornersFromLocalBox(BoundingBoxXYZ localBox, Transform trf);
+        }
+
+        /// <summary>
+        /// Strategy for FLOOR sleeves.
+        /// Enforces FLAT (Planar) geometry at a constant Z-level.
+        /// </summary>
+        private class FloorSleeveStrategy : ICornerRetrievalStrategy
+        {
+            public (XYZ c1, XYZ c2, XYZ c3, XYZ c4)? RetrieveCorners(XYZ placementPoint, double width, double height, double rotationRad)
             {
-                if (placementPoint == null)
-                    return null;
+                if (placementPoint == null || width <= 0 || height <= 0) return null;
 
-                if (width <= 0 || height <= 0)
-                    return null;
+                // Check for "Straight" Axis (0, 90, 180, 270 degrees)
+                double deg = Math.Abs(rotationRad * 180.0 / Math.PI) % 180.0;
+                bool isStraight = (deg < 0.001 || deg > 179.999) || (Math.Abs(deg - 90.0) < 0.001);
 
-                // ✅ Calculate corner offsets in local coordinate system (before rotation)
-                double halfWidth = width / 2.0;
-                double halfHeight = height / 2.0;
-                // Note: Z coordinate will be set to placementPoint.Z for all corners (2D opening)
-
-                // ✅ CORNER ORDER (per methodology line 872): 1=Bottom-left, 2=Bottom-right, 3=Top-left, 4=Top-right
-                // Local corner offsets (before rotation) - Z=0 in local space, will be translated to placementPoint.Z
-                var localCorners = new[]
+                if (isStraight)
                 {
-                    new XYZ(-halfWidth, -halfHeight, 0),  // Corner 1: Bottom-left
-                    new XYZ(halfWidth, -halfHeight, 0),    // Corner 2: Bottom-right
-                    new XYZ(-halfWidth, halfHeight, 0),    // Corner 3: Top-left
-                    new XYZ(halfWidth, halfHeight, 0)      // Corner 4: Top-right
-                };
-
-                // ✅ Apply rotation around Z-axis (if rotation angle is non-zero)
-                var worldCorners = new XYZ[4];
-                if (Math.Abs(rotationAngleRad) > 1e-6)
-                {
-                    // Rotation matrix for Z-axis rotation
-                    double cos = Math.Cos(rotationAngleRad);
-                    double sin = Math.Sin(rotationAngleRad);
-
-                    for (int i = 0; i < 4; i++)
-                    {
-                        var local = localCorners[i];
-                        // Rotate around Z-axis
-                        double rotatedX = local.X * cos - local.Y * sin;
-                        double rotatedY = local.X * sin + local.Y * cos;
-                        // ✅ FIX: Set Z based on corner height (bottom vs top)
-                        // Corners 0,1 are bottom (Y < 0), Corners 2,3 are top (Y > 0)
-                        double cornerZ = placementPoint.Z + local.Y; // Y represents height offset in local space
-                        // Translate to world coordinates
-                        worldCorners[i] = new XYZ(
-                            placementPoint.X + rotatedX,
-                            placementPoint.Y + rotatedY,
-                            cornerZ
-                        );
-                    }
+                    return RetrieveStraightFloorCorners(placementPoint, width, height, rotationRad);
                 }
                 else
                 {
-                    // No rotation - just translate to world coordinates
-                    for (int i = 0; i < 4; i++)
-                    {
-                        var local = localCorners[i];
-                        // ✅ FIX: Set Z based on corner height (bottom vs top)
-                        // Corners 0,1 are bottom (Y < 0), Corners 2,3 are top (Y > 0)
-                        double cornerZ = placementPoint.Z + local.Y; // Y represents height offset in local space
-                        worldCorners[i] = new XYZ(
-                            placementPoint.X + local.X,
-                            placementPoint.Y + local.Y,
-                            cornerZ
-                        );
-                    }
+                    return RetrieveRotatedFloorCorners(placementPoint, width, height, rotationRad);
+                }
+            }
+
+            public (XYZ c1, XYZ c2, XYZ c3, XYZ c4)? RetrieveCornersFromLocalBox(BoundingBoxXYZ localBox, Transform trf)
+            {
+                if (localBox == null || trf == null) return null;
+
+                // For a Floor: width=X, height=Y, depth=Z
+                // We use the bottom-most planar footprint (minZ)
+                XYZ p1 = new XYZ(localBox.Min.X, localBox.Min.Y, localBox.Min.Z); 
+                XYZ p2 = new XYZ(localBox.Max.X, localBox.Min.Y, localBox.Min.Z); 
+                XYZ p3 = new XYZ(localBox.Min.X, localBox.Max.Y, localBox.Min.Z); 
+                XYZ p4 = new XYZ(localBox.Max.X, localBox.Max.Y, localBox.Min.Z); 
+
+                return (trf.OfPoint(p1), trf.OfPoint(p2), trf.OfPoint(p3), trf.OfPoint(p4));
+            }
+
+            private (XYZ c1, XYZ c2, XYZ c3, XYZ c4)? RetrieveStraightFloorCorners(XYZ pt, double w, double h, double rot)
+            {
+                double hw = w / 2.0;
+                double hh = h / 2.0;
+                
+                double effectiveW = hw;
+                double effectiveH = hh;
+                
+                double deg = Math.Abs(rot * 180.0 / Math.PI) % 180.0;
+                if (Math.Abs(deg - 90.0) < 0.001)
+                {
+                    effectiveW = hh;
+                    effectiveH = hw;
                 }
 
-                return (worldCorners[0], worldCorners[1], worldCorners[2], worldCorners[3]);
+                return (
+                    new XYZ(pt.X - effectiveW, pt.Y - effectiveH, pt.Z),
+                    new XYZ(pt.X + effectiveW, pt.Y - effectiveH, pt.Z),
+                    new XYZ(pt.X - effectiveW, pt.Y + effectiveH, pt.Z),
+                    new XYZ(pt.X + effectiveW, pt.Y + effectiveH, pt.Z)
+                );
             }
-            catch (Exception ex)
+
+            private (XYZ c1, XYZ c2, XYZ c3, XYZ c4)? RetrieveRotatedFloorCorners(XYZ pt, double w, double h, double rot)
             {
-                if (!DeploymentConfiguration.DeploymentMode)
+                double hw = w / 2.0;
+                double hh = h / 2.0;
+
+                var local = new[] {
+                    new XYZ(-hw, -hh, 0), new XYZ(hw, -hh, 0),
+                    new XYZ(-hw, hh, 0),  new XYZ(hw, hh, 0)
+                };
+
+                var world = new XYZ[4];
+                double cos = Math.Cos(rot);
+                double sin = Math.Sin(rot);
+
+                for (int i = 0; i < 4; i++)
                 {
-                    DebugLogger.Warning($"[SleeveCornerCalculationService] Error calculating corners: {ex.Message}");
+                    double rx = local[i].X * cos - local[i].Y * sin;
+                    double ry = local[i].X * sin + local[i].Y * cos;
+                    world[i] = new XYZ(pt.X + rx, pt.Y + ry, pt.Z);
                 }
-                return null;
+                return (world[0], world[1], world[2], world[3]);
             }
         }
 
         /// <summary>
-        /// ✅ SRP: Calculates corners from a ClashZone (convenience method).
+        /// Strategy for WALL sleeves.
+        /// Handles Vertical orientation where Height (Y) corresponds to Z-change.
+        /// </summary>
+        private class WallSleeveStrategy : ICornerRetrievalStrategy
+        {
+            public (XYZ c1, XYZ c2, XYZ c3, XYZ c4)? RetrieveCorners(XYZ placementPoint, double width, double height, double rotationRad)
+            {
+                if (placementPoint == null || width <= 0 || height <= 0) return null;
+
+                double halfW = width / 2.0;
+                double halfH = height / 2.0;
+
+                var local = new[] {
+                    new XYZ(-halfW, -halfH, 0), new XYZ(halfW, -halfH, 0),
+                    new XYZ(-halfW, halfH, 0),  new XYZ(halfW, halfH, 0)
+                };
+
+                var world = new XYZ[4];
+                double cos = Math.Cos(rotationRad);
+                double sin = Math.Sin(rotationRad);
+
+                for (int i = 0; i < 4; i++)
+                {
+                    // For Vertical Elements (Walls):
+                    // Y-local maps to Z-world relative to center.
+                    // X-local maps to X/Y-world (Width).
+                    
+                    double rx = local[i].X * cos; 
+                    double ry = local[i].X * sin; 
+                    double rz = local[i].Y; // Height adds to Z
+
+                    world[i] = new XYZ(
+                        placementPoint.X + rx,
+                        placementPoint.Y + ry,
+                        placementPoint.Z + rz
+                    );
+                }
+                return (world[0], world[1], world[2], world[3]);
+            }
+
+            public (XYZ c1, XYZ c2, XYZ c3, XYZ c4)? RetrieveCornersFromLocalBox(BoundingBoxXYZ localBox, Transform trf)
+            {
+                if (localBox == null || trf == null) return null;
+
+                // ✅ FIX: For Wall sleeves, we need 4 corners with X and Z variation (in WORLD coords).
+                // The local box Y is "depth" (wall thickness) - we want to project onto one Y-face.
+                // BUT the family transform may rotate axes, so we transform ALL 8 corners to world,
+                // then pick the 4 that represent the "front face" in world XZ plane.
+
+                // Step 1: Get all 8 corners of the local bounding box
+                var localCorners = new XYZ[]
+                {
+                    new XYZ(localBox.Min.X, localBox.Min.Y, localBox.Min.Z),
+                    new XYZ(localBox.Max.X, localBox.Min.Y, localBox.Min.Z),
+                    new XYZ(localBox.Min.X, localBox.Max.Y, localBox.Min.Z),
+                    new XYZ(localBox.Max.X, localBox.Max.Y, localBox.Min.Z),
+                    new XYZ(localBox.Min.X, localBox.Min.Y, localBox.Max.Z),
+                    new XYZ(localBox.Max.X, localBox.Min.Y, localBox.Max.Z),
+                    new XYZ(localBox.Min.X, localBox.Max.Y, localBox.Max.Z),
+                    new XYZ(localBox.Max.X, localBox.Max.Y, localBox.Max.Z)
+                };
+
+                // Step 2: Transform ALL corners to world coordinates
+                var worldCorners = localCorners.Select(p => trf.OfPoint(p)).ToArray();
+
+                // Step 3: Find world-space bounds
+                double minX = worldCorners.Min(p => p.X);
+                double maxX = worldCorners.Max(p => p.X);
+                double minY = worldCorners.Min(p => p.Y);
+                double maxY = worldCorners.Max(p => p.Y);
+                double minZ = worldCorners.Min(p => p.Z);
+                double maxZ = worldCorners.Max(p => p.Z);
+
+                // Step 4: Determine wall orientation by comparing X-range vs Y-range
+                double rangeX = maxX - minX;
+                double rangeY = maxY - minY;
+
+                // Step 5: Return 4 corners on the XZ plane (Y-wall) or YZ plane (X-wall)
+                if (rangeX > rangeY)
+                {
+                    // X-wall: Width along X, use constant Y (minY = front face)
+                    return (
+                        new XYZ(minX, minY, minZ),  // Bottom-Left
+                        new XYZ(maxX, minY, minZ),  // Bottom-Right
+                        new XYZ(minX, minY, maxZ),  // Top-Left
+                        new XYZ(maxX, minY, maxZ)   // Top-Right
+                    );
+                }
+                else
+                {
+                    // Y-wall: Width along Y, use constant X (minX = front face)
+                    return (
+                        new XYZ(minX, minY, minZ),  // Bottom-Left
+                        new XYZ(minX, maxY, minZ),  // Bottom-Right
+                        new XYZ(minX, minY, maxZ),  // Top-Left
+                        new XYZ(minX, maxY, maxZ)   // Top-Right
+                    );
+                }
+            }
+        }
+
+        /// <summary>
+        /// Factory to select the correct strategy.
+        /// </summary>
+        private ICornerRetrievalStrategy GetStrategyForElement(FamilyInstance sleeve)
+        {
+            // Heuristic: Check Host Category
+            if (sleeve != null && sleeve.Host != null)
+            {
+                if (sleeve.Host.Category.Name.Contains("Wall")) 
+                    return new WallSleeveStrategy();
+                if (sleeve.Host.Category.Name.Contains("Floor") || sleeve.Host.Category.Name.Contains("Roof"))
+                    return new FloorSleeveStrategy();
+            }
+
+            // Fallback / Default
+            return new FloorSleeveStrategy();
+        }
+
+        // =========================================================
+
+        public (XYZ corner1, XYZ corner2, XYZ corner3, XYZ corner4)? CalculateCorners(
+            XYZ placementPoint, double width, double height, double rotationAngleRad)
+        {
+            // Default generic call -> Use Floor Strategy (Flat Safe)
+            return new FloorSleeveStrategy().RetrieveCorners(placementPoint, width, height, rotationAngleRad);
+        }
+
+        /// <summary>
+        /// ✅ SRP: Calculates corners from a ClashZone using the correct Strategy.
         /// </summary>
         public (XYZ corner1, XYZ corner2, XYZ corner3, XYZ corner4)? CalculateCornersFromZone(
             ClashZone zone, double width, double height)
         {
             if (zone == null || zone.SleevePlacementPoint == null)
                 return null;
+            
+            // SELECT STRATEGY based on Zone Type
+            ICornerRetrievalStrategy strategy;
+            if (string.Equals(zone.StructuralElementType, "Wall", StringComparison.OrdinalIgnoreCase))
+            {
+                strategy = new WallSleeveStrategy();
+            }
+            else
+            {
+                // Default to Floor (Flat)
+                strategy = new FloorSleeveStrategy();
+            }
 
-            return CalculateCorners(
+            return strategy.RetrieveCorners(
                 zone.SleevePlacementPoint,
                 width,
                 height,
@@ -127,107 +287,218 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Geometry
 
         /// <summary>
         /// ✅ REFACTORED: Calculates corners directly from the placed Revit FamilyInstance geometry.
-        /// This ensures the stored corners match the actual physical element in the model,
-        /// regardless of any calculation drift or parameter mismatches.
+        /// Uses element.get_BoundingBox(null) for WORLD coordinates directly.
+        /// This ensures the stored corners match the actual physical element in the model.
         /// REQUIRES MAIN THREAD ACCESS (Revit API).
         /// </summary>
         public (XYZ corner1, XYZ corner2, XYZ corner3, XYZ corner4)? CalculateCornersFromInstance(FamilyInstance sleeve)
+        {
+            // Call overload with null orientation (auto-detect)
+            return CalculateCornersFromInstance(sleeve, null);
+        }
+
+        /// <summary>
+        /// ✅ REFACTORED: Calculates corners with explicit hostOrientation from database.
+        /// When hostOrientation is provided (e.g., "X" or "Y" for walls), uses that directly
+        /// instead of trying to detect from geometry.
+        /// </summary>
+        /// <param name="sleeve">The Revit FamilyInstance</param>
+        /// <param name="hostOrientation">Wall orientation from DB: "X", "Y", or null for auto-detect</param>
+        public (XYZ corner1, XYZ corner2, XYZ corner3, XYZ corner4)? CalculateCornersFromInstance(FamilyInstance sleeve, string hostOrientation)
         {
             try
             {
                 if (sleeve == null || !sleeve.IsValidObject) return null;
 
-                // 1. Get Geometry (ComputeReferences = true to ensure accuracy)
-                Options opt = new Options { ComputeReferences = true, DetailLevel = ViewDetailLevel.Fine };
-                GeometryElement geomElem = sleeve.get_Geometry(opt);
+                // ✅ CHECK: Is this a wall-hosted sleeve?
+                // Note: sleeve.Host may be null for Generic Model families placed in walls
+                bool isWallHosted = sleeve.Host != null && sleeve.Host.Category.Name.Contains("Wall");
+                
+                // ✅ FALLBACK: If no host, use hostOrientation from DB (StructuralElementType)
+                bool useWallLogic = isWallHosted || (!string.IsNullOrEmpty(hostOrientation) && 
+                    (hostOrientation.Equals("X", StringComparison.OrdinalIgnoreCase) || 
+                     hostOrientation.Equals("Y", StringComparison.OrdinalIgnoreCase)));
 
-                if (geomElem == null) return null;
-
-                Solid solid = null;
-
-                foreach (GeometryObject obj in geomElem)
+                if (useWallLogic && !string.IsNullOrEmpty(hostOrientation))
                 {
-                    if (obj is Solid s && s.Volume > 0)
-                    {
-                        solid = s;
-                        break; // Use the first valid solid
+                    // ⚠️ CRITICAL: element.get_BoundingBox(null) returns SWAPPED X/Y for wall elements!
+                    // For X-wall, it shows X=200mm (thickness) and Y=1250mm (width) - WRONG!
+                    // Solution: Use LocationPoint + Width/Height parameters instead of bbox
+                    
+                    if (!(sleeve.Location is LocationPoint loc)) 
+                        return CalculateCornersFromParameters(sleeve);
+                    
+                    XYZ center = loc.Point;
+                    
+                    // Get dimensions from parameters
+                    string[] widthParams = { "Element Width", "Width", "MW", "Sleeve Width", "Opening Width" };
+                    string[] heightParams = { "Element Height", "Height", "MH", "Sleeve Height", "Opening Height" };
+                    
+                    double width = -1, height = -1;
+                    foreach (var name in widthParams) {
+                        Parameter p = sleeve.LookupParameter(name);
+                        if (p == null && sleeve.Symbol != null) p = sleeve.Symbol.LookupParameter(name);
+                        if (p != null) { width = p.AsDouble(); break; }
                     }
-                    else if (obj is GeometryInstance gi)
-                    {
-                        // Handle geometry inside instances (nested families)
-                        foreach (GeometryObject obj2 in gi.SymbolGeometry)
-                        {
-                            if (obj2 is Solid s2 && s2.Volume > 0)
-                            {
-                                // We need to transform this solid to world coordinates
-                                solid = SolidUtils.CreateTransformed(s2, gi.Transform);
-                                break;
-                            }
-                        }
+                    foreach (var name in heightParams) {
+                        Parameter p = sleeve.LookupParameter(name);
+                        if (p == null && sleeve.Symbol != null) p = sleeve.Symbol.LookupParameter(name);
+                        if (p != null) { height = p.AsDouble(); break; }
                     }
-                    if (solid != null) break;
+                    
+                    if (width <= 0 || height <= 0)
+                        return CalculateCornersFromParameters(sleeve);
+                    
+                    double halfW = width / 2.0;
+                    double halfH = height / 2.0;
+                    
+                    if (hostOrientation.Equals("X", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // X-wall: Wall runs along X-axis
+                        // Width is along X, height is along Z, Y is wall position
+                        return (
+                            new XYZ(center.X - halfW, center.Y, center.Z - halfH),  // Bottom-Left
+                            new XYZ(center.X + halfW, center.Y, center.Z - halfH),  // Bottom-Right
+                            new XYZ(center.X - halfW, center.Y, center.Z + halfH),  // Top-Left
+                            new XYZ(center.X + halfW, center.Y, center.Z + halfH)   // Top-Right
+                        );
+                    }
+                    else if (hostOrientation.Equals("Y", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Y-wall: Wall runs along Y-axis
+                        // Width is along Y, height is along Z, X is wall position
+                        return (
+                            new XYZ(center.X, center.Y - halfW, center.Z - halfH),  // Bottom-Left
+                            new XYZ(center.X, center.Y + halfW, center.Z - halfH),  // Bottom-Right
+                            new XYZ(center.X, center.Y - halfW, center.Z + halfH),  // Top-Left
+                            new XYZ(center.X, center.Y + halfW, center.Z + halfH)   // Top-Right
+                        );
+                    }
                 }
 
-                if (solid == null)
-                {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Warning($"[SleeveCornerCalculationService] ⚠️ No solid with volume found for sleeve {sleeve.Id}");
-                    return null;
-                }
+                // ✅ FLOOR SLEEVES: Use parameter-based calculation with rotation handling
+                // AABB bbox cannot handle rotated sleeves - we need OBB from parameters + rotation
+                // FloorSleeveStrategy.RetrieveCorners handles rotation at RetrieveRotatedFloorCorners()
+                return CalculateCornersFromParameters(sleeve);
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[SleeveCornerCalculationService] Instance Extraction failed: {ex.Message}");
+                return null;
+            }
+        }
+        
+        /// <summary>
+        /// Calculates corners using Revit Parameters (Width/Height) and Location Rotation.
+        /// Essential fallback for Void families where Geometry extraction fails.
+        /// </summary>
+        private (XYZ c1, XYZ c2, XYZ c3, XYZ c4)? CalculateCornersFromParameters(FamilyInstance sleeve)
+        {
+            try
+            {
+                // 1. Get Dimensions (Try multiple standard names, checking Instance and Type)
+                string[] widthParams = { "Element Width", "Width", "MW", "Sleeve Width", "Opening Width" };
+                string[] heightParams = { "Element Height", "Height", "MH", "Sleeve Height", "Opening Height" };
+                string[] diaParams = { "Element Diameter", "Diameter", "MD", "Sleeve Diameter", "Opening Diameter" };
 
-                // ... (existing comments)
+                double width = -1, height = -1;
 
-                Transform trf = sleeve.GetTransform();
-                
-                BoundingBoxXYZ localBox = null;
-                foreach (GeometryObject obj in geomElem)
+                Func<string[], double> getVal = (names) => {
+                    foreach (var name in names) {
+                        // Check Instance
+                        Parameter p = sleeve.LookupParameter(name);
+                        // Check Type (Symbol)
+                        if (p == null && sleeve.Symbol != null) p = sleeve.Symbol.LookupParameter(name);
+                        
+                        if (p != null) return p.AsDouble();
+                    }
+                    return -1;
+                };
+
+                width = getVal(widthParams);
+                height = getVal(heightParams);
+
+                if (width <= 0 || height <= 0)
                 {
-                     if (obj is GeometryInstance gi)
-                     {
-                         // Symbol geometry is defined in local space!
-                         localBox = GetGeometryBoundingBox(gi.SymbolGeometry);
-                         if (localBox != null && !DeploymentConfiguration.DeploymentMode)
-                         {
-                             // LOG LOCALS
-                             double w = localBox.Max.X - localBox.Min.X;
-                             double h = localBox.Max.Y - localBox.Min.Y;
-                             double d = localBox.Max.Z - localBox.Min.Z;
-                             DebugLogger.Info($"[SleeveCornerCalculationService] 📏 Sleeve {sleeve.Id} Geometry Bounds (Local): " +
-                                 $"X=[{localBox.Min.X:F4}, {localBox.Max.X:F4}] ({w:F4}), " +
-                                 $"Y=[{localBox.Min.Y:F4}, {localBox.Max.Y:F4}] ({h:F4}), " +
-                                 $"Z=[{localBox.Min.Z:F4}, {localBox.Max.Z:F4}] ({d:F4})");
-                         }
-                         break; // Assuming one main instance
-                     }
+                    double dia = getVal(diaParams);
+                    if (dia > 0) { width = dia; height = dia; }
                 }
                 
-                if (localBox == null)
+                if (width <= 0) return null; 
+                
+                // 2. Get Location & Rotation
+                if (!(sleeve.Location is LocationPoint loc)) return null;
+                
+                // 3. Select Strategy & Execute
+                var strategy = GetStrategyForElement(sleeve);
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[SleeveCornerCalculationService] 🔢 From Params ({strategy.GetType().Name}): W={width:F3}, H={height:F3}, Rot={loc.Rotation:F3}");
+
+                return strategy.RetrieveCorners(loc.Point, width, height, loc.Rotation);
+            }
+            catch(Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[SleeveCornerCalculationService] Parameter Calculation failed: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Calculates 4 corners from a Solid's bottom vertices (World Coordinates).
+        /// ... (existing method)
+        
+        /// <summary>
+        /// Calculates 4 corners from a Solid's bottom vertices (World Coordinates).
+        /// Used when GeometryInstance is not available.
+        /// </summary>
+        private (XYZ c1, XYZ c2, XYZ c3, XYZ c4)? CalculateCornersFromSolidVertices(Solid solid)
+        {
+            try 
+            {
+                 // Extract Vertices
+                var vertices = new List<XYZ>();
+                foreach (Edge edge in solid.Edges)
                 {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                         DebugLogger.Warning($"[SleeveCornerCalculationService] ⚠️ Failed to get local bounding box for sleeve {sleeve.Id}");
-                    return null; 
+                    foreach (XYZ pt in edge.Tessellate())
+                    {
+                        vertices.Add(pt);
+                    }
                 }
                 
-                // Now we have the exact local bounds of the geometry!
-                // localBox.Min and localBox.Max give us the extent width/height/depth logic.
-                // Corners in local space:
-                // Z is usually depth (or Y depending on family).
-                // Assuming standard MEP families (Up is Z, Facing is Y, Right is X).
-                // Usually Width is X-axis, Height is Y-axis (or Z?).
+                // Get unique vertices
+                var uniqueVertices = vertices
+                    .GroupBy(p => new { X = Math.Round(p.X, 4), Y = Math.Round(p.Y, 4), Z = Math.Round(p.Z, 4) })
+                    .Select(g => g.First())
+                    .ToList();
+                    
+                // Find Bottom 4 Vertices (Lowest Z)
+                if (uniqueVertices.Count == 0) return null;
+
+                double minZ = uniqueVertices.Min(p => p.Z);
+                var bottomVertices = uniqueVertices
+                    .Where(p => Math.Abs(p.Z - minZ) < 0.01) // Tolerance
+                    .ToList();
                 
-                // Let's assume standard local bounds:
-                XYZ p1_local = new XYZ(localBox.Min.X, localBox.Min.Y, localBox.Min.Z); // Min-Min
-                XYZ p2_local = new XYZ(localBox.Max.X, localBox.Min.Y, localBox.Min.Z); // Max-Min
-                XYZ p3_local = new XYZ(localBox.Min.X, localBox.Max.Y, localBox.Min.Z); // Min-Max
-                XYZ p4_local = new XYZ(localBox.Max.X, localBox.Max.Y, localBox.Min.Z); // Max-Max
+                if (bottomVertices.Count < 4) return null;
                 
-                // Transform to World
-                XYZ c1 = trf.OfPoint(p1_local);
-                XYZ c2 = trf.OfPoint(p2_local);
-                XYZ c3 = trf.OfPoint(p3_local);
-                XYZ c4 = trf.OfPoint(p4_local);
+                // Sort by angle from centroid to order them C1..C4
+                double cx = bottomVertices.Average(p => p.X);
+                double cy = bottomVertices.Average(p => p.Y);
                 
-                return (c1, c2, c3, c4);
+                var sorted = bottomVertices.OrderBy(p => Math.Atan2(p.Y - cy, p.X - cx)).ToList();
+                
+                // Take outer 4 (simplified convex hull for rectangle)
+                // If shape is exactly rectangle, they are the 4 points.
+                // Order: -PI to PI. (-180 to 180).
+                // Bottom-Left (-135)-> Bottom-Right (-45) -> Top-Right (45) -> Top-Left (135).
+                
+                // Ensure we return 4 points
+                if (sorted.Count < 4) return null;
+
+                return (sorted[0], sorted[1], sorted[2], sorted[3]);
             }
             catch
             {
@@ -243,7 +514,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Geometry
             
             foreach (GeometryObject obj in geom)
             {
-                if (obj is Solid s && s.Volume > 0)
+                if (obj is Solid s && Math.Abs(s.Volume) > 0.001)
                 {
                     BoundingBoxXYZ bbox = s.GetBoundingBox();
                     if (bbox != null)

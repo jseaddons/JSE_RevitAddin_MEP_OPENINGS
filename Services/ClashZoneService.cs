@@ -2896,6 +2896,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 WallDirection = wallDirection, // Pre-calculate wall direction for robust X-wall/Y-wall detection
                 WallDirectionType = wallDirectionType, // Pre-calculate wall direction type for efficient rotation logic
                 MepElementOrientation = mepOrientation, // Pre-calculate MEP element orientation vector for rotation logic
+                // ✅ CRITICAL FIX: Explicitly populate flattened orientation coordinates for DB persistence
+                MepOrientationX = mepOrientation.X,
+                MepOrientationY = mepOrientation.Y,
+                MepOrientationZ = mepOrientation.Z,
                 
                 // NEW: Pre-calculated placement data (calculated during refresh, used during placement)
                 MepElementWidth = finalWidth,

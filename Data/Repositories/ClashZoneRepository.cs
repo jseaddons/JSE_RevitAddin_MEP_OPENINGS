@@ -852,7 +852,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             MepOrientationZ REAL,
                             MepRotationAngleRad REAL,
                             MepRotationAngleDeg REAL,
-                            MepOrientationDirection TEXT
+                            MepOrientationDirection TEXT,
+                            StructuralThickness REAL
                         )";
                     cmd.ExecuteNonQuery();
                     cmd.CommandText = "DELETE FROM BulkUpdateZones";
@@ -869,8 +870,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                     // 3. Insert update data into Temp Table
                     cmd.CommandText = @"
-                        INSERT INTO BulkUpdateZones (ClashZoneId, IsResolvedFlag, IsClusterResolvedFlag, IsCombinedResolved, SleeveInstanceId, ClusterInstanceId, MepParameterValuesJson, HostParameterValuesJson, WallCenterlinePointX, WallCenterlinePointY, WallCenterlinePointZ, MepOrientationX, MepOrientationY, MepOrientationZ, MepRotationAngleRad, MepRotationAngleDeg, MepOrientationDirection) 
-                        VALUES (@ClashZoneId, @IsResolvedFlag, @IsClusterResolvedFlag, @IsCombinedResolved, @SleeveInstanceId, @ClusterInstanceId, @MepParameterValuesJson, @HostParameterValuesJson, @WallCenterlinePointX, @WallCenterlinePointY, @WallCenterlinePointZ, @MepOrientationX, @MepOrientationY, @MepOrientationZ, @MepRotationAngleRad, @MepRotationAngleDeg, @MepOrientationDirection)";
+                        INSERT INTO BulkUpdateZones (ClashZoneId, IsResolvedFlag, IsClusterResolvedFlag, IsCombinedResolved, SleeveInstanceId, ClusterInstanceId, MepParameterValuesJson, HostParameterValuesJson, WallCenterlinePointX, WallCenterlinePointY, WallCenterlinePointZ, MepOrientationX, MepOrientationY, MepOrientationZ, MepRotationAngleRad, MepRotationAngleDeg, MepOrientationDirection, StructuralThickness) 
+                        VALUES (@ClashZoneId, @IsResolvedFlag, @IsClusterResolvedFlag, @IsCombinedResolved, @SleeveInstanceId, @ClusterInstanceId, @MepParameterValuesJson, @HostParameterValuesJson, @WallCenterlinePointX, @WallCenterlinePointY, @WallCenterlinePointZ, @MepOrientationX, @MepOrientationY, @MepOrientationZ, @MepRotationAngleRad, @MepRotationAngleDeg, @MepOrientationDirection, @StructuralThickness)";
 
                     var pId = cmd.Parameters.Add("@ClashZoneId", System.Data.DbType.Int32);
                     var pRes = cmd.Parameters.Add("@IsResolvedFlag", System.Data.DbType.Int32);
@@ -889,6 +890,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     var pRotRad = cmd.Parameters.Add("@MepRotationAngleRad", System.Data.DbType.Double);
                     var pRotDeg = cmd.Parameters.Add("@MepRotationAngleDeg", System.Data.DbType.Double);
                     var pDir = cmd.Parameters.Add("@MepOrientationDirection", System.Data.DbType.String);
+                    var pStructThick = cmd.Parameters.Add("@StructuralThickness", System.Data.DbType.Double);
 
                     foreach (var zone in validZones)
                     {
@@ -912,6 +914,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         pRotRad.Value = zone.MepElementRotationAngle; // In radians
                         pRotDeg.Value = zone.MepElementRotationAngle * 180.0 / Math.PI; // Convert to degrees
                         pDir.Value = zone.MepElementOrientationDirection ?? string.Empty;
+                        pStructThick.Value = zone.StructuralElementThickness; // ✅ CRITICAL FIX: Ensure thickness is updated
                         cmd.ExecuteNonQuery();
                     }
 
@@ -935,6 +938,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             MepRotationAngleRad = (SELECT MepRotationAngleRad FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
                             MepRotationAngleDeg = (SELECT MepRotationAngleDeg FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
                             MepOrientationDirection = (SELECT MepOrientationDirection FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
+                            StructuralThickness = (SELECT StructuralThickness FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
                             UpdatedAt = CURRENT_TIMESTAMP
                         WHERE ClashZoneId IN (SELECT ClashZoneId FROM BulkUpdateZones)";
                     cmd.ExecuteNonQuery();
@@ -1848,7 +1852,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         cmd.Parameters.AddWithValue($"@SP{j}", zone.MepElementSizeParameterValue ?? string.Empty);
                         cmd.Parameters.AddWithValue($"@LN{j}", zone.MepElementLevelName ?? string.Empty);
                         cmd.Parameters.AddWithValue($"@LE{j}", zone.MepElementLevelElevation);
-                        cmd.Parameters.AddWithValue($"@STH{j}", 0.0); // StructuralThickness - populated later
+                        // ✅ STRUCTURAL THICKNESS FIX: Use actual thickness (required for cluster depth calculation on floors)
+                        cmd.Parameters.AddWithValue($"@STH{j}", zone.StructuralElementThickness); 
                         cmd.Parameters.AddWithValue($"@WTH{j}", zone.WallThickness);
                         cmd.Parameters.AddWithValue($"@FTH{j}", zone.FramingThickness);
                         cmd.Parameters.AddWithValue($"@INS{j}", zone.IsInsulated ? 1 : 0);
