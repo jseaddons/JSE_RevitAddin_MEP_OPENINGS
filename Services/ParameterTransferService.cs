@@ -621,6 +621,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 t.Start();
                 ParameterTransferResult r = null;
+                SafeFileLogger.SafeAppendText("transfer_debug.log", $"[DEBUG] UseParameterTransferRefactor Limit?? Flag = {OptimizationFlags.UseParameterTransferRefactor}\n");
                 if (OptimizationFlags.UseParameterTransferRefactor)
                 {
                     try
@@ -664,10 +665,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             UIDocument uiDoc = null)
         {
             // Optimized parameter transfer logic with buffered logging, lazy cache, unified snapshot lookup
+            // LOOP INVERSION OPTIMIZATION: Iterate Sleeves -> Mappings to minimize GetElement and DB Lookups.
+            
             var result = new ParameterTransferResult();
-            var allResults = new List<ParameterTransferResult>();
             var logBuffer = new System.Text.StringBuilder(50000); // Pre-allocate 50KB to minimize resizes
-            var successfullyTransferredSleeveIds = new HashSet<int>();
             
             // Performance tracking
             var methodStartTime = System.Diagnostics.Stopwatch.StartNew();
@@ -686,8 +687,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 if (!DeploymentConfiguration.DeploymentMode)
-                    logBuffer.AppendLine($"[PARAM_TRANSFER] Refactored Transfer: Found {openingIds.Count} sleeves in model - proceeding with parameter transfer");
+                    logBuffer.AppendLine($"[PARAM_TRANSFER] Refactored Transfer (Optimized Loop): Found {openingIds.Count} sleeves in model");
 
+                // Performance Report Variables
+                long timeLoadSnapshot = 0;
+                long timeGetElement = 0;
+                long timeResolution = 0;
+                long timeParamSet = 0;
+                var sw = new System.Diagnostics.Stopwatch();
+
+                sw.Start();
                 // Load snapshot index
                 SleeveSnapshotIndex snapshotIndex;
                 try
@@ -707,6 +716,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     SafeFileLogger.SafeAppendText("transfer_debug.log", logBuffer.ToString());
                     return result;
                 }
+                sw.Stop();
+                timeLoadSnapshot = sw.ElapsedMilliseconds;
                 
                 // Lazy Parameter Cache
                 // Key: "{ElementId}_{ParamName}" -> Parameter
@@ -723,186 +734,238 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return param;
                 }
 
-                // Process each mapping
-                foreach (var mapping in config.Mappings)
+                int totalSleevesUpdated = 0;
+                int totalSleevesFailed = 0;
+                
+                // ✅ OPTIMIZATION: Iterate Sleeves (Outer) -> Mappings (Inner)
+                // This ensures we only load the element and snapshot ONCE per sleeve.
+                foreach (var openingId in openingIds)
                 {
-                    if (!mapping.IsEnabled) continue;
-                    
-                    var mappingResult = new ParameterTransferResult();
-                    int transferred = 0, failed = 0;
-                    
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        logBuffer.AppendLine($"[PARAM_TRANSFER] Processing mapping: {mapping.SourceParameter} -> {mapping.TargetParameter}");
+                    bool sleeveUpdated = false;
+                    bool sleeveFailed = false; // Track if any critical failure occurred for this sleeve
 
-                    foreach (var openingId in openingIds)
+                    try 
                     {
-                        try
+                        sw.Restart();
+                        var element = doc.GetElement(openingId);
+                        sw.Stop();
+                        timeGetElement += sw.ElapsedMilliseconds;
+
+                        if (element == null) 
+                        { 
+                            totalSleevesFailed++; 
+                            continue; 
+                        }
+                        
+                        sw.Restart();
+                        SleeveSnapshotView snapshot = null;
+
+                        // 1. COMBINED SLEEVE LOOKUP (Check first as it overrides others)
+                        if (snapshotIndex.TryGetByCombined(openingId.IntegerValue, out var combinedConstituents))
                         {
-                            var element = doc.GetElement(openingId);
-                            if (element == null) { failed++; continue; }
+                            snapshot = new SleeveSnapshotView
+                            {
+                                SnapshotId = -1,
+                                SleeveInstanceId = openingId.IntegerValue,
+                                SourceType = "Combined",
+                                MepParameters = AggregateCombinedParameters(combinedConstituents, snapshotIndex, useHost: false),
+                                HostParameters = AggregateCombinedParameters(combinedConstituents, snapshotIndex, useHost: true)
+                            };
+                        }
+                        // 2. STANDARD LOOKUP (Using Sleeve/Cluster IDs parameters)
+                        else
+                        {
+                            // We use standard Lookup for IDs as they are critical and usually present
+                            var pSleeveId = GetOrCacheParameter(element, "Sleeve Instance ID");
+                            var pClusterId = GetOrCacheParameter(element, "Cluster Sleeve Instance ID");
                             
-                            SleeveSnapshotView snapshot = null;
+                            int sleeveInstanceId = pSleeveId != null && pSleeveId.StorageType == StorageType.Integer ? pSleeveId.AsInteger() : 0;
+                            int clusterInstanceId = pClusterId != null && pClusterId.StorageType == StorageType.Integer ? pClusterId.AsInteger() : 0;
 
-                            // 1. COMBINED SLEEVE LOOKUP (Check first as it overrides others)
-                            if (snapshotIndex.TryGetByCombined(openingId.IntegerValue, out var combinedConstituents))
+                            // Resolve snapshot
+                            if (clusterInstanceId > 0 && snapshotIndex.TryGetByCluster(clusterInstanceId, out var clusterView))
                             {
-                                snapshot = new SleeveSnapshotView
-                                {
-                                    SnapshotId = -1,
-                                    SleeveInstanceId = openingId.IntegerValue,
-                                    SourceType = "Combined",
-                                    MepParameters = AggregateCombinedParameters(combinedConstituents, snapshotIndex, useHost: false),
-                                    HostParameters = AggregateCombinedParameters(combinedConstituents, snapshotIndex, useHost: true)
-                                };
+                                snapshot = clusterView;
                             }
-                            // 2. STANDARD LOOKUP (Using Sleeve/Cluster IDs parameters)
-                            else
+                            else if (sleeveInstanceId > 0 && snapshotIndex.TryGetBySleeve(sleeveInstanceId, out var sleeveView))
                             {
-                                // We must read the IDs to know what to look for
-                                // Use caching for these standard parameters? 
-                                // They are crucial, so we read them property.
-                                var pSleeveId = GetOrCacheParameter(element, "Sleeve Instance ID");
-                                var pClusterId = GetOrCacheParameter(element, "Cluster Sleeve Instance ID");
-                                
-                                int sleeveInstanceId = pSleeveId != null && pSleeveId.StorageType == StorageType.Integer ? pSleeveId.AsInteger() : 0;
-                                int clusterInstanceId = pClusterId != null && pClusterId.StorageType == StorageType.Integer ? pClusterId.AsInteger() : 0;
+                                snapshot = sleeveView;
+                            }
+                            // Fallback: ClashZone GUID
+                            else if (sleeveInstanceId > 0 && snapshotIndex.SleeveIdToClashZoneGuid.TryGetValue(sleeveInstanceId, out var clashZoneGuid))
+                            {
+                                if (snapshotIndex.TryGetByClashZoneGuid(clashZoneGuid, out var guidSnapshot))
+                                    snapshot = guidSnapshot;
+                            }
+                        }
+                        sw.Stop();
+                        timeResolution += sw.ElapsedMilliseconds;
 
-                                // Resolve snapshot
-                                if (clusterInstanceId > 0 && snapshotIndex.TryGetByCluster(clusterInstanceId, out var clusterView))
-                                {
-                                    snapshot = clusterView;
-                                }
-                                else if (sleeveInstanceId > 0 && snapshotIndex.TryGetBySleeve(sleeveInstanceId, out var sleeveView))
-                                {
-                                    snapshot = sleeveView;
-                                }
-                                // Fallback: ClashZone GUID
-                                else if (sleeveInstanceId > 0 && snapshotIndex.SleeveIdToClashZoneGuid.TryGetValue(sleeveInstanceId, out var clashZoneGuid))
-                                {
-                                    if (snapshotIndex.TryGetByClashZoneGuid(clashZoneGuid, out var guidSnapshot))
-                                        snapshot = guidSnapshot;
-                                }
-                            }
+                        if (snapshot == null)
+                        {
+                            // Log only in verbose/debug mode to avoid spam
+                            // if (!DeploymentConfiguration.DeploymentMode) 
+                            //    logBuffer.AppendLine($"[PARAM_TRANSFER] Snapshot not found for sleeve {openingId.IntegerValue}");
+                            
+                            // Not a failure per se, just nothing to transfer. 
+                            // Maybe untracked sleeve.
+                            continue;
+                        }
 
-                            if (snapshot == null)
-                            {
-                                // Log only in verbose/debug mode to avoid spam
-                                if (!DeploymentConfiguration.DeploymentMode) 
-                                    logBuffer.AppendLine($"[PARAM_TRANSFER] Snapshot not found for sleeve {openingId.IntegerValue}");
-                                failed++;
-                                continue;
-                            }
+                        sw.Restart();
+                        // Apply Mappings
+                        foreach (var mapping in config.Mappings)
+                        {
+                            if (!mapping.IsEnabled) continue;
 
                             // Perform value transfer
-                            // Identify source dictionary
                             Dictionary<string, string> sourceParams = null; // MepParameters or HostParameters
                             
                             if (mapping.TransferType == TransferType.HostToOpening)
+                            {
                                 sourceParams = snapshot.HostParameters;
-                            else if (mapping.TransferType == TransferType.ReferenceToOpening)
+                            }
+                            else // RefToOpening, LevelToOpening, etc. - mostly fall back to MEP snapshot data
+                            {
                                 sourceParams = snapshot.MepParameters;
-                            // Note: LevelToOpening is handled differently (usually computed on fly or from cached Level)
-                            // Refactored method focuses on snapshot transfers. 
-                            // If TransferType is LevelToOpening, we might need special handling or delegate?
-                            // For now, let's assume Reference/Host are the main perf bottlenecks. 
-                            // Level transfer is usually fast but we should cover it if it relies on snapshot? 
-                            // Actually Level transfer usually relies on `GetLevelForOpening` (geometry/spatial). It's NOT in snapshot usually.
-                            // We will handle Reference/Host here. If Level is needed, we'd add logic. 
-                            // Legacy handles it via `TransferFromLevelsInTransaction`. 
-                            // We should probably chain that or implement it here.
-                            
-                            // Let's stick to Snapshot-based transfers for now as per "Refactored method" scope.
+                            }
                             
                             if (sourceParams != null && sourceParams.TryGetValue(mapping.SourceParameter, out var sourceValue))
                             {
+                                // Set Value
                                 var targetParam = GetOrCacheParameter(element, mapping.TargetParameter);
                                 if (targetParam != null && !targetParam.IsReadOnly)
                                 {
+                                    // ✅ OPTIMIZATION: Skip if parameter already has the correct value
+                                    if (OptimizationFlags.SkipAlreadyTransferredParameters)
+                                    {
+                                        string currentValue = targetParam.AsValueString();
+                                        if (string.IsNullOrEmpty(currentValue))
+                                        {
+                                            currentValue = targetParam.AsString();
+                                        }
+
+                                        // If values match, skip the expensive Set operation
+                                        // Use loose comparison (ignore case)
+                                        if (string.Equals(currentValue, sourceValue, StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            continue;
+                                        }
+                                        
+                                        // Double check: if source is empty and current is empty/null, also skip
+                                        if (string.IsNullOrWhiteSpace(sourceValue) && string.IsNullOrWhiteSpace(currentValue))
+                                        {
+                                            continue;
+                                        }
+                                    }
+
                                     if (SetParameterValueSafely(targetParam, sourceValue))
                                     {
-                                        transferred++;
-                                        successfullyTransferredSleeveIds.Add(openingId.IntegerValue);
-                                    }
-                                    else
-                                    {
-                                        failed++;
-                                        // logBuffer.AppendLine($"Failed to set {mapping.TargetParameter} on {openingId.IntegerValue}");
+                                        sleeveUpdated = true;
                                     }
                                 }
-                                else 
-                                {
-                                    failed++;
-                                }
-                            }
-                            else
-                            {
-                                // Source param not found in snapshot
-                                failed++;
                             }
                         }
-                        catch (Exception ex)
-                        {
-                            failed++;
-                            mappingResult.Errors.Add($"Error transferring to opening {openingId}: {ex.Message}");
-                        }
+                        sw.Stop();
+                        timeParamSet += sw.ElapsedMilliseconds;
                     }
-                    
-                    mappingResult.Success = failed == 0; // or similar metric
-                    mappingResult.TransferredCount = transferred;
-                    mappingResult.FailedCount = failed;
-                    allResults.Add(mappingResult);
-                }
-
-                // Handle Model Name Transfer if enabled
-                if (config.TransferModelNames)
-                {
-                    string modelName = doc.Title;
-                    foreach (var openingId in openingIds)
+                    catch (Exception ex)
                     {
-                        var element = doc.GetElement(openingId);
-                        if(element == null) continue;
-                        var p = GetOrCacheParameter(element, config.ModelNameParameter);
-                        if (p != null && !p.IsReadOnly && SetParameterValueSafely(p, modelName))
-                        {
-                           // counted implicitly or separate result
-                        }
+                        sleeveFailed = true;
+                        // Log sporadic errors but continue
+                        if (!DeploymentConfiguration.DeploymentMode)
+                             logBuffer.AppendLine($"[PARAM_TRANSFER] Error processing sleeve {openingId}: {ex.Message}");
                     }
-                }
-                
-                // Combine results
-                result.Success = allResults.All(r => r.Success);
-                int uniqueSleeveCount = successfullyTransferredSleeveIds.Count;
-                int parameterTransferCount = allResults.Sum(r => r.TransferredCount);
-                result.TransferredCount = uniqueSleeveCount > 0 ? uniqueSleeveCount : parameterTransferCount;
-                result.FailedCount = allResults.Sum(r => r.FailedCount);
-                result.Errors = allResults.SelectMany(r => r.Errors).ToList();
-                result.Warnings = allResults.SelectMany(r => r.Warnings).ToList();
-                result.Message = uniqueSleeveCount > 0
-                    ? $"Refactored Transfer: {uniqueSleeveCount} sleeves processed ({parameterTransferCount} parameter transfers)."
-                    : $"Refactored Transfer: {result.TransferredCount} transfers.";
 
-                // Flush log buffer
-                if (logBuffer.Length > 0)
-                {
-                    SafeFileLogger.SafeAppendText("transfer_debug.log", logBuffer.ToString());
+                    if (sleeveUpdated) totalSleevesUpdated++;
+                    if (sleeveFailed) totalSleevesFailed++;
                 }
+
+                methodStartTime.Stop();
+                
+                // Logging
+                logBuffer.AppendLine($"[PARAM_TRANSFER] Batch Transfer Completed in {methodStartTime.ElapsedMilliseconds}ms");
+                logBuffer.AppendLine($"   - Load Snapshot Index: {timeLoadSnapshot}ms");
+                logBuffer.AppendLine($"   - Get Element (Total): {timeGetElement}ms (Avg: {(openingIds.Count > 0 ? timeGetElement/openingIds.Count : 0)}ms)");
+                logBuffer.AppendLine($"   - Snapshot Resolution (Total): {timeResolution}ms (Avg: {(openingIds.Count > 0 ? timeResolution/openingIds.Count : 0)}ms)");
+                logBuffer.AppendLine($"   - Parameter Set (Total): {timeParamSet}ms (Avg: {(openingIds.Count > 0 ? timeParamSet/openingIds.Count : 0)}ms)");
+                logBuffer.AppendLine($"[PARAM_TRANSFER] Sleeves Updated: {totalSleevesUpdated}, Failed/Skipped: {totalSleevesFailed}");
+                
+                SafeFileLogger.SafeAppendText("transfer_debug.log", logBuffer.ToString());
+
+                result.Success = true; // Overall success if we finished the loop
+                result.TransferredCount = totalSleevesUpdated;
+                result.FailedCount = totalSleevesFailed;
+                result.Message = $"Transferred parameters to {totalSleevesUpdated} sleeves. ({totalSleevesFailed} failed/skipped)";
+
+                return result;
             }
             catch (Exception ex)
             {
                 result.Success = false;
-                result.Message = $"Configuration transfer (refactored) failed: {ex.Message}";
+                result.Message = $"Critical Failure in Refactored Transfer: {ex.Message}";
                 result.Errors.Add(ex.Message);
-                logBuffer.AppendLine($"[PARAM_TRANSFER] CRITICAL ERROR in refactored transfer: {ex.Message}");
-                SafeFileLogger.SafeAppendText("transfer_debug.log", logBuffer.ToString());
+                SafeFileLogger.SafeAppendText("transfer_debug.log", $"CRITICAL ERROR: {ex}\n");
+                return result;
             }
-            return result;
         }
+
 
         /// <summary>
         /// Execute the whole transfer configuration assuming the caller owns the transaction.
-        /// This method performs all transfers by calling the InTransaction variants.
+        /// This method acts as a DISPATCHER to route to either the Optimized (Refactored) or Legacy implementation.
         /// </summary>
         public ParameterTransferResult ExecuteTransferConfigurationInTransaction(
+            Document doc,
+            List<ElementId> openingIds,
+            ParameterTransferConfiguration config,
+            UIDocument uiDoc = null)
+        {
+            // ✅ DISPATCHER: Route to optimized or legacy path based on flag
+            if (OptimizationFlags.UseParameterTransferRefactor)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [DISPATCHER] 🚀 Routing to Refactored (Loop-Inverted) Transfer Method\n");
+                }
+                
+                try 
+                {
+                    return ExecuteTransferConfigurationInTransaction_Refactored(doc, openingIds, config, uiDoc);
+                }
+                catch (Exception ex)
+                {
+                    // Fallback handled by the caller or here?
+                    // If we crash here, we should log and try legacy?
+                    // OptimizationFlags.UseParameterTransferRefactor = false; 
+                    // But changing static flag might affect other threads/calls. 
+                    // For now, let's just let the refactored method handle its own safety or bubble up.
+                    // The Wrapper (lines 600+) handles fallback.
+                    // But direct callers (UI) won't have fallback.
+                    
+                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [DISPATCHER] ❌ Refactored method failed: {ex.Message}. Falling back to Legacy.\n");
+                    
+                    return ExecuteTransferConfigurationInTransaction_Legacy(doc, openingIds, config, uiDoc);
+                }
+            }
+            else
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("transfer_debug.log",
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [DISPATCHER] 🐢 Routing to Legacy Transfer Method\n");
+                }
+                return ExecuteTransferConfigurationInTransaction_Legacy(doc, openingIds, config, uiDoc);
+            }
+        }
+
+        /// <summary>
+        /// [LEGACY] Execute the whole transfer configuration assuming the caller owns the transaction.
+        /// This method performs all transfers by calling the InTransaction variants.
+        /// </summary>
+        public ParameterTransferResult ExecuteTransferConfigurationInTransaction_Legacy(
             Document doc,
             List<ElementId> openingIds,
             ParameterTransferConfiguration config,
@@ -4131,14 +4194,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                             if (!string.IsNullOrWhiteSpace(kvp.Value))
                             {
-                                // ✅ SIZE NORMALIZATION: Dedupe patterns like "475x200-475x200" → "475x200"
-                                var valueToAdd = kvp.Value;
-                                if (kvp.Key.Equals("Size", StringComparison.OrdinalIgnoreCase) ||
-                                    kvp.Key.Contains("Size", StringComparison.OrdinalIgnoreCase))
+                                // ✅ FIX: Split aggregated values by comma to handle cases where a constituent (e.g. Cluster)
+                                // already contains multiple values (e.g. "100, 200"). This prevents "100, 200, 100" duplication.
+                                var rawValues = kvp.Value.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                                
+                                foreach (var rawVal in rawValues)
                                 {
-                                    valueToAdd = NormalizeSizeValue(kvp.Value);
+                                    var val = rawVal.Trim();
+                                    if (string.IsNullOrWhiteSpace(val)) continue;
+
+                                    // ✅ SIZE NORMALIZATION: Dedupe patterns like "475x200-475x200" → "475x200"
+                                    if (kvp.Key.Equals("Size", StringComparison.OrdinalIgnoreCase) ||
+                                        kvp.Key.Contains("Size", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        val = NormalizeSizeValue(val);
+                                    }
+                                    
+                                    valueCollections[kvp.Key].Add(val);
                                 }
-                                valueCollections[kvp.Key].Add(valueToAdd);
                             }
                         }
                     }

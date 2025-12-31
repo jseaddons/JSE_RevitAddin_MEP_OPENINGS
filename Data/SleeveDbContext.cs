@@ -201,26 +201,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
             _logger($"[SQLite] ⚠️ Dependency {relativePath} remains missing. SQLite may fail to load.");
         }
 
-        private static IEnumerable<string> FindInNuGet(string fileName)
+        private static IEnumerable<string> FindInNuGet(string relativePath)
         {
-            var nugetRoot = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var fileName = Path.GetFileName(relativePath);
+             var nugetRoot = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             if (string.IsNullOrEmpty(nugetRoot))
             {
                 yield break;
             }
 
             var sqlitePackageRoot = Path.Combine(nugetRoot, @".nuget\packages\system.data.sqlite.core");
+            // Check if root exists
             if (!Directory.Exists(sqlitePackageRoot))
             {
                 yield break;
             }
 
-            foreach (var candidate in Directory.EnumerateFiles(sqlitePackageRoot, fileName, SearchOption.AllDirectories))
+            IEnumerable<string> files = null;
+            try 
             {
-                if (fileName.Equals("SQLite.Interop.dll", StringComparison.OrdinalIgnoreCase) &&
-                    !candidate.Contains(@"x64", StringComparison.OrdinalIgnoreCase))
+                // Fix: Search for the filename only, not the full relative path (e.g. "x64\SQLite.Interop.dll" -> "SQLite.Interop.dll")
+                // EnumerateFiles throws if the pattern contains a path to a non-existent directory.
+                files = Directory.EnumerateFiles(sqlitePackageRoot, fileName, SearchOption.AllDirectories);
+            }
+            catch 
+            {
+                 yield break; 
+            }
+
+            foreach (var candidate in files)
+            {
+                // Special handling for Interop to ensure we pick x64 or x86 correctly if needed
+                if (fileName.Equals("SQLite.Interop.dll", StringComparison.OrdinalIgnoreCase))
                 {
-                    continue;
+                    // Strict check: if looking for x64, ensure path contains x64
+                    // (Assuming User wants 64-bit for Revit)
+                     if (!candidate.Contains("x64", StringComparison.OrdinalIgnoreCase)) continue;
                 }
 
                 yield return candidate;

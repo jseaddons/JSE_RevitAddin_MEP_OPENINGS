@@ -250,6 +250,62 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
                 SourceData = clusterSleeve
             };
         }
+
+        /// <summary>
+        /// Creates a UnifiedSleeve from a ClusterSleeve Model (used by Manual Join / ClashZoneRepository)
+        /// </summary>
+        public static UnifiedSleeve FromClusterSleeve(JSE_RevitAddin_MEP_OPENINGS.Models.ClusterSleeve clusterSleeve)
+        {
+            if (clusterSleeve == null)
+                throw new ArgumentNullException(nameof(clusterSleeve));
+            
+            // Populate corners from ClusterSleeve Model
+            // Handle nullables by coalescing to 0.0
+            var corners = new List<XYZ>
+            {
+                new XYZ(clusterSleeve.Corner1X ?? 0.0, clusterSleeve.Corner1Y ?? 0.0, clusterSleeve.Corner1Z ?? 0.0),
+                new XYZ(clusterSleeve.Corner2X ?? 0.0, clusterSleeve.Corner2Y ?? 0.0, clusterSleeve.Corner2Z ?? 0.0),
+                new XYZ(clusterSleeve.Corner3X ?? 0.0, clusterSleeve.Corner3Y ?? 0.0, clusterSleeve.Corner3Z ?? 0.0),
+                new XYZ(clusterSleeve.Corner4X ?? 0.0, clusterSleeve.Corner4Y ?? 0.0, clusterSleeve.Corner4Z ?? 0.0)
+            };
+            
+            // Model doesn't store BBox explicitly (wait, does it?)
+            // Checking Model definition: No BBox properties.
+            // So we must derive BBox from Corners.
+            
+            double minX = corners.Min(c => c.X);
+            double minY = corners.Min(c => c.Y);
+            double minZ = corners.Min(c => c.Z);
+            double maxX = corners.Max(c => c.X);
+            double maxY = corners.Max(c => c.Y);
+            double maxZ = corners.Max(c => c.Z);
+
+            var bbox = new BoundingBoxXYZ
+            {
+                Min = new XYZ(minX, minY, minZ),
+                Max = new XYZ(maxX, maxY, maxZ)
+            };
+            
+            // Placement Point ?? Model doesn't seem to store it explicitly either based on my view?
+            // Wait, let me check Model again.
+            // Model has corners + rotation + host info. No PlacementX/Y/Z.
+            // Use Center of BBox.
+            var placementPoint = (bbox.Min + bbox.Max) / 2.0;
+            
+            return new UnifiedSleeve
+            {
+                Id = clusterSleeve.ClusterInstanceId.ToString(),
+                Type = SleeveType.Cluster,
+                Category = clusterSleeve.Category,
+                BoundingBox = bbox,
+                PlacementPoint = placementPoint,
+                Corners = corners,
+                HostType = clusterSleeve.HostType,
+                HostOrientation = clusterSleeve.HostOrientation,
+                RotationAngleDeg = clusterSleeve.RotationAngleDeg ?? 0.0,
+                SourceData = clusterSleeve
+            };
+        }
     }
     
     /// <summary>

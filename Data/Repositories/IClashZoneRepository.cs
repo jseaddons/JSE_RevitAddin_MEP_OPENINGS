@@ -215,6 +215,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 double Corner4X, double Corner4Y, double Corner4Z)> updates);
 
         /// <summary>
+        /// ✅ DEBUGTOOL: Reset IsResolved and IsClusterResolved flags to false for all zones 
+        /// whose Center point falls within the given Section Box (World Coordinates).
+        /// Returns the number of rows affected.
+        /// </summary>
+        int ResetResolvedFlagsInSectionBox(Autodesk.Revit.DB.BoundingBoxXYZ sectionBox);
+
+        /// <summary>
         /// ✅ DEBUG: Get flag statistics for all zones in DB
         /// </summary>
         (int Total, int IsCurrentClashSet, int ReadyForPlacementSet, int IsResolvedSet) GetFlagStatistics();

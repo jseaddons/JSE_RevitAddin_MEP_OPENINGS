@@ -1092,6 +1092,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Info($"[OptimizationFlags] Reset to safe defaults");
         }
         
+
+
         /// <summary>
         /// Enable all Phase 1 optimizations (40% gain)
         /// </summary>

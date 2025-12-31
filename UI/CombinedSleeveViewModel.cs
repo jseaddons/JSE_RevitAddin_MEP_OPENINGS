@@ -119,6 +119,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
             CreateCombinedSleevesCommand = new RelayCommand(CreateCombinedSleeves); // Auto flow
 
             SelectCrossingCommand = new RelayCommand(SelectByCrossing);
+            SelectIndividuallyCommand = new RelayCommand(SelectIndividually);
+            JoinSelectedCommand = new RelayCommand(JoinSelected, () => CanJoin);
         }
 
         // Category Selection Properties
@@ -379,291 +381,211 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
         private void JoinSelected()
         {
             if (_selectedIds.Count < 2) return;
+
+            // Refactored Manual Join: Use Auto-Cluster Logic (CombinedSleevePlacementService)
+            // This ensures exact parity with Auto-Join workflow.
             
             _executor.ExecuteWithTimeout(() =>
             {
-                // Configure Wrapper Logger (SafeFileLogger wrapped)
+                // Configure Wrapper Logger
                 DebugLogger.SetCombinedSleeveLogFile();
                 DebugLogger.SetServiceContext("CombinedSleeveManual");
-                
-                // Force Enable Logging for Diagnostics
                 DebugLogger.IsEnabled = true;
                 
-                DebugLogger.Info("Starting Manual Join sequence...");
+                DebugLogger.Info("Starting REFACTORED Manual Join sequence (Delegating to Auto-Cluster Service)...");
 
                 try
                 {
-                    // Log Build Timestamp to verify latest code
-                    var assemblyLocation = System.Reflection.Assembly.GetExecutingAssembly().Location;
-                    var buildTime = System.IO.File.GetLastWriteTime(assemblyLocation);
-                    DebugLogger.Info($"[CombinedSleeveManual] Build Timestamp: {buildTime}");
-
-                    DebugLogger.Info("[DEBUG] Step 1: About to set StatusMessage");
                     StatusMessage = "Joining...";
-
                     
-                    DebugLogger.Info("[DEBUG] Step 2: Checking _requestHandler");
                     if (_requestHandler == null)
                     {
                         DebugLogger.Error("[ManualJoin] RequestHandler is null");
                         StatusMessage = "Error: RequestHandler not initialized";
                         return Autodesk.Revit.UI.Result.Failed;
                     }
-                    DebugLogger.Info("[DEBUG] Step 3: About to call SetAction");
+
                     // Delegate Transaction to External Event
                     _requestHandler.SetAction((uiapp) =>
                     {
-                        DebugLogger.Info("[DEBUG] Step 4: Inside SetAction");
                         Document doc = uiapp.ActiveUIDocument.Document;
                         if (!doc.IsValidObject) return;
+
+                        // 1. Construct ProximityGroup from Selected Sleeves
+                        var group = new JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models.ProximityGroup();
                         
-                        using (Transaction tx = new Transaction(doc, "Manual Join Combined Sleeve"))
+                        // We need to fetch the original sleeve data (ClashZone or ClusterSleeveData)
+                        // The repository has methods for this.
+                        var selectedIntIds = _selectedIds.Select(id => id.IntegerValue).ToList();
+                        
+                        var individualSleeves = _repo.GetClashZonesBySleeveIds(selectedIntIds);
+                        // Note: GetClashZonesBySleeveIds might return multiple zones for same sleeve? Usually 1:1 for uncombined.
+                        // Also fetch ClusterSleeves (if any selected sleeves are clusters)
+                        
+                        // We need to distinguish if a selected ID is a Cluster or Individual.
+                        // Best way: Check element type or use Repository logic.
+                        
+                        // Let's iterate selected elements and construct UnifiedSleeves
+                        var unifiedSleeves = new List<UnifiedSleeve>();
+                        
+                        foreach(var id in _selectedIds)
                         {
-                            tx.Start();
+                            var elem = doc.GetElement(id);
+                            if (elem == null) continue;
                             
-                            // 1. Identify Master Sleeve (First one selected)
-                            ElementId masterId = _selectedIds[0];
-                            FamilyInstance masterSleeve = doc.GetElement(masterId) as FamilyInstance;
+                            // Check if it's a Cluster Sleeve
+                            // We can check by parameter or family name, or try to find in DB. This is tricky without metadata.
+                            // BUT ManualClusterCalculationAdapter logic used _repo.GetClashZonesBySleeveIds AND _repo.GetClusterSleevesByInstanceIds
                             
-                            if (masterSleeve == null) 
+                            // Let's use the same approach to find source data
+                            object sourceData = null;
+                            SleeveType type = SleeveType.Individual;
+                            
+                            // Try Individual
+                            var cz = individualSleeves.FirstOrDefault(z => z.SleeveInstanceId == id.IntegerValue);
+                            if (cz != null)
                             {
-                                DebugLogger.Error("Master sleeve is null or not a FamilyInstance.");
-                                return;
-                            }
-
-                            // 2. Setup Local Coordinate System from Master
-                            Transform masterTransform = masterSleeve.GetTransform();
-                            Transform inverseTransform = masterTransform.Inverse;
-                            
-
-
-                            // Legacy placeholders for Parameter Aggregation logic
-                            double unionMinX = 0, unionMaxX = 0;
-                            double unionMinZ = 0, unionMaxZ = 0;
-                            List<dynamic> zones = new List<dynamic>(); // Placeholder list
-
-                            var cats = new HashSet<string>();
-                            var idsToDelete = new List<ElementId>();
-
-                            // Populate deletion list and metrics
-                            foreach (var id in _selectedIds)
-                            {
-                                var el = doc.GetElement(id);
-                                if (el == null) continue;
-                                if (el.Category != null) cats.Add(el.Category.Name);
-                                
-                                if (id != masterId)
-                                {
-                                    idsToDelete.Add(id);
-                                }
-                            }
-
-                            DebugLogger.Info($"[ManualJoin] Master Sleeve {masterId} Transform Origin: {masterTransform.Origin}");
-
-                            // 4. ADAPTER-BASED CALCULATION
-                            // Using the new ManualClusterCalculationAdapter to ensure 1:1 match with Auto-Cluster logic.
-                            // This delegates all geometry analysis (World Space, Rotation, etc.) to the "Golden" services.
-
-                            var selectedElements = _selectedIds.Select(id => doc.GetElement(id)).Where(e => e != null).ToList();
-                            
-                            // *** DIAGNOSTIC LOGGING START ***
-                            DebugLogger.Info("--- DIAGNOSTIC DIMENSION LOG ---");
-                            foreach (var el in selectedElements)
-                            {
-                                var pW = el.LookupParameter("Width");
-                                var pH = el.LookupParameter("Height");
-                                var wVal = pW != null ? pW.AsDouble() * 304.8 : 0;
-                                var hVal = pH != null ? pH.AsDouble() * 304.8 : 0;
-                                // Center
-                                var center = XYZ.Zero;
-                                if (el.Location is LocationPoint lpt) center = lpt.Point;
-                                else { var bb = el.get_BoundingBox(null); if (bb!=null) center = (bb.Min+bb.Max)/2; }
-                                
-                                DebugLogger.Info($"Sleeve {el.Id}: Width={wVal:F1}mm, Height={hVal:F1}mm, Center={center}");
-                            }
-
-                            if (selectedElements.Count >= 2)
-                            {
-                                var s1 = selectedElements[0];
-                                var s2 = selectedElements[1];
-                                var c1 = (s1.Location as LocationPoint)?.Point ?? (s1.get_BoundingBox(null).Min + s1.get_BoundingBox(null).Max)/2;
-                                var c2 = (s2.Location as LocationPoint)?.Point ?? (s2.get_BoundingBox(null).Min + s2.get_BoundingBox(null).Max)/2;
-                                var dist = c1.DistanceTo(c2) * 304.8;
-                                DebugLogger.Info($"Distance between Sleeve 1 & 2: {dist:F2} mm");
-                                
-                                // Edge to Edge Approximation
-                                var w1 = s1.LookupParameter("Width")?.AsDouble() * 304.8 ?? 0;
-                                var w2 = s2.LookupParameter("Width")?.AsDouble() * 304.8 ?? 0;
-                                var gap = dist - (w1/2 + w2/2);
-                                DebugLogger.Info($"Approximate Gap (Center Dist - Half Widths): {gap:F2} mm");
-                            }
-                            DebugLogger.Info("--- END DIAGNOSTIC LOG ---");
-                            // *** DIAGNOSTIC LOGGING END ***
-                            
-                            DebugLogger.Info($"[ManualJoin] Invoking Adapter for {selectedElements.Count} elements.");
-                            
-                            var joinResult = _manualCalculator.Calculate(selectedElements);
-
-                            // Apply Results
-                            // Apply Results
-                            double newWidth = joinResult.WidthFeet;
-                            double newHeight = joinResult.HeightFeet;
-                            double newDepth = joinResult.DepthFeet;
-                            double newRotation = joinResult.RotationAngleRad;
-                            XYZ newCenter = joinResult.CenterPoint;
-                            
-                            // Initialize translation
-                            XYZ worldTranslation = XYZ.Zero;
-
-                            // Calculate World Translation
-                            // We need to move the Master Sleeve from its current location to this optimal center.
-                            
-                            // Get Master Center (Try LocationPoint first, then BBox Center)
-                            XYZ currentMasterCenter;
-                            if (masterSleeve.Location is LocationPoint lp)
-                            {
-                                currentMasterCenter = lp.Point;
+                                sourceData = cz;
+                                type = SleeveType.Individual;
                             }
                             else
                             {
-                                var bbox = masterSleeve.get_BoundingBox(null);
-                                currentMasterCenter = (bbox.Min + bbox.Max) / 2.0;
-                            }
-
-                            // If newCenter is valid (and not origin due to some error), calculate shift.
-                            // The Adapter returns world coordinates for the center.
-                            if (!newCenter.IsZeroLength())
-                            {
-                                worldTranslation = newCenter - currentMasterCenter;
-                            }
-                            
-                            DebugLogger.Info($"[ManualJoin] ADAPTER RESULT: Width={newWidth:F4}, Height={newHeight:F4}, Rot={newRotation:F4}, Shift={worldTranslation}");
-
-                            // Log for comparison
-                            double widthMM = newWidth * 304.8;
-                            double heightMM = newHeight * 304.8;
-                            DebugLogger.Info($"[ManualJoin] FINAL CALC: Width={newWidth:F4}ft ({widthMM:F1}mm), Height={newHeight:F4}ft ({heightMM:F1}mm)");
-
-                            // 5. Update Master Parameters (Geometry)
-                            var pWidth = masterSleeve.LookupParameter("Width");
-                            var pHeight = masterSleeve.LookupParameter("Height");
-                            
-                            // Check parameter units - Assuming Internal Units (Feet)
-                            if (pWidth != null) {
-                                pWidth.Set(newWidth);
-                                DebugLogger.Info($"[ManualJoin] Set Width Parameter to {newWidth}");
-                            }
-                            if (pHeight != null) {
-                                pHeight.Set(newHeight);
-                                DebugLogger.Info($"[ManualJoin] Set Height Parameter to {newHeight}");
-                            }
-                            
-                            // ✅ SET ROTATION (Per Adapter Result)
-                            // We need to rotate the element to match the calculated rotation.
-                            // First, verify current rotation and rotate difference.
-                            // Note: Rotating an Element is tricky. We often need to use ElementTransformUtils.RotateElement.
-                            // Assuming typical sleeve is placed point-based with Rotation.
-                            // We'll trust the Master's axis if rotation is near-identical, otherwise rotate.
-                            
-                            // Simple parameter set if it exists? Usually "Angle" or "Rotation" is read-only or doesn't exist.
-                            // We must use ElementTransformUtils.RotateElement.
-                            
-                            // Get Current Rotation (Angle to X-Axis)
-                             if (masterSleeve.Location is LocationPoint lpRot)
-                             {
-                                 // Calculate current rotation
-                                 double currentRotation = lpRot.Rotation;
-                                 double rotationDiff = newRotation - currentRotation;
-                                 
-                                 if (Math.Abs(rotationDiff) > 0.001) // Tolerance
-                                 {
-                                     Line axis = Line.CreateBound(lpRot.Point, lpRot.Point + XYZ.BasisZ);
-                                     ElementTransformUtils.RotateElement(doc, masterSleeve.Id, axis, rotationDiff);
-                                     DebugLogger.Info($"[ManualJoin] Rotated Master from {currentRotation * 180 / Math.PI:F1} to {newRotation * 180 / Math.PI:F1} degrees.");
-                                 }
-                             }
-
-                            // 5b. SET COMMENTS (Parameter aggregation removed in refactoring)
-                            try
-                            {
-                                var pComm = masterSleeve.LookupParameter("Comments");
-                                if (pComm != null) pComm.Set($"Manual Join: {string.Join(",", cats)}");
-                                // Parameter aggregation code removed (service no longer exists)                                                          
-                            }
-                            catch (Exception ex)
-                            {
-                                DebugLogger.Error($"[ManualJoin] Parameter Aggregation Failed: {ex.Message}");
-                                // Fallback to simple comments if Aggregation fails?
-                                var pComm = masterSleeve.LookupParameter("Comments");
-                                if (pComm != null) pComm.Set($"Manual Join: {string.Join(",", cats)} (Agg Failed)");
-                            }
-
-
-                            // 6. Move Master to new Center
-                            if (!worldTranslation.IsZeroLength())
-                            {
-                                ElementTransformUtils.MoveElement(doc, masterId, worldTranslation);
-                            }
-
-                            // 7. Delete other sleeves (Moved here to ensure safety)
-                            if (idsToDelete.Count > 0)
-                            {
-                                doc.Delete(idsToDelete);
-                            }
-
-                            tx.Commit();
-                            
-                            DebugLogger.Info($"Manual Join Success. Kept {masterId}, deleted {idsToDelete.Count} sleeves.");
-                            
-                            // 8. PERSISTENCE (Update Flags in DB)
-                            try 
-                            {
-                                int masterIntId = masterId.IntegerValue;
-                                var involvedSleeveIds = new List<int> { masterIntId };
-                                involvedSleeveIds.AddRange(idsToDelete.Select(id => id.IntegerValue));
+                                // Try Cluster
+                                // We need to access CombinedClusterRepository if possible, or use ClashZoneRepository's cluster method
+                                // The adapter used _repo.GetClusterSleevesByInstanceIds? No, _repo is IClashZoneRepository
+                                // Let's try casting _repo to ClashZoneRepository to access specific methods or use the interface
+                                // if IClashZoneRepository has GetClusterSleevesByInstanceIds (it should).
                                 
-                                var zonesToProcess = _repo.GetClashZonesBySleeveIds(involvedSleeveIds);
-                                if (zonesToProcess != null && zonesToProcess.Count > 0)
+                                // Actually, IClashZoneRepository might not have it exposed.
+                                // But we know it exists in ClashZoneRepository.
+                                if (_repo is ClashZoneRepository concreteRepo)
                                 {
-                                    var updates = new List<(Guid, int, bool, bool, bool, int, int, bool, bool, bool?, int)>();
-                                    foreach(var z in zonesToProcess)
-                                    {
-                                        updates.Add((
-                                            z.Id,
-                                            z.ClashZoneId, // ClashZoneIntId
-                                            true, // IsResolved
-                                            true, // IsClusterResolved
-                                            true, // IsCombinedResolved
-                                            masterIntId, // SleeveInstanceId
-                                            masterIntId, // ClusterInstanceId
-                                            z.IsCurrentClashFlag, 
-                                            true, // IsClusteredFlag
-                                            false, // MarkedForClusterProcess (Reset)
-                                            0 // AfterClusterSleeveId
-                                        ));
-                                    }
-                                    _repo.BatchUpdateFlagsWithCurrentClash(updates);
-                                    DebugLogger.Info($"[ManualJoin] Persisted flags for {updates.Count} zones.");
+                                     var clusters = concreteRepo.GetClusterSleevesByInstanceIds(new List<int> { id.IntegerValue });
+                                     if(clusters != null && clusters.Count > 0)
+                                     {
+                                         sourceData = clusters[0];
+                                         type = SleeveType.Cluster;
+                                     }
                                 }
                             }
-                            catch (Exception pEx)
+                            
+                            if (sourceData == null)
                             {
-                                DebugLogger.Error($"[ManualJoin] Persistence Failed: {pEx.Message}");
+                                // If not found in DB, we can't fully support it in "Auto Logic" which relies on DB data.
+                                // PROPOSAL: Create a lightweight fake source data? Or just skip?
+                                // User wants "same as auto". Auto logic relies on DB.
+                                // If manual selection involves sleeves not in DB, it should probably fail or warn.
+                                DebugLogger.Warning($"[ManualJoin] Selected sleeve {id} not found in DB (Individual/Cluster tables). Skipping.");
+                                continue;
+                            }
+                            
+                            var unified = new UnifiedSleeve
+                            {
+                                Id = type == SleeveType.Individual ? $"I_{id.IntegerValue}" : $"C_{id.IntegerValue}",
+                                Type = type,
+                                Category = elem.Category?.Name ?? "Unknown",
+                                BoundingBox = elem.get_BoundingBox(null),
+                                SourceData = sourceData
+                                // HostType/Orientation: usually extracted from SourceData. 
+                                // UnifiedSleeve helper usually does this.
+                                // We can use UnifiedSleeve.FromClashZone / FromClusterSleeve static methods!
+                            };
+                            
+                            // Re-create unified using static helpers if possible
+                            if (type == SleeveType.Individual && sourceData is Models.ClashZone z)
+                            {
+                                unified = UnifiedSleeve.FromClashZone(z);
+                                
+                                // ✅ CRITICAL FIX: Ensure Geometry is valid!
+                                // If DB corners are 0,0,0 (not extracted yet), use Live Element BBox
+                                bool cornersAreZero = unified.Corners.All(c => c.IsZeroLength());
+                                if (cornersAreZero)
+                                {
+                                    DebugLogger.Warning($"[ManualJoin] Sleeve {id} has valid DB entry but 0,0,0 corners. Using Live BBox.");
+                                    unified.Corners = null; // Force fallback to BBox in ProximityGroup logic
+                                }
+                            }
+                            else if (type == SleeveType.Cluster && sourceData is Data.Repositories.ClusterSleeveData c)
+                            {
+                                unified = UnifiedSleeve.FromClusterSleeve(c);
+                                
+                                // ✅ CRITICAL FIX: Same check for Cluster Sleeves
+                                bool cornersAreZero = unified.Corners.All(k => k.IsZeroLength());
+                                if (cornersAreZero)
+                                {
+                                     DebugLogger.Warning($"[ManualJoin] Cluster Sleeve {id} has 0,0,0 corners in DB. Using Live BBox.");
+                                     unified.Corners = null; 
+                                }
+                            }
+                            else if (type == SleeveType.Cluster && sourceData is Models.ClusterSleeve cModel)
+                            {
+                                // ✅ FIX: Handle Model type returned by generic repository
+                                unified = UnifiedSleeve.FromClusterSleeve(cModel);
+                                
+                                bool cornersAreZero = unified.Corners.All(k => k.IsZeroLength());
+                                if (cornersAreZero)
+                                {
+                                     DebugLogger.Warning($"[ManualJoin] Cluster Sleeve (Model) {id} has 0,0,0 corners in DB. Using Live BBox.");
+                                     unified.Corners = null; 
+                                }
+                            }
+                                
+                            // Always update BBox from live element to be safe (DB might be stale)
+                            var liveBBox = elem.get_BoundingBox(null);
+                            if (liveBBox != null)
+                            {
+                                unified.BoundingBox = liveBBox;
+                                // Also update PlacementPoint if corners were zero
+                                if (unified.Corners == null || unified.Corners.Count == 0 || unified.GetCenter().IsZeroLength())
+                                {
+                                    unified.PlacementPoint = (liveBBox.Min + liveBBox.Max) / 2.0;
+                                }
                             }
 
-                            _selectedIds.Clear();
-                            SelectedSleevesList.Clear();
-                            OnPropertyChanged(nameof(CanJoin));
-                            StatusMessage = "Join complete.";
+                            unifiedSleeves.Add(unified);
+                            group.Categories.Add(unified.Category);
                         }
+                        
+                        group.Sleeves = unifiedSleeves;
+                        
+                        DebugLogger.Info($"[ManualJoin] Constructed Proximity Group with {group.Sleeves.Count} sleeves.");
+                        
+                        if (group.Sleeves.Count < 2)
+                        {
+                            DebugLogger.Error("[ManualJoin] Not enough valid sleeves found in DB to form a group.");
+                            // Fallback? No, user wants parity.
+                            return;
+                        }
+
+                        // 2. Delegate to Placement Service
+                        // Construct a list of 1 group
+                        var groups = new List<JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models.ProximityGroup> { group };
+                        
+                        // Call PlaceProximityGroups (This handles Transaction, Placement, Flag Update, Cleanup)
+                        // Use dummy comboId/filterId (0,0) as this is manual
+                        var results = _placementService.PlaceProximityGroups(groups, 0, 0);
+                        
+                        DebugLogger.Info($"[ManualJoin] Service returned {results.Count} placed sleeves.");
+                        
+                        if (results.Count > 0)
+                        {
+                            StatusMessage = "Manual Join Successful.";
+                        }
+                        else
+                        {
+                             StatusMessage = "Manual Join Failed (Service returned 0 results).";
+                        }
+                        
+                        // Clear Selection
+                        _selectedIds.Clear();
+                        SelectedSleevesList.Clear();
+                        OnPropertyChanged(nameof(CanJoin));
                     });
-                    // Ensure the UI is closed before raising the external event
-                    HideRequest?.Invoke(); // Hide/close the dialog first
-                    // Use dispatcher to delay Raise until after UI is closed
-                    // Ensure the UI is closed before raising the external event
-                                   
-                    // Check if WPF Application is available
-                    if (System.Windows.Application.Current != null)
+
+                    // Ensure UI actions (Hide/Show)
+                    HideRequest?.Invoke();
+                    
+                     if (System.Windows.Application.Current != null)
                     {
                         System.Windows.Application.Current.Dispatcher.BeginInvoke(new Action(() => {
                             try {
@@ -675,22 +597,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                     }
                     else
                     {
-                        // Fallback: Raise directly
-                        DebugLogger.Warning("[ManualJoin] Application.Current is null, raising directly");
                         _externalEvent.Raise();
                     }
+                    
                     return Autodesk.Revit.UI.Result.Succeeded;
                 }
                 catch (Exception ex)
                 {
-                    StatusMessage = "Join failed: " + ex.Message;
+                    StatusMessage = "Manual Join Failed: " + ex.Message;
                     DebugLogger.Error("Manual Join Failed: " + ex.ToString());
                     return Autodesk.Revit.UI.Result.Failed;
                 }
             }, "Manual Join");
-
-            // Explicit UI Feedback
-            // TaskDialog.Show("Manual Join", "Join request sent. Please wait...");
         }
 
 
@@ -824,7 +742,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
             }
             return false;
         }
-        public bool AllowReference(Reference reference, XYZ position) => false;
+        public bool AllowReference(Reference reference, XYZ position) => true;
     }
 
     public class RelayCommand : ICommand

@@ -8746,5 +8746,57 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         }
 
 
+        /// <summary>
+        /// ✅ DEBUGTOOL: Reset IsResolved and IsClusterResolved flags to false for all zones 
+        /// whose Center point falls within the given Section Box (World Coordinates).
+        /// </summary>
+        public int ResetResolvedFlagsInSectionBox(BoundingBoxXYZ sectionBox)
+        {
+            if (sectionBox == null) return 0;
+
+            try
+            {
+                var min = sectionBox.Min;
+                var max = sectionBox.Max;
+
+                // Ensure Min is actually smaller than Max (Revit BBox can be flipped in some transforms, but Min/Max properties usually corrected? 
+                // Actually BBox.Min/Max are just points. Standardize values for query.)
+                double minX = Math.Min(min.X, max.X);
+                double maxX = Math.Max(min.X, max.X);
+                double minY = Math.Min(min.Y, max.Y);
+                double maxY = Math.Max(min.Y, max.Y);
+                double minZ = Math.Min(min.Z, max.Z);
+                double maxZ = Math.Max(min.Z, max.Z);
+
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = @"
+                        UPDATE ClashZones 
+                        SET IsResolved = 0, 
+                            IsClusterResolved = 0, 
+                            IsCombinedResolved = 0
+                        WHERE CenterX >= @minX AND CenterX <= @maxX
+                          AND CenterY >= @minY AND CenterY <= @maxY
+                          AND CenterZ >= @minZ AND CenterZ <= @maxZ;
+                    ";
+
+                    cmd.Parameters.AddWithValue("@minX", minX);
+                    cmd.Parameters.AddWithValue("@maxX", maxX);
+                    cmd.Parameters.AddWithValue("@minY", minY);
+                    cmd.Parameters.AddWithValue("@maxY", maxY);
+                    cmd.Parameters.AddWithValue("@minZ", minZ);
+                    cmd.Parameters.AddWithValue("@maxZ", maxZ);
+
+                    int affected = cmd.ExecuteNonQuery();
+                    _logger($"[SQLite] ResetResolvedFlagsInSectionBox: Reset {affected} zones in provided bounds.");
+                    return affected;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ❌ Error in ResetResolvedFlagsInSectionBox: {ex.Message}");
+                return 0;
+            }
+        }
     }
 }

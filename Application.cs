@@ -204,40 +204,58 @@ namespace JSE_RevitAddin_MEP_OPENINGS
             // Note: Execute and Test Profile buttons removed - JSE Openings handles everything
             // The "JSE Openings" button provides access to profile setup, profile management, and main UI
 
-        // Main JSE Openings Command - handles profile setup, management, and main UI
+        // 1. Main JSE Openings Command - handles profile setup, management, and main UI
         var button5 = panel.AddPushButton<TestProfileManagementCommand>("JSE Openings");
         button5.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
         button5.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
         button5.ToolTip = "JSE MEP Openings - Version 3.0";
 
-        // ✅ NEW: Update XML Command - updates XML after manual cluster sleeve adjustments
-        var buttonUpdateXml = panel.AddPushButton<UpdateXmlCommand>("Update XML");
-        buttonUpdateXml.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
-        buttonUpdateXml.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
-        buttonUpdateXml.ToolTip = "Update XML files after manual cluster sleeve changes. ⚠️ Expensive operation - use only after resizing/joining sleeves.";
+        // 2. Combined Sleeve Manager - Missing button added
+        var buttonCombined = panel.AddPushButton<Commands.CombinedSleeveCommand>("Combined\nSleeve");
+        buttonCombined.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+        buttonCombined.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+        buttonCombined.ToolTip = "Manage combined sleeves (Manual Join).";
 
-        // ✅ V2: Parameter Service Command V2 - standalone parameter transfer functionality (NEW VERSION)
+        // 3. V2: Parameter Service Command V2 - standalone parameter transfer functionality (NEW VERSION)
         var button6 = panel.AddPushButton<TestParameterServiceDialogV2Command>("Parameter Service");
         button6.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
         button6.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
 
-        // ✅ DIAGNOSTIC SWITCH: Toggle diagnostic logging on/off
-        var buttonDiagnostic = panel.AddPushButton<ToggleDiagnosticCommand>("Toggle Diagnostic");
-        buttonDiagnostic.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
-        buttonDiagnostic.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
-        buttonDiagnostic.ToolTip = "Toggle diagnostic logging on/off. Click to switch between full logging and deployment mode.";
+        // 4. Update DB Command - updates DB after manual sleeve adjustments
+        var buttonUpdateDb = panel.AddPushButton<Commands.UpdateDbCommand>("Update DB");
+        buttonUpdateDb.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+        buttonUpdateDb.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+        buttonUpdateDb.ToolTip = "Synchronize Database with Model.\nRun this after resizing sleeves or adding manual sleeves to update the DB.";
 
-        // ✅ DIAGNOSTIC STATUS: Check current diagnostic mode status
-        var buttonStatus = panel.AddPushButton<DiagnosticStatusCommand>("Diagnostic Status");
-        buttonStatus.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
-        buttonStatus.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
-        buttonStatus.ToolTip = "Check current diagnostic mode status and flag values.";
+        // 5. DIAGNOSTIC TOOLS GROUP: Grouping diagnostic commands into a single dropdown
+        var pulldown = panel.AddPulldownButton("DiagnosticTools", "Diagnostic\nTools");
+        pulldown.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+        pulldown.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+        pulldown.ToolTip = "Access diagnostic and recovery tools.";
+        
+        // 5.1 Toggle Diagnostic
+        var btn1 = pulldown.AddPushButton<ToggleDiagnosticCommand>("Toggle Diagnostic");
+        btn1.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+        btn1.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+        btn1.ToolTip = "Toggle diagnostic logging on/off. Click to switch between full logging and deployment mode.";
 
-        // ✅ CLEAR DB: Clear all sleeve-related tables in the SQLite database
-        var buttonClearDb = panel.AddPushButton<Commands.ClearAllSleeveDbTablesCommand>("Clear All Sleeve DB");
-        buttonClearDb.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
-        buttonClearDb.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
-        buttonClearDb.ToolTip = "Clear all sleeve-related tables in the add-in's SQLite database. Use with caution!";
+        // 5.2 Diagnostic Status
+        var btn2 = pulldown.AddPushButton<DiagnosticStatusCommand>("Diagnostic Status");
+        btn2.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+        btn2.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+        btn2.ToolTip = "Check current diagnostic mode status and flag values.";
+        
+        // 5.3 Reset Flags (Box)
+        var btn3 = pulldown.AddPushButton<Commands.ResetFlagsInSectionBoxCommand>("Reset Flags (Box)");
+        btn3.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+        btn3.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+        btn3.ToolTip = "Resets 'Resolved' flags for clash zones within the ACTIVE 3D SECTION BOX.\nUse to re-process stuck zones without clearing the entire database.";
+
+        // 5.4 Clear All DB
+        var btn4 = pulldown.AddPushButton<Commands.ClearAllSleeveDbTablesCommand>("Clear All Sleeve DB");
+        btn4.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+        btn4.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+        btn4.ToolTip = "Clear all sleeve-related tables in the add-in's SQLite database. Use with caution!";
 
             try
             {

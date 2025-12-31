@@ -184,9 +184,53 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var wallElement = mepElement.Document.GetElement(wall);
                         if (wallElement is Wall w)
                         {
-                            var wallNormal = w.Orientation;
-                            var angle = rayDirection.AngleTo(wallNormal);
-                            if (angle > settings.IgnoreOpeningsAngle)
+                            // ✅ FIX: Get the actual face normal from the ReferenceWithContext
+                            XYZ hitNormal = w.Orientation; // Default to wall orientation
+                            try 
+                            {
+                                var reference = h.GetReference();
+                                if (reference != null)
+                                {
+                                    var geomObj = w.GetGeometryObjectFromReference(reference);
+                                    if (geomObj is Face face)
+                                    {
+                                        // Try to get normal at UV point
+                                        if (reference.UVPoint != null)
+                                        {
+                                            hitNormal = face.ComputeNormal(reference.UVPoint);
+                                        }
+                                        else 
+                                        {
+                                            // Fallback to face center
+                                            var bbox = face.GetBoundingBox();
+                                            var center = (bbox.Min + bbox.Max) / 2.0;
+                                            hitNormal = face.ComputeNormal(center);
+                                        }
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Log($"[EfficientIntersectionService] Warning: Could not get face normal for wall {w.Id}: {ex.Message}");
+                            }
+
+                            // Use relaxed logic for detected Compound Walls
+                            bool isCompound = false;
+                            try { isCompound = w.WallType.GetCompoundStructure()?.LayerCount > 1; } catch {}
+                            
+                            double threshold = settings.IgnoreOpeningsAngle;
+                            if (isCompound) threshold *= 1.5; // 50% more lenient for compound walls
+
+                            var angle = rayDirection.AngleTo(hitNormal);
+                            
+                            // Debug logging for rejection analysis
+                            if (!DeploymentConfiguration.DeploymentMode && angle > threshold)
+                            {
+                                DebugLogger.Log($"[EfficientIntersectionService] Rejecting Wall {w.Id}: Angle {angle * 180/Math.PI:F1}° > {threshold * 180/Math.PI:F1}° (IsCompound={isCompound})");
+                            }
+
+                            if (angle > threshold)
                             {
                                 continue;
                             }
@@ -552,14 +596,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 var structuralOptions = Helpers.GeometryOptionsFactory.CreateIntersectionOptions();
                 var structuralGeometry = structuralElement.get_Geometry(structuralOptions);
-                Solid? structuralSolid = null;
-
+                // Collect all valid solids from geometry
+                var solids = new List<Solid>();
                 foreach (var geomObj in structuralGeometry)
                 {
                     if (geomObj is Solid solid && solid.Volume > 0)
                     {
-                        structuralSolid = solid;
-                        break;
+                        solids.Add(solid);
                     }
                     else if (geomObj is GeometryInstance instance)
                     {
@@ -567,35 +610,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             if (instObj is Solid instSolid && instSolid.Volume > 0)
                             {
-                                structuralSolid = instSolid;
-                                break;
+                                solids.Add(instSolid);
                             }
                         }
-                        if (structuralSolid != null) break;
                     }
                 }
+                
+                // Debug Log for X-Wall investigation
+                 if (!DeploymentConfiguration.DeploymentMode)
+                     DebugLogger.Info($"[IntersectionDebug] Element {structuralElement.Id}: Found {solids.Count} solids.");
 
-                if (structuralSolid == null) return intersectionPoints;
+                if (solids.Count == 0) return intersectionPoints;
 
-                // Apply transform if linked element
-                if (linkTransform != null && !linkTransform.IsIdentity)
+                // Process all collected solids
+                foreach (var baseSolid in solids)
                 {
-                    structuralSolid = SolidUtils.CreateTransformed(structuralSolid, linkTransform);
-                }
-
-                // Check intersection using face.Intersect(line)
-                foreach (Face face in structuralSolid.Faces)
-                {
-                    IntersectionResultArray? ira = null;
-
-                    SetComparisonResult res = face.Intersect(mepLine, out ira);
-                    if (res == SetComparisonResult.Overlap && ira != null)
+                   Solid solidToCheck = baseSolid;
+                   
+                    // Apply transform if linked element
+                    if (linkTransform != null && !linkTransform.IsIdentity)
                     {
-                        foreach (Autodesk.Revit.DB.IntersectionResult ir in ira)
+                        solidToCheck = SolidUtils.CreateTransformed(solidToCheck, linkTransform);
+                    }
+    
+                    // Check intersection using face.Intersect(line)
+                    int faceCount = 0;
+                    foreach (Face face in solidToCheck.Faces)
+                    {
+                        faceCount++;
+                        IntersectionResultArray? ira = null;
+    
+                        SetComparisonResult res = face.Intersect(mepLine, out ira);
+                        if (res == SetComparisonResult.Overlap && ira != null)
                         {
-                            intersectionPoints.Add(GetIntersectionPointFromRevitResult(ir));
+                            foreach (Autodesk.Revit.DB.IntersectionResult ir in ira)
+                            {
+                                intersectionPoints.Add(GetIntersectionPointFromRevitResult(ir));
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                     DebugLogger.Info($"[IntersectionDebug] Element {structuralElement.Id}: HIT on solid face.");
+                            }
                         }
                     }
+                    // DebugLogger.Info($"[IntersectionDebug] Element {structuralElement.Id}: Checked {faceCount} faces.");
                 }
             }
             catch (Exception ex)

@@ -914,10 +914,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     // Final Solid Check
                     // Fetch Solid (This triggers the lazy load/transform on Main Thread)
-                    Solid? structSolid = null;
+                    // Final Multi-Solid Check
+                    // Fetch Solids (This triggers the lazy load/transform on Main Thread)
+                    List<Solid> checkSolids = new List<Solid>();
 
                     // Use Cache Logic
-                    if (TryGetFromGeometryCache(structEntry.cacheKey, out var cachedSolid)) structSolid = cachedSolid;
+                    // Try getting multi-solid cache first
+                    if (OptimizationFlags.UseMultiSolidCache && TryGetFromMultiSolidCache(structEntry.cacheKey, out var cachedSolids))
+                    {
+                        if (cachedSolids != null) checkSolids.AddRange(cachedSolids);
+                    }
+                    else if (TryGetFromGeometryCache(structEntry.cacheKey, out var singleSolid))
+                    {
+                        // Fallback to single solid cache
+                       if (singleSolid != null) checkSolids.Add(singleSolid);
+                    }
                     else
                     {
                         // Compute and Cache (extracted from original loop)
@@ -926,48 +937,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var solids = GetSolidsFromGeometry(g);
                         if (solids != null && solids.Count > 0)
                         {
-                            if (structEntry.transform != null)
-                                structSolid = SolidUtils.CreateTransformed(solids[0], structEntry.transform);
-                            else structSolid = solids[0];
-                            AddToGeometryCache(structEntry.cacheKey, structSolid);
+                             foreach(var s in solids)
+                             {
+                                 if (s == null) continue;
+                                 if (structEntry.transform != null)
+                                     checkSolids.Add(SolidUtils.CreateTransformed(s, structEntry.transform));
+                                 else 
+                                     checkSolids.Add(s);
+                             }
+                             
+                             // Update caches
+                             AddToGeometryMultiSolidCache(structEntry.cacheKey, checkSolids);
+                             if (checkSolids.Count > 0) AddToGeometryCache(structEntry.cacheKey, checkSolids[0]);
                         }
                     }
 
-                    if (structSolid == null) continue;
+                    if (checkSolids.Count == 0) continue;
 
-                    // INTERSECT
-                    // (Requires 'line' for MEP or Solid for MEP)
-                    // If we have a line:
-                    var filter = new ElementIntersectsSolidFilter(structSolid); // Wait, this filter is for Collector.
-                                                                                // We need manual intersection:
-                                                                                // BooleanOperations? Or SolidCurveIntersection?
-                    if (mepEntry.line != null)
+                    // INTERSECT ALL SOLIDS
+                    foreach (var solidToCheck in checkSolids)
                     {
-                        using (var sci = structSolid.IntersectWithCurve(mepEntry.line, new SolidCurveIntersectionOptions()))
+                        if (solidToCheck == null || solidToCheck.Volume <= 0) continue;
+
+                        if (mepEntry.line != null)
                         {
-                            if (sci.SegmentCount > 0)
+                            using (var sci = solidToCheck.IntersectWithCurve(mepEntry.line, new SolidCurveIntersectionOptions()))
                             {
-                                // ✅ PARALLEL FIX: Extract actual intersection points from SCI
-                                // Previous code incorrectly returned XYZ.Zero using a 'Point calc needed?' placeholder
-                                var sciPoints = new List<XYZ>();
-                                for (int i = 0; i < sci.SegmentCount; i++)
+                                if (sci.SegmentCount > 0)
                                 {
-                                    var curve = sci.GetCurveSegment(i);
-                                    sciPoints.Add(curve.GetEndPoint(0));
-                                    sciPoints.Add(curve.GetEndPoint(1));
-                                }
-                                
-                                // Calculate proper intersection bbox and center (Using local static helper)
-                                var intsBBox = CreateBoundingBox(sciPoints);
-                                if (intsBBox != null)
-                                {
-                                    var intsCenter = BoundingBoxService.GetBoundingBoxCenter(intsBBox);
-                                    
-                                    // Validate center is not Zero and add to results
-                                    if (intsCenter != null && (Math.Abs(intsCenter.X) > 1e-9 || Math.Abs(intsCenter.Y) > 1e-9 || Math.Abs(intsCenter.Z) > 1e-9))
+                                    // ✅ PARALLEL FIX: Extract actual intersection points from SCI
+                                    var sciPoints = new List<XYZ>();
+                                    for (int i = 0; i < sci.SegmentCount; i++)
                                     {
-                                        results.Add((mepEntry.mepElement, structEntry.element, intsBBox, intsCenter));
-                                        log?.Invoke($"[PARALLEL-FIX] Fixed Zero-Point at Center={intsCenter}");
+                                        var curve = sci.GetCurveSegment(i);
+                                        sciPoints.Add(curve.GetEndPoint(0));
+                                        sciPoints.Add(curve.GetEndPoint(1));
+                                    }
+                                    
+                                    // Calculate proper intersection bbox and center (Using local static helper)
+                                    var intsBBox = CreateBoundingBox(sciPoints);
+                                    if (intsBBox != null)
+                                    {
+                                        var intsCenter = BoundingBoxService.GetBoundingBoxCenter(intsBBox);
+                                        
+                                        // Validate center is not Zero and add to results
+                                        if (intsCenter != null && (Math.Abs(intsCenter.X) > 1e-9 || Math.Abs(intsCenter.Y) > 1e-9 || Math.Abs(intsCenter.Z) > 1e-9))
+                                        {
+                                            results.Add((mepEntry.mepElement, structEntry.element, intsBBox, intsCenter));
+                                            // log?.Invoke($"[PARALLEL-FIX] Fixed Zero-Point at Center={intsCenter}");
+                                        }
                                     }
                                 }
                             }
