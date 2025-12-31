@@ -637,8 +637,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                     {
                         if (sleeve.SourceData is JSE_RevitAddin_MEP_OPENINGS.Models.ClashZone cz)
                         {
-                            if (cz.SleeveInstanceId > 0)
+                            // ✅ CRITICAL FIX: Check if zone is part of a cluster
+                            // If IsClusterResolved=true, the original individual sleeve was already deleted
+                            // and replaced by a cluster sleeve. We need to delete the cluster sleeve instead.
+                            if (cz.IsClusterResolved && cz.ClusterSleeveInstanceId > 0)
                             {
+                                // Zone is part of a cluster - delete the CLUSTER sleeve, not the old individual
+                                // Avoid duplicates by checking if we already added this cluster ID
+                                var clusterElementId = new ElementId(cz.ClusterSleeveInstanceId);
+                                if (!idsToDelete.Contains(clusterElementId))
+                                {
+                                    idsToDelete.Add(clusterElementId);
+                                    _logger($"[CombinedSleeveCleanup]   MARKED: Cluster Sleeve {cz.ClusterSleeveInstanceId} (for clustered zone GUID={cz.Id})");
+                                }
+                                else
+                                {
+                                    _logger($"[CombinedSleeveCleanup]   SKIP: Cluster Sleeve {cz.ClusterSleeveInstanceId} already marked (zone GUID={cz.Id})");
+                                }
+                            }
+                            else if (cz.SleeveInstanceId > 0)
+                            {
+                                // Zone is NOT clustered - delete the individual sleeve
                                 idsToDelete.Add(new ElementId(cz.SleeveInstanceId));
                                 _logger($"[CombinedSleeveCleanup]   MARKED: Individual Sleeve {cz.SleeveInstanceId} (GUID={cz.Id})");
                             }

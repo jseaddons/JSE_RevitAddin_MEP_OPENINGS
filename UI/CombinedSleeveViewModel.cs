@@ -688,7 +688,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                     return Autodesk.Revit.UI.Result.Failed;
                 }
             }, "Manual Join");
+
+            // Explicit UI Feedback
+            // TaskDialog.Show("Manual Join", "Join request sent. Please wait...");
         }
+
 
 
 

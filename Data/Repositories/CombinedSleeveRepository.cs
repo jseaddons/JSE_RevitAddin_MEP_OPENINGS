@@ -76,10 +76,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     using (var cmd = _context.Connection.CreateCommand())
                                     {
                                         cmd.Transaction = transaction;
+                                        // ✅ CRITICAL FIX: Do NOT reset IsResolvedFlag or IsClusterResolvedFlag to 0!
+                                        // Keep them at 1 (maintaining hierarchy). Only refresh should reset when combined is deleted.
                                         cmd.CommandText = @"UPDATE ClashZones 
                                                             SET IsCombinedResolved = 1, 
-                                                                IsResolvedFlag = 0, 
-                                                                IsClusterResolvedFlag = 0, 
                                                                 CombinedClusterSleeveInstanceId = @CId 
                                                             WHERE ClashZoneGuid = @Guid";
                                         cmd.Parameters.AddWithValue("@Guid", constituent.ClashZoneGuid.Value.ToString());
@@ -101,13 +101,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     
                                     // ✅ CRITICAL FIX: Also update all ClashZones rows that belong to this cluster
                                     // NOTE: Do NOT reset ClusterInstanceId - maintain the link to cluster data!
+                                    // NOTE: Do NOT reset IsResolvedFlag or IsClusterResolvedFlag - keep hierarchy!
                                     using (var cmd = _context.Connection.CreateCommand())
                                     {
                                         cmd.Transaction = transaction;
                                         cmd.CommandText = @"UPDATE ClashZones 
                                                             SET IsCombinedResolved = 1, 
-                                                                IsResolvedFlag = 0, 
-                                                                IsClusterResolvedFlag = 0, 
                                                                 CombinedClusterSleeveInstanceId = @CId 
                                                             WHERE ClusterInstanceId = @Id";
                                         cmd.Parameters.AddWithValue("@Id", constituent.ClusterInstanceId.Value);
@@ -670,16 +669,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         if (constituent.Type == ConstituentType.Individual && constituent.ClashZoneGuid.HasValue)
                         {
                             // Update ClashZones.IsCombinedResolved AND CombinedClusterSleeveInstanceId
+                            // ✅ CRITICAL FIX: Do NOT reset IsResolvedFlag, IsClusterResolvedFlag, SleeveInstanceId, or ClusterInstanceId!
+                            // Keep them at their current values (preserving hierarchy). Only refresh should reset when combined is deleted.
                             using (var cmd = _context.Connection.CreateCommand())
                             {
                                 cmd.Transaction = transaction;
                                 cmd.CommandText = @"
                                     UPDATE ClashZones 
                                     SET IsCombinedResolved = 1,
-                                        IsResolvedFlag = 0,
-                                        IsClusterResolvedFlag = 0,
-                                        SleeveInstanceId = -1,
-                                        ClusterInstanceId = -1,
                                         CombinedClusterSleeveInstanceId = @CombinedInstanceId
                                     WHERE ClashZoneGuid = @ClashZoneGuid";
                                 

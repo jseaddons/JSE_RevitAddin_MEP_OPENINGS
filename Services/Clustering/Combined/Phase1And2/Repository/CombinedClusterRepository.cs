@@ -111,55 +111,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Re
 
             }
 
-            // ✅ CRITICAL FIX: Query ClusterSleeves table to find cluster sleeves for selected categories
-            // This handles the case where ClashZone.ClusterSleeveInstanceId is -1 but cluster sleeves exist
-            try
-            {
-                var allClusterSleeves = _clashZoneRepository.GetAllClusterSleeves();
-                if (allClusterSleeves != null && allClusterSleeves.Count > 0)
-                {
-                    DebugLogger.Info($"[LoadClusteredZones] Found {allClusterSleeves.Count} cluster sleeves in ClusterSleeves table");
-                    
-                    // Filter cluster sleeves by category
-                    var categorySet = new System.Collections.Generic.HashSet<string>(categories, System.StringComparer.OrdinalIgnoreCase);
-                    var relevantClusterSleeves = allClusterSleeves
-                        .Where(cs => !string.IsNullOrWhiteSpace(cs.Category) && categorySet.Contains(cs.Category))
-                        .ToList();
-                    
-                    DebugLogger.Info($"[LoadClusteredZones] {relevantClusterSleeves.Count} cluster sleeves match selected categories");
-                    
-                    // For each cluster sleeve, update or create zones
-                    foreach (var clusterSleeve in relevantClusterSleeves)
-                    {
-                        // Try to find existing zone for this cluster sleeve
-                        var existingZone = resolved.FirstOrDefault(z => z.ClusterSleeveInstanceId == clusterSleeve.ClusterInstanceId);
-                        
-                        if (existingZone != null)
-                        {
-                            DebugLogger.Info($"[LoadClusteredZones] ✅ Found existing zone for ClusterInstanceId={clusterSleeve.ClusterInstanceId}");
-                        }
-                        else
-                        {
-                            // No zone found - create a synthetic zone for this cluster sleeve
-                            var syntheticZone = new ClashZone
-                            {
-                                Id = System.Guid.NewGuid(),
-                                ClusterSleeveInstanceId = clusterSleeve.ClusterInstanceId,
-                                IsClusterResolved = true,
-                                SleeveInstanceId = -1,
-                                MepElementCategory = clusterSleeve.Category,
-                                IsResolved = true
-                            };
-                            resolved.Add(syntheticZone);
-                            DebugLogger.Info($"[LoadClusteredZones] ⚠️ Created synthetic zone for ClusterInstanceId={clusterSleeve.ClusterInstanceId}, Category={clusterSleeve.Category}");
-                        }
-                    }
-                }
-            }
-            catch (System.Exception ex)
-            {
-                DebugLogger.Warning($"[LoadClusteredZones] Failed to query ClusterSleeves table: {ex.Message}");
-            }
+            // ✅ NOTE: Synthetic zone creation for cluster sleeves is DISABLED
+            // Per user design: Only use individual zones for parameter aggregation.
+            // Each zone represents one MEP element. 2 pipes = 2 zones = 2 Size values.
+            // DO NOT add cluster-level entries - they would create duplicate parameter entries.
+            // The cluster sleeve data is still used for GEOMETRY (corners, bbox) but not for PARAMETERS.
+            //
+            // Previous code was:
+            // - Querying ClusterSleeves table
+            // - Creating synthetic zones for cluster sleeves that don't have existing zones
+            // - This was causing "3 pipe sizes instead of 2" bug
 
             // ✅ CLUSTER CORNER DATA FIX: For cluster sleeves, fetch corner data from ClusterSleeves table
             var clusterInstanceIds = resolved

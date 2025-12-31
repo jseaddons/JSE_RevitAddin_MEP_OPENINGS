@@ -186,6 +186,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Se
             {
                 return Array.Empty<ClusterSleeveInfo>();
             }
+            
+            // ✅ NOTE: No deduplication needed for parameter aggregation
+            // Each zone represents one MEP element (pipe, duct, etc.)
+            // 2 pipes = 2 zones = 2 Size values (this is correct!)
+            // Cluster-level data is NOT used for parameters - only individual zone data
 
             var snapshotLookup = _repository.LoadSnapshotParameters(materialized.Select(s => s.SourceSleeveInstanceId));
             foreach (var sleeve in materialized)

@@ -494,9 +494,63 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             circularMaxY = Math.Max(circularMaxY, cz.SleeveBoundingBoxMaxY);
                             circularMinZ = Math.Min(circularMinZ, cz.SleeveBoundingBoxMinZ);
                             circularMaxZ = Math.Max(circularMaxZ, cz.SleeveBoundingBoxMaxZ);
+                            
+                            // ✅ CRITICAL FIX: Also track corner X/Y/Z values for tracking (horizontal AND vertical)
+                            // SleeveBoundingBox* only gives individual sleeve size
+                            // SleeveCorner* gives actual position in document coordinates
+                            // This captures tracking where pipes are at different X/Y/Z levels
+                            if (cz.SleeveCorner1X.HasValue && cz.SleeveCorner1Y.HasValue)
+                            {
+                                circularMinX = Math.Min(circularMinX, cz.SleeveCorner1X.Value);
+                                circularMaxX = Math.Max(circularMaxX, cz.SleeveCorner1X.Value);
+                                circularMinY = Math.Min(circularMinY, cz.SleeveCorner1Y.Value);
+                                circularMaxY = Math.Max(circularMaxY, cz.SleeveCorner1Y.Value);
+                            }
+                            if (cz.SleeveCorner2X.HasValue && cz.SleeveCorner2Y.HasValue)
+                            {
+                                circularMinX = Math.Min(circularMinX, cz.SleeveCorner2X.Value);
+                                circularMaxX = Math.Max(circularMaxX, cz.SleeveCorner2X.Value);
+                                circularMinY = Math.Min(circularMinY, cz.SleeveCorner2Y.Value);
+                                circularMaxY = Math.Max(circularMaxY, cz.SleeveCorner2Y.Value);
+                            }
+                            if (cz.SleeveCorner3X.HasValue && cz.SleeveCorner3Y.HasValue)
+                            {
+                                circularMinX = Math.Min(circularMinX, cz.SleeveCorner3X.Value);
+                                circularMaxX = Math.Max(circularMaxX, cz.SleeveCorner3X.Value);
+                                circularMinY = Math.Min(circularMinY, cz.SleeveCorner3Y.Value);
+                                circularMaxY = Math.Max(circularMaxY, cz.SleeveCorner3Y.Value);
+                            }
+                            if (cz.SleeveCorner4X.HasValue && cz.SleeveCorner4Y.HasValue)
+                            {
+                                circularMinX = Math.Min(circularMinX, cz.SleeveCorner4X.Value);
+                                circularMaxX = Math.Max(circularMaxX, cz.SleeveCorner4X.Value);
+                                circularMinY = Math.Min(circularMinY, cz.SleeveCorner4Y.Value);
+                                circularMaxY = Math.Max(circularMaxY, cz.SleeveCorner4Y.Value);
+                            }
+                            // Z tracking for vertical pipes
+                            if (cz.SleeveCorner1Z.HasValue)
+                            {
+                                circularMinZ = Math.Min(circularMinZ, cz.SleeveCorner1Z.Value);
+                                circularMaxZ = Math.Max(circularMaxZ, cz.SleeveCorner1Z.Value);
+                            }
+                            if (cz.SleeveCorner2Z.HasValue)
+                            {
+                                circularMinZ = Math.Min(circularMinZ, cz.SleeveCorner2Z.Value);
+                                circularMaxZ = Math.Max(circularMaxZ, cz.SleeveCorner2Z.Value);
+                            }
+                            if (cz.SleeveCorner3Z.HasValue)
+                            {
+                                circularMinZ = Math.Min(circularMinZ, cz.SleeveCorner3Z.Value);
+                                circularMaxZ = Math.Max(circularMaxZ, cz.SleeveCorner3Z.Value);
+                            }
+                            if (cz.SleeveCorner4Z.HasValue)
+                            {
+                                circularMinZ = Math.Min(circularMinZ, cz.SleeveCorner4Z.Value);
+                                circularMaxZ = Math.Max(circularMaxZ, cz.SleeveCorner4Z.Value);
+                            }
 
                             SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                $"[{DateTime.Now:HH:mm:ss}]   Sleeve {sleeveId}: BBox Min=({cz.SleeveBoundingBoxMinX:F6},{cz.SleeveBoundingBoxMinY:F6},{cz.SleeveBoundingBoxMinZ:F6}), Max=({cz.SleeveBoundingBoxMaxX:F6},{cz.SleeveBoundingBoxMaxY:F6},{cz.SleeveBoundingBoxMaxZ:F6})\n");
+                                $"[{DateTime.Now:HH:mm:ss}]   Sleeve {sleeveId}: BBox Min=({cz.SleeveBoundingBoxMinX:F6},{cz.SleeveBoundingBoxMinY:F6},{cz.SleeveBoundingBoxMinZ:F6}), Max=({cz.SleeveBoundingBoxMaxX:F6},{cz.SleeveBoundingBoxMaxY:F6},{cz.SleeveBoundingBoxMaxZ:F6}), CornerZ=({cz.SleeveCorner1Z ?? 0:F3},{cz.SleeveCorner3Z ?? 0:F3})\n");
                         }
                     }
                     catch (Exception ex)
@@ -594,13 +648,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
 
                 if (isXWall)
                 {
-                    // X-WALL (Normal X, Length along Y):
-                    // Width is along Y axis
-                    // Depth is along X axis (Wall Thickness)
-                    circularWidth = rawWidthY;
+                    // X-WALL (wall runs ALONG X-axis, normal is along Y):
+                    // Width is the span ALONG the wall = X-axis = rawWidthX
+                    // Depth is THROUGH the wall = Y-axis = rawWidthY (wall thickness)
+                    circularWidth = rawWidthX;
                     
-                    // Depth logic: Use structural thickness if valid, else fallback to BBox X-depth
-                    double bboxDepth = rawWidthX;
+                    // Depth logic: Use structural thickness if valid, else fallback to BBox Y-depth
+                    double bboxDepth = rawWidthY;
                     circularDepth = maxStructuralThickness > 0 ? maxStructuralThickness : bboxDepth;
                 }
                 else

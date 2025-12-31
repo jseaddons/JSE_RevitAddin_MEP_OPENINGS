@@ -1495,6 +1495,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         DebugLogger.Warning($"[RefactoredClusterService] Invalid bounding box for cluster, skipping");
                     return (false, 0, 0, null, null);
                 }
+
+                // ✅ DIAGNOSTIC TRACE: Verify group-to-dimensions mapping
+                try
+                {
+                    string sleeveIdsStr = string.Join(",", cluster.Select(c => c.SleeveInstanceId));
+                    string logMsg = $"[{DateTime.Now:HH:mm:ss}] 🔄 PROCESSING GROUP: Sleeves=[{sleeveIdsStr}], CalcWidth={bboxResult.width * 304.8:F1}mm, CalcHeight={bboxResult.height * 304.8:F1}mm, CalcDepth={bboxResult.depth * 304.8:F1}mm\n";
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", logMsg);
+                }
+                catch {}
                 
                 // ✅ Step 3: Place cluster sleeve (Phase 5: Placement Service)
                 // 🔥 CRITICAL: Direct IO logging before placement
