@@ -1,0 +1,40 @@
+[2025-12-31 19:33:05.224] [19:33:05.223] [DB-LOAD-MEP] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: MepWidth=0.000000ft (0.0mm), MepHeight=0.000000ft (0.0mm)
+
+[2025-12-31 19:33:07.568] [19:33:07.567] [DB-LOAD-MEP] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: MepWidth=0.000000ft (0.0mm), MepHeight=0.000000ft (0.0mm)
+
+[2025-12-31 19:33:07.639] [19:33:07.638] [DB-LOAD-MEP] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: MepWidth=0.000000ft (0.0mm), MepHeight=0.000000ft (0.0mm)
+
+[2025-12-31 19:33:07.874] [19:33:07.873] [STRATEGY-READ] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: MepElementWidth=0.000000ft (0.0mm), MepElementHeight=0.000000ft (0.0mm)
+
+[2025-12-31 19:33:07.879] [19:33:07.879] [STRATEGY-CONNECTOR-DETECTION] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: HasMepConnector=True, DamperConnectorSide='+Y' (World Coordinate Direction), HostOrientation='Y', StructuralElementType='Wall'
+
+[2025-12-31 19:33:07.881] [19:33:07.880] [STRATEGY-CLEARANCE] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: MEP=100mm, Other=50mm
+
+[2025-12-31 19:33:07.882] [19:33:07.882] [STRATEGY-BRANCHING] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: HasMepConnector=True, DamperConnectorSide='+Y'
+
+[2025-12-31 19:33:07.884] [19:33:07.883] [STRATEGY-BRANCH-DECISION] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: Branch=MEP CONNECTOR PATH (asymmetric clearance), HasMepConnector=True, DamperConnectorSide='+Y'
+
+[2025-12-31 19:33:07.886] [19:33:07.885] [STRATEGY-OFFSET-CALC] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: ConnectorDirection='+Y', HostOrientation='Y', OffsetAmount=25.0mm, OffsetVector=(0.0, 25.0, 0.0)mm
+
+[2025-12-31 19:33:07.889] [19:33:07.888] [STRATEGY-MSFD-FINAL] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: ConnectorDirection='+Y' (WCS), HostOrientation='Y', MEPClearanceSide='Right', Base(0.0mm) + Clearance(150.0mm width, 100.0mm height) = Final(150.0mm x 100.0mm), Offset=25.0mm toward +Y direction
+
+[2025-12-31 19:33:07.891] [19:33:07.890] [STRATEGY-CLEARANCE-ASSIGNMENT] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: ConnectorDirection='+Y', HostOrientation='Y', MEPClearance=100.0mm on Right, OtherClearance=50.0mm on opposite side
+
+[2025-12-31 19:33:07.892] [19:33:07.892] [STRATEGY-OFFSET-DETAIL] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: OffsetAmount=25.0mm, ConnectorDirection='+Y', OffsetVector=(0.0, 25.0, 0.0)mm
+
+[2025-12-31 19:33:07.918] [19:33:07.915] [TRACE] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: StructId=1043726, Not in HostDoc, checking Links... Found in Link 'CMO-GCI-MOD-ARC-ZZ-00002-2024', HostFound=True, HostType=Wall, 
+
+[2025-12-31 19:33:07.919] [19:33:07.919] [TRACE] SOURCE POINT: Using BBox Centroid (Last Resort): (275.177, 54.719, 21.941)
+
+[2025-12-31 19:33:07.921] [19:33:07.920] [TRACE] 👉 ENTERING LOCATION CURVE LOGIC
+
+[2025-12-31 19:33:07.925] [19:33:07.925] [TRACE] Found Link Transform: CMO-GCI-MOD-ARC-ZZ-00002-2024.rvt : 1 : location Shared
+
+[2025-12-31 19:33:07.932] [19:33:07.932] [TRACE] ✅ CURVE PROJECTION SUCCESS: Source=(275.177, 54.719, 21.941) -> Projected=(275.180, 54.719, 13.780) -> Final=(275.180, 54.719, 21.941)
+
+[2025-12-31 19:33:12.432] [19:33:12.431] [DB-LOAD-MEP] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: MepWidth=0.000000ft (0.0mm), MepHeight=0.000000ft (0.0mm)
+
+[2025-12-31 19:33:12.498] [19:33:12.497] [DB-LOAD-MEP] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: MepWidth=0.000000ft (0.0mm), MepHeight=0.000000ft (0.0mm)
+
+[2025-12-31 19:33:12.686] [19:33:12.686] [DB-LOAD-MEP] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: MepWidth=0.000000ft (0.0mm), MepHeight=0.000000ft (0.0mm)
+

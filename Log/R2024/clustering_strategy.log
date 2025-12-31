@@ -1,0 +1,13 @@
+[2025-12-31 19:33:12.819] [19:33:12.819] ========== STRATEGY SELECTION ==========
+
+[2025-12-31 19:33:12.821] [19:33:12.821] HostType=Wall, SystemType=Duct Accessories, Orientation=Y
+
+[2025-12-31 19:33:12.823] [19:33:12.822] Sleeve count: 1
+
+[2025-12-31 19:33:12.829] [19:33:12.828] IsCircular: False, HasRotated: False
+
+[2025-12-31 19:33:12.830] [19:33:12.830] ✅ SELECTED: WallAxisAlignedStrategy (2D Y-Z plane)
+
+[2025-12-31 19:33:12.832] [19:33:12.831] ========== END STRATEGY SELECTION ==========
+
+

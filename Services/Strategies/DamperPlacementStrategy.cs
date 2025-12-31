@@ -51,15 +51,78 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
             
             // Get size from damper-specific parameters (not generic Width/Height)
             // Fire dampers use "Damper Width" and "Damper Height" parameters
+            // User Request (2025-12-31): Add "Dimensions Width" / "Dimension Width" / "Dimensions_Width" support
             var widthParam = damper.LookupParameter("Damper Width") ?? 
                             damper.LookupParameter("Width") ?? 
-                            damper.LookupParameter("width");
+                            damper.LookupParameter("width") ??
+                            damper.LookupParameter("Dimensions_Width") ??
+                            damper.LookupParameter("Dimensions Width") ??
+                            damper.LookupParameter("Dimension Width") ??
+                            damper.LookupParameter("dimensions width") ??
+                            damper.LookupParameter("dimension width");
+                            
             var heightParam = damper.LookupParameter("Damper Height") ?? 
                              damper.LookupParameter("Height") ?? 
-                             damper.LookupParameter("height");
+                             damper.LookupParameter("height") ??
+                             damper.LookupParameter("Dimensions_Height") ??
+                             damper.LookupParameter("Dimensions Height") ??
+                             damper.LookupParameter("Dimension Height") ??
+                             damper.LookupParameter("dimensions height") ??
+                             damper.LookupParameter("dimension height");
             
             size.Width = widthParam?.AsDouble() ?? 0.0;
             size.Height = heightParam?.AsDouble() ?? 0.0;
+            
+            // ✅ R2024 FIX: If parameters fail (0.0), use Geometry Bounding Box
+            if (size.Width <= 0.001 || size.Height <= 0.001)
+            {
+                DebugLogger.Warning($"[DamperStrategy] Damper {damper.Id}: Zero dimensions from parameters. Attempting BoundingBox calculation.");
+                var bbox = damper.get_BoundingBox(null);
+                if (bbox != null)
+                {
+                    // Height is Z-delta
+                    size.Height = bbox.Max.Z - bbox.Min.Z;
+                    
+                    // Width depends on Wall Orientation
+                    double deltaX = bbox.Max.X - bbox.Min.X;
+                    double deltaY = bbox.Max.Y - bbox.Min.Y;
+                    
+                    // Try to get Host Wall to determine Orientation
+                    // Note: This is a strategy-level detection, independent of ClashZoneService
+                    Element host = damper.Host; 
+                    // If host is null (e.g. invalid) check if it's face hosted or try to find intersecting wall? 
+                    // For now, assume Max lateral dimension is Width (Safest default for square/rectangular dampers)
+                    // If we want to be smarter:
+                    string orientation = "Unknown";
+                    if (host is Wall wall)
+                    {
+                         // Basic orientation check
+                         XYZ normal = wall.Orientation;
+                         if (Math.Abs(normal.X) > Math.Abs(normal.Y)) orientation = "X"; // Normal X -> Wall runs Y -> Width is Y? No.
+                         // Wall runs PERPENDICULAR to Normal.
+                         // If Normal is X, Wall runs along Y. Width is along Y.
+                         // If Normal is Y, Wall runs along X. Width is along X.
+                         
+                         if (Math.Abs(normal.X) > Math.Abs(normal.Y)) 
+                         {
+                             // Wall is Y-aligned (runs North-South)
+                             size.Width = deltaY;
+                         }
+                         else
+                         {
+                             // Wall is X-aligned (runs East-West)
+                             size.Width = deltaX; 
+                         }
+                    }
+                    else
+                    {
+                         // Fallback: Max lateral dimension
+                         size.Width = Math.Max(deltaX, deltaY);
+                    }
+                    
+                    DebugLogger.Info($"[DamperStrategy] Calculated from BBox: Width={size.Width} ft, Height={size.Height} ft");
+                }
+            }
             
             DebugLogger.Info($"[DamperStrategy] Damper {damper.Id}: Width={size.Width} ft, Height={size.Height} ft (from '{widthParam?.Definition.Name}' and '{heightParam?.Definition.Name}' parameters)");
             

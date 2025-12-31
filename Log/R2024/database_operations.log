@@ -1,25 +1,30 @@
-[2025-12-31 17:26:06.354] === DATABASE OPERATION ===
+[2025-12-31 19:33:00.502] === DATABASE SELECT ===
+Table: Filters
+WHERE: FilterName='Ventilation' AND Category='Duct Accessories'
+---
+
+[2025-12-31 19:33:00.505] === DATABASE OPERATION ===
 Operation: INSERT
 Table: Filters
 Parameters:
   FilterName = Ventilation
-  Category = Ducts
+  Category = Duct Accessories
   IsFilterComboNew = 0
 Info: Creating new filter
 ---
 
-[2025-12-31 17:26:06.358] === DATABASE OPERATION ===
+[2025-12-31 19:33:00.505] === DATABASE OPERATION ===
 Operation: INSERT
 Table: Filters
 Parameters:
   FilterName = Ventilation
-  Category = Ducts
+  Category = Duct Accessories
   IsFilterComboNew = 0
 Rows Affected: 1
 Info: ✅ Created FilterId=1
 ---
 
-[2025-12-31 17:26:06.370] === DATABASE OPERATION ===
+[2025-12-31 19:33:00.530] === DATABASE OPERATION ===
 Operation: UPDATE
 Table: Filters
 Parameters:
@@ -29,7 +34,7 @@ Parameters:
 Info: Saving UI state for FilterId=1
 ---
 
-[2025-12-31 17:26:06.487] === DATABASE OPERATION ===
+[2025-12-31 19:33:00.709] === DATABASE OPERATION ===
 Operation: UPDATE
 Table: Filters
 Parameters:
@@ -40,15 +45,76 @@ Rows Affected: 1
 Info: ✅ Saved UI state - HostCategories: 1, AdoptToDocumentFlag: 1
 ---
 
-[2025-12-31 17:26:14.079] === DATABASE OPERATION ===
+[2025-12-31 19:33:06.847] === DATABASE SELECT ===
+Table: Filters
+WHERE: FilterName='Ventilation' AND Category='Duct Accessories'
+---
+
+[2025-12-31 19:33:06.848] === DATABASE SELECT ===
+Table: Filters
+WHERE: FilterName='Ventilation' AND Category='Duct Accessories'
+Results: 1 row(s)
+Sample Row:
+  FilterId = 1
+---
+
+[2025-12-31 19:33:07.683] === DATABASE SELECT ===
+Table: Filters
+WHERE: FilterName='Ventilation' AND Category='Duct Accessories'
+---
+
+[2025-12-31 19:33:07.684] === DATABASE SELECT ===
+Table: Filters
+WHERE: FilterName='Ventilation' AND Category='Duct Accessories'
+Results: 1 row(s)
+Sample Row:
+  FilterId = 1
+---
+
+[2025-12-31 19:33:07.744] === DATABASE SELECT ===
+Table: Filters
+WHERE: FilterName='Ventilation' AND Category='Duct Accessories'
+---
+
+[2025-12-31 19:33:07.745] === DATABASE SELECT ===
+Table: Filters
+WHERE: FilterName='Ventilation' AND Category='Duct Accessories'
+Results: 1 row(s)
+Sample Row:
+  FilterId = 1
+---
+
+[2025-12-31 19:33:08.109] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 0544a9a0-89b8-0e08-2188-db8554cbad72
+  SleeveInstanceId = 744915
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=744915 for zone 0544a9a0-89b8-0e08-2188-db8554cbad72
+---
+
+[2025-12-31 19:33:08.157] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 0544a9a0-89b8-0e08-2188-db8554cbad72
+  SleeveInstanceId = 744915
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=744915 for zone 0544a9a0-89b8-0e08-2188-db8554cbad72
+---
+
+[2025-12-31 19:33:08.235] === DATABASE OPERATION ===
 Operation: INSERT
 Table: SleeveSnapshots
 Parameters:
-  SleeveInstanceId = 735815
+  SleeveInstanceId = 744915
   ClusterInstanceId = NULL
   SourceType = Individual
-  FilterId = 3
-  ComboId = 2
+  FilterId = 1
+  ComboId = 1
   MepElementIdsJson = [23630658]
   HostElementIdsJson = [1043726]
   MepParametersJson = {"System Type":"Fresh Air","System Name":"FAD 78","System Abbreviation":"FAD","Reference Level":"LEV...
@@ -57,788 +123,31 @@ Parameters:
   HostDocKeysJson = ["CMO-GCI-MOD-ARC-ZZ-00002-2024"]
   ClashZoneGuid = 0544A9A0-89B8-0E08-2188-DB8554CBAD72
 Rows Affected: 1
-Info: ✅ Inserted NEW snapshot for SleeveId=735815, ClusterId=, MEP params: 13 (System Type, System Name, System Abbreviation, Reference Level, Schedule of Level (+8 more)), Host params: 1
+Info: ✅ Inserted NEW snapshot for SleeveId=744915, ClusterId=, MEP params: 13 (System Type, System Name, System Abbreviation, Reference Level, Schedule of Level (+8 more)), Host params: 1
 ---
 
-[2025-12-31 17:26:14.080] === DATABASE OPERATION ===
-Operation: INSERT
-Table: SleeveSnapshots
-Parameters:
-  SleeveInstanceId = 735824
-  ClusterInstanceId = NULL
-  SourceType = Individual
-  FilterId = 3
-  ComboId = 2
-  MepElementIdsJson = [23630662]
-  HostElementIdsJson = [1043726]
-  MepParametersJson = {"System Type":"Exhaust Air","System Name":"EAD 30","System Abbreviation":"EAD","Reference Level":"L...
-  HostParametersJson = {"Fire Rating":"4hr"}
-  SourceDocKeysJson = ["CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002"]
-  HostDocKeysJson = ["CMO-GCI-MOD-ARC-ZZ-00002-2024"]
-  ClashZoneGuid = C382454F-CA80-9AEF-718D-C910CF6636E0
-Rows Affected: 1
-Info: ✅ Inserted NEW snapshot for SleeveId=735824, ClusterId=, MEP params: 13 (System Type, System Name, System Abbreviation, Reference Level, Schedule of Level (+8 more)), Host params: 1
----
+[2025-12-31 19:33:08.241] [2025-12-31 19:33:08.241] [SleevePersistenceService] ✅ Saved sleeve snapshots for 1 placed sleeves (FilterId=1)
 
-[2025-12-31 17:26:17.517] === DATABASE OPERATION ===
-Operation: INSERT
-Table: SleeveSnapshots
-Parameters:
-  SleeveInstanceId = 735831
-  ClusterInstanceId = NULL
-  SourceType = Individual
-  FilterId = 2
-  ComboId = 1
-  MepElementIdsJson = [22580108]
-  HostElementIdsJson = [1043726]
-  MepParametersJson = {"System Type":"M - Chilled Water Return","System Name":"CHWR 3 (1) (1)","System Abbreviation":"CHWR...
-  HostParametersJson = {"Reference Level":"","Fire Rating":"4hr","Width":"200 mm","Level":""}
-  SourceDocKeysJson = ["CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002"]
-  HostDocKeysJson = ["CMO-GCI-MOD-ARC-ZZ-00002-2024"]
-  ClashZoneGuid = A8FCF04F-6DB3-5BC7-2076-8667F29C0B89
-Rows Affected: 1
-Info: ✅ Inserted NEW snapshot for SleeveId=735831, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more)), Host params: 4
----
-
-[2025-12-31 17:27:14.399] === DATABASE OPERATION ===
+[2025-12-31 19:33:12.471] === DATABASE OPERATION ===
 Operation: UPDATE
-Table: Filters
+Table: ClashZones
 Parameters:
-  FilterId = 1
-  SelectedHostCategories = Walls
-  AdoptToDocumentFlag = 1
-Info: Saving UI state for FilterId=1
----
-
-[2025-12-31 17:27:14.531] === DATABASE OPERATION ===
-Operation: UPDATE
-Table: Filters
-Parameters:
-  FilterId = 1
-  SelectedHostCategories = Walls
-  AdoptToDocumentFlag = 1
+  ClashZoneGuid = 0544a9a0-89b8-0e08-2188-db8554cbad72
+  SleeveInstanceId = 744915
+  RowExists = True
 Rows Affected: 1
-Info: ✅ Saved UI state - HostCategories: 1, AdoptToDocumentFlag: 1
+Info: ✅ Updated SleeveInstanceId=744915 for zone 0544a9a0-89b8-0e08-2188-db8554cbad72
 ---
 
-[2025-12-31 17:27:14.561] === DATABASE OPERATION ===
-Operation: UPDATE
-Table: Filters
-Parameters:
-  FilterId = 1
-  SelectedHostCategories = Walls
-  AdoptToDocumentFlag = 1
-Info: Saving UI state for FilterId=1
----
-
-[2025-12-31 17:27:14.561] === DATABASE OPERATION ===
-Operation: UPDATE
-Table: Filters
-Parameters:
-  FilterId = 1
-  SelectedHostCategories = Walls
-  AdoptToDocumentFlag = 1
-Rows Affected: 1
-Info: ✅ Saved UI state - HostCategories: 1, AdoptToDocumentFlag: 1
----
-
-[2025-12-31 17:27:29.200] === DATABASE OPERATION ===
-Operation: INSERT
-Table: SleeveSnapshots
-Parameters:
-  SleeveInstanceId = 1201963
-  ClusterInstanceId = NULL
-  SourceType = Individual
-  FilterId = 1
-  ComboId = 7
-  MepElementIdsJson = [724321]
-  HostElementIdsJson = [321070]
-  MepParametersJson = {"System Type":"Supply Air","System Name":"Mechanical Supply Air 1","System Abbreviation":"SAD","Ref...
-  HostParametersJson = {"Width":"200"}
-  SourceDocKeysJson = ["ME-00001"]
-  HostDocKeysJson = ["AR-00001_detached"]
-  ClashZoneGuid = 6E697F6D-042F-C458-485C-D3B176849C2E
-Rows Affected: 1
-Info: ✅ Inserted NEW snapshot for SleeveId=1201963, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more)), Host params: 1
----
-
-[2025-12-31 17:27:29.202] === DATABASE OPERATION ===
-Operation: INSERT
-Table: SleeveSnapshots
-Parameters:
-  SleeveInstanceId = 1202005
-  ClusterInstanceId = NULL
-  SourceType = Individual
-  FilterId = 1
-  ComboId = 7
-  MepElementIdsJson = [732149]
-  HostElementIdsJson = [324581]
-  MepParametersJson = {"System Type":"Return Air","System Name":"Mechanical Return Air 5","System Abbreviation":"RAD","Ref...
-  HostParametersJson = {"Width":"338"}
-  SourceDocKeysJson = ["ME-00001"]
-  HostDocKeysJson = ["AR-00001_detached"]
-  ClashZoneGuid = 53DCE294-1F4E-8973-5EC4-3F5DC078DC82
-Rows Affected: 1
-Info: ✅ Inserted NEW snapshot for SleeveId=1202005, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more)), Host params: 1
----
-
-[2025-12-31 17:27:29.204] === DATABASE OPERATION ===
-Operation: INSERT
-Table: SleeveSnapshots
-Parameters:
-  SleeveInstanceId = 1202033
-  ClusterInstanceId = NULL
-  SourceType = Individual
-  FilterId = 1
-  ComboId = 7
-  MepElementIdsJson = [734827]
-  HostElementIdsJson = [321070]
-  MepParametersJson = {"System Type":"Supply Air","System Name":"Mechanical Supply Air 1","System Abbreviation":"SAD","Ref...
-  HostParametersJson = {"Width":"200"}
-  SourceDocKeysJson = ["ME-00001"]
-  HostDocKeysJson = ["AR-00001_detached"]
-  ClashZoneGuid = 76BD1243-42CA-67B7-4707-F3269A9E33BA
-Rows Affected: 1
-Info: ✅ Inserted NEW snapshot for SleeveId=1202033, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more)), Host params: 1
----
-
-[2025-12-31 17:27:29.222] === DATABASE OPERATION ===
-Operation: INSERT
-Table: SleeveSnapshots
-Parameters:
-  SleeveInstanceId = 1202481
-  ClusterInstanceId = NULL
-  SourceType = Individual
-  FilterId = 1
-  ComboId = 7
-  MepElementIdsJson = [737600]
-  HostElementIdsJson = [324581]
-  MepParametersJson = {"System Type":"Supply Air","System Name":"Mechanical Supply Air 65","System Abbreviation":"SAD","Re...
-  HostParametersJson = {"Width":"338"}
-  SourceDocKeysJson = ["ME-00001"]
-  HostDocKeysJson = ["AR-00001_detached"]
-  ClashZoneGuid = 5AA8AB08-E43E-2DEE-FB48-C2234E5B72F4
-Rows Affected: 1
-Info: ✅ Inserted NEW snapshot for SleeveId=1202481, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more)), Host params: 1
----
-
-[2025-12-31 17:27:29.223] === DATABASE OPERATION ===
-Operation: INSERT
-Table: SleeveSnapshots
-Parameters:
-  SleeveInstanceId = 1202495
-  ClusterInstanceId = NULL
-  SourceType = Individual
-  FilterId = 1
-  ComboId = 7
-  MepElementIdsJson = [730969]
-  HostElementIdsJson = [321070]
-  MepParametersJson = {"System Type":"Supply Air","System Name":"Mechanical Supply Air 2","System Abbreviation":"SAD","Ref...
-  HostParametersJson = {"Width":"200"}
-  SourceDocKeysJson = ["ME-00001"]
-  HostDocKeysJson = ["AR-00001_detached"]
-  ClashZoneGuid = 048179E4-D918-5EE7-D67B-ECAFC1CE9EDF
-Rows Affected: 1
-Info: ✅ Inserted NEW snapshot for SleeveId=1202495, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more)), Host params: 1
----
-
-[2025-12-31 17:27:29.225] === DATABASE OPERATION ===
-Operation: INSERT
-Table: SleeveSnapshots
-Parameters:
-  SleeveInstanceId = 1202537
-  ClusterInstanceId = NULL
-  SourceType = Individual
-  FilterId = 1
-  ComboId = 7
-  MepElementIdsJson = [734924]
-  HostElementIdsJson = [321070]
-  MepParametersJson = {"System Type":"Supply Air","System Name":"Mechanical Supply Air 2","System Abbreviation":"SAD","Ref...
-  HostParametersJson = {"Width":"200"}
-  SourceDocKeysJson = ["ME-00001"]
-  HostDocKeysJson = ["AR-00001_detached"]
-  ClashZoneGuid = B761D7D0-A807-5C38-74DF-459054DA6474
-Rows Affected: 1
-Info: ✅ Inserted NEW snapshot for SleeveId=1202537, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more)), Host params: 1
----
-
-[2025-12-31 17:27:29.226] === DATABASE OPERATION ===
-Operation: INSERT
-Table: SleeveSnapshots
-Parameters:
-  SleeveInstanceId = 1202565
-  ClusterInstanceId = NULL
-  SourceType = Individual
-  FilterId = 1
-  ComboId = 7
-  MepElementIdsJson = [730925]
-  HostElementIdsJson = [321070]
-  MepParametersJson = {"System Type":"Exhaust Air","System Name":"Mechanical Exhaust Air 2","System Abbreviation":"EAD","R...
-  HostParametersJson = {"Width":"200"}
-  SourceDocKeysJson = ["ME-00001"]
-  HostDocKeysJson = ["AR-00001_detached"]
-  ClashZoneGuid = BABC5699-926A-92F4-E8FE-8BB653A8DE79
-Rows Affected: 1
-Info: ✅ Inserted NEW snapshot for SleeveId=1202565, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more)), Host params: 1
----
-
-[2025-12-31 17:27:29.228] === DATABASE OPERATION ===
-Operation: INSERT
-Table: SleeveSnapshots
-Parameters:
-  SleeveInstanceId = 1202593
-  ClusterInstanceId = NULL
-  SourceType = Individual
-  FilterId = 1
-  ComboId = 7
-  MepElementIdsJson = [730932]
-  HostElementIdsJson = [324248]
-  MepParametersJson = {"System Type":"Exhaust Air","System Name":"Mechanical Exhaust Air 2","System Abbreviation":"EAD","R...
-  HostParametersJson = {"Width":"338"}
-  SourceDocKeysJson = ["ME-00001"]
-  HostDocKeysJson = ["AR-00001_detached"]
-  ClashZoneGuid = 57564C22-BBFC-E1E9-78B0-2607183B154E
-Rows Affected: 1
-Info: ✅ Inserted NEW snapshot for SleeveId=1202593, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more)), Host params: 1
----
-
-[2025-12-31 17:27:44.375] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
+[2025-12-31 19:33:12.572] === DATABASE SELECT ===
 Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202697
-  Corner1X = 3.54233358302748
-  Corner1Y = 43.5909397120553
-  Corner1Z = 6.43044619422572
+WHERE: FilterId=1 AND Category='Duct Accessories'
+Info: Checking for existing cluster data by FilterId+Category
 ---
 
-[2025-12-31 17:27:44.378] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
+[2025-12-31 19:33:12.573] === DATABASE SELECT ===
 Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202706
-  Corner1X = 4.46096875363116
-  Corner1Y = 19.8195615084465
-  Corner1Z = 5.18171273641446
----
-
-[2025-12-31 17:27:44.381] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202713
-  Corner1X = 8.00490856736525
-  Corner1Y = 4.87049590601722
-  Corner1Z = 1.45694166252145
----
-
-[2025-12-31 17:27:44.383] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202720
-  Corner1X = 8.00490856736524
-  Corner1Y = 2.82152230971128
-  Corner1Z = 1.45694166252145
----
-
-[2025-12-31 17:27:44.386] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202727
-  Corner1X = 8.00490856736524
-  Corner1Y = 1.04986876640389
-  Corner1Z = 1.45694166252145
----
-
-[2025-12-31 17:27:44.388] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202734
-  Corner1X = 3.23065379300122
-  Corner1Y = 4.87049590601723
-  Corner1Z = 3.93700787401575
----
-
-[2025-12-31 17:27:44.391] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202741
-  Corner1X = 10.1995962051864
-  Corner1Y = 2.63337320260503
-  Corner1Z = 6.19192877926061
----
-
-[2025-12-31 17:27:44.394] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202748
-  Corner1X = 47.9510376420865
-  Corner1Y = 4.87049590601715
-  Corner1Z = 4.26307756581078
----
-
-[2025-12-31 17:27:44.396] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202755
-  Corner1X = 47.9510376420865
-  Corner1Y = 2.82152230971128
-  Corner1Z = 4.26307756581078
----
-
-[2025-12-31 17:27:44.398] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202762
-  Corner1X = 47.9510376420865
-  Corner1Y = 1.04986876640388
-  Corner1Z = 4.26307756581078
----
-
-[2025-12-31 17:27:44.401] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202769
-  Corner1X = 17.0131155447053
-  Corner1Y = 4.8704959060172
-  Corner1Z = 6.56167979002626
----
-
-[2025-12-31 17:27:44.403] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202776
-  Corner1X = 17.0131155447053
-  Corner1Y = 2.82152230971128
-  Corner1Z = 6.56167979002626
----
-
-[2025-12-31 17:27:44.406] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202783
-  Corner1X = 23.6024649096964
-  Corner1Y = 5.4092847769031
-  Corner1Z = 9.83049698008818
----
-
-[2025-12-31 17:27:44.408] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202790
-  Corner1X = 23.6024649096964
-  Corner1Y = 2.82152230971128
-  Corner1Z = 9.83049698008818
----
-
-[2025-12-31 17:27:44.411] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202797
-  Corner1X = 23.6024649096964
-  Corner1Y = 1.04986876640389
-  Corner1Z = 9.83049698008819
----
-
-[2025-12-31 17:27:44.416] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202804
-  Corner1X = 48.727554466016
-  Corner1Y = 5.40928477690301
-  Corner1Z = 9.88632797973094
----
-
-[2025-12-31 17:27:44.419] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202811
-  Corner1X = 48.727554466016
-  Corner1Y = 2.82152230971128
-  Corner1Z = 9.88632797973094
----
-
-[2025-12-31 17:27:44.421] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202818
-  Corner1X = 48.727554466016
-  Corner1Y = 1.04986876640388
-  Corner1Z = 9.88632797973094
----
-
-[2025-12-31 17:27:44.424] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202825
-  Corner1X = 48.5331125202535
-  Corner1Y = 5.40928477690301
-  Corner1Z = 7.2701455824134
----
-
-[2025-12-31 17:27:44.426] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202832
-  Corner1X = 48.5331125202535
-  Corner1Y = 2.82152230971128
-  Corner1Z = 7.2701455824134
----
-
-[2025-12-31 17:27:44.429] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202839
-  Corner1X = 48.5331125202535
-  Corner1Y = 1.04986876640388
-  Corner1Z = 7.2701455824134
----
-
-[2025-12-31 17:27:44.431] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202846
-  Corner1X = 9.08136184623699
-  Corner1Y = 0.721784776902574
-  Corner1Z = 9.80971128608924
----
-
-[2025-12-31 17:27:44.434] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202853
-  Corner1X = 10.1995962051864
-  Corner1Y = 0.721784776902574
-  Corner1Z = 6.19192877926067
----
-
-[2025-12-31 17:27:44.543] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202697
-  Corner1X = 3.54233358302748
-  Corner1Y = 43.5909397120553
-  Corner1Z = 6.43044619422572
----
-
-[2025-12-31 17:27:44.546] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202706
-  Corner1X = 4.46096875363116
-  Corner1Y = 19.8195615084465
-  Corner1Z = 5.18171273641446
----
-
-[2025-12-31 17:27:44.549] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202713
-  Corner1X = 8.00490856736525
-  Corner1Y = 4.87049590601722
-  Corner1Z = 1.45694166252145
----
-
-[2025-12-31 17:27:44.552] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202720
-  Corner1X = 8.00490856736524
-  Corner1Y = 2.82152230971128
-  Corner1Z = 1.45694166252145
----
-
-[2025-12-31 17:27:44.554] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202727
-  Corner1X = 8.00490856736524
-  Corner1Y = 1.04986876640389
-  Corner1Z = 1.45694166252145
----
-
-[2025-12-31 17:27:44.557] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202734
-  Corner1X = 3.23065379300122
-  Corner1Y = 4.87049590601723
-  Corner1Z = 3.93700787401575
----
-
-[2025-12-31 17:27:44.559] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202741
-  Corner1X = 10.1995962051864
-  Corner1Y = 2.63337320260503
-  Corner1Z = 6.19192877926061
----
-
-[2025-12-31 17:27:44.562] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202748
-  Corner1X = 47.9510376420865
-  Corner1Y = 4.87049590601715
-  Corner1Z = 4.26307756581078
----
-
-[2025-12-31 17:27:44.565] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202755
-  Corner1X = 47.9510376420865
-  Corner1Y = 2.82152230971128
-  Corner1Z = 4.26307756581078
----
-
-[2025-12-31 17:27:44.567] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202762
-  Corner1X = 47.9510376420865
-  Corner1Y = 1.04986876640388
-  Corner1Z = 4.26307756581078
----
-
-[2025-12-31 17:27:44.570] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202769
-  Corner1X = 17.0131155447053
-  Corner1Y = 4.8704959060172
-  Corner1Z = 6.56167979002626
----
-
-[2025-12-31 17:27:44.572] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202776
-  Corner1X = 17.0131155447053
-  Corner1Y = 2.82152230971128
-  Corner1Z = 6.56167979002626
----
-
-[2025-12-31 17:27:44.574] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202783
-  Corner1X = 23.6024649096964
-  Corner1Y = 5.4092847769031
-  Corner1Z = 9.83049698008818
----
-
-[2025-12-31 17:27:44.577] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202790
-  Corner1X = 23.6024649096964
-  Corner1Y = 2.82152230971128
-  Corner1Z = 9.83049698008818
----
-
-[2025-12-31 17:27:44.579] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202797
-  Corner1X = 23.6024649096964
-  Corner1Y = 1.04986876640389
-  Corner1Z = 9.83049698008819
----
-
-[2025-12-31 17:27:44.582] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202804
-  Corner1X = 48.727554466016
-  Corner1Y = 5.40928477690301
-  Corner1Z = 9.88632797973094
----
-
-[2025-12-31 17:27:44.584] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202811
-  Corner1X = 48.727554466016
-  Corner1Y = 2.82152230971128
-  Corner1Z = 9.88632797973094
----
-
-[2025-12-31 17:27:44.588] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202818
-  Corner1X = 48.727554466016
-  Corner1Y = 1.04986876640388
-  Corner1Z = 9.88632797973094
----
-
-[2025-12-31 17:27:44.590] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202825
-  Corner1X = 48.5331125202535
-  Corner1Y = 5.40928477690301
-  Corner1Z = 7.2701455824134
----
-
-[2025-12-31 17:27:44.593] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202832
-  Corner1X = 48.5331125202535
-  Corner1Y = 2.82152230971128
-  Corner1Z = 7.2701455824134
----
-
-[2025-12-31 17:27:44.595] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202839
-  Corner1X = 48.5331125202535
-  Corner1Y = 1.04986876640388
-  Corner1Z = 7.2701455824134
----
-
-[2025-12-31 17:27:44.598] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202846
-  Corner1X = 9.08136184623699
-  Corner1Y = 0.721784776902574
-  Corner1Z = 9.80971128608924
----
-
-[2025-12-31 17:27:44.601] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1202853
-  Corner1X = 10.1995962051864
-  Corner1Y = 0.721784776902574
-  Corner1Z = 6.19192877926067
----
-
-[2025-12-31 17:27:52.917] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1203158
-  Corner1X = 16.93109454733
-  Corner1Y = 0.721784776902574
-  Corner1Z = 6.47965879265093
----
-
-[2025-12-31 17:27:52.920] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1203167
-  Corner1X = 0.7217847769031
-  Corner1Y = 40.3921208144175
-  Corner1Z = 6.3484251968504
----
-
-[2025-12-31 17:27:52.922] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1203174
-  Corner1X = 0.7217847769031
-  Corner1Y = 29.9675753002874
-  Corner1Z = 5.21653543307087
----
-
-[2025-12-31 17:27:52.924] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1203181
-  Corner1X = 0.7217847769031
-  Corner1Y = 33.9534411415662
-  Corner1Z = 9.86330537903833
----
-
-[2025-12-31 17:27:52.970] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1203158
-  Corner1X = 16.93109454733
-  Corner1Y = 0.721784776902574
-  Corner1Z = 6.47965879265093
----
-
-[2025-12-31 17:27:52.972] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1203167
-  Corner1X = 0.7217847769031
-  Corner1Y = 40.3921208144175
-  Corner1Z = 6.3484251968504
----
-
-[2025-12-31 17:27:52.975] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1203174
-  Corner1X = 0.7217847769031
-  Corner1Y = 29.9675753002874
-  Corner1Z = 5.21653543307087
----
-
-[2025-12-31 17:27:52.977] === DATABASE OPERATION ===
-Operation: INSERT OR REPLACE
-Table: ClusterSleeves
-Parameters:
-  ClusterInstanceId = 1203181
-  Corner1X = 0.7217847769031
-  Corner1Y = 33.9534411415662
-  Corner1Z = 9.86330537903833
+WHERE: FilterId=1 AND Category='Duct Accessories'
+Results: 0 row(s)
 ---
 

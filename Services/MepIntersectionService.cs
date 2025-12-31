@@ -9,6 +9,26 @@ using System.Linq;
 #if REVIT2024_OR_GREATER
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
+    // Restored from backup: MepIntersectionService.cs.backup_before_logging_replace
+    #pragma warning disable CS0168, CS0219, CS0649, CS8600, CS8602, CS8603, CS8618, CS8629, CS8765, CS1998, CS4014
+
+    using System;
+    using System.Collections.Generic;
+    using System.Linq;
+    using Autodesk.Revit.DB;
+    using Autodesk.Revit.DB.Mechanical;
+    using Autodesk.Revit.DB.Plumbing;
+    using Autodesk.Revit.DB.Electrical;
+    using JSE_RevitAddin_MEP_OPENINGS.Helpers;
+    using JSE_RevitAddin_MEP_OPENINGS.Models;
+
+    namespace JSE_RevitAddin_MEP_OPENINGS.Services
+    {
+        public class MepIntersectionService : IMepIntersectionService
+        {
+
+        }
+    }
     public static partial class MepIntersectionService
     {
         /// <summary>

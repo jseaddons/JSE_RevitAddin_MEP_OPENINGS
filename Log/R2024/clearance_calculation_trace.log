@@ -1,0 +1,10 @@
+[2025-12-31 19:33:07.850] [19:33:07.849] [DAMPER-PRE-STRATEGY] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, RawMEP W=0.0mm, H=0.0mm, DB Clearances: MEP=100mm, Other=50mm, IsInsulated=False, HasConditions=True, HasClearanceSettings=True
+
+[2025-12-31 19:33:07.872] [19:33:07.872] [DAMPER-STRATEGY-ENTRY] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, Conditions=True, ClearanceSettings=True, IsInsulated=False
+
+[2025-12-31 19:33:07.877] [19:33:07.877] [DAMPER-STRATEGY-CLEARANCE] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, MEP Clearance=100mm, Other Clearance=50mm, IsInsulated=False (Forced False), Raw MEP W=0.0mm, H=0.0mm
+
+[2025-12-31 19:33:07.888] [19:33:07.886] [DAMPER-CLEARANCE-BREAKDOWN] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, HasConnector=True, ConnectorDir='+Y', Left=50.0mm, Right=100.0mm, Top=50.0mm, Bottom=50.0mm, WidthTotal=150.0mm, HeightTotal=100.0mm, Base W=0.0mm, H=0.0mm, Final W=150.0mm, H=100.0mm
+
+[2025-12-31 19:33:07.894] [19:33:07.893] [DAMPER-POST-STRATEGY] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, Final W=0.492126ft (150.0mm), H=0.328084ft (100.0mm), ClearanceApplied W=150.0mm, H=100.0mm
+

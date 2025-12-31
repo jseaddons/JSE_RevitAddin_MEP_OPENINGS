@@ -1360,24 +1360,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     try
                     {
                         // ✅ WALL CENTERLINE POINT: Calculate once using WallCenterlineHelper (for streamlined path)
-                        XYZ? calculatedWallCenterlineStreamlined = null;
+                        XYZ? calculatedCenterlineStreamlined = null;
                         string mepCategoryStreamlined = GetElementCategoryName(mepElement);
+                        
+                        // ✅ DAMPER ARCHITECTURE FIX: Prioritize Insertion Point (LocationPoint) over raw IntersectionPoint
+                        // For Dampers, the rough intersection point from Finder can be skewed. 
+                        // The LocationPoint is the "Truth" for centering.
+                        XYZ seedPoint = intersectionPoint;
+                        if (mepCategoryStreamlined == "Duct Accessories" && mepElement is FamilyInstance fi)
+                        {
+                            if (fi.Location is LocationPoint lp)
+                            {
+                                seedPoint = lp.Point;
+                            }
+                        }
+
                         if (structuralElement is Wall wallStreamlined)
                         {
-                            calculatedWallCenterlineStreamlined = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetWallCenterlinePointFromBbox(
-                                wallStreamlined, intersectionPoint, document);
+                            calculatedCenterlineStreamlined = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetElementCenterlinePoint(
+                                wallStreamlined, seedPoint, document);
                         }
                         else if (structuralElement is FamilyInstance framingInstanceStreamlined && 
                                  framingInstanceStreamlined.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
                         {
-                            calculatedWallCenterlineStreamlined = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetElementCenterlinePoint(
-                                structuralElement, intersectionPoint, document);
+                            calculatedCenterlineStreamlined = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetElementCenterlinePoint(
+                                structuralElement, seedPoint, document);
                         }
 
 
                         // Use pre-cached whitelist for 90% faster parameter capture
                         // ✅ PERFORMANCE: Pass orientation cache for O(1) lookups
-                        var newClashZone = CreateClashZone(mepElement, structuralElement, intersectionPoint, boundingBox, document, clearanceSettings, null, null, calculatedWallCenterlineStreamlined, preCachedWhitelist, openingPointKeys, mepParamsCache, hostParamsCache, orientationCache);
+                        var newClashZone = CreateClashZone(mepElement, structuralElement, seedPoint, boundingBox, document, clearanceSettings, null, null, calculatedCenterlineStreamlined, preCachedWhitelist, openingPointKeys, mepParamsCache, hostParamsCache, orientationCache);
                         
                         if (newClashZone != null)
                         {
@@ -2606,32 +2619,51 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             // ✅ CRITICAL FIX: Use strategy classes to get MEP element size with insulation information
             var swSize = System.Diagnostics.Stopwatch.StartNew();
+            
+            // ✅ WALL-AWARE DETECTION: Get wall orientation EARLY for BBox logic
+            string wallOrientation = WallDirectionService.GetHostOrientation(structuralElement);
+            
+            // ✅ Fix CS0103: Declare finalDiameter, finalWidth, finalHeight
+            double finalDiameter = 0.0;
+            double finalWidth = mepWidth;
+            double finalHeight = mepHeight;
+            
             MepElementSize mepElementSize = GetMepElementSizeWithStrategy(mepElement, mepCategory);
             
-            // ✅ DUCT ACCESSORY FIX: Use strategy dimensions (Damper Width/Height) instead of GetMepElementDimensions
-            // GetMepElementDimensions may fall back to generic "Width"/"Height" which could be duct dimensions
-            // Strategy pattern correctly prioritizes "Damper Width" and "Damper Height" for duct accessories
-            if (string.Equals(mepCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
+            // ✅ CLEANUP: Removed redundant "Duct Accessories" fallback.
+            // All dimension logic (including BBox fallback for R2024 Zero-Dim bug) 
+            // is now encapsulated in DamperPlacementStrategy.GetMepElementSize.
+            
+            if (mepElementSize.Width > 0 || mepElementSize.Height > 0 || mepElementSize.Diameter > 0)
             {
-                if (mepElementSize.Width > 0 && mepElementSize.Height > 0)
-                {
-                    finalWidth = mepElementSize.Width;
-                    finalHeight = mepElementSize.Height;
-                    
-                    if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"[CLASH_DEBUG] ✅ DUCT ACCESSORY: Using strategy dimensions (Damper Width/Height): {finalWidth:F3}x{finalHeight:F3} (was {mepWidth:F3}x{mepHeight:F3} from GetMepElementDimensions)");
-                    }
-                }
-                else
-                {
-                    // Fallback to GetMepElementDimensions if strategy didn't return valid dimensions
-                    if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Warning($"[CLASH_DEBUG] ⚠️ DUCT ACCESSORY: Strategy returned invalid dimensions (Width={mepElementSize.Width:F3}, Height={mepElementSize.Height:F3}), using GetMepElementDimensions: {mepWidth:F3}x{mepHeight:F3}");
-                    }
-                }
+                // ✅ STRATEGY SUCCESS: Use dimensions from Strategy/Insulation Awareness
+                finalWidth = mepElementSize.Width > 0 ? mepElementSize.Width : finalWidth;
+                finalHeight = mepElementSize.Height > 0 ? mepElementSize.Height : finalHeight;
+                finalDiameter = mepElementSize.Diameter;
+                
+                if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[CLASH_DEBUG] Element {mepElement.Id}: Dimensions from Strategy: {finalWidth:F3}x{finalHeight:F3}");
             }
+            else
+            {
+                 // Generic fallback for other categories if Strategy returns 0
+                 var bbox = mepElement.get_BoundingBox(null);
+                 if (bbox != null)
+                 {
+                     // Use Orientation-Aware BBox extraction for global fallback
+                     // This prevents overwriting Height with Depth in North-South walls
+                     finalHeight = bbox.Max.Z - bbox.Min.Z;
+                     
+                     if (wallOrientation == "X" || wallOrientation == "X-Wall")
+                         finalWidth = bbox.Max.X - bbox.Min.X; // Wall runs along X
+                     else
+                         finalWidth = bbox.Max.Y - bbox.Min.Y; // Wall runs along Y
+                         
+                     if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[CLASH_DEBUG] Element {mepElement.Id}: Dimensions from Global BBox Fallback: {finalWidth:F3}x{finalHeight:F3}");
+                 }
+            }
+
             
             // ⚠️ CRITICAL: Get duct shape from family name (Round or Rectangular) ⚠️
             // DO NOT REMOVE: This determines correct sleeve family selection for round vs rectangular ducts
@@ -2691,11 +2723,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             
             // Pre-calculate formatted size and system abbreviation to eliminate linked file access during placement
-            // ✅ OPTIMIZED FOR ALL CATEGORIES: Read Size parameter as string directly from element (element is already in memory during refresh)
-            // This gives us the exact value displayed in schedules (e.g., "20 mmø" for pipes, "600x300" for ducts) without any calculations
-            // Falls back to calculated format if Size parameter is not available
-            // NOTE: pipeNominalDiameter is only used as fallback for pipes - other categories use mepWidth/mepHeight
-            var formattedSize = GetMepElementSizeString(mepElement, mepWidth, mepHeight, ductShape, pipeNominalDiameter);
+            // ✅ FIX: Use calculated finalWidth/Height instead of raw mepWidth/Height
+            var formattedSize = GetMepElementSizeString(mepElement, finalWidth, finalHeight, ductShape, pipeNominalDiameter);
             
             // ✅ SIZE PARAMETER VALUE: Extract raw Size parameter value as string for snapshot table and parameter transfer
             // This is the exact text from the Size parameter (e.g., "20 mmø", "200 mm dia symbol") - different from formattedSize which may be calculated
@@ -2710,8 +2739,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             var systemAbbreviation = GetMepSystemAbbreviation(mepElement);
             
-            // ✅ WALL-AWARE DETECTION: Get wall orientation before detection to prioritize wall width axis
-            string wallOrientation = WallDirectionService.GetHostOrientation(structuralElement);
+            // ✅ WALL-AWARE DETECTION: Wall orientation already retrieved above
+            // string wallOrientation = WallDirectionService.GetHostOrientation(structuralElement);
             
             // ✅ DIAGNOSTIC: Log wall orientation for debugging
             if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode && mepCategory == "Duct Accessories")

@@ -1078,7 +1078,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             // Phase 3: Conservative defaults
             UseIncrementalDetection = false;
-            UseDiagnosticMode = false;
+            UseDiagnosticMode = true;
             
             // Sleeve Placement: Safe defaults (all enabled)
             UseOptimizedXmlSaves = true;

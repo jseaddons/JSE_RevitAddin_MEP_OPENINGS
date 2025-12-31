@@ -1,0 +1,34 @@
+[2025-12-31 19:33:07.598] === PLACEMENT PERFORMANCE MONITOR STARTED ===
+Timestamp: 2025-12-31 19:33:07
+Log File: Placement_Ventilation_DuctAccessories_2025-12-31_19-33-07.log
+Start Memory: 331.55 MB
+
+
+[2025-12-31 19:33:12.476] [19:33:12.475] Individual Sleeve Placement: 4875ms, Memory: 2070.89 KB, Items: 1
+
+[2025-12-31 19:33:12.875] [19:33:12.875] Cluster Sleeve Placement: 341ms, Memory: 238.70 KB, Items: 0
+
+[2025-12-31 19:33:12.883] === PLACEMENT PERFORMANCE REPORT ===
+Generated: 2025-12-31 19:33:12
+Total Time: 5285ms (00:05)
+Total Individual Sleeves: 1
+Total Clusters: 0
+
+=== MEMORY USAGE ===
+Start: 331.55 MB
+End: 335.13 MB
+Delta: 3.58 MB
+Memory per Item: 3661.59 KB
+
+=== OPERATION BREAKDOWN ===
+Operation                                   Calls        Total        Avg        Min        Max      Items    Items/s
+--------------------------------------------------------------------------------------------------------------
+Individual Sleeve Placement                     1         4875ms    4875.0ms      4875ms      4875ms          1         0/s
+Cluster Sleeve Placement                        1          341ms     341.0ms       341ms       341ms          0         0/s
+
+=== PERFORMANCE TARGETS ===
+Individual Sleeves/Second: 0 (target: 50+)
+Status: ⚠️ BELOW TARGET
+
+=== END OF REPORT ===
+

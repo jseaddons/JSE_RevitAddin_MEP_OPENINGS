@@ -704,7 +704,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                     DebugLogger.Log($"[CENTERLINE-DEBUG] Midpoint (centerline)=({midpoint.X:F6}ft, {midpoint.Y:F6}ft, {midpoint.Z:F6}ft)");
                     DebugLogger.Log($"[CENTERLINE-DEBUG] ===== END WALL CENTERLINE FROM RAY-TRACE =====");
                     
-                    return midpoint;
+                    // ✅ CRITICAL REFINEMENT: Ensure strictly only the wall-depth coordinate changes
+                    // The sleeve must stay perfectly aligned with the duct intersection point (Length & Height axes)
+                    // We only want to adjust the position 'in/out' of the wall (Depth axis)
+                    
+                    XYZ mergedPoint = midpoint;
+                    
+                    // Determine if wall is X-wall or Y-wall to lock correct axes
+                    double absX = Math.Abs(wallNormal.X);
+                    double absY = Math.Abs(wallNormal.Y);
+                    bool isXWall = absX > absY; // Wall runs perpendicular to X (Normal is X-dominant) -> NO! Normal X means wall is Y-aligned?
+                    // Wait, Normal X (1,0,0) means wall faces X. So wall runs along Y. That's a "Y-Wall".
+                    // Vertical Wall: Normal is horizontal.
+                    
+                    // Let's stick to standard naming:
+                    // If Normal is predominantly X (e.g. 1,0,0), the wall plane is YZ. This is a "North-South" wall. Sleeve moves along X.
+                    // If Normal is predominantly Y (e.g. 0,1,0), the wall plane is XZ. This is an "East-West" wall. Sleeve moves along Y.
+                    
+                    if (absX > absY) 
+                    {
+                        // Normal is X-dominant (Wall plane is YZ). we adjust X. Keep Y and Z from intersection.
+                        mergedPoint = new XYZ(midpoint.X, intersectionPoint.Y, intersectionPoint.Z);
+                        DebugLogger.Log($"[CENTERLINE-DEBUG] Wall Normal X-dominant ({wallNormal.X:F2}): Adjusting X only. Keeping Intersect Y,Z.");
+                    }
+                    else 
+                    {
+                        // Normal is Y-dominant (Wall plane is XZ). We adjust Y. Keep X and Z from intersection.
+                        mergedPoint = new XYZ(intersectionPoint.X, midpoint.Y, intersectionPoint.Z);
+                        DebugLogger.Log($"[CENTERLINE-DEBUG] Wall Normal Y-dominant ({wallNormal.Y:F2}): Adjusting Y only. Keeping Intersect X,Z.");
+                    }
+                    
+                    DebugLogger.Log($"[CENTERLINE-DEBUG] Midpoint (raw): ({midpoint.X:F6}, {midpoint.Y:F6}, {midpoint.Z:F6})");
+                    DebugLogger.Log($"[CENTERLINE-DEBUG] MergedPoint (aligned): ({mergedPoint.X:F6}, {mergedPoint.Y:F6}, {mergedPoint.Z:F6})");
+                    
+                    return mergedPoint;
                 }
                 else
                 {
@@ -736,9 +769,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
             {
                 if (element is Wall wall)
                 {
-                    // ✅ CRITICAL FIX: Use GetWallCenterlinePoint (projection method) instead of Bbox method
-                    // Bbox method causes offsets because wall bounding box can be expanded by joins/layers
-                    // Projection method accurately projects intersection point onto the wall's LocationCurve
+                    // ✅ STANCE UNIFICATION: Use GetWallCenterlinePoint (LocationCurve Projection)
+                    // This is consistent with DamperPlacementPointService and Doc Section 6.0.1.1.
+                    // It is faster than Ray-Trace and more accurate than BBox in R2024.
                     return GetWallCenterlinePoint(wall, intersectionPoint, hostDocument);
                 }
                 else
