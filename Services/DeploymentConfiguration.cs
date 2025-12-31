@@ -37,7 +37,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             set => _deploymentMode = value;
         }
         
-        private static bool _deploymentMode = false; // ✅ DIAGNOSTIC: Force logging ON to debug corner values
+        private static bool _deploymentMode = true; // 🚀 DEPLOYMENT: Logging OFF for production
 
         /// <summary>
         /// Feature flag for Phase B Global XML dedupe. Defaults to false so the existing

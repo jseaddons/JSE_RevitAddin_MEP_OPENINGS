@@ -5,6 +5,7 @@ using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Entities;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Refresh;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
@@ -95,18 +96,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     existingZone.SleeveWidth = width;
                                     existingZone.SleeveHeight = height;
                                     existingZone.SleeveDiameter = diameter;
-                                    existingZone.SleeveLength = length;
-                                    existingZone.PlacementActiveX = locationPoint.X;
-                                    existingZone.PlacementActiveY = locationPoint.Y;
-                                    existingZone.PlacementActiveZ = locationPoint.Z;
-                                    existingZone.PlacementX = locationPoint.X; // Assuming no shared coords transform for now or same
-                                    existingZone.PlacementY = locationPoint.Y;
-                                    existingZone.PlacementZ = locationPoint.Z;
-                                    existingZone.RotationAngle = rotation;
+                                    // existingZone.SleeveLength = length; // Property not on model
+                                    
+                                    existingZone.SleevePlacementPointActiveDocumentX = locationPoint.X;
+                                    existingZone.SleevePlacementPointActiveDocumentY = locationPoint.Y;
+                                    existingZone.SleevePlacementPointActiveDocumentZ = locationPoint.Z;
+                                    
+                                    existingZone.SleevePlacementPointX = locationPoint.X;
+                                    existingZone.SleevePlacementPointY = locationPoint.Y;
+                                    existingZone.SleevePlacementPointZ = locationPoint.Z;
+                                    
+                                    // existingZone.RotationAngle = rotation; // Property not on model
                                     existingZone.LastUpdated = DateTime.Now;
-                                    // existingZone.IsManual = true; // Mark as manually touched if we have such flag?
-                                    // existingZone.IsResolved = true; // If it exists, it is resolved? Or keep current status?
-                                    // Usually Update DB implies keeping it in sync.
+
+                                    if (existingZone.PlacementSource == PlacementSourceType.Unknown)
+                                        existingZone.PlacementSource = PlacementSourceType.Individual; // Manual placement treated as Individual
 
                                     zonesToUpdate.Add(existingZone);
                                     updatedCount++;
@@ -211,35 +215,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             double width = sleeve.LookupParameter("Width")?.AsDouble() ?? 0;
             double height = sleeve.LookupParameter("Height")?.AsDouble() ?? 0;
             double diameter = sleeve.LookupParameter("Diameter")?.AsDouble() ?? 0;
-            double length = sleeve.LookupParameter("Depth")?.AsDouble() ?? 0;
             
             var loc = (sleeve.Location as LocationPoint)?.Point ?? (bbox.Min + bbox.Max)*0.5;
 
             return new ClashZone
             {
-                ClashZoneGuid = guid,
+                Id = guid,
                 MepElementIdValue = mepId,
                 MepElementCategory = mepCat,
-                HostElementIdValue = -1, // Manual - unknown host? Or search hosts too? Expensive.
-                HostElementCategory = "Manual",
-                CenterX = loc.X,
-                CenterY = loc.Y,
-                CenterZ = loc.Z,
+                StructuralElementIdValue = -1, 
+                StructuralElementType = "Manual",
+                IntersectionPointX = loc.X,
+                IntersectionPointY = loc.Y,
+                IntersectionPointZ = loc.Z,
                 SleeveWidth = width,
                 SleeveHeight = height,
                 SleeveDiameter = diameter,
-                SleeveLength = length,
-                PlacementActiveX = loc.X,
-                PlacementActiveY = loc.Y,
-                PlacementActiveZ = loc.Z,
-                PlacementX = loc.X,
-                PlacementY = loc.Y,
-                PlacementZ = loc.Z,
-                RotationAngle = (sleeve.Location as LocationPoint)?.Rotation ?? 0,
-                IsResolved = true, // It is placed, so resolved.
+                
+                SleevePlacementPointActiveDocumentX = loc.X,
+                SleevePlacementPointActiveDocumentY = loc.Y,
+                SleevePlacementPointActiveDocumentZ = loc.Z,
+                
+                SleevePlacementPointX = loc.X,
+                SleevePlacementPointY = loc.Y,
+                SleevePlacementPointZ = loc.Z,
+                
+                // RotationAngle = (sleeve.Location as LocationPoint)?.Rotation ?? 0, 
+                IsResolved = true, 
                 SleeveInstanceId = sleeve.Id.IntegerValue,
-                IsManual = true, // Assuming column exists or we just track it
-                CreatedDate = DateTime.Now,
+                PlacementSource = PlacementSourceType.Individual,
+                DetectedAt = DateTime.Now,
                 LastUpdated = DateTime.Now
             };
         }

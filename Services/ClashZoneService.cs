@@ -3587,9 +3587,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                if (element is Wall wall)
+                if (element is Wall || (element?.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_Walls))
                 {
-                    return wall.Width;
+                    return GetWallThickness(element);
                 }
                 else if (element is Floor floor)
                 {
@@ -3714,37 +3714,80 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
         
         /// <summary>
-        /// Get wall thickness (for walls only)
+        /// Get wall thickness (for walls only) with robust fallback for compound walls
         /// </summary>
         private double GetWallThickness(Element element)
         {
+            if (element == null) return 0.0;
+            
             try
             {
+                double thickness = 0.0;
+                
+                // Method 1: Direct Wall property if it's a Wall object
                 if (element is Wall wall)
                 {
-                    double thickness = wall.Width;
-                    
-                    // ✅ ROBUST: wall.Width should always be valid for any wall (basic or compound)
-                    if (thickness <= 0)
-                    {
-                                                if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Error($"[WALL-THICKNESS] Wall {element.Id.IntegerValue}: wall.Width returned invalid value {RevitUnitConversionService.Instance.FromInternalMillimeters(thickness):F1}mm");
-                        throw new InvalidOperationException($"Cannot determine wall thickness for wall {element.Id.IntegerValue} - wall.Width returned {thickness}");
-                    }
-                    
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[WALL-THICKNESS] Wall {element.Id.IntegerValue}: thickness={RevitUnitConversionService.Instance.FromInternalMillimeters(thickness):F1}mm");
-                    return thickness;
+                    thickness = wall.Width;
                 }
-                return 0.0; // Not a wall
+                
+                // Method 2: FALLBACK - If thickness is 0 or it's not a Wall object but in OST_Walls category
+                // (Covers FaceWalls or other elements that might not cast to Wall but are walls)
+                if (thickness <= 0.001)
+                {
+                    bool isWallCategory = element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_Walls;
+                    if (isWallCategory || element is Wall)
+                    {
+                        // 1) Try Built-in parameter "Width" on Instance
+                        Parameter p = element.get_Parameter(BuiltInParameter.WALL_ATTR_WIDTH_PARAM) ?? 
+                                     element.LookupParameter("Width") ??
+                                     element.LookupParameter("Thickness");
+                        
+                        if (p != null && p.HasValue) 
+                        {
+                            thickness = p.AsDouble();
+                        }
+                        
+                        // 2) Try Type parameter if instance failed/missing
+                        if (thickness <= 0.001)
+                        {
+                            ElementId typeId = element.GetTypeId();
+                            if (typeId != ElementId.InvalidElementId)
+                            {
+                                Element typeElem = element.Document.GetElement(typeId);
+                                if (typeElem != null)
+                                {
+                                    Parameter tp = typeElem.get_Parameter(BuiltInParameter.WALL_ATTR_WIDTH_PARAM) ?? 
+                                                  typeElem.LookupParameter("Width") ??
+                                                  typeElem.LookupParameter("Thickness");
+                                    if (tp != null && tp.HasValue) 
+                                    {
+                                        thickness = tp.AsDouble();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // If still 0, log error but return a minimal default to prevent 0.0 in DB
+                if (thickness <= 0.001)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error($"[WALL-THICKNESS] Wall {element.Id.IntegerValue}: Could not determine thickness (returned 0.0). Category={element.Category?.Name}");
+                    
+                    return 0.1; // Minimal fallback (approx 30mm)
+                }
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[WALL-THICKNESS] Wall {element.Id.IntegerValue}: thickness={RevitUnitConversionService.Instance.FromInternalMillimeters(thickness):F1}mm");
+                
+                return thickness;
             }
             catch (Exception ex)
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                if (!DeploymentConfiguration.DeploymentMode)
+                if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[GetWallThickness] Critical error for wall {element?.Id?.IntegerValue}: {ex.Message}");
-                throw; // Re-throw to fail loudly instead of silently returning 0
+                return 0.1; // Safety fallback
             }
         }
         

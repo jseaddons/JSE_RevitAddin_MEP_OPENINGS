@@ -1,0 +1,180 @@
+[15:20:43] 🔥 DIRECT IO: AdoptToDocumentFlag=False, FilterId=8
+[15:20:43] 🔥 DIRECT IO: PATH 1a CHECK - AdoptToDocument=False, NoInvalidatedZones=True, Queried by FilterId=8, Category=Cable Trays, Found 0 clusters
+[15:20:43] 🔥 DIRECT IO: PATH 1a CHECK - No clusters in DB, using PATH 2 (database), comboId=11
+[15:20:43] 🔨 BUILD TIMESTAMP: 2025-12-12 15:19:39 | VERSION: R2024 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+[15:20:43] 🔥 DIRECT IO: isPath1Replay=False, comboId=11, filterId=8 (DATABASE-ONLY, NO XML)
+[15:20:43] 🔥 DIRECT IO: BEFORE ClusterServiceFactory.CreateWithAllServices
+[15:20:43] 🔥 DIRECT IO: CALLING ClusterServiceFactory.CreateWithAllServices NOW
+[15:20:43] 🔥 DIRECT IO: ClusterServiceFactory.CreateWithAllServices RETURNED
+[15:20:43] 🔥 DIRECT IO: BEFORE ClusterSleeves CALL (isPath1Replay=False, comboId=11, filterId=8)
+[15:20:43] 🔥 DIRECT IO: ClusterSleeves RETURNED SUCCESS: placed=0, deleted=0
+[15:21:27] 🔥 DIRECT IO: AdoptToDocumentFlag=False, FilterId=11
+[15:21:27] 🔥 DIRECT IO: PATH 1a CHECK - AdoptToDocument=False, NoInvalidatedZones=True, Queried by FilterId=11, Category=Duct Accessories, Found 0 clusters
+[15:21:27] 🔥 DIRECT IO: PATH 1a CHECK - No clusters in DB, using PATH 2 (database), comboId=12
+[15:21:27] 🔨 BUILD TIMESTAMP: 2025-12-12 15:19:39 | VERSION: R2024 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+[15:21:27] 🔥 DIRECT IO: isPath1Replay=False, comboId=12, filterId=11 (DATABASE-ONLY, NO XML)
+[15:21:27] 🔥 DIRECT IO: BEFORE ClusterServiceFactory.CreateWithAllServices
+[15:21:27] 🔥 DIRECT IO: CALLING ClusterServiceFactory.CreateWithAllServices NOW
+[15:21:27] 🔥 DIRECT IO: ClusterServiceFactory.CreateWithAllServices RETURNED
+[15:21:27] 🔥 DIRECT IO: BEFORE ClusterSleeves CALL (isPath1Replay=False, comboId=12, filterId=11)
+[15:21:27] 🔥 DIRECT IO: ClusterSleeves RETURNED SUCCESS: placed=0, deleted=0
+[16:42:45] 🔥 DIRECT IO: AdoptToDocumentFlag=False, FilterId=9
+[16:42:45] 🔥 DIRECT IO: PATH 1a CHECK - AdoptToDocument=False, NoInvalidatedZones=True, Queried by FilterId=9, Category=Ducts, Found 0 clusters
+[16:42:45] 🔥 DIRECT IO: PATH 1a CHECK - No clusters in DB, using PATH 2 (database), comboId=15
+[16:42:45] 🔨 BUILD TIMESTAMP: 2025-12-12 16:35:32 | VERSION: R2024 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+[16:42:45] 🔥 DIRECT IO: isPath1Replay=False, comboId=15, filterId=9 (DATABASE-ONLY, NO XML)
+[16:42:45] 🔥 DIRECT IO: BEFORE ClusterServiceFactory.CreateWithAllServices
+[16:42:45] 🔥 DIRECT IO: CALLING ClusterServiceFactory.CreateWithAllServices NOW
+[16:42:45] 🔥 DIRECT IO: ClusterServiceFactory.CreateWithAllServices RETURNED
+[16:42:45] 🔥 DIRECT IO: BEFORE ClusterSleeves CALL (isPath1Replay=False, comboId=15, filterId=9)
+[16:42:49] 🔥 DIRECT IO: ClusterSleeves RETURNED SUCCESS: placed=13, deleted=47
+[16:42:54] 🔥 DIRECT IO: AdoptToDocumentFlag=False, FilterId=11
+[16:42:54] 🔥 DIRECT IO: PATH 1a CHECK - AdoptToDocument=False, NoInvalidatedZones=True, Queried by FilterId=11, Category=Duct Accessories, Found 0 clusters
+[16:42:54] 🔥 DIRECT IO: PATH 1a CHECK - No clusters in DB, using PATH 2 (database), comboId=12
+[16:42:54] 🔨 BUILD TIMESTAMP: 2025-12-12 16:35:32 | VERSION: R2024 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+[16:42:54] 🔥 DIRECT IO: isPath1Replay=False, comboId=12, filterId=11 (DATABASE-ONLY, NO XML)
+[16:42:54] 🔥 DIRECT IO: BEFORE ClusterServiceFactory.CreateWithAllServices
+[16:42:54] 🔥 DIRECT IO: CALLING ClusterServiceFactory.CreateWithAllServices NOW
+[16:42:54] 🔥 DIRECT IO: ClusterServiceFactory.CreateWithAllServices RETURNED
+[16:42:54] 🔥 DIRECT IO: BEFORE ClusterSleeves CALL (isPath1Replay=False, comboId=12, filterId=11)
+[16:42:56] 🔥 DIRECT IO: ClusterSleeves RETURNED SUCCESS: placed=4, deleted=17
+[16:43:05] 🔥 DIRECT IO: AdoptToDocumentFlag=False, FilterId=8
+[16:43:05] 🔥 DIRECT IO: PATH 1a CHECK - AdoptToDocument=False, NoInvalidatedZones=True, Queried by FilterId=8, Category=Cable Trays, Found 0 clusters
+[16:43:05] 🔥 DIRECT IO: PATH 1a CHECK - No clusters in DB, using PATH 2 (database), comboId=11
+[16:43:05] 🔨 BUILD TIMESTAMP: 2025-12-12 16:35:32 | VERSION: R2024 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+[16:43:05] 🔥 DIRECT IO: isPath1Replay=False, comboId=11, filterId=8 (DATABASE-ONLY, NO XML)
+[16:43:05] 🔥 DIRECT IO: BEFORE ClusterServiceFactory.CreateWithAllServices
+[16:43:05] 🔥 DIRECT IO: CALLING ClusterServiceFactory.CreateWithAllServices NOW
+[16:43:05] 🔥 DIRECT IO: ClusterServiceFactory.CreateWithAllServices RETURNED
+[16:43:05] 🔥 DIRECT IO: BEFORE ClusterSleeves CALL (isPath1Replay=False, comboId=11, filterId=8)
+[16:43:10] 🔥 DIRECT IO: ClusterSleeves RETURNED SUCCESS: placed=13, deleted=51
+[16:43:16] 🔥 DIRECT IO: AdoptToDocumentFlag=True, FilterId=13
+[16:43:16] 🔥 DIRECT IO: PATH 1a CHECK - AdoptToDocument=True, NoInvalidatedZones=True, Queried by FilterId=13, Category=Pipes, Found 0 clusters
+[16:43:16] 🔥 DIRECT IO: PATH 1a CHECK - No clusters in DB, using PATH 2 (database), comboId=20
+[16:43:16] 🔨 BUILD TIMESTAMP: 2025-12-12 16:35:32 | VERSION: R2024 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+[16:43:16] 🔥 DIRECT IO: isPath1Replay=False, comboId=20, filterId=13 (DATABASE-ONLY, NO XML)
+[16:43:16] 🔥 DIRECT IO: BEFORE ClusterServiceFactory.CreateWithAllServices
+[16:43:16] 🔥 DIRECT IO: CALLING ClusterServiceFactory.CreateWithAllServices NOW
+[16:43:16] 🔥 DIRECT IO: ClusterServiceFactory.CreateWithAllServices RETURNED
+[16:43:16] 🔥 DIRECT IO: BEFORE ClusterSleeves CALL (isPath1Replay=False, comboId=20, filterId=13)
+[16:43:22] 🔥 DIRECT IO: ClusterSleeves RETURNED SUCCESS: placed=25, deleted=109
+[17:04:13] 🔥 DIRECT IO: AdoptToDocumentFlag=False, FilterId=11
+[17:04:14] 🔥 DIRECT IO: PATH 1a CHECK - AdoptToDocument=False, NoInvalidatedZones=True, Queried by FilterId=11, Category=Duct Accessories, Found 4 clusters
+[17:04:14] 🔥 DIRECT IO: PATH 1a CHECK - Found 4 clusters in DB, comboId=12, filterId=11 (SUPER FAST LANE)
+[17:04:14] 🔨 BUILD TIMESTAMP: 2025-12-12 17:02:54 | VERSION: R2024 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+[17:04:14] 🔥 DIRECT IO: isPath1Replay=True, comboId=12, filterId=11 (DATABASE-ONLY, NO XML)
+[17:04:14] 🔥 DIRECT IO: BEFORE ClusterServiceFactory.CreateWithAllServices
+[17:04:14] 🔥 DIRECT IO: CALLING ClusterServiceFactory.CreateWithAllServices NOW
+[17:04:14] 🔥 DIRECT IO: ClusterServiceFactory.CreateWithAllServices RETURNED
+[17:04:14] 🔥 DIRECT IO: BEFORE ClusterSleeves CALL (isPath1Replay=True, comboId=12, filterId=11)
+[17:04:14] 🔥 DIRECT IO: ClusterSleeves RETURNED SUCCESS: placed=0, deleted=0
+[17:04:17] 🔥 DIRECT IO: AdoptToDocumentFlag=False, FilterId=8
+[17:04:17] 🔥 DIRECT IO: PATH 1a CHECK - AdoptToDocument=False, NoInvalidatedZones=True, Queried by FilterId=8, Category=Cable Trays, Found 13 clusters
+[17:04:17] 🔥 DIRECT IO: PATH 1a CHECK - Found 13 clusters in DB, comboId=11, filterId=8 (SUPER FAST LANE)
+[17:04:17] 🔨 BUILD TIMESTAMP: 2025-12-12 17:02:54 | VERSION: R2024 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+[17:04:17] 🔥 DIRECT IO: isPath1Replay=True, comboId=11, filterId=8 (DATABASE-ONLY, NO XML)
+[17:04:17] 🔥 DIRECT IO: BEFORE ClusterServiceFactory.CreateWithAllServices
+[17:04:17] 🔥 DIRECT IO: CALLING ClusterServiceFactory.CreateWithAllServices NOW
+[17:04:17] 🔥 DIRECT IO: ClusterServiceFactory.CreateWithAllServices RETURNED
+[17:04:17] 🔥 DIRECT IO: BEFORE ClusterSleeves CALL (isPath1Replay=True, comboId=11, filterId=8)
+[17:04:18] 🔥 DIRECT IO: ClusterSleeves RETURNED SUCCESS: placed=2, deleted=8
+[16:25:58] 🔥 DIRECT IO: AdoptToDocumentFlag=False, FilterId=3
+[16:25:58] 🔥 DIRECT IO: PATH 1a CHECK - AdoptToDocument=False, NoInvalidatedZones=True, Queried by FilterId=3, Category=Pipes, Found 0 clusters
+[16:25:58] 🔥 DIRECT IO: PATH 1a CHECK - No clusters in DB, using PATH 2 (database), comboId=2
+[16:25:58] 🔨 BUILD TIMESTAMP: 2025-12-15 16:23:31 | VERSION: R2024 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+[16:25:58] 🔥 DIRECT IO: isPath1Replay=False, comboId=2, filterId=3 (DATABASE-ONLY, NO XML)
+[16:25:58] 🔥 DIRECT IO: BEFORE ClusterServiceFactory.CreateWithAllServices
+[16:25:58] 🔥 DIRECT IO: CALLING ClusterServiceFactory.CreateWithAllServices NOW
+[16:25:58] 🔥 DIRECT IO: ClusterServiceFactory.CreateWithAllServices RETURNED
+[16:25:58] 🔥 DIRECT IO: BEFORE ClusterSleeves CALL (isPath1Replay=False, comboId=2, filterId=3)
+[16:26:05] 🔥 DIRECT IO: ClusterSleeves RETURNED SUCCESS: placed=21, deleted=60
+[16:33:51] 🔥 DIRECT IO: AdoptToDocumentFlag=True, FilterId=1
+[16:33:51] 🔥 DIRECT IO: PATH 1a CHECK - AdoptToDocument=True, NoInvalidatedZones=True, Queried by FilterId=1, Category=Ducts, Found 1 clusters
+[16:33:51] 🔥 DIRECT IO: PATH 1a CHECK - Found 1 clusters in DB, comboId=1, filterId=1 (SUPER FAST LANE)
+[16:33:51] 🔨 BUILD TIMESTAMP: 2025-12-15 16:23:31 | VERSION: R2024 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+[16:33:51] 🔥 DIRECT IO: isPath1Replay=True, comboId=1, filterId=1 (DATABASE-ONLY, NO XML)
+[16:33:51] 🔥 DIRECT IO: BEFORE ClusterServiceFactory.CreateWithAllServices
+[16:33:51] 🔥 DIRECT IO: CALLING ClusterServiceFactory.CreateWithAllServices NOW
+[16:33:51] 🔥 DIRECT IO: ClusterServiceFactory.CreateWithAllServices RETURNED
+[16:33:51] 🔥 DIRECT IO: BEFORE ClusterSleeves CALL (isPath1Replay=True, comboId=1, filterId=1)
+[16:33:53] 🔥 DIRECT IO: ClusterSleeves RETURNED SUCCESS: placed=3, deleted=8
+[16:33:57] 🔥 DIRECT IO: AdoptToDocumentFlag=True, FilterId=5
+[16:33:57] 🔥 DIRECT IO: PATH 1a CHECK - AdoptToDocument=True, NoInvalidatedZones=True, Queried by FilterId=5, Category=Pipes, Found 0 clusters
+[16:33:57] 🔥 DIRECT IO: PATH 1a CHECK - No clusters in DB, using PATH 2 (database), comboId=3
+[16:33:57] 🔨 BUILD TIMESTAMP: 2025-12-15 16:23:31 | VERSION: R2024 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+[16:33:57] 🔥 DIRECT IO: isPath1Replay=False, comboId=3, filterId=5 (DATABASE-ONLY, NO XML)
+[16:33:57] 🔥 DIRECT IO: BEFORE ClusterServiceFactory.CreateWithAllServices
+[16:33:57] 🔥 DIRECT IO: CALLING ClusterServiceFactory.CreateWithAllServices NOW
+[16:33:57] 🔥 DIRECT IO: ClusterServiceFactory.CreateWithAllServices RETURNED
+[16:33:57] 🔥 DIRECT IO: BEFORE ClusterSleeves CALL (isPath1Replay=False, comboId=3, filterId=5)
+[16:34:00] 🔥 DIRECT IO: ClusterSleeves RETURNED SUCCESS: placed=15, deleted=44
+[16:37:14] 🔥 DIRECT IO: AdoptToDocumentFlag=True, FilterId=1
+[16:37:15] 🔥 DIRECT IO: PATH 1a CHECK - AdoptToDocument=True, NoInvalidatedZones=True, Queried by FilterId=1, Category=Ducts, Found 4 clusters
+[16:37:15] 🔥 DIRECT IO: PATH 1a CHECK - Found 4 clusters in DB, comboId=1, filterId=1 (SUPER FAST LANE)
+[16:37:15] 🔨 BUILD TIMESTAMP: 2025-12-15 16:23:31 | VERSION: R2024 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+[16:37:15] 🔥 DIRECT IO: isPath1Replay=True, comboId=1, filterId=1 (DATABASE-ONLY, NO XML)
+[16:37:15] 🔥 DIRECT IO: BEFORE ClusterServiceFactory.CreateWithAllServices
+[16:37:15] 🔥 DIRECT IO: CALLING ClusterServiceFactory.CreateWithAllServices NOW
+[16:37:15] 🔥 DIRECT IO: ClusterServiceFactory.CreateWithAllServices RETURNED
+[16:37:15] 🔥 DIRECT IO: BEFORE ClusterSleeves CALL (isPath1Replay=True, comboId=1, filterId=1)
+[16:37:15] 🔥 DIRECT IO: ClusterSleeves RETURNED SUCCESS: placed=0, deleted=0
+[16:40:14] 🔥 DIRECT IO: AdoptToDocumentFlag=True, FilterId=5
+[16:40:14] 🔥 DIRECT IO: PATH 1a CHECK - AdoptToDocument=True, NoInvalidatedZones=True, Queried by FilterId=5, Category=Pipes, Found 15 clusters
+[16:40:14] 🔥 DIRECT IO: PATH 1a CHECK - Found 15 clusters in DB, comboId=3, filterId=5 (SUPER FAST LANE)
+[16:40:14] 🔨 BUILD TIMESTAMP: 2025-12-15 16:23:31 | VERSION: R2024 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+[16:40:14] 🔥 DIRECT IO: isPath1Replay=True, comboId=3, filterId=5 (DATABASE-ONLY, NO XML)
+[16:40:14] 🔥 DIRECT IO: BEFORE ClusterServiceFactory.CreateWithAllServices
+[16:40:14] 🔥 DIRECT IO: CALLING ClusterServiceFactory.CreateWithAllServices NOW
+[16:40:14] 🔥 DIRECT IO: ClusterServiceFactory.CreateWithAllServices RETURNED
+[16:40:14] 🔥 DIRECT IO: BEFORE ClusterSleeves CALL (isPath1Replay=True, comboId=3, filterId=5)
+[16:40:15] 🔥 DIRECT IO: ClusterSleeves RETURNED SUCCESS: placed=3, deleted=6
+[16:40:41] 🔥 DIRECT IO: AdoptToDocumentFlag=True, FilterId=7
+[16:40:41] 🔥 DIRECT IO: PATH 1a CHECK - AdoptToDocument=True, NoInvalidatedZones=True, Queried by FilterId=7, Category=Duct Accessories, Found 0 clusters
+[16:40:41] 🔥 DIRECT IO: PATH 1a CHECK - No clusters in DB, using PATH 2 (database), comboId=4
+[16:40:41] 🔨 BUILD TIMESTAMP: 2025-12-15 16:23:31 | VERSION: R2024 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+[16:40:41] 🔥 DIRECT IO: isPath1Replay=False, comboId=4, filterId=7 (DATABASE-ONLY, NO XML)
+[16:40:41] 🔥 DIRECT IO: BEFORE ClusterServiceFactory.CreateWithAllServices
+[16:40:41] 🔥 DIRECT IO: CALLING ClusterServiceFactory.CreateWithAllServices NOW
+[16:40:41] 🔥 DIRECT IO: ClusterServiceFactory.CreateWithAllServices RETURNED
+[16:40:41] 🔥 DIRECT IO: BEFORE ClusterSleeves CALL (isPath1Replay=False, comboId=4, filterId=7)
+[16:40:42] 🔥 DIRECT IO: ClusterSleeves RETURNED SUCCESS: placed=0, deleted=0
+[17:26:16] 🔥 DIRECT IO: AdoptToDocumentFlag=True, FilterId=3
+[17:26:16] 🔥 DIRECT IO: PATH 1a CHECK - AdoptToDocument=True, NoInvalidatedZones=True, Queried by FilterId=3, Category=Duct Accessories, Found 0 clusters
+[17:26:16] 🔥 DIRECT IO: PATH 1a CHECK - No clusters in DB, using PATH 2 (database), comboId=2
+[17:26:16] 🔨 BUILD TIMESTAMP: 2025-12-31 17:25:21 | VERSION: R2024 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+[17:26:16] 🔥 DIRECT IO: isPath1Replay=False, comboId=2, filterId=3 (DATABASE-ONLY, NO XML)
+[17:26:16] 🔥 DIRECT IO: BEFORE ClusterServiceFactory.CreateWithAllServices
+[17:26:16] 🔥 DIRECT IO: CALLING ClusterServiceFactory.CreateWithAllServices NOW
+[17:26:16] 🔥 DIRECT IO: ClusterServiceFactory.CreateWithAllServices RETURNED
+[17:26:16] 🔥 DIRECT IO: BEFORE ClusterSleeves CALL (isPath1Replay=False, comboId=2, filterId=3)
+[17:26:17] 🔥 DIRECT IO: ClusterSleeves RETURNED SUCCESS: placed=0, deleted=0
+[17:26:21] 🔥 DIRECT IO: AdoptToDocumentFlag=True, FilterId=2
+[17:26:21] 🔥 DIRECT IO: PATH 1a CHECK - AdoptToDocument=True, NoInvalidatedZones=True, Queried by FilterId=2, Category=Pipes, Found 0 clusters
+[17:26:21] 🔥 DIRECT IO: PATH 1a CHECK - No clusters in DB, using PATH 2 (database), comboId=1
+[17:26:21] 🔨 BUILD TIMESTAMP: 2025-12-31 17:25:21 | VERSION: R2024 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+[17:26:21] 🔥 DIRECT IO: isPath1Replay=False, comboId=1, filterId=2 (DATABASE-ONLY, NO XML)
+[17:26:21] 🔥 DIRECT IO: BEFORE ClusterServiceFactory.CreateWithAllServices
+[17:26:21] 🔥 DIRECT IO: CALLING ClusterServiceFactory.CreateWithAllServices NOW
+[17:26:21] 🔥 DIRECT IO: ClusterServiceFactory.CreateWithAllServices RETURNED
+[17:26:21] 🔥 DIRECT IO: BEFORE ClusterSleeves CALL (isPath1Replay=False, comboId=1, filterId=2)
+[17:26:21] 🔥 DIRECT IO: ClusterSleeves RETURNED SUCCESS: placed=0, deleted=0
+[17:27:34] 🔥 DIRECT IO: AdoptToDocumentFlag=True, FilterId=1
+[17:27:34] 🔥 DIRECT IO: PATH 1a CHECK - AdoptToDocument=True, NoInvalidatedZones=True, Queried by FilterId=1, Category=Ducts, Found 24 clusters
+[17:27:34] 🔥 DIRECT IO: PATH 1a CHECK - Found 24 clusters in DB, comboId=1, filterId=1 (SUPER FAST LANE)
+[17:27:34] 🔨 BUILD TIMESTAMP: 2025-12-31 17:25:21 | VERSION: R2024 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+[17:27:34] 🔥 DIRECT IO: isPath1Replay=True, comboId=1, filterId=1 (DATABASE-ONLY, NO XML)
+[17:27:34] 🔥 DIRECT IO: BEFORE ClusterServiceFactory.CreateWithAllServices
+[17:27:34] 🔥 DIRECT IO: CALLING ClusterServiceFactory.CreateWithAllServices NOW
+[17:27:34] 🔥 DIRECT IO: ClusterServiceFactory.CreateWithAllServices RETURNED
+[17:27:34] 🔥 DIRECT IO: BEFORE ClusterSleeves CALL (isPath1Replay=True, comboId=1, filterId=1)
+[17:27:44] 🔥 DIRECT IO: ClusterSleeves RETURNED SUCCESS: placed=23, deleted=71
+[17:27:51] 🔥 DIRECT IO: AdoptToDocumentFlag=True, FilterId=4
+[17:27:51] 🔥 DIRECT IO: PATH 1a CHECK - AdoptToDocument=True, NoInvalidatedZones=True, Queried by FilterId=4, Category=Duct Accessories, Found 4 clusters
+[17:27:51] 🔥 DIRECT IO: PATH 1a CHECK - Found 4 clusters in DB, comboId=9, filterId=4 (SUPER FAST LANE)
+[17:27:51] 🔨 BUILD TIMESTAMP: 2025-12-31 17:25:21 | VERSION: R2024 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+[17:27:51] 🔥 DIRECT IO: isPath1Replay=True, comboId=9, filterId=4 (DATABASE-ONLY, NO XML)
+[17:27:51] 🔥 DIRECT IO: BEFORE ClusterServiceFactory.CreateWithAllServices
+[17:27:51] 🔥 DIRECT IO: CALLING ClusterServiceFactory.CreateWithAllServices NOW
+[17:27:51] 🔥 DIRECT IO: ClusterServiceFactory.CreateWithAllServices RETURNED
+[17:27:51] 🔥 DIRECT IO: BEFORE ClusterSleeves CALL (isPath1Replay=True, comboId=9, filterId=4)
+[17:27:53] 🔥 DIRECT IO: ClusterSleeves RETURNED SUCCESS: placed=4, deleted=10

@@ -1588,19 +1588,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         
                     // ✅ CRITICAL FIX: Add Width/Height/Depth to deferred parameters for batch flush
                     // This ensures cluster sleeves get correct size instead of defaulting to standard size
-                    if (placedClusterSleeve != null)
-                    {
-                        if (!_deferredClusterParameters.ContainsKey(placedClusterSleeve.Id))
-                            _deferredClusterParameters[placedClusterSleeve.Id] = new Dictionary<string, object>();
-                        
-                        _deferredClusterParameters[placedClusterSleeve.Id]["Width"] = bboxResult.width;
-                        _deferredClusterParameters[placedClusterSleeve.Id]["Height"] = bboxResult.height;
-                        _deferredClusterParameters[placedClusterSleeve.Id]["Depth"] = bboxResult.depth;
+                        // ✅ REDUNDANCY REMOVAL: Width/Height/Depth are already added to deferredParameters 
+                        // inside _placementService.PlaceClusterSleeve -> SetSizeParameters.
+                        // Overwriting them here with bboxResult.depth would nullify the WallThickness override
+                        // applied in ClusterPlacementService for wall-hosted clusters.
                         
                         SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] ✅ DEFERRED: Added W={bboxResult.width * 304.8:F1}mm, H={bboxResult.height * 304.8:F1}mm, D={bboxResult.depth * 304.8:F1}mm to deferred params for cluster {placedClusterSleeve.Id.IntegerValue}\n");
+                            $"[{DateTime.Now:HH:mm:ss}] ✅ PLACEMENT COMPLETE: Cluster {placedClusterSleeve.Id.IntegerValue} placed and parameters deferred.\n");
                     }
-                }
+
                 
                 // ✅ Step 5: Update flags for clash zones BEFORE deleting individual sleeves
                 // ✅ CRITICAL: Must set AfterClusterSleevePlacedSleeveInstanceId BEFORE clearing SleeveInstanceId

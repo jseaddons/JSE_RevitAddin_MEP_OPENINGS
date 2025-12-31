@@ -518,6 +518,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             
             return combinedSleeves;
         }
+
+        public List<CombinedSleeve> GetAllCombinedSleeves()
+        {
+            var combinedSleeves = new List<CombinedSleeve>();
+            
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT * FROM CombinedSleeves";
+                    
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            var combinedSleeve = MapReaderToCombinedSleeve(reader);
+                            // Note: Pre-loading constituents might be expensive if there are many sessions.
+                            // For MarkParameterService cache, we mostly need the CombinedInstanceId.
+                            combinedSleeves.Add(combinedSleeve);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                 _logger($"[SQLite] ⚠️ GetAllCombinedSleeves failed: {ex.Message}");
+            }
+            
+            return combinedSleeves;
+        }
         
         public List<SleeveConstituent> GetConstituents(int combinedSleeveId)
         {

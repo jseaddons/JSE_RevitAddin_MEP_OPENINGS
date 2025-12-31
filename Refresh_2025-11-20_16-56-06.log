@@ -1,0 +1,1575 @@
+[2025-11-20 16:56:06.480] [20-11-2025 16:56:06] [XML-CACHE] Loading XML data once for reuse (parallelized file I/O)...
+
+[2025-11-20 16:56:06.519] [20-11-2025 16:56:06] [XML-CACHE] PHASE 2: SQLite has no zones for 'Ventilation', falling back to XML
+
+[2025-11-20 16:56:06.575] [20-11-2025 16:56:06] [XML-CACHE] ✅ Loaded Global XML: Ducts (0 combos, 0 resolved)
+
+[2025-11-20 16:56:06.578] [20-11-2025 16:56:06] [XML-CACHE] ✅ Loaded Global XML: Duct Accessories (0 combos, 0 resolved)
+
+[2025-11-20 16:56:06.580] [20-11-2025 16:56:06] [XML-CACHE] ✅ XML cache loaded: 0 filters, 2 categories in 97ms
+
+[2025-11-20 16:56:06.656] [20-11-2025 16:56:06] [INTERSECTION-PROCESSOR] Phase 1: Preparing existing zones from XML cache...
+
+[2025-11-20 16:56:06.658] [20-11-2025 16:56:06] [XML-CACHE] Loading XML data once for reuse (parallelized file I/O)...
+
+[2025-11-20 16:56:06.687] [20-11-2025 16:56:06] [XML-CACHE] PHASE 2: SQLite has no zones for 'Ventilation', falling back to XML
+
+[2025-11-20 16:56:06.689] [20-11-2025 16:56:06] [XML-CACHE] ✅ Loaded Global XML: Ducts (0 combos, 0 resolved)
+
+[2025-11-20 16:56:06.691] [20-11-2025 16:56:06] [XML-CACHE] ✅ Loaded Global XML: Duct Accessories (0 combos, 0 resolved)
+
+[2025-11-20 16:56:06.693] [20-11-2025 16:56:06] [XML-CACHE] ✅ XML cache loaded: 0 filters, 2 categories in 32ms
+
+[2025-11-20 16:56:06.694] [20-11-2025 16:56:06] [XML-CACHE] Loaded 0 existing clash zones from cache
+
+[2025-11-20 16:56:06.696] [20-11-2025 16:56:06] [INTERSECTION-PROCESSOR] Using 0 existing clash zones from context
+
+[2025-11-20 16:56:06.701] [20-11-2025 16:56:06] [XML-CACHE] Combo not processed: Category=Ducts, Linked=CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002, Host=CMO-GCI-MOD-ARC-ZZ-00002-2024
+
+[2025-11-20 16:56:06.703] [20-11-2025 16:56:06] [INTERSECTION-PROCESSOR] Decision: Mode=FullDetection, ShouldRunDetection=True, Reason='FullDetection: New combos or missing data - run detection'
+
+[2025-11-20 16:56:06.705] [20-11-2025 16:56:06] [INTERSECTION-PROCESSOR] Phase 2: Running detection (Mode=FullDetection)...
+
+[2025-11-20 16:56:06.708] [20-11-2025 16:56:06] [IntersectionDetectionService] Phase 1 optimizations enabled: Optimization Flags Status:
+Phase 1 (40% gain): GeometryCache=True, MemoryManagement=True, SmartTolerance=True, CacheInvalidation=True
+Phase 2 (45% gain): RTreeFilter=True, ParallelProcessing=True, SpatialGrid=True
+Phase 3 (10% + 90% incremental): IncrementalDetection=False, DiagnosticMode=True
+
+[2025-11-20 16:56:06.714] [20-11-2025 16:56:06] [INTERSECTION-PROCESSOR] 🔴 Running detection with FULL collector-level multi-filter optimization...
+
+[2025-11-20 16:56:06.718] [20-11-2025 16:56:06] [INTERSECTION-PROCESSOR] View3D: Name='Test Area 2', IsSectionBoxActive=True
+
+[2025-11-20 16:56:06.720] [20-11-2025 16:56:06] [INTERSECTION-PROCESSOR] ✅ Section box outline: Min=(-21.05, -52.35, 180.78), Max=(26.97, 56.75, 192.57)
+
+[2025-11-20 16:56:06.722] [20-11-2025 16:56:06] [INTERSECTION-PROCESSOR] Building MEP category filters for 2 categories: Ducts, Duct Accessories
+
+[2025-11-20 16:56:06.724] [20-11-2025 16:56:06] [INTERSECTION-PROCESSOR] ✅ Added MEP category filter: Ducts -> OST_DuctCurves
+
+[2025-11-20 16:56:06.726] [20-11-2025 16:56:06] [INTERSECTION-PROCESSOR] ✅ Added MEP category filter: Duct Accessories -> OST_DuctAccessory
+
+[2025-11-20 16:56:06.727] [20-11-2025 16:56:06] [INTERSECTION-PROCESSOR] ✅ Built 2 MEP category filters
+
+[2025-11-20 16:56:06.730] [20-11-2025 16:56:06] [INTERSECTION-PROCESSOR] ✅ Added host category filter: Walls -> OST_Walls
+
+[2025-11-20 16:56:06.731] [20-11-2025 16:56:06] [INTERSECTION-PROCESSOR] Collecting MEP elements with collector-level filters...
+
+[2025-11-20 16:56:06.736] [20-11-2025 16:56:06] [INTERSECTION-PROCESSOR] Collecting MEP elements from ACTIVE document...
+
+[2025-11-20 16:56:06.742] [20-11-2025 16:56:06] [INTERSECTION-PROCESSOR] ✅ Collected 0 MEP elements from ACTIVE document
+
+[2025-11-20 16:56:06.744] [20-11-2025 16:56:06] [INTERSECTION-PROCESSOR] Collecting MEP elements from 1 linked files: CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002
+
+[2025-11-20 16:56:06.747] [20-11-2025 16:56:06] [INTERSECTION-PROCESSOR] Found 4 total link instances in document
+
+[2025-11-20 16:56:06.748] [20-11-2025 16:56:06] [INTERSECTION-PROCESSOR]   Available link: Name='CMO-GCI-MOD-ARC-ZZ-00002-2024.rvt : 1 : location Shared', Title='CMO-GCI-MOD-ARC-ZZ-00002-2024', PathName='CMO-GCI-MOD-ARC-ZZ-00002-2024'
+
+[2025-11-20 16:56:06.750] [20-11-2025 16:56:06] [INTERSECTION-PROCESSOR]   Available link: Name='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002.rvt : 4 : location Shared', Title='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002', PathName='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002'
+
+[2025-11-20 16:56:06.752] [20-11-2025 16:56:06] [INTERSECTION-PROCESSOR]   Available link: Name='CMO-AFE-DS03-MOD-PTW-ZZ-ELE-GE-0002.rvt : 6 : location Shared', Title='CMO-AFE-DS03-MOD-PTW-ZZ-ELE-GE-0002', PathName='CMO-AFE-DS03-MOD-PTW-ZZ-ELE-GE-0002'
+
+[2025-11-20 16:56:06.754] [20-11-2025 16:56:06] [INTERSECTION-PROCESSOR]   Available link: Name='CMO-GCI-MOD-STR-00001_2024.rvt : 7 : location Shared', Title='CMO-GCI-MOD-STR-00001_2024', PathName='CMO-GCI-MOD-STR-00001_2024'
+
+[2025-11-20 16:56:06.756] [20-11-2025 16:56:06] [INTERSECTION-PROCESSOR] ✅ Matched linked file: Name='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002.rvt : 4 : location Shared', Title='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002'
+
+[2025-11-20 16:56:06.758] [20-11-2025 16:56:06] [INTERSECTION-PROCESSOR] Matched 1 linked files for MEP element collection
+
+[2025-11-20 16:56:06.759] [20-11-2025 16:56:06] [INTERSECTION-PROCESSOR] Collecting MEP elements from linked document: CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002
+
+[2025-11-20 16:56:07.171] [20-11-2025 16:56:07] [INTERSECTION-PROCESSOR] ✅ Collected 149 MEP elements from linked document: CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002
+
+[2025-11-20 16:56:07.173] [20-11-2025 16:56:07] [INTERSECTION-PROCESSOR] ✅ Collected 149 MEP elements (pre-filtered at collector level)
+
+[2025-11-20 16:56:07.174] [20-11-2025 16:56:07] [INTERSECTION-PROCESSOR] Collecting host elements with collector-level filters...
+
+[2025-11-20 16:56:07.178] [20-11-2025 16:56:07] [INTERSECTION-PROCESSOR] Collecting host elements from 1 linked files: CMO-GCI-MOD-ARC-ZZ-00002-2024
+
+[2025-11-20 16:56:07.180] [20-11-2025 16:56:07] [INTERSECTION-PROCESSOR] ⚠️ Host elements are ALWAYS in linked documents (skipping active document)
+
+[2025-11-20 16:56:07.183] [20-11-2025 16:56:07] [INTERSECTION-PROCESSOR] Found 4 total link instances in document
+
+[2025-11-20 16:56:07.185] [20-11-2025 16:56:07] [INTERSECTION-PROCESSOR]   Available link: Name='CMO-GCI-MOD-ARC-ZZ-00002-2024.rvt : 1 : location Shared', Title='CMO-GCI-MOD-ARC-ZZ-00002-2024', PathName='CMO-GCI-MOD-ARC-ZZ-00002-2024'
+
+[2025-11-20 16:56:07.187] [20-11-2025 16:56:07] [INTERSECTION-PROCESSOR]   Available link: Name='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002.rvt : 4 : location Shared', Title='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002', PathName='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002'
+
+[2025-11-20 16:56:07.189] [20-11-2025 16:56:07] [INTERSECTION-PROCESSOR]   Available link: Name='CMO-AFE-DS03-MOD-PTW-ZZ-ELE-GE-0002.rvt : 6 : location Shared', Title='CMO-AFE-DS03-MOD-PTW-ZZ-ELE-GE-0002', PathName='CMO-AFE-DS03-MOD-PTW-ZZ-ELE-GE-0002'
+
+[2025-11-20 16:56:07.190] [20-11-2025 16:56:07] [INTERSECTION-PROCESSOR]   Available link: Name='CMO-GCI-MOD-STR-00001_2024.rvt : 7 : location Shared', Title='CMO-GCI-MOD-STR-00001_2024', PathName='CMO-GCI-MOD-STR-00001_2024'
+
+[2025-11-20 16:56:07.192] [20-11-2025 16:56:07] [INTERSECTION-PROCESSOR] ✅ Matched linked file: Name='CMO-GCI-MOD-ARC-ZZ-00002-2024.rvt : 1 : location Shared', Title='CMO-GCI-MOD-ARC-ZZ-00002-2024'
+
+[2025-11-20 16:56:07.194] [20-11-2025 16:56:07] [INTERSECTION-PROCESSOR] Matched 1 linked files for host element collection
+
+[2025-11-20 16:56:07.196] [20-11-2025 16:56:07] [INTERSECTION-PROCESSOR] Collecting host elements from linked document: CMO-GCI-MOD-ARC-ZZ-00002-2024
+
+[2025-11-20 16:56:07.721] [20-11-2025 16:56:07] [INTERSECTION-PROCESSOR] ✅ Collected 85 host elements from linked document: CMO-GCI-MOD-ARC-ZZ-00002-2024
+
+[2025-11-20 16:56:07.723] [20-11-2025 16:56:07] [INTERSECTION-PROCESSOR] ✅ Collected 85 host elements (pre-filtered at collector level)
+
+[2025-11-20 16:56:07.725] [20-11-2025 16:56:07] [INTERSECTION-PROCESSOR] Running intersection detection on pre-filtered elements...
+
+[2025-11-20 16:56:07.729] [20-11-2025 16:56:07] Using optimized MepIntersectionService.FindIntersectionsBatch with 149 MEP elements...
+
+[2025-11-20 16:56:07.735] [20-11-2025 16:56:07] Error preparing MEP element 2095638: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.737] [20-11-2025 16:56:07] Error preparing MEP element 12091574: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.739] [20-11-2025 16:56:07] Error preparing MEP element 12097325: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.740] [20-11-2025 16:56:07] Error preparing MEP element 12097338: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.742] [20-11-2025 16:56:07] Error preparing MEP element 16065682: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.744] [20-11-2025 16:56:07] Error preparing MEP element 19153277: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.746] [20-11-2025 16:56:07] Error preparing MEP element 19153280: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.748] [20-11-2025 16:56:07] Error preparing MEP element 19153281: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.749] [20-11-2025 16:56:07] Error preparing MEP element 19153282: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.751] [20-11-2025 16:56:07] Error preparing MEP element 19153283: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.753] [20-11-2025 16:56:07] Error preparing MEP element 19161527: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.755] [20-11-2025 16:56:07] Error preparing MEP element 19170872: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.756] [20-11-2025 16:56:07] Error preparing MEP element 19171170: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.758] [20-11-2025 16:56:07] Error preparing MEP element 19173700: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.760] [20-11-2025 16:56:07] Error preparing MEP element 19173702: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.762] [20-11-2025 16:56:07] Error preparing MEP element 19173707: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.763] [20-11-2025 16:56:07] Error preparing MEP element 19173708: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.768] [20-11-2025 16:56:07] Error preparing MEP element 19173709: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.770] [20-11-2025 16:56:07] Error preparing MEP element 19173710: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.772] [20-11-2025 16:56:07] Error preparing MEP element 19175962: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.773] [20-11-2025 16:56:07] Error preparing MEP element 19175964: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.775] [20-11-2025 16:56:07] Error preparing MEP element 19178941: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.777] [20-11-2025 16:56:07] Error preparing MEP element 19178942: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.779] [20-11-2025 16:56:07] Error preparing MEP element 19178947: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.781] [20-11-2025 16:56:07] Error preparing MEP element 19178948: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.783] [20-11-2025 16:56:07] Error preparing MEP element 19178949: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.785] [20-11-2025 16:56:07] Error preparing MEP element 19178950: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.787] [20-11-2025 16:56:07] Error preparing MEP element 19178954: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.788] [20-11-2025 16:56:07] Error preparing MEP element 19178956: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.790] [20-11-2025 16:56:07] Error preparing MEP element 19178958: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.792] [20-11-2025 16:56:07] Error preparing MEP element 19178965: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.793] [20-11-2025 16:56:07] Error preparing MEP element 19178968: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.795] [20-11-2025 16:56:07] Error preparing MEP element 19178969: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.797] [20-11-2025 16:56:07] Error preparing MEP element 19178970: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.798] [20-11-2025 16:56:07] Error preparing MEP element 19178997: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.800] [20-11-2025 16:56:07] Error preparing MEP element 19184356: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.802] [20-11-2025 16:56:07] Error preparing MEP element 19184357: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.803] [20-11-2025 16:56:07] Error preparing MEP element 19184359: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.805] [20-11-2025 16:56:07] Error preparing MEP element 19184360: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.807] [20-11-2025 16:56:07] Error preparing MEP element 19184798: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.808] [20-11-2025 16:56:07] Error preparing MEP element 19193042: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.811] [20-11-2025 16:56:07] Error preparing MEP element 19193043: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.815] [20-11-2025 16:56:07] Error preparing MEP element 24812611: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.819] [20-11-2025 16:56:07] Error preparing MEP element 24812612: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.823] [20-11-2025 16:56:07] Error preparing MEP element 24812651: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.826] [20-11-2025 16:56:07] Error preparing MEP element 24812652: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.830] [20-11-2025 16:56:07] Error preparing MEP element 24813068: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.834] [20-11-2025 16:56:07] Error preparing MEP element 24814314: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.837] [20-11-2025 16:56:07] Error preparing MEP element 24814347: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.839] [20-11-2025 16:56:07] Error preparing MEP element 24859402: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.841] [20-11-2025 16:56:07] Error preparing MEP element 24859403: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.843] [20-11-2025 16:56:07] Error preparing MEP element 24859421: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.845] [20-11-2025 16:56:07] Error preparing MEP element 24859463: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.847] [20-11-2025 16:56:07] Error preparing MEP element 24859495: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.849] [20-11-2025 16:56:07] Error preparing MEP element 24859496: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.851] [20-11-2025 16:56:07] Error preparing MEP element 24859498: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.853] [20-11-2025 16:56:07] Error preparing MEP element 24859504: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.855] [20-11-2025 16:56:07] Error preparing MEP element 24859517: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.857] [20-11-2025 16:56:07] Error preparing MEP element 24859518: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.859] [20-11-2025 16:56:07] Error preparing MEP element 24859641: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.861] [20-11-2025 16:56:07] Error preparing MEP element 24859659: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.863] [20-11-2025 16:56:07] Error preparing MEP element 24859776: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.865] [20-11-2025 16:56:07] Error preparing MEP element 24859777: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.867] [20-11-2025 16:56:07] Error preparing MEP element 24859779: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.869] [20-11-2025 16:56:07] Error preparing MEP element 24859781: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.871] [20-11-2025 16:56:07] Error preparing MEP element 24859784: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.873] [20-11-2025 16:56:07] Error preparing MEP element 24859838: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.875] [20-11-2025 16:56:07] Error preparing MEP element 24859889: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.877] [20-11-2025 16:56:07] Error preparing MEP element 24859890: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.879] [20-11-2025 16:56:07] Error preparing MEP element 24860094: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.881] [20-11-2025 16:56:07] Error preparing MEP element 24860176: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.883] [20-11-2025 16:56:07] Error preparing MEP element 24860227: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.884] [20-11-2025 16:56:07] Error preparing MEP element 24860230: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.886] [20-11-2025 16:56:07] Error preparing MEP element 24860233: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.888] [20-11-2025 16:56:07] Error preparing MEP element 24860243: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.890] [20-11-2025 16:56:07] Error preparing MEP element 24862015: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.891] [20-11-2025 16:56:07] Error preparing MEP element 24862026: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.893] [20-11-2025 16:56:07] Error preparing MEP element 24862031: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.895] [20-11-2025 16:56:07] Error preparing MEP element 24862032: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.897] [20-11-2025 16:56:07] Error preparing MEP element 24862034: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.898] [20-11-2025 16:56:07] Error preparing MEP element 24862035: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.900] [20-11-2025 16:56:07] Error preparing MEP element 24862036: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.902] [20-11-2025 16:56:07] Error preparing MEP element 24920223: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.903] [20-11-2025 16:56:07] Error preparing MEP element 24928362: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.905] [20-11-2025 16:56:07] Error preparing MEP element 24939836: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.907] [20-11-2025 16:56:07] Error preparing MEP element 24939837: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.908] [20-11-2025 16:56:07] Error preparing MEP element 24946515: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.910] [20-11-2025 16:56:07] Error preparing MEP element 24946516: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.912] [20-11-2025 16:56:07] Error preparing MEP element 24951835: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.914] [20-11-2025 16:56:07] Error preparing MEP element 24951845: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.915] [20-11-2025 16:56:07] Error preparing MEP element 24952618: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.917] [20-11-2025 16:56:07] Error preparing MEP element 24952619: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.919] [20-11-2025 16:56:07] Error preparing MEP element 24952638: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.920] [20-11-2025 16:56:07] Error preparing MEP element 24952647: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.922] [20-11-2025 16:56:07] Error preparing MEP element 24952648: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.924] [20-11-2025 16:56:07] Error preparing MEP element 24952652: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.925] [20-11-2025 16:56:07] Error preparing MEP element 24952653: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.927] [20-11-2025 16:56:07] Error preparing MEP element 24952669: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.929] [20-11-2025 16:56:07] Error preparing MEP element 24952670: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.930] [20-11-2025 16:56:07] Error preparing MEP element 24956932: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.932] [20-11-2025 16:56:07] Error preparing MEP element 24956934: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.934] [20-11-2025 16:56:07] Error preparing MEP element 24957010: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.936] [20-11-2025 16:56:07] Error preparing MEP element 24957104: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.937] [20-11-2025 16:56:07] Error preparing MEP element 24957127: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.939] [20-11-2025 16:56:07] Error preparing MEP element 24958710: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.941] [20-11-2025 16:56:07] Error preparing MEP element 24958712: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.943] [20-11-2025 16:56:07] Error preparing MEP element 24988944: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.944] [20-11-2025 16:56:07] Error preparing MEP element 24988945: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.946] [20-11-2025 16:56:07] Error preparing MEP element 24997016: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.948] [20-11-2025 16:56:07] Error preparing MEP element 24997371: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.949] [20-11-2025 16:56:07] Error preparing MEP element 24998061: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.951] [20-11-2025 16:56:07] Error preparing MEP element 24998069: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.953] [20-11-2025 16:56:07] Error preparing MEP element 24998076: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.954] [20-11-2025 16:56:07] Error preparing MEP element 24998166: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.956] [20-11-2025 16:56:07] Error preparing MEP element 24998522: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.958] [20-11-2025 16:56:07] Error preparing MEP element 25024307: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.960] [20-11-2025 16:56:07] Error preparing MEP element 25024879: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.961] [20-11-2025 16:56:07] Error preparing MEP element 25024889: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.963] [20-11-2025 16:56:07] Error preparing MEP element 25024905: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.965] [20-11-2025 16:56:07] Error preparing MEP element 25049689: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.967] [20-11-2025 16:56:07] Error preparing MEP element 25049696: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.968] [20-11-2025 16:56:07] Error preparing MEP element 25178516: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.970] [20-11-2025 16:56:07] Error preparing MEP element 25243509: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.972] [20-11-2025 16:56:07] Error preparing MEP element 25247092: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.973] [20-11-2025 16:56:07] Error preparing MEP element 25260856: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.975] [20-11-2025 16:56:07] Error preparing MEP element 25310326: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.977] [20-11-2025 16:56:07] Error preparing MEP element 25313796: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.979] [20-11-2025 16:56:07] Error preparing MEP element 25316961: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.981] [20-11-2025 16:56:07] Error preparing MEP element 25316962: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.982] [20-11-2025 16:56:07] Error preparing MEP element 25342725: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.984] [20-11-2025 16:56:07] Error preparing MEP element 25342730: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.986] [20-11-2025 16:56:07] Error preparing MEP element 25342731: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.987] [20-11-2025 16:56:07] Error preparing MEP element 25342734: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.989] [20-11-2025 16:56:07] Error preparing MEP element 25342735: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.991] [20-11-2025 16:56:07] Error preparing MEP element 25419239: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.992] [20-11-2025 16:56:07] Error preparing MEP element 25424926: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.994] [20-11-2025 16:56:07] Error preparing MEP element 25486675: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.996] [20-11-2025 16:56:07] Error preparing MEP element 25618640: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.998] [20-11-2025 16:56:07] Error preparing MEP element 25618811: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:07.999] [20-11-2025 16:56:07] Error preparing MEP element 25618920: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.001] [20-11-2025 16:56:08] Error preparing MEP element 25619279: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.003] [20-11-2025 16:56:08] Error preparing MEP element 25619363: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.005] [20-11-2025 16:56:08] Error preparing MEP element 25619447: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.006] [20-11-2025 16:56:08] Error preparing MEP element 25619532: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.008] [20-11-2025 16:56:08] Error preparing MEP element 25620252: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.010] [20-11-2025 16:56:08] Error preparing MEP element 25620254: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.012] [20-11-2025 16:56:08] Error preparing MEP element 25620300: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.013] [20-11-2025 16:56:08] Error preparing MEP element 25823227: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.015] [20-11-2025 16:56:08] Error preparing MEP element 25823242: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.017] [20-11-2025 16:56:08] Error preparing structural element 430244: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.019] [20-11-2025 16:56:08] Error preparing structural element 1311596: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.021] [20-11-2025 16:56:08] Error preparing structural element 1311877: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.022] [20-11-2025 16:56:08] Error preparing structural element 1312707: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.024] [20-11-2025 16:56:08] Error preparing structural element 1313050: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.026] [20-11-2025 16:56:08] Error preparing structural element 1334751: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.027] [20-11-2025 16:56:08] Error preparing structural element 1334827: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.029] [20-11-2025 16:56:08] Error preparing structural element 1334993: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.031] [20-11-2025 16:56:08] Error preparing structural element 1335269: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.032] [20-11-2025 16:56:08] Error preparing structural element 1335999: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.034] [20-11-2025 16:56:08] Error preparing structural element 1336001: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.036] [20-11-2025 16:56:08] Error preparing structural element 1336002: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.037] [20-11-2025 16:56:08] Error preparing structural element 1336005: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.039] [20-11-2025 16:56:08] Error preparing structural element 1336009: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.041] [20-11-2025 16:56:08] Error preparing structural element 1336011: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.042] [20-11-2025 16:56:08] Error preparing structural element 1336012: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.044] [20-11-2025 16:56:08] Error preparing structural element 1336013: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.046] [20-11-2025 16:56:08] Error preparing structural element 1336014: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.047] [20-11-2025 16:56:08] Error preparing structural element 1336015: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.049] [20-11-2025 16:56:08] Error preparing structural element 1336954: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.051] [20-11-2025 16:56:08] Error preparing structural element 1337055: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.052] [20-11-2025 16:56:08] Error preparing structural element 1337265: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.054] [20-11-2025 16:56:08] Error preparing structural element 1337467: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.056] [20-11-2025 16:56:08] Error preparing structural element 1337469: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.057] [20-11-2025 16:56:08] Error preparing structural element 2023696: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.059] [20-11-2025 16:56:08] Error preparing structural element 2023838: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.061] [20-11-2025 16:56:08] Error preparing structural element 2024105: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.062] [20-11-2025 16:56:08] Error preparing structural element 2024467: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.064] [20-11-2025 16:56:08] Error preparing structural element 2024468: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.070] [20-11-2025 16:56:08] Error preparing structural element 2024471: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.071] [20-11-2025 16:56:08] Error preparing structural element 2119166: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.073] [20-11-2025 16:56:08] Error preparing structural element 2124430: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.075] [20-11-2025 16:56:08] Error preparing structural element 2124433: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.077] [20-11-2025 16:56:08] Error preparing structural element 2133593: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.078] [20-11-2025 16:56:08] Error preparing structural element 3040386: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.080] [20-11-2025 16:56:08] Error preparing structural element 3087706: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.081] [20-11-2025 16:56:08] Error preparing structural element 4184012: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.083] [20-11-2025 16:56:08] Error preparing structural element 4184081: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.085] [20-11-2025 16:56:08] Error preparing structural element 4184362: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.086] [20-11-2025 16:56:08] Error preparing structural element 4184427: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.088] [20-11-2025 16:56:08] Error preparing structural element 4184572: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.090] [20-11-2025 16:56:08] Error preparing structural element 4184663: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.091] [20-11-2025 16:56:08] Error preparing structural element 4184736: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.093] [20-11-2025 16:56:08] Error preparing structural element 4203658: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.095] [20-11-2025 16:56:08] Error preparing structural element 4203659: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.096] [20-11-2025 16:56:08] Error preparing structural element 4203660: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.098] [20-11-2025 16:56:08] Error preparing structural element 4203661: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.100] [20-11-2025 16:56:08] Error preparing structural element 4203662: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.101] [20-11-2025 16:56:08] Error preparing structural element 4203665: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.103] [20-11-2025 16:56:08] Error preparing structural element 4203666: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.104] [20-11-2025 16:56:08] Error preparing structural element 4293788: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.106] [20-11-2025 16:56:08] Error preparing structural element 4293789: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.108] [20-11-2025 16:56:08] Error preparing structural element 4293790: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.109] [20-11-2025 16:56:08] Error preparing structural element 4293791: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.111] [20-11-2025 16:56:08] Error preparing structural element 4293792: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.113] [20-11-2025 16:56:08] Error preparing structural element 4293793: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.114] [20-11-2025 16:56:08] Error preparing structural element 4293794: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.116] [20-11-2025 16:56:08] Error preparing structural element 4293818: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.118] [20-11-2025 16:56:08] Error preparing structural element 4293819: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.119] [20-11-2025 16:56:08] Error preparing structural element 4293820: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.121] [20-11-2025 16:56:08] Error preparing structural element 4293821: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.123] [20-11-2025 16:56:08] Error preparing structural element 4368950: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.124] [20-11-2025 16:56:08] Error preparing structural element 4381236: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.126] [20-11-2025 16:56:08] Error preparing structural element 4381237: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.128] [20-11-2025 16:56:08] Error preparing structural element 4381238: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.129] [20-11-2025 16:56:08] Error preparing structural element 5009730: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.131] [20-11-2025 16:56:08] Error preparing structural element 5009731: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.133] [20-11-2025 16:56:08] Error preparing structural element 7207892: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.134] [20-11-2025 16:56:08] Error preparing structural element 7208596: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.136] [20-11-2025 16:56:08] Error preparing structural element 7208742: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.138] [20-11-2025 16:56:08] Error preparing structural element 7209017: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.139] [20-11-2025 16:56:08] Error preparing structural element 7214023: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.141] [20-11-2025 16:56:08] Error preparing structural element 7214024: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.142] [20-11-2025 16:56:08] Error preparing structural element 7220787: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.144] [20-11-2025 16:56:08] Error preparing structural element 7221720: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.146] [20-11-2025 16:56:08] Error preparing structural element 7221889: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.147] [20-11-2025 16:56:08] Error preparing structural element 7221890: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.149] [20-11-2025 16:56:08] Error preparing structural element 7583765: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.151] [20-11-2025 16:56:08] Error preparing structural element 7583767: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.152] [20-11-2025 16:56:08] Error preparing structural element 7583813: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.154] [20-11-2025 16:56:08] Error preparing structural element 7583814: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.156] [20-11-2025 16:56:08] Error preparing structural element 7583815: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.157] [20-11-2025 16:56:08] Error preparing structural element 7583816: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.159] [20-11-2025 16:56:08] Error preparing structural element 8879886: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.161] [20-11-2025 16:56:08] Error preparing structural element 8879887: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:08.162] [20-11-2025 16:56:08] [PHASE2] Calling MepIntersectionService.FindIntersectionsBatch with 0 MEP and 0 structural elements
+
+[2025-11-20 16:56:08.164] [20-11-2025 16:56:08] [INTERSECTION-PROCESSOR] ⚠️ Error calling FindIntersectionsInternal: Exception has been thrown by the target of an invocation. - falling back to FindIntersections
+
+[2025-11-20 16:56:08.169] [20-11-2025 16:56:08] === INTERSECTION DETECTION STARTED ===
+
+[2025-11-20 16:56:08.171] [20-11-2025 16:56:08] Document: Shared Test Model COMO_detached
+
+[2025-11-20 16:56:08.172] [20-11-2025 16:56:08] View: Test Area 2
+
+[2025-11-20 16:56:08.174] [20-11-2025 16:56:08] Section box: Min=(-21.1, -52.4, 180.8) Max=(27.0, 56.7, 192.6)
+
+[2025-11-20 16:56:08.189] [20-11-2025 16:56:08] Including Ducts categories
+
+[2025-11-20 16:56:08.191] [20-11-2025 16:56:08] Including Duct Accessories category
+
+[2025-11-20 16:56:08.192] [20-11-2025 16:56:08] Selected MEP categories: Ducts, Duct Accessories
+
+[2025-11-20 16:56:08.194] [20-11-2025 16:56:08] Collecting 4 MEP categories
+
+[2025-11-20 16:56:08.196] [20-11-2025 16:56:08] DEBUG: Section box in active document: Min=(-21.05, -52.35, 180.78) Max=(26.97, 56.75, 192.57)
+
+[2025-11-20 16:56:08.197] [20-11-2025 16:56:08] [5-STEP-FILTER] Step 1 (Section Box): Collecting elements within section box bounds
+
+[2025-11-20 16:56:08.199] [20-11-2025 16:56:08] [5-STEP-FILTER] Step 2 (Reference File): Selected reference files: CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002
+
+[2025-11-20 16:56:08.200] [20-11-2025 16:56:08] [5-STEP-FILTER] Step 3 (MEP Categories): Selected MEP categories: Ducts, Duct Accessories
+
+[2025-11-20 16:56:08.202] [20-11-2025 16:56:08] [5-STEP-FILTER] Step 4 (Host File): Selected host files: CMO-GCI-MOD-ARC-ZZ-00002-2024
+
+[2025-11-20 16:56:08.203] [20-11-2025 16:56:08] [5-STEP-FILTER] Step 5 (Host Categories): Selected host types: Walls
+
+[2025-11-20 16:56:08.205] [20-11-2025 16:56:08] [5-STEP-FILTER] ✅ MEMORY OPTIMIZATION: All filters applied at collector level using LogicalAndFilter - only filtered elements loaded
+
+[2025-11-20 16:56:08.207] [20-11-2025 16:56:08] DEBUG: Active Document 'Shared Test Model COMO_detached' is NOT selected in reference files - skipping MEP collection from active document
+
+[2025-11-20 16:56:08.208] [20-11-2025 16:56:08] Host elements will ONLY be collected from selected host files (linked files): CMO-GCI-MOD-ARC-ZZ-00002-2024
+
+[2025-11-20 16:56:08.212] [20-11-2025 16:56:08] DEBUG: Found 4 linked models
+
+[2025-11-20 16:56:08.213] [20-11-2025 16:56:08] DEBUG: Selected reference files (MEP links): CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002
+
+[2025-11-20 16:56:08.215] [20-11-2025 16:56:08] DEBUG: Selected reference files COUNT: 1 (includes both main list and 'Other Files' section)
+
+[2025-11-20 16:56:08.216] [20-11-2025 16:56:08] DEBUG: Selected host files: CMO-GCI-MOD-ARC-ZZ-00002-2024
+
+[2025-11-20 16:56:08.218] [20-11-2025 16:56:08] DEBUG: Selected host files COUNT: 1 (includes both main list and 'Other Files' section)
+
+[2025-11-20 16:56:08.220] [20-11-2025 16:56:08] DEBUG: Section box in linked file 'CMO-GCI-MOD-ARC-ZZ-00002-2024': Min=(-21.05, -52.35, 180.78) Max=(26.97, 56.75, 192.57)
+
+[2025-11-20 16:56:08.222] [20-11-2025 16:56:08] DEBUG: ⚠️ Reference file NO MATCH: Link 'CMO-GCI-MOD-ARC-ZZ-00002-2024' (normalized: 'cmo gci mod arc zz 00002 2024') not in selected files. Selected files (normalized): 'cmo afe ds03 mod ptw zz mec ge 0002'
+
+[2025-11-20 16:56:08.224] [20-11-2025 16:56:08] DEBUG: Skipping MEP collection from link 'CMO-GCI-MOD-ARC-ZZ-00002-2024' (not in selected reference files)
+
+[2025-11-20 16:56:08.226] [20-11-2025 16:56:08] DEBUG: ✅ Host file MATCH: 'CMO-GCI-MOD-ARC-ZZ-00002-2024' (normalized: 'cmo gci mod arc zz 00002 2024') matches link 'CMO-GCI-MOD-ARC-ZZ-00002-2024' (normalized: 'cmo gci mod arc zz 00002 2024')
+
+[2025-11-20 16:56:08.227] [20-11-2025 16:56:08] DEBUG: Host match for 'CMO-GCI-MOD-ARC-ZZ-00002-2024': True (selected host files count: 1)
+
+[2025-11-20 16:56:08.229] [20-11-2025 16:56:08] UI Selected Host types: Walls
+
+[2025-11-20 16:56:08.345] [20-11-2025 16:56:08] UI Selection: Including Walls
+
+[2025-11-20 16:56:08.346] [20-11-2025 16:56:08] ✅ FILTERED: Only collected 1 selected host types (was 3 total)
+
+[2025-11-20 16:56:08.348] [20-11-2025 16:56:08] Collected 85 total host elements after processing host link 'CMO-GCI-MOD-ARC-ZZ-00002-2024'
+
+[2025-11-20 16:56:08.350] [20-11-2025 16:56:08] DEBUG: Summary - Host elements collected from 'CMO-GCI-MOD-ARC-ZZ-00002-2024': 85 total (after processing this link)
+
+[2025-11-20 16:56:08.352] [20-11-2025 16:56:08] DEBUG: Section box in linked file 'CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002': Min=(-21.05, -52.35, 180.78) Max=(26.97, 56.75, 192.57)
+
+[2025-11-20 16:56:08.353] [20-11-2025 16:56:08] DEBUG: ✅ Reference file MATCH: 'CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002' (normalized: 'cmo afe ds03 mod ptw zz mec ge 0002') matches link 'CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002' (normalized: 'cmo afe ds03 mod ptw zz mec ge 0002')
+
+[2025-11-20 16:56:08.923] [20-11-2025 16:56:08] ⚠️ Found 1 OST_DuctCurves elements missed by BoundingBoxIntersectsFilter in link 'CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002', adding them manually
+
+[2025-11-20 16:56:09.217] [20-11-2025 16:56:09] ⚠️ Found 2 OST_DuctFitting elements missed by BoundingBoxIntersectsFilter in link 'CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002', adding them manually
+
+[2025-11-20 16:56:09.571] [20-11-2025 16:56:09] Collected 306 total MEP elements after processing reference link 'CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002'
+
+[2025-11-20 16:56:09.573] [20-11-2025 16:56:09] DEBUG: ⚠️ Host file NO MATCH: Link 'CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002' (normalized: 'cmo afe ds03 mod ptw zz mec ge 0002') not in selected files. Selected files (normalized): 'cmo gci mod arc zz 00002 2024'
+
+[2025-11-20 16:56:09.575] [20-11-2025 16:56:09] DEBUG: Skipping host collection from link 'CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002' (not in selected host files)
+
+[2025-11-20 16:56:09.577] [20-11-2025 16:56:09] DEBUG: Section box in linked file 'CMO-AFE-DS03-MOD-PTW-ZZ-ELE-GE-0002': Min=(-21.05, -52.35, 180.78) Max=(26.97, 56.75, 192.57)
+
+[2025-11-20 16:56:09.578] [20-11-2025 16:56:09] DEBUG: ⚠️ Reference file NO MATCH: Link 'CMO-AFE-DS03-MOD-PTW-ZZ-ELE-GE-0002' (normalized: 'cmo afe ds03 mod ptw zz ele ge 0002') not in selected files. Selected files (normalized): 'cmo afe ds03 mod ptw zz mec ge 0002'
+
+[2025-11-20 16:56:09.580] [20-11-2025 16:56:09] DEBUG: Skipping MEP collection from link 'CMO-AFE-DS03-MOD-PTW-ZZ-ELE-GE-0002' (not in selected reference files)
+
+[2025-11-20 16:56:09.582] [20-11-2025 16:56:09] DEBUG: ⚠️ Host file NO MATCH: Link 'CMO-AFE-DS03-MOD-PTW-ZZ-ELE-GE-0002' (normalized: 'cmo afe ds03 mod ptw zz ele ge 0002') not in selected files. Selected files (normalized): 'cmo gci mod arc zz 00002 2024'
+
+[2025-11-20 16:56:09.583] [20-11-2025 16:56:09] DEBUG: Skipping host collection from link 'CMO-AFE-DS03-MOD-PTW-ZZ-ELE-GE-0002' (not in selected host files)
+
+[2025-11-20 16:56:09.585] [20-11-2025 16:56:09] DEBUG: Section box in linked file 'CMO-GCI-MOD-STR-00001_2024': Min=(-21.05, -52.35, 181.19) Max=(26.97, 56.75, 192.98)
+
+[2025-11-20 16:56:09.586] [20-11-2025 16:56:09] DEBUG: ⚠️ Reference file NO MATCH: Link 'CMO-GCI-MOD-STR-00001_2024' (normalized: 'cmo gci mod str 00001 2024') not in selected files. Selected files (normalized): 'cmo afe ds03 mod ptw zz mec ge 0002'
+
+[2025-11-20 16:56:09.588] [20-11-2025 16:56:09] DEBUG: Skipping MEP collection from link 'CMO-GCI-MOD-STR-00001_2024' (not in selected reference files)
+
+[2025-11-20 16:56:09.589] [20-11-2025 16:56:09] DEBUG: ⚠️ Host file NO MATCH: Link 'CMO-GCI-MOD-STR-00001_2024' (normalized: 'cmo gci mod str 00001 2024') not in selected files. Selected files (normalized): 'cmo gci mod arc zz 00002 2024'
+
+[2025-11-20 16:56:09.591] [20-11-2025 16:56:09] DEBUG: Skipping host collection from link 'CMO-GCI-MOD-STR-00001_2024' (not in selected host files)
+
+[2025-11-20 16:56:09.592] [20-11-2025 16:56:09] DEBUG: FINAL COLLECTION SUMMARY:
+
+[2025-11-20 16:56:09.594] [20-11-2025 16:56:09] DEBUG:   - MEP elements: 306 total (from active document and/or linked files)
+
+[2025-11-20 16:56:09.596] [20-11-2025 16:56:09] DEBUG:   - Host elements: 85 total (from linked files only)
+
+[2025-11-20 16:56:09.597] [20-11-2025 16:56:09] DEBUG:   - Selected reference files: CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002
+
+[2025-11-20 16:56:09.599] [20-11-2025 16:56:09] DEBUG:   - Selected host files: CMO-GCI-MOD-ARC-ZZ-00002-2024
+
+[2025-11-20 16:56:09.600] [20-11-2025 16:56:09] Found 306 MEP elements and 85 structural elements (walls/floors/framing) in section box
+
+[2025-11-20 16:56:09.602] [20-11-2025 16:56:09] Selected MEP cats: Ducts, Duct Accessories
+
+[2025-11-20 16:56:09.603] [20-11-2025 16:56:09] Selected host types: Walls
+
+[2025-11-20 16:56:09.605] [20-11-2025 16:56:09] [5-STEP-FILTER-RESULTS] ELEMENT COLLECTION COMPLETE:
+
+[2025-11-20 16:56:09.606] [20-11-2025 16:56:09] [5-STEP-FILTER-RESULTS] Step 1 (Section Box): ✓ Applied - Only elements within section box collected
+
+[2025-11-20 16:56:09.608] [20-11-2025 16:56:09] [5-STEP-FILTER-RESULTS] Step 2 (Reference File): ✓ Applied - Only MEP elements from selected reference files collected
+
+[2025-11-20 16:56:09.609] [20-11-2025 16:56:09] [5-STEP-FILTER-RESULTS] Step 3 (MEP Categories): ✓ Applied - Only selected MEP categories collected
+
+[2025-11-20 16:56:09.611] [20-11-2025 16:56:09] [5-STEP-FILTER-RESULTS] Step 4 (Host File): ✓ Applied - Only structural elements from selected host files collected
+
+[2025-11-20 16:56:09.612] [20-11-2025 16:56:09] [5-STEP-FILTER-RESULTS] Step 5 (Host Categories): ✓ Applied - Only selected host types collected
+
+[2025-11-20 16:56:09.614] [20-11-2025 16:56:09] [5-STEP-FILTER-RESULTS] FINAL RESULTS: 306 MEP elements, 85 structural elements (100% efficiency - no waste)
+
+[2025-11-20 16:56:09.615] [20-11-2025 16:56:09] Using optimized MepIntersectionService.FindIntersectionsBatch with 306 MEP elements...
+
+[2025-11-20 16:56:09.619] [20-11-2025 16:56:09] Error preparing MEP element 2095638: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.621] [20-11-2025 16:56:09] Error preparing MEP element 12091574: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.623] [20-11-2025 16:56:09] Error preparing MEP element 12097325: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.624] [20-11-2025 16:56:09] Error preparing MEP element 12097338: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.626] [20-11-2025 16:56:09] Error preparing MEP element 16065682: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.628] [20-11-2025 16:56:09] Error preparing MEP element 19153277: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.629] [20-11-2025 16:56:09] Error preparing MEP element 19153281: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.631] [20-11-2025 16:56:09] Error preparing MEP element 19153283: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.633] [20-11-2025 16:56:09] Error preparing MEP element 19161527: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.634] [20-11-2025 16:56:09] Error preparing MEP element 19170872: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.636] [20-11-2025 16:56:09] Error preparing MEP element 19171170: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.638] [20-11-2025 16:56:09] Error preparing MEP element 19173700: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.639] [20-11-2025 16:56:09] Error preparing MEP element 19173702: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.641] [20-11-2025 16:56:09] Error preparing MEP element 19173708: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.643] [20-11-2025 16:56:09] Error preparing MEP element 19173709: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.644] [20-11-2025 16:56:09] Error preparing MEP element 19173710: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.646] [20-11-2025 16:56:09] Error preparing MEP element 19175962: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.648] [20-11-2025 16:56:09] Error preparing MEP element 19175964: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.649] [20-11-2025 16:56:09] Error preparing MEP element 19178941: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.651] [20-11-2025 16:56:09] Error preparing MEP element 19178942: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.653] [20-11-2025 16:56:09] Error preparing MEP element 19178948: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.655] [20-11-2025 16:56:09] Error preparing MEP element 19178950: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.656] [20-11-2025 16:56:09] Error preparing MEP element 19178954: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.658] [20-11-2025 16:56:09] Error preparing MEP element 19178956: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.660] [20-11-2025 16:56:09] Error preparing MEP element 19178958: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.661] [20-11-2025 16:56:09] Error preparing MEP element 19178965: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.663] [20-11-2025 16:56:09] Error preparing MEP element 19178969: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.665] [20-11-2025 16:56:09] Error preparing MEP element 19178970: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.666] [20-11-2025 16:56:09] Error preparing MEP element 19178997: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.668] [20-11-2025 16:56:09] Error preparing MEP element 19184357: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.670] [20-11-2025 16:56:09] Error preparing MEP element 19184360: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.671] [20-11-2025 16:56:09] Error preparing MEP element 19184798: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.673] [20-11-2025 16:56:09] Error preparing MEP element 19193043: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.675] [20-11-2025 16:56:09] Error preparing MEP element 24812611: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.676] [20-11-2025 16:56:09] Error preparing MEP element 24812612: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.679] [20-11-2025 16:56:09] Error preparing MEP element 24812651: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.681] [20-11-2025 16:56:09] Error preparing MEP element 24812652: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.683] [20-11-2025 16:56:09] Error preparing MEP element 24813068: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.685] [20-11-2025 16:56:09] Error preparing MEP element 24814314: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.687] [20-11-2025 16:56:09] Error preparing MEP element 24814347: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.689] [20-11-2025 16:56:09] Error preparing MEP element 24859402: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.690] [20-11-2025 16:56:09] Error preparing MEP element 24859403: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.692] [20-11-2025 16:56:09] Error preparing MEP element 24859421: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.694] [20-11-2025 16:56:09] Error preparing MEP element 24859463: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.696] [20-11-2025 16:56:09] Error preparing MEP element 24859495: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.697] [20-11-2025 16:56:09] Error preparing MEP element 24859496: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.699] [20-11-2025 16:56:09] Error preparing MEP element 24859498: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.701] [20-11-2025 16:56:09] Error preparing MEP element 24859504: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.702] [20-11-2025 16:56:09] Error preparing MEP element 24859517: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.704] [20-11-2025 16:56:09] Error preparing MEP element 24859518: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.706] [20-11-2025 16:56:09] Error preparing MEP element 24859641: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.708] [20-11-2025 16:56:09] Error preparing MEP element 24859659: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.709] [20-11-2025 16:56:09] Error preparing MEP element 24859777: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.711] [20-11-2025 16:56:09] Error preparing MEP element 24859779: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.713] [20-11-2025 16:56:09] Error preparing MEP element 24859781: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.714] [20-11-2025 16:56:09] Error preparing MEP element 24859784: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.716] [20-11-2025 16:56:09] Error preparing MEP element 24859838: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.718] [20-11-2025 16:56:09] Error preparing MEP element 24859890: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.719] [20-11-2025 16:56:09] Error preparing MEP element 24860094: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.721] [20-11-2025 16:56:09] Error preparing MEP element 24860176: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.723] [20-11-2025 16:56:09] Error preparing MEP element 24860230: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.724] [20-11-2025 16:56:09] Error preparing MEP element 24860233: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.726] [20-11-2025 16:56:09] Error preparing MEP element 24860243: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.728] [20-11-2025 16:56:09] Error preparing MEP element 24862015: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.729] [20-11-2025 16:56:09] Error preparing MEP element 24862026: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.731] [20-11-2025 16:56:09] Error preparing MEP element 24862032: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.733] [20-11-2025 16:56:09] Error preparing MEP element 24862035: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.734] [20-11-2025 16:56:09] Error preparing MEP element 24862036: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.736] [20-11-2025 16:56:09] Error preparing MEP element 24920223: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.738] [20-11-2025 16:56:09] Error preparing MEP element 24928362: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.739] [20-11-2025 16:56:09] Error preparing MEP element 24939837: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.741] [20-11-2025 16:56:09] Error preparing MEP element 24946516: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.743] [20-11-2025 16:56:09] Error preparing MEP element 24951835: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.744] [20-11-2025 16:56:09] Error preparing MEP element 24951845: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.746] [20-11-2025 16:56:09] Error preparing MEP element 24952619: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.748] [20-11-2025 16:56:09] Error preparing MEP element 24952648: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.845] [20-11-2025 16:56:09] Error preparing MEP element 24952653: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.847] [20-11-2025 16:56:09] Error preparing MEP element 24952670: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.848] [20-11-2025 16:56:09] Error preparing MEP element 24956934: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.852] [20-11-2025 16:56:09] Error preparing MEP element 24957127: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.856] [20-11-2025 16:56:09] Error preparing MEP element 24958712: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.860] [20-11-2025 16:56:09] Error preparing MEP element 24988945: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.864] [20-11-2025 16:56:09] Error preparing MEP element 24997016: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.868] [20-11-2025 16:56:09] Error preparing MEP element 24997371: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.871] [20-11-2025 16:56:09] Error preparing MEP element 24998061: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.874] [20-11-2025 16:56:09] Error preparing MEP element 24998069: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.877] [20-11-2025 16:56:09] Error preparing MEP element 24998076: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.879] [20-11-2025 16:56:09] Error preparing MEP element 24998166: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.881] [20-11-2025 16:56:09] Error preparing MEP element 24998522: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.883] [20-11-2025 16:56:09] Error preparing MEP element 25024879: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.884] [20-11-2025 16:56:09] Error preparing MEP element 25024905: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.886] [20-11-2025 16:56:09] Error preparing MEP element 25049689: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.888] [20-11-2025 16:56:09] Error preparing MEP element 25178516: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.890] [20-11-2025 16:56:09] Error preparing MEP element 25243509: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.891] [20-11-2025 16:56:09] Error preparing MEP element 25310326: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.893] [20-11-2025 16:56:09] Error preparing MEP element 25313796: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.895] [20-11-2025 16:56:09] Error preparing MEP element 25316961: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.897] [20-11-2025 16:56:09] Error preparing MEP element 25316962: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.898] [20-11-2025 16:56:09] Error preparing MEP element 25342725: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.900] [20-11-2025 16:56:09] Error preparing MEP element 25342731: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.902] [20-11-2025 16:56:09] Error preparing MEP element 25342735: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.904] [20-11-2025 16:56:09] Error preparing MEP element 25419239: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.905] [20-11-2025 16:56:09] Error preparing MEP element 25424926: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.907] [20-11-2025 16:56:09] Error preparing MEP element 25486675: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.909] [20-11-2025 16:56:09] Error preparing MEP element 25620252: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.911] [20-11-2025 16:56:09] Error preparing MEP element 25620300: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.912] [20-11-2025 16:56:09] Error preparing MEP element 25823227: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.914] [20-11-2025 16:56:09] Error preparing MEP element 25823242: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.916] [20-11-2025 16:56:09] Error preparing MEP element 24813567: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.918] [20-11-2025 16:56:09] Error preparing MEP element 19131535: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.920] [20-11-2025 16:56:09] Error preparing MEP element 19153279: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.921] [20-11-2025 16:56:09] Error preparing MEP element 19161522: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.923] [20-11-2025 16:56:09] Error preparing MEP element 19170873: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.925] [20-11-2025 16:56:09] Error preparing MEP element 19171173: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.927] [20-11-2025 16:56:09] Error preparing MEP element 19173703: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.929] [20-11-2025 16:56:09] Error preparing MEP element 19173706: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.930] [20-11-2025 16:56:09] Error preparing MEP element 19173720: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.932] [20-11-2025 16:56:09] Error preparing MEP element 19173721: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.934] [20-11-2025 16:56:09] Error preparing MEP element 19175410: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.936] [20-11-2025 16:56:09] Error preparing MEP element 19175536: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.937] [20-11-2025 16:56:09] Error preparing MEP element 19175537: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.939] [20-11-2025 16:56:09] Error preparing MEP element 19175965: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.941] [20-11-2025 16:56:09] Error preparing MEP element 19175966: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.943] [20-11-2025 16:56:09] Error preparing MEP element 19175969: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.945] [20-11-2025 16:56:09] Error preparing MEP element 19178943: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.946] [20-11-2025 16:56:09] Error preparing MEP element 19178946: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.948] [20-11-2025 16:56:09] Error preparing MEP element 19178955: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.950] [20-11-2025 16:56:09] Error preparing MEP element 19178957: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.952] [20-11-2025 16:56:09] Error preparing MEP element 19178959: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.953] [20-11-2025 16:56:09] Error preparing MEP element 19178961: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:09.955] [20-11-2025 16:56:09] Error preparing MEP element 19178999: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.107] [20-11-2025 16:56:09] Error preparing MEP element 19179001: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.185] [20-11-2025 16:56:10] Error preparing MEP element 19179003: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.189] [20-11-2025 16:56:10] Error preparing MEP element 19179005: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.193] [20-11-2025 16:56:10] Error preparing MEP element 19184799: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.195] [20-11-2025 16:56:10] Error preparing MEP element 19193037: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.197] [20-11-2025 16:56:10] Error preparing MEP element 19193039: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.199] [20-11-2025 16:56:10] Error preparing MEP element 19193041: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.201] [20-11-2025 16:56:10] Error preparing MEP element 19229239: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.202] [20-11-2025 16:56:10] Error preparing MEP element 24812620: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.204] [20-11-2025 16:56:10] Error preparing MEP element 24812626: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.206] [20-11-2025 16:56:10] Error preparing MEP element 24812653: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.208] [20-11-2025 16:56:10] Error preparing MEP element 24812655: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.210] [20-11-2025 16:56:10] Error preparing MEP element 24813071: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.211] [20-11-2025 16:56:10] Error preparing MEP element 24859417: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.213] [20-11-2025 16:56:10] Error preparing MEP element 24859464: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.215] [20-11-2025 16:56:10] Error preparing MEP element 24859497: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.217] [20-11-2025 16:56:10] Error preparing MEP element 24859499: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.219] [20-11-2025 16:56:10] Error preparing MEP element 24859503: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.220] [20-11-2025 16:56:10] Error preparing MEP element 24859516: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.222] [20-11-2025 16:56:10] Error preparing MEP element 24859533: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.224] [20-11-2025 16:56:10] Error preparing MEP element 24859537: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.226] [20-11-2025 16:56:10] Error preparing MEP element 24859542: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.228] [20-11-2025 16:56:10] Error preparing MEP element 24859789: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.229] [20-11-2025 16:56:10] Error preparing MEP element 24859839: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.231] [20-11-2025 16:56:10] Error preparing MEP element 24860093: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.233] [20-11-2025 16:56:10] Error preparing MEP element 24860099: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.235] [20-11-2025 16:56:10] Error preparing MEP element 24860278: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.237] [20-11-2025 16:56:10] Error preparing MEP element 24860279: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.239] [20-11-2025 16:56:10] Error preparing MEP element 24886055: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.240] [20-11-2025 16:56:10] Error preparing MEP element 24919398: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.242] [20-11-2025 16:56:10] Error preparing MEP element 24920292: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.244] [20-11-2025 16:56:10] Error preparing MEP element 24946513: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.246] [20-11-2025 16:56:10] Error preparing MEP element 24951843: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.247] [20-11-2025 16:56:10] Error preparing MEP element 24951853: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.249] [20-11-2025 16:56:10] Error preparing MEP element 24951929: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.251] [20-11-2025 16:56:10] Error preparing MEP element 24952644: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.252] [20-11-2025 16:56:10] Error preparing MEP element 24952667: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.254] [20-11-2025 16:56:10] Error preparing MEP element 24987187: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.256] [20-11-2025 16:56:10] Error preparing MEP element 24997388: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.258] [20-11-2025 16:56:10] Error preparing MEP element 24997391: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.259] [20-11-2025 16:56:10] Error preparing MEP element 24997497: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.261] [20-11-2025 16:56:10] Error preparing MEP element 24998074: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.263] [20-11-2025 16:56:10] Error preparing MEP element 24998083: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.265] [20-11-2025 16:56:10] Error preparing MEP element 24998535: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.266] [20-11-2025 16:56:10] Error preparing MEP element 25024880: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.268] [20-11-2025 16:56:10] Error preparing MEP element 25038911: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.270] [20-11-2025 16:56:10] Error preparing MEP element 25049694: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.272] [20-11-2025 16:56:10] Error preparing MEP element 25071170: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.274] [20-11-2025 16:56:10] Error preparing MEP element 25178604: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.275] [20-11-2025 16:56:10] Error preparing MEP element 25178605: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.277] [20-11-2025 16:56:10] Error preparing MEP element 25210105: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.279] [20-11-2025 16:56:10] Error preparing MEP element 25210107: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.281] [20-11-2025 16:56:10] Error preparing MEP element 25313553: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.282] [20-11-2025 16:56:10] Error preparing MEP element 25316964: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.284] [20-11-2025 16:56:10] Error preparing MEP element 25318829: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.286] [20-11-2025 16:56:10] Error preparing MEP element 25318832: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.288] [20-11-2025 16:56:10] Error preparing MEP element 25319330: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.289] [20-11-2025 16:56:10] Error preparing MEP element 25339103: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.291] [20-11-2025 16:56:10] Error preparing MEP element 25419241: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.293] [20-11-2025 16:56:10] Error preparing MEP element 25431698: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.295] [20-11-2025 16:56:10] Error preparing MEP element 25620253: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.296] [20-11-2025 16:56:10] Error preparing MEP element 25620302: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.298] [20-11-2025 16:56:10] Error preparing MEP element 25620303: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.300] [20-11-2025 16:56:10] Error preparing MEP element 25812704: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.302] [20-11-2025 16:56:10] Error preparing MEP element 25823245: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.305] [20-11-2025 16:56:10] Error preparing MEP element 25823248: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.307] [20-11-2025 16:56:10] Error preparing MEP element 24813557: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.311] [20-11-2025 16:56:10] Error preparing MEP element 24813570: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.315] [20-11-2025 16:56:10] Error preparing MEP element 19153278: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.319] [20-11-2025 16:56:10] Error preparing MEP element 19175104: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.322] [20-11-2025 16:56:10] Error preparing MEP element 19175105: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.326] [20-11-2025 16:56:10] Error preparing MEP element 19175106: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.329] [20-11-2025 16:56:10] Error preparing MEP element 19175397: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.331] [20-11-2025 16:56:10] Error preparing MEP element 24810974: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.333] [20-11-2025 16:56:10] Error preparing MEP element 24810975: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.335] [20-11-2025 16:56:10] Error preparing MEP element 24810977: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.337] [20-11-2025 16:56:10] Error preparing MEP element 24811032: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.339] [20-11-2025 16:56:10] Error preparing MEP element 24811037: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.341] [20-11-2025 16:56:10] Error preparing MEP element 24811038: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.343] [20-11-2025 16:56:10] Error preparing MEP element 24811295: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.345] [20-11-2025 16:56:10] Error preparing MEP element 24812044: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.347] [20-11-2025 16:56:10] Error preparing MEP element 24812055: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.349] [20-11-2025 16:56:10] Error preparing MEP element 24812696: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.351] [20-11-2025 16:56:10] Error preparing MEP element 24812697: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.353] [20-11-2025 16:56:10] Error preparing MEP element 24813464: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.355] [20-11-2025 16:56:10] Error preparing MEP element 24813466: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.357] [20-11-2025 16:56:10] Error preparing MEP element 24813551: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.359] [20-11-2025 16:56:10] Error preparing MEP element 24813554: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.361] [20-11-2025 16:56:10] Error preparing MEP element 24813555: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.363] [20-11-2025 16:56:10] Error preparing MEP element 24813945: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.365] [20-11-2025 16:56:10] Error preparing MEP element 24814108: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.367] [20-11-2025 16:56:10] Error preparing MEP element 24859311: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.369] [20-11-2025 16:56:10] Error preparing MEP element 24859338: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.371] [20-11-2025 16:56:10] Error preparing MEP element 24859340: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.373] [20-11-2025 16:56:10] Error preparing MEP element 24859405: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.375] [20-11-2025 16:56:10] Error preparing MEP element 24859915: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.377] [20-11-2025 16:56:10] Error preparing MEP element 24859916: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.379] [20-11-2025 16:56:10] Error preparing MEP element 24860001: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.381] [20-11-2025 16:56:10] Error preparing MEP element 24860002: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.384] [20-11-2025 16:56:10] Error preparing MEP element 24860038: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.386] [20-11-2025 16:56:10] Error preparing MEP element 24860039: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.388] [20-11-2025 16:56:10] Error preparing MEP element 24860163: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.390] [20-11-2025 16:56:10] Error preparing MEP element 24860273: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.392] [20-11-2025 16:56:10] Error preparing MEP element 24862011: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.394] [20-11-2025 16:56:10] Error preparing MEP element 24862012: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.396] [20-11-2025 16:56:10] Error preparing MEP element 24862029: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.398] [20-11-2025 16:56:10] Error preparing MEP element 24862033: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.400] [20-11-2025 16:56:10] Error preparing MEP element 24917310: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.402] [20-11-2025 16:56:10] Error preparing MEP element 24917649: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.404] [20-11-2025 16:56:10] Error preparing MEP element 24918868: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.406] [20-11-2025 16:56:10] Error preparing MEP element 24918970: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.408] [20-11-2025 16:56:10] Error preparing MEP element 24919330: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.410] [20-11-2025 16:56:10] Error preparing MEP element 24920409: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.412] [20-11-2025 16:56:10] Error preparing MEP element 24920416: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.414] [20-11-2025 16:56:10] Error preparing MEP element 24921498: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.416] [20-11-2025 16:56:10] Error preparing MEP element 24921501: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.418] [20-11-2025 16:56:10] Error preparing MEP element 24921502: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.420] [20-11-2025 16:56:10] Error preparing MEP element 24977488: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.422] [20-11-2025 16:56:10] Error preparing MEP element 24977529: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.424] [20-11-2025 16:56:10] Error preparing MEP element 25262095: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.426] [20-11-2025 16:56:10] Error preparing MEP element 25265520: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.428] [20-11-2025 16:56:10] Error preparing MEP element 25342721: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.430] [20-11-2025 16:56:10] Error preparing MEP element 25342738: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.432] [20-11-2025 16:56:10] Error preparing MEP element 25342742: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.434] [20-11-2025 16:56:10] Error preparing MEP element 25342745: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.436] [20-11-2025 16:56:10] Error preparing MEP element 25415312: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.438] [20-11-2025 16:56:10] Error preparing MEP element 25415314: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.440] [20-11-2025 16:56:10] Error preparing MEP element 25415316: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.442] [20-11-2025 16:56:10] Error preparing MEP element 25620193: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.444] [20-11-2025 16:56:10] Error preparing MEP element 25620194: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.446] [20-11-2025 16:56:10] Error preparing MEP element 25620226: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.448] [20-11-2025 16:56:10] Error preparing MEP element 25620227: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.450] [20-11-2025 16:56:10] Error preparing MEP element 25620360: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.452] [20-11-2025 16:56:10] Error preparing MEP element 25620361: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.454] [20-11-2025 16:56:10] Error preparing MEP element 19153280: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.456] [20-11-2025 16:56:10] Error preparing MEP element 19153282: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.458] [20-11-2025 16:56:10] Error preparing MEP element 19173707: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.460] [20-11-2025 16:56:10] Error preparing MEP element 19178947: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.462] [20-11-2025 16:56:10] Error preparing MEP element 19178949: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.464] [20-11-2025 16:56:10] Error preparing MEP element 19178968: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.466] [20-11-2025 16:56:10] Error preparing MEP element 19184356: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.468] [20-11-2025 16:56:10] Error preparing MEP element 19184359: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.470] [20-11-2025 16:56:10] Error preparing MEP element 19193042: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.472] [20-11-2025 16:56:10] Error preparing MEP element 24859776: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.474] [20-11-2025 16:56:10] Error preparing MEP element 24859889: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.476] [20-11-2025 16:56:10] Error preparing MEP element 24860227: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.478] [20-11-2025 16:56:10] Error preparing MEP element 24862031: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.482] [20-11-2025 16:56:10] Error preparing MEP element 24862034: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.486] [20-11-2025 16:56:10] Error preparing MEP element 24939836: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.490] [20-11-2025 16:56:10] Error preparing MEP element 24946515: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.494] [20-11-2025 16:56:10] Error preparing MEP element 24952618: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.497] [20-11-2025 16:56:10] Error preparing MEP element 24952638: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.501] [20-11-2025 16:56:10] Error preparing MEP element 24952647: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.505] [20-11-2025 16:56:10] Error preparing MEP element 24952652: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.508] [20-11-2025 16:56:10] Error preparing MEP element 24952669: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.510] [20-11-2025 16:56:10] Error preparing MEP element 24956932: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.512] [20-11-2025 16:56:10] Error preparing MEP element 24957010: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.513] [20-11-2025 16:56:10] Error preparing MEP element 24957104: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.515] [20-11-2025 16:56:10] Error preparing MEP element 24958710: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.517] [20-11-2025 16:56:10] Error preparing MEP element 24988944: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.518] [20-11-2025 16:56:10] Error preparing MEP element 25024307: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.520] [20-11-2025 16:56:10] Error preparing MEP element 25024889: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.522] [20-11-2025 16:56:10] Error preparing MEP element 25049696: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.523] [20-11-2025 16:56:10] Error preparing MEP element 25247092: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.525] [20-11-2025 16:56:10] Error preparing MEP element 25260856: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.527] [20-11-2025 16:56:10] Error preparing MEP element 25342730: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.529] [20-11-2025 16:56:10] Error preparing MEP element 25342734: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.530] [20-11-2025 16:56:10] Error preparing MEP element 25618640: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.532] [20-11-2025 16:56:10] Error preparing MEP element 25618811: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.534] [20-11-2025 16:56:10] Error preparing MEP element 25618920: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.536] [20-11-2025 16:56:10] Error preparing MEP element 25619279: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.537] [20-11-2025 16:56:10] Error preparing MEP element 25619363: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.539] [20-11-2025 16:56:10] Error preparing MEP element 25619447: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.541] [20-11-2025 16:56:10] Error preparing MEP element 25619532: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.542] [20-11-2025 16:56:10] Error preparing MEP element 25620254: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.544] [20-11-2025 16:56:10] Error preparing structural element 430244: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.545] [20-11-2025 16:56:10] Error preparing structural element 1311596: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.547] [20-11-2025 16:56:10] Error preparing structural element 1311877: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.549] [20-11-2025 16:56:10] Error preparing structural element 1312707: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.550] [20-11-2025 16:56:10] Error preparing structural element 1313050: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.552] [20-11-2025 16:56:10] Error preparing structural element 1334751: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.554] [20-11-2025 16:56:10] Error preparing structural element 1334827: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.555] [20-11-2025 16:56:10] Error preparing structural element 1334993: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.557] [20-11-2025 16:56:10] Error preparing structural element 1335269: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.559] [20-11-2025 16:56:10] Error preparing structural element 1335999: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.560] [20-11-2025 16:56:10] Error preparing structural element 1336001: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.562] [20-11-2025 16:56:10] Error preparing structural element 1336002: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.564] [20-11-2025 16:56:10] Error preparing structural element 1336005: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.565] [20-11-2025 16:56:10] Error preparing structural element 1336009: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.567] [20-11-2025 16:56:10] Error preparing structural element 1336011: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.568] [20-11-2025 16:56:10] Error preparing structural element 1336012: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.570] [20-11-2025 16:56:10] Error preparing structural element 1336013: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.572] [20-11-2025 16:56:10] Error preparing structural element 1336014: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.573] [20-11-2025 16:56:10] Error preparing structural element 1336015: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.575] [20-11-2025 16:56:10] Error preparing structural element 1336954: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.577] [20-11-2025 16:56:10] Error preparing structural element 1337055: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.578] [20-11-2025 16:56:10] Error preparing structural element 1337265: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.580] [20-11-2025 16:56:10] Error preparing structural element 1337467: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.582] [20-11-2025 16:56:10] Error preparing structural element 1337469: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.583] [20-11-2025 16:56:10] Error preparing structural element 2023696: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.585] [20-11-2025 16:56:10] Error preparing structural element 2023838: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.587] [20-11-2025 16:56:10] Error preparing structural element 2024105: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.588] [20-11-2025 16:56:10] Error preparing structural element 2024467: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.590] [20-11-2025 16:56:10] Error preparing structural element 2024468: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.592] [20-11-2025 16:56:10] Error preparing structural element 2024471: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.593] [20-11-2025 16:56:10] Error preparing structural element 2119166: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.595] [20-11-2025 16:56:10] Error preparing structural element 2124430: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.596] [20-11-2025 16:56:10] Error preparing structural element 2124433: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.598] [20-11-2025 16:56:10] Error preparing structural element 2133593: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.600] [20-11-2025 16:56:10] Error preparing structural element 3040386: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.601] [20-11-2025 16:56:10] Error preparing structural element 3087706: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.603] [20-11-2025 16:56:10] Error preparing structural element 4184012: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.605] [20-11-2025 16:56:10] Error preparing structural element 4184081: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.606] [20-11-2025 16:56:10] Error preparing structural element 4184362: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.608] [20-11-2025 16:56:10] Error preparing structural element 4184427: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.610] [20-11-2025 16:56:10] Error preparing structural element 4184572: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.611] [20-11-2025 16:56:10] Error preparing structural element 4184663: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.613] [20-11-2025 16:56:10] Error preparing structural element 4184736: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.615] [20-11-2025 16:56:10] Error preparing structural element 4203658: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.616] [20-11-2025 16:56:10] Error preparing structural element 4203659: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.618] [20-11-2025 16:56:10] Error preparing structural element 4203660: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.620] [20-11-2025 16:56:10] Error preparing structural element 4203661: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.621] [20-11-2025 16:56:10] Error preparing structural element 4203662: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.623] [20-11-2025 16:56:10] Error preparing structural element 4203665: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.625] [20-11-2025 16:56:10] Error preparing structural element 4203666: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.626] [20-11-2025 16:56:10] Error preparing structural element 4293788: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.630] [20-11-2025 16:56:10] Error preparing structural element 4293789: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.631] [20-11-2025 16:56:10] Error preparing structural element 4293790: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.633] [20-11-2025 16:56:10] Error preparing structural element 4293791: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.635] [20-11-2025 16:56:10] Error preparing structural element 4293792: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.636] [20-11-2025 16:56:10] Error preparing structural element 4293793: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.638] [20-11-2025 16:56:10] Error preparing structural element 4293794: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.640] [20-11-2025 16:56:10] Error preparing structural element 4293818: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.642] [20-11-2025 16:56:10] Error preparing structural element 4293819: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.643] [20-11-2025 16:56:10] Error preparing structural element 4293820: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.645] [20-11-2025 16:56:10] Error preparing structural element 4293821: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.646] [20-11-2025 16:56:10] Error preparing structural element 4368950: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.648] [20-11-2025 16:56:10] Error preparing structural element 4381236: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.650] [20-11-2025 16:56:10] Error preparing structural element 4381237: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.652] [20-11-2025 16:56:10] Error preparing structural element 4381238: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.653] [20-11-2025 16:56:10] Error preparing structural element 5009730: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.655] [20-11-2025 16:56:10] Error preparing structural element 5009731: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.657] [20-11-2025 16:56:10] Error preparing structural element 7207892: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.658] [20-11-2025 16:56:10] Error preparing structural element 7208596: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.660] [20-11-2025 16:56:10] Error preparing structural element 7208742: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.662] [20-11-2025 16:56:10] Error preparing structural element 7209017: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.663] [20-11-2025 16:56:10] Error preparing structural element 7214023: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.665] [20-11-2025 16:56:10] Error preparing structural element 7214024: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.667] [20-11-2025 16:56:10] Error preparing structural element 7220787: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.668] [20-11-2025 16:56:10] Error preparing structural element 7221720: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.670] [20-11-2025 16:56:10] Error preparing structural element 7221889: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.672] [20-11-2025 16:56:10] Error preparing structural element 7221890: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.673] [20-11-2025 16:56:10] Error preparing structural element 7583765: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.675] [20-11-2025 16:56:10] Error preparing structural element 7583767: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.677] [20-11-2025 16:56:10] Error preparing structural element 7583813: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.678] [20-11-2025 16:56:10] Error preparing structural element 7583814: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.680] [20-11-2025 16:56:10] Error preparing structural element 7583815: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.682] [20-11-2025 16:56:10] Error preparing structural element 7583816: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.683] [20-11-2025 16:56:10] Error preparing structural element 8879886: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.685] [20-11-2025 16:56:10] Error preparing structural element 8879887: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.686] [20-11-2025 16:56:10] [PHASE2] Calling MepIntersectionService.FindIntersectionsBatch with 0 MEP and 0 structural elements
+
+[2025-11-20 16:56:10.688] [20-11-2025 16:56:10] ERROR: The type initializer for 'JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService' threw an exception.
+
+[2025-11-20 16:56:10.705] [20-11-2025 16:56:10] Stack:    at JSE_RevitAddin_MEP_OPENINGS.Services.MepIntersectionService.FindIntersectionsBatch(List`1 mepElements, List`1 structuralElements, Action`1 log, HashSet`1 knownValidPairs, Boolean skipKnownPairsGeometryCheck)
+   at JSE_RevitAddin_MEP_OPENINGS.Services.IntersectionDetectionService.FindIntersectionsInternal(List`1 mepElements, List`1 wallElements, Document doc, IntersectionOptimizationService optimizationService)
+   at JSE_RevitAddin_MEP_OPENINGS.Services.IntersectionDetectionService.FindIntersections(Document document, View3D view3D, List`1 selectedMepCategories, List`1 selectedReferenceFiles, List`1 selectedHostFiles, List`1 allowedHostElementTypes, IntersectionOptimizationService optimizationService)
+
+[2025-11-20 16:56:10.706] [20-11-2025 16:56:10] [INTERSECTION-PROCESSOR] Found 0 intersections from 149 MEP + 85 host elements
+
+[2025-11-20 16:56:10.709] [20-11-2025 16:56:10] [INTERSECTION-PROCESSOR] Detection complete: 0 new zones, 0 total
+
+[2025-11-20 16:56:10.711] [20-11-2025 16:56:10] [INTERSECTION-PROCESSOR] Phase 3: Post-processing results...
+
+[2025-11-20 16:56:10.713] [20-11-2025 16:56:10] [INTERSECTION-PROCESSOR] Post-processing complete
+
+[2025-11-20 16:56:10.726] [20-11-2025 16:56:10] [MERGE-SAVE] Starting MergeAndSave - AllClashZones: 0, NewClashZones: 0
+
+[2025-11-20 16:56:10.728] [20-11-2025 16:56:10] [MERGE-SAVE] Merged zones - Total: 0
+
+[2025-11-20 16:56:10.730] [20-11-2025 16:56:10] [MERGE-SAVE] Loading enabled filter from: Ventilation
+
+[2025-11-20 16:56:10.755] [20-11-2025 16:56:10] [MERGE-SAVE] ✅ Enabled filter found: 'Ventilation'
+
+[2025-11-20 16:56:10.758] [20-11-2025 16:56:10] [SQLite] [SQLite] Assembly directory: C:\Users\jse2084\AppData\Local\Temp\RevitAddins\JSE_RevitAddin_MEP_OPENINGS-Executing-20251120_165550_2214
+
+[2025-11-20 16:56:10.760] [20-11-2025 16:56:10] [SQLite] [SQLite] ⚠️ Missing dependency: System.Data.SQLite.dll
+
+[2025-11-20 16:56:10.762] [20-11-2025 16:56:10] [SQLite] [SQLite] ⚠️ Dependency System.Data.SQLite.dll remains missing. SQLite may fail to load.
+
+[2025-11-20 16:56:10.763] [20-11-2025 16:56:10] [SQLite] [SQLite] ✅ Found dependency: x64\SQLite.Interop.dll
+
+[2025-11-20 16:56:10.765] [20-11-2025 16:56:10] [SQLite] [SQLite] Filters directory: C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_detached\Filters
+
+[2025-11-20 16:56:10.767] [20-11-2025 16:56:10] [SQLite] [SQLite] Database path: C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_detached\Filters\Shared_Test_Model_COMO_detached_SleevePersistence.db
+
+[2025-11-20 16:56:10.771] [20-11-2025 16:56:10] [SQLite] [SQLite] ✅ Connection opened successfully
+
+[2025-11-20 16:56:10.783] [20-11-2025 16:56:10] [SQLite] [SQLite] ✅ Schema created/verified for database: C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_detached\Filters\Shared_Test_Model_COMO_detached_SleevePersistence.db
+
+[2025-11-20 16:56:10.790] [20-11-2025 16:56:10] [SQLite] [SQLite] ✅ Migrated ReferenceDocKey values to SelectedReferenceFiles JSON array
+
+[2025-11-20 16:56:10.791] [20-11-2025 16:56:10] [SQLite] [SQLite] ✅ Migrated HostDocKey values to SelectedHostFiles JSON array
+
+[2025-11-20 16:56:10.793] [20-11-2025 16:56:10] [SQLite] [SQLite] ✅ Migrated ReferenceCategory values to SelectedMepCategoryNames JSON array
+
+[2025-11-20 16:56:10.795] [20-11-2025 16:56:10] [SQLite] [SQLite] ✅ Flag management constraint tracking table created/verified
+
+[2025-11-20 16:56:10.797] [20-11-2025 16:56:10] [SQLite] [SQLite] ✅ Database ready (147456 bytes)
+
+[2025-11-20 16:56:10.798] [20-11-2025 16:56:10] [CLASH-ZONE-PERSISTENCE] ✅ SQLite dual-write enabled: C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_detached\Filters\Shared_Test_Model_COMO_detached_SleevePersistence.db
+
+[2025-11-20 16:56:10.800] [20-11-2025 16:56:10] [PERSIST-NAME] Saving ALL clash zones: Raw='Ventilation', Normalized='Ventilation', TotalZones=0
+
+[2025-11-20 16:56:10.801] [20-11-2025 16:56:10] [MERGE-SAVE] Calling SaveClashZones with 0 zones
+
+[2025-11-20 16:56:10.808] [20-11-2025 16:56:10] [CLASH-ZONE-PERSISTENCE] SaveClashZones CALLED: Zones=0, Filter='Ventilation', TargetFilter=Ventilation, SQLiteRepo=EXISTS
+
+[2025-11-20 16:56:10.810] [20-11-2025 16:56:10] [CLASH-ZONE-PERSISTENCE] No clash zones to save
+
+[2025-11-20 16:56:10.811] [20-11-2025 16:56:10] [MERGE-SAVE] ✅ SaveClashZones completed successfully
+
+[2025-11-20 16:56:10.813] [20-11-2025 16:56:10] [MERGE-SAVE] ⚠️ XML creation disabled - skipping base filter XML save (database only mode)
+
+[2025-11-20 16:56:10.816] [20-11-2025 16:56:10] [REFRESH-REFACTORED] Created empty filter group for category 'Ducts': 'Ventilation_ducts'
+
+[2025-11-20 16:56:10.818] [20-11-2025 16:56:10] [REFRESH-REFACTORED] Created empty filter group for category 'Duct Accessories': 'Ventilation_duct_accessories'
+
+[2025-11-20 16:56:10.820] [20-11-2025 16:56:10] [REFRESH-REFACTORED] Processing group 'Ventilation_ducts' → FileCombos=0, TotalZones=0
+
+[2025-11-20 16:56:10.825] [20-11-2025 16:56:10] [REFRESH-REFACTORED]   Group 'Ventilation_ducts' has no zones after extraction - will save empty file
+
+[2025-11-20 16:56:10.827] [20-11-2025 16:56:10] [REFRESH-REFACTORED] ⚠️ XML creation disabled - skipping category filter XML save for 'Ventilation_ducts' (database only mode)
+
+[2025-11-20 16:56:10.829] [20-11-2025 16:56:10] [REFRESH-REFACTORED] Processing group 'Ventilation_duct_accessories' → FileCombos=0, TotalZones=0
+
+[2025-11-20 16:56:10.831] [20-11-2025 16:56:10] [REFRESH-REFACTORED]   Group 'Ventilation_duct_accessories' has no zones after extraction - will save empty file
+
+[2025-11-20 16:56:10.833] [20-11-2025 16:56:10] [REFRESH-REFACTORED] ⚠️ XML creation disabled - skipping category filter XML save for 'Ventilation_duct_accessories' (database only mode)
+

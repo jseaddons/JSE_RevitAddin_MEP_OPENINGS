@@ -582,9 +582,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             if (cz.SleeveDiameter > maxSleeveDiameter)
                                 maxSleeveDiameter = cz.SleeveDiameter;
                             
-                            // Get structural thickness for depth
-                            if (cz.StructuralElementThickness > maxStructuralThickness)
-                                maxStructuralThickness = cz.StructuralElementThickness;
+                            // Get structural thickness for depth (prefer WallThickness)
+                            double currentThickness = cz.WallThickness > 0 ? cz.WallThickness : cz.StructuralElementThickness;
+                            if (currentThickness > maxStructuralThickness)
+                                maxStructuralThickness = currentThickness;
                             
                             SafeFileLogger.SafeAppendText("cluster_sizing.log",
                                 $"[{DateTime.Now:HH:mm:ss}]   Sleeve {sleeveId}: W={cz.SleeveWidth * 304.8:F1}mm, H={cz.SleeveHeight * 304.8:F1}mm, Depth={cz.StructuralElementThickness * 304.8:F1}mm, Diameter={cz.SleeveDiameter * 304.8:F1}mm\n");
@@ -1448,9 +1449,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             {
                                 if (isWallOrFraming)
                                 {
-                                    // ✅ WALL/FRAMING: Depth will be set from wall thickness later in SetSizeParameters
-                                    // Keep as 0.0 for now - will be overridden
-                                    cornerDepth = 0.0;
+                                    // ✅ WALL/FRAMING: Depth will be set from wall thickness
+                                    // Retrieve max thickness from constituent clash zones
+                                    double maxWallThickness = 0.0;
+                                    foreach (var cz in clashZonesForHeight)
+                                    {
+                                        if (cz == null) continue;
+                                        double t = cz.WallThickness > 0 ? cz.WallThickness : cz.StructuralElementThickness;
+                                        if (t > maxWallThickness) maxWallThickness = t;
+                                    }
+                                    
+                                    cornerDepth = maxWallThickness > 0 ? maxWallThickness : 0.0;
+                                    
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                    {
+                                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                            $"[{DateTime.Now:HH:mm:ss}]   ✅ WALL/FRAMING DEPTH: Using max thickness={cornerDepth * 304.8:F1}mm (calculated from {clashZonesForHeight.Count} clash zones)\n");
+                                    }
                                 }
                                 else
                                 {

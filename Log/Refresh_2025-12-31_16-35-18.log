@@ -1,0 +1,962 @@
+[2025-12-31 16:35:18.459] [31-12-2025 04:35:18 PM] ===== REFRESH LOG STARTED =====
+
+[2025-12-31 16:35:18.459] [31-12-2025 04:35:18 PM] 🔨 BUILD TIMESTAMP: 2025-12-31 16:26:02 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+
+[2025-12-31 16:35:18.460] [31-12-2025 04:35:18 PM] Filters (1): Ventilation
+
+[2025-12-31 16:35:18.460] [31-12-2025 04:35:18 PM] MEP Categories (2): Ducts, Duct Accessories
+
+[2025-12-31 16:35:18.461] [31-12-2025 04:35:18 PM] Reference Files (1): CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002
+
+[2025-12-31 16:35:18.461] [31-12-2025 04:35:18 PM] Host Files (1): CMO-GCI-MOD-ARC-ZZ-00002-2024
+
+[2025-12-31 16:35:18.464] [31-12-2025 04:35:18 PM] ============================================
+
+
+[2025-12-31 16:35:18.465] [31-12-2025 04:35:18 PM] ===== ExecuteRefreshInternal STARTED =====
+
+[2025-12-31 16:35:18.494] [31-12-2025 04:35:18 PM] [HIERARCHICAL-RESET] ✅ Reset flags for 16 zones
+
+[2025-12-31 16:35:18.569] [31-12-2025 04:35:18 PM] [SESSION-CONTEXT] ✅ Applied section box context. Marked 16 zones
+
+[2025-12-31 16:35:18.572] [31-12-2025 04:35:18 PM] [XML-CACHE] ⚡ OPTIMIZATION: Skipping XML cache loading (database-only mode)
+
+[2025-12-31 16:35:18.574] [31-12-2025 04:35:18 PM] [SQLite] [SQLite] Assembly directory: C:\Users\jse1478.JSE24\AppData\Roaming\Autodesk\Revit\Addins\2024
+
+[2025-12-31 16:35:18.574] [31-12-2025 04:35:18 PM] [SQLite] [SQLite] ✅ Found dependency: System.Data.SQLite.dll
+
+[2025-12-31 16:35:18.575] [31-12-2025 04:35:18 PM] [SQLite] [SQLite] ✅ Found dependency: x64\SQLite.Interop.dll
+
+[2025-12-31 16:35:18.575] [31-12-2025 04:35:18 PM] [SQLite] [SQLite] Filters directory: C:\Users\jse1478.JSE24\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_suryasUEXJW\Filters
+
+[2025-12-31 16:35:18.576] [31-12-2025 04:35:18 PM] [SQLite] [SQLite] Database path: C:\Users\jse1478.JSE24\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_suryasUEXJW\Filters\Shared_Test_Model_COMO_suryasUEXJW_SleevePersistence.db
+
+[2025-12-31 16:35:18.577] [31-12-2025 04:35:18 PM] [SQLite] [SQLite] ✅ Connection opened successfully
+
+[2025-12-31 16:35:18.578] [31-12-2025 04:35:18 PM] [SQLite] [SQLite] ✅ Database ready (241664 bytes)
+
+[2025-12-31 16:35:18.581] [31-12-2025 04:35:18 PM] [SQLite] [DB-LOAD-DEBUG] Zone be033bb5-447f-8dd2-3bab-500ed860899f: Loaded MepWidth=0.000000ft (0.0mm), MepHeight=0.000000ft (0.0mm)
+
+[2025-12-31 16:35:18.583] [31-12-2025 04:35:18 PM] [SQLite] [DB-LOAD-DEBUG] Zone a815d466-7cf8-b3e8-7d96-05912c4c038d: Loaded MepWidth=0.000000ft (0.0mm), MepHeight=0.000000ft (0.0mm)
+
+[2025-12-31 16:35:18.585] [31-12-2025 04:35:18 PM] [SQLite] [DB-LOAD-DEBUG] Zone 8753681e-2d75-2b3f-9e7f-41b8924b54a1: Loaded MepWidth=0.000000ft (0.0mm), MepHeight=0.000000ft (0.0mm)
+
+[2025-12-31 16:35:18.586] [31-12-2025 04:35:18 PM] [SQLite] [DB-LOAD-DEBUG] Zone aa827a2c-555e-6ff7-9a23-868eed36c917: Loaded MepWidth=0.000000ft (0.0mm), MepHeight=0.000000ft (0.0mm)
+
+[2025-12-31 16:35:18.587] [31-12-2025 04:35:18 PM] [SQLite] [DB-LOAD-DEBUG] Zone e1268c9f-04c5-2639-af77-5f532444bc7e: Loaded MepWidth=0.000000ft (0.0mm), MepHeight=0.000000ft (0.0mm)
+
+[2025-12-31 16:35:18.590] [31-12-2025 04:35:18 PM] [SQLite] [DB-LOAD-DEBUG] Zone aab6627b-ca39-2e21-9186-c778b5670ec6: Loaded MepWidth=0.000000ft (0.0mm), MepHeight=0.000000ft (0.0mm)
+
+[2025-12-31 16:35:18.591] [31-12-2025 04:35:18 PM] [SQLite] [DB-LOAD-DEBUG] Zone 3d4b92b7-b1db-9ec3-db78-3daf38f31caf: Loaded MepWidth=0.000000ft (0.0mm), MepHeight=0.000000ft (0.0mm)
+
+[2025-12-31 16:35:18.592] [31-12-2025 04:35:18 PM] [SQLite] [DB-LOAD-DEBUG] Zone a0b939f9-e281-c9d9-e980-1295450a8a2b: Loaded MepWidth=0.000000ft (0.0mm), MepHeight=0.000000ft (0.0mm)
+
+[2025-12-31 16:35:18.594] [31-12-2025 04:35:18 PM] [SQLite] [DB-LOAD-DEBUG] Zone 8a8cac37-6fbe-641a-a080-a585e7170f4b: Loaded MepWidth=0.000000ft (0.0mm), MepHeight=0.000000ft (0.0mm)
+
+[2025-12-31 16:35:18.595] [31-12-2025 04:35:18 PM] [SQLite] [DB-LOAD-DEBUG] Zone 6c060af4-2e41-83bc-f495-56aaff32abe5: Loaded MepWidth=0.000000ft (0.0mm), MepHeight=0.000000ft (0.0mm)
+
+[2025-12-31 16:35:18.597] [31-12-2025 04:35:18 PM] [SQLite] [DB-LOAD-DEBUG] Zone 8bad2572-8f5a-f644-6da3-d31054ff3e8a: Loaded MepWidth=0.000000ft (0.0mm), MepHeight=0.000000ft (0.0mm)
+
+[2025-12-31 16:35:18.598] [31-12-2025 04:35:18 PM] [SQLite] [DB-LOAD-DEBUG] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: Loaded MepWidth=0.000000ft (0.0mm), MepHeight=0.000000ft (0.0mm)
+
+[2025-12-31 16:35:18.600] [31-12-2025 04:35:18 PM] [SQLite] [DB-LOAD-DEBUG] Zone c382454f-ca80-9aef-718d-c910cf6636e0: Loaded MepWidth=0.000000ft (0.0mm), MepHeight=0.000000ft (0.0mm)
+
+[2025-12-31 16:35:18.602] [31-12-2025 04:35:18 PM] [SQLite] [DB-LOAD-DEBUG] Zone 2eb5ed47-23c4-879e-2158-89c031afecb9: Loaded MepWidth=0.000000ft (0.0mm), MepHeight=0.000000ft (0.0mm)
+
+[2025-12-31 16:35:18.603] [31-12-2025 04:35:18 PM] [SQLite] [DB-LOAD-DEBUG] Zone f5597b3d-05f0-ef6f-af8a-7e3e043b2127: Loaded MepWidth=0.000000ft (0.0mm), MepHeight=0.000000ft (0.0mm)
+
+[2025-12-31 16:35:18.604] [31-12-2025 04:35:18 PM] [SQLite] [DB-LOAD-DEBUG] Zone e4545521-0ef0-87ab-86f4-57cab06b31c1: Loaded MepWidth=0.000000ft (0.0mm), MepHeight=0.000000ft (0.0mm)
+
+[2025-12-31 16:35:18.607] [31-12-2025 04:35:18 PM] [SECTION-BOX] Capturing section box bounds for caching...
+
+[2025-12-31 16:35:18.609] [31-12-2025 04:35:18 PM] [SECTION-BOX] ✅ Section box bounds captured and stored successfully
+
+[2025-12-31 16:35:18.620] [31-12-2025 04:35:18 PM] [INTERSECTION-PROCESSOR] Phase 1: Preparing existing zones from XML cache...
+
+[2025-12-31 16:35:18.620] [31-12-2025 04:35:18 PM] [INTERSECTION-PROCESSOR] Using 16 existing clash zones from context
+
+[2025-12-31 16:35:18.627] [31-12-2025 04:35:18 PM] [DB-COMBO-CHECK] Combo not found: Filter='Ventilation', Category='Ducts', Linked='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002', Host='CMO-GCI-MOD-ARC-ZZ-00002-2024' → not processed
+
+[2025-12-31 16:35:18.628] [31-12-2025 04:35:18 PM] [INTERSECTION-PROCESSOR] Decision Factors: EnableThreePointValidation=True, allCombosProcessed=False, hasUnresolvedZones=True, DeploymentMode=False
+
+[2025-12-31 16:35:18.628] [31-12-2025 04:35:18 PM] [INTERSECTION-PROCESSOR] ⚠️ FULL DETECTION MODE: FullDetection: DeploymentMode OFF (testing mode) - always run detection to populate database (EnableThreePointValidation=True, allCombosProcessed=False)
+
+[2025-12-31 16:35:18.629] [31-12-2025 04:35:18 PM] [INTERSECTION-PROCESSOR] ✅ FINAL DECISION: Mode=FullDetection, ShouldRunDetection=True, Reason='FullDetection: DeploymentMode OFF (testing mode) - always run detection to populate database (EnableThreePointValidation=True, allCombosProcessed=False)'
+
+[2025-12-31 16:35:18.629] [31-12-2025 04:35:18 PM] [INTERSECTION-PROCESSOR] Decision: Mode=FullDetection, ShouldRunDetection=True, Reason='FullDetection: DeploymentMode OFF (testing mode) - always run detection to populate database (EnableThreePointValidation=True, allCombosProcessed=False)'
+
+[2025-12-31 16:35:18.630] [31-12-2025 04:35:18 PM] [REFRESH-REFACTORED] ✅ Duct Accessories category selected → Routing to DamperProcessingService
+
+[2025-12-31 16:35:18.643] [31-12-2025 04:35:18 PM] [DamperProcessing] Starting separate damper processing...
+
+[2025-12-31 16:35:18.646] [31-12-2025 04:35:18 PM] [DamperProcessing] Found 2 total link instances in document
+
+[2025-12-31 16:35:18.647] [31-12-2025 04:35:18 PM] [DamperProcessing] ✅ Matched linked file: Name='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002.rvt : 4 : location Shared', Title='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002', PathName='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002'
+
+[2025-12-31 16:35:18.647] [31-12-2025 04:35:18 PM] [DamperProcessing] Matched 1 linked files for damper collection
+
+[2025-12-31 16:35:18.650] [31-12-2025 04:35:18 PM] [DamperProcessing] Collecting dampers from linked document: CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002
+
+[2025-12-31 16:35:18.656] [31-12-2025 04:35:18 PM] [DamperProcessing] ✅ Applied section box filter at collector level for document: CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002
+
+[2025-12-31 16:35:18.697] [31-12-2025 04:35:18 PM] [DamperProcessing] Found 30 total Duct Accessories in document: CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002 (before damper filter)
+
+[2025-12-31 16:35:18.699] [31-12-2025 04:35:18 PM] [DamperProcessing] ⏭️ SKIP: Damper 22573764 - FamilyName='AFE_DuctAccessory_VCD-Volume Control Damper - Rectangular', TypeName='AFE_Standard' contains VCD/VOLUME
+
+[2025-12-31 16:35:18.699] [31-12-2025 04:35:18 PM] [DamperProcessing] ⏭️ SKIP: Damper 22573768 - FamilyName='AFE_DuctAccessory_VCD-Volume Control Damper - Rectangular', TypeName='AFE_Standard' contains VCD/VOLUME
+
+[2025-12-31 16:35:18.700] [31-12-2025 04:35:18 PM] [DamperProcessing] ⏭️ SKIP: Damper 22573776 - FamilyName='AFE_DuctAccessory_VCD-Volume Control Damper - Rectangular', TypeName='AFE_Standard' contains VCD/VOLUME
+
+[2025-12-31 16:35:18.700] [31-12-2025 04:35:18 PM] [DamperProcessing] ⏭️ SKIP: Damper 22573780 - FamilyName='AFE_DuctAccessory_VCD-Volume Control Damper - Rectangular', TypeName='AFE_Standard' contains VCD/VOLUME
+
+[2025-12-31 16:35:18.700] [31-12-2025 04:35:18 PM] [DamperProcessing] ⏭️ SKIP: Damper 22573784 - FamilyName='AFE_DuctAccessory_VCD-Volume Control Damper - Rectangular', TypeName='AFE_Standard' contains VCD/VOLUME
+
+[2025-12-31 16:35:18.701] [31-12-2025 04:35:18 PM] [DamperProcessing] ⏭️ SKIP: Damper 22573788 - FamilyName='AFE_DuctAccessory_VCD-Volume Control Damper - Rectangular', TypeName='AFE_Standard' contains VCD/VOLUME
+
+[2025-12-31 16:35:18.701] [31-12-2025 04:35:18 PM] [DamperProcessing] ⏭️ SKIP: Damper 22573792 - FamilyName='AFE_DuctAccessory_VCD-Volume Control Damper - Rectangular', TypeName='AFE_Standard' contains VCD/VOLUME
+
+[2025-12-31 16:35:18.701] [31-12-2025 04:35:18 PM] [DamperProcessing] ⏭️ SKIP: Damper 22574315 - FamilyName='AFE_DuctAccessory_VCD-Volume Control Damper - Rectangular', TypeName='AFE_Standard' contains VCD/VOLUME
+
+[2025-12-31 16:35:18.703] [31-12-2025 04:35:18 PM] [DamperProcessing] ⏭️ SKIP: Damper 22574317 - FamilyName='AFE_DuctAccessory_VCD-Volume Control Damper - Rectangular', TypeName='AFE_Standard' contains VCD/VOLUME
+
+[2025-12-31 16:35:18.703] [31-12-2025 04:35:18 PM] [DamperProcessing] ⏭️ SKIP: Damper 22574325 - FamilyName='AFE_DuctAccessory_VCD-Volume Control Damper - Rectangular', TypeName='AFE_Standard' contains VCD/VOLUME
+
+[2025-12-31 16:35:18.704] [31-12-2025 04:35:18 PM] [DamperProcessing] ⏭️ SKIP: Damper 22574329 - FamilyName='AFE_DuctAccessory_VCD-Volume Control Damper - Rectangular', TypeName='AFE_Standard' contains VCD/VOLUME
+
+[2025-12-31 16:35:18.704] [31-12-2025 04:35:18 PM] [DamperProcessing] ⏭️ SKIP: Damper 22574333 - FamilyName='AFE_DuctAccessory_VCD-Volume Control Damper - Rectangular', TypeName='AFE_Standard' contains VCD/VOLUME
+
+[2025-12-31 16:35:18.704] [31-12-2025 04:35:18 PM] [DamperProcessing] ⏭️ SKIP: Damper 22574337 - FamilyName='AFE_DuctAccessory_VCD-Volume Control Damper - Rectangular', TypeName='AFE_Standard' contains VCD/VOLUME
+
+[2025-12-31 16:35:18.705] [31-12-2025 04:35:18 PM] [DamperProcessing] ⏭️ SKIP: Damper 22574341 - FamilyName='AFE_DuctAccessory_VCD-Volume Control Damper - Rectangular', TypeName='AFE_Standard' contains VCD/VOLUME
+
+[2025-12-31 16:35:18.705] [31-12-2025 04:35:18 PM] [DamperProcessing] ✅ PROCESS: Damper 23630593 - FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular', TypeName='AFE_Fire Damper - Rectangular'
+
+[2025-12-31 16:35:18.706] [31-12-2025 04:35:18 PM] [DamperProcessing] ✅ PROCESS: Damper 23630597 - FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular', TypeName='AFE_Fire Damper - Rectangular'
+
+[2025-12-31 16:35:18.706] [31-12-2025 04:35:18 PM] [DamperProcessing] ✅ PROCESS: Damper 23630601 - FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular', TypeName='AFE_Fire Damper - Rectangular'
+
+[2025-12-31 16:35:18.706] [31-12-2025 04:35:18 PM] [DamperProcessing] ✅ PROCESS: Damper 23630605 - FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular', TypeName='AFE_Fire Damper - Rectangular'
+
+[2025-12-31 16:35:18.706] [31-12-2025 04:35:18 PM] [DamperProcessing] ✅ PROCESS: Damper 23630613 - FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular', TypeName='AFE_Fire Damper - Rectangular'
+
+[2025-12-31 16:35:18.708] [31-12-2025 04:35:18 PM] [DamperProcessing] ✅ PROCESS: Damper 23630617 - FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular', TypeName='AFE_Fire Damper - Rectangular'
+
+[2025-12-31 16:35:18.708] [31-12-2025 04:35:18 PM] [DamperProcessing] ✅ PROCESS: Damper 23630630 - FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular', TypeName='AFE_Fire Damper - Rectangular'
+
+[2025-12-31 16:35:18.709] [31-12-2025 04:35:18 PM] [DamperProcessing] ✅ PROCESS: Damper 23630634 - FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular', TypeName='AFE_Fire Damper - Rectangular'
+
+[2025-12-31 16:35:18.709] [31-12-2025 04:35:18 PM] [DamperProcessing] ✅ PROCESS: Damper 23630638 - FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular', TypeName='AFE_Fire Damper - Rectangular'
+
+[2025-12-31 16:35:18.710] [31-12-2025 04:35:18 PM] [DamperProcessing] ✅ PROCESS: Damper 23630648 - FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular', TypeName='AFE_Fire Damper - Rectangular'
+
+[2025-12-31 16:35:18.710] [31-12-2025 04:35:18 PM] [DamperProcessing] ✅ PROCESS: Damper 23630652 - FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular', TypeName='AFE_Fire Damper - Rectangular'
+
+[2025-12-31 16:35:18.711] [31-12-2025 04:35:18 PM] [DamperProcessing] ✅ PROCESS: Damper 23630658 - FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular', TypeName='AFE_Fire Damper - Rectangular'
+
+[2025-12-31 16:35:18.711] [31-12-2025 04:35:18 PM] [DamperProcessing] ✅ PROCESS: Damper 23630662 - FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular', TypeName='AFE_Fire Damper - Rectangular'
+
+[2025-12-31 16:35:18.712] [31-12-2025 04:35:18 PM] [DamperProcessing] ✅ PROCESS: Damper 23630666 - FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular', TypeName='AFE_Fire Damper - Rectangular'
+
+[2025-12-31 16:35:18.712] [31-12-2025 04:35:18 PM] [DamperProcessing] ✅ PROCESS: Damper 23630674 - FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular', TypeName='AFE_Fire Damper - Rectangular'
+
+[2025-12-31 16:35:18.713] [31-12-2025 04:35:18 PM] [DamperProcessing] ✅ PROCESS: Damper 23630678 - FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular', TypeName='AFE_Fire Damper - Rectangular'
+
+[2025-12-31 16:35:18.713] [31-12-2025 04:35:18 PM] [DamperProcessing] ✅ Filtered to 16 Standard/Motorized dampers in document: CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002 (after damper type filter)
+
+[2025-12-31 16:35:18.718] [31-12-2025 04:35:18 PM] [DamperProcessing] ✅ Collected 16 dampers from linked document: CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002
+
+[2025-12-31 16:35:18.718] [31-12-2025 04:35:18 PM] [DamperProcessing] ========== DAMPER COLLECTION COMPLETE: 16 total dampers ==========
+
+[2025-12-31 16:35:18.719] [31-12-2025 04:35:18 PM] [DamperProcessing] ✅ Collected 16 dampers from selected reference files (VCD/VOLUME excluded)
+
+[2025-12-31 16:35:19.758] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Collected 50 walls for intersection checking
+
+[2025-12-31 16:35:19.837] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Found HOST wall 1043656 for damper 23630593 - placement point is INSIDE wall bbox
+
+[2025-12-31 16:35:19.856] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Captured 'Fire Rating'='4hr' for Host element 1043656
+
+[2025-12-31 16:35:19.869] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Transformed wall 1043656 bounding box to host coordinates
+
+[2025-12-31 16:35:19.872] [31-12-2025 04:35:19 PM] [DamperProcessing] 🔍 GetStructuralElementType: Element=1043656, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2025-12-31 16:35:19.872] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Element 1043656 is Wall - returning 'Wall'
+
+[2025-12-31 16:35:19.884] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (269.931, 92.453, 22.124) for damper 23630593, wall 1043656
+
+[2025-12-31 16:35:19.886] [31-12-2025 04:35:19 PM] [DamperProcessing] 🔍 StructuralElementType for wall 1043656: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2025-12-31 16:35:19.886] [31-12-2025 04:35:19 PM] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: 'Y'
+
+[2025-12-31 16:35:19.887] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (269.931, 92.453, 22.124) for damper 23630593, wall 1043656, orientation 'Y'
+
+[2025-12-31 16:35:19.887] [31-12-2025 04:35:19 PM] [DamperProcessing]   - Damper Placement Point: (269.931, 92.453, 22.124)
+
+[2025-12-31 16:35:19.888] [31-12-2025 04:35:19 PM] [DamperProcessing]   - Wall Centerline Point: (269.931, 92.453, 22.124)
+
+[2025-12-31 16:35:19.888] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Extracted damper type/family: TypeName='AFE_Fire Damper - Rectangular', FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular' for damper 23630593
+
+[2025-12-31 16:35:19.913] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Damper 23630593 has MEP connector: HasMepConnector=true, DamperConnectorSide='-Y' - will use asymmetric clearance
+
+[2025-12-31 16:35:19.917] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Generated deterministic GUID be033bb5-447f-8dd2-3bab-500ed860899f for MEP=23630593, Host=1043656, PlacementPoint=(269.931,92.453,22.124), Tolerance=30.5mm (using damper centroid, stable)
+
+[2025-12-31 16:35:19.918] [31-12-2025 04:35:19 PM] [DAMPER-PERF] CreateClashZoneForDamper called with 1 opening keys
+
+[2025-12-31 16:35:19.920] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='100x100-100x100'
+
+[2025-12-31 16:35:19.920] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Found HOST wall 1043656 for damper 23630597 - placement point is INSIDE wall bbox
+
+[2025-12-31 16:35:19.921] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Transformed wall 1043656 bounding box to host coordinates
+
+[2025-12-31 16:35:19.922] [31-12-2025 04:35:19 PM] [DamperProcessing] 🔍 GetStructuralElementType: Element=1043656, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2025-12-31 16:35:19.923] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Element 1043656 is Wall - returning 'Wall'
+
+[2025-12-31 16:35:19.924] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (269.931, 87.287, 21.419) for damper 23630597, wall 1043656
+
+[2025-12-31 16:35:19.925] [31-12-2025 04:35:19 PM] [DamperProcessing] 🔍 StructuralElementType for wall 1043656: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2025-12-31 16:35:19.925] [31-12-2025 04:35:19 PM] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: 'Y'
+
+[2025-12-31 16:35:19.926] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (269.931, 87.287, 21.419) for damper 23630597, wall 1043656, orientation 'Y'
+
+[2025-12-31 16:35:19.926] [31-12-2025 04:35:19 PM] [DamperProcessing]   - Damper Placement Point: (269.931, 87.287, 21.419)
+
+[2025-12-31 16:35:19.927] [31-12-2025 04:35:19 PM] [DamperProcessing]   - Wall Centerline Point: (269.931, 87.287, 21.419)
+
+[2025-12-31 16:35:19.927] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Extracted damper type/family: TypeName='AFE_Fire Damper - Rectangular', FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular' for damper 23630597
+
+[2025-12-31 16:35:19.928] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Damper 23630597 has MEP connector: HasMepConnector=true, DamperConnectorSide='-Y' - will use asymmetric clearance
+
+[2025-12-31 16:35:19.930] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Generated deterministic GUID a815d466-7cf8-b3e8-7d96-05912c4c038d for MEP=23630597, Host=1043656, PlacementPoint=(269.931,87.287,21.419), Tolerance=30.5mm (using damper centroid, stable)
+
+[2025-12-31 16:35:19.930] [31-12-2025 04:35:19 PM] [DAMPER-PERF] CreateClashZoneForDamper called with 1 opening keys
+
+[2025-12-31 16:35:19.931] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='100x100-100x100'
+
+[2025-12-31 16:35:19.932] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Found HOST wall 1043656 for damper 23630601 - placement point is INSIDE wall bbox
+
+[2025-12-31 16:35:19.932] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Transformed wall 1043656 bounding box to host coordinates
+
+[2025-12-31 16:35:19.933] [31-12-2025 04:35:19 PM] [DamperProcessing] 🔍 GetStructuralElementType: Element=1043656, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2025-12-31 16:35:19.934] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Element 1043656 is Wall - returning 'Wall'
+
+[2025-12-31 16:35:19.936] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (269.931, 81.676, 22.105) for damper 23630601, wall 1043656
+
+[2025-12-31 16:35:19.936] [31-12-2025 04:35:19 PM] [DamperProcessing] 🔍 StructuralElementType for wall 1043656: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2025-12-31 16:35:19.937] [31-12-2025 04:35:19 PM] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: 'Y'
+
+[2025-12-31 16:35:19.937] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (269.931, 81.676, 22.105) for damper 23630601, wall 1043656, orientation 'Y'
+
+[2025-12-31 16:35:19.938] [31-12-2025 04:35:19 PM] [DamperProcessing]   - Damper Placement Point: (269.931, 81.676, 22.105)
+
+[2025-12-31 16:35:19.938] [31-12-2025 04:35:19 PM] [DamperProcessing]   - Wall Centerline Point: (269.931, 81.676, 22.105)
+
+[2025-12-31 16:35:19.939] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Extracted damper type/family: TypeName='AFE_Fire Damper - Rectangular', FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular' for damper 23630601
+
+[2025-12-31 16:35:19.939] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Damper 23630601 has MEP connector: HasMepConnector=true, DamperConnectorSide='-Y' - will use asymmetric clearance
+
+[2025-12-31 16:35:19.941] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Generated deterministic GUID 8753681e-2d75-2b3f-9e7f-41b8924b54a1 for MEP=23630601, Host=1043656, PlacementPoint=(269.931,81.676,22.105), Tolerance=30.5mm (using damper centroid, stable)
+
+[2025-12-31 16:35:19.941] [31-12-2025 04:35:19 PM] [DAMPER-PERF] CreateClashZoneForDamper called with 1 opening keys
+
+[2025-12-31 16:35:19.943] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='100x100-100x100'
+
+[2025-12-31 16:35:19.943] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Found HOST wall 1043656 for damper 23630605 - placement point is INSIDE wall bbox
+
+[2025-12-31 16:35:19.944] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Transformed wall 1043656 bounding box to host coordinates
+
+[2025-12-31 16:35:19.945] [31-12-2025 04:35:19 PM] [DamperProcessing] 🔍 GetStructuralElementType: Element=1043656, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2025-12-31 16:35:19.945] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Element 1043656 is Wall - returning 'Wall'
+
+[2025-12-31 16:35:19.946] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (269.931, 78.002, 20.874) for damper 23630605, wall 1043656
+
+[2025-12-31 16:35:19.947] [31-12-2025 04:35:19 PM] [DamperProcessing] 🔍 StructuralElementType for wall 1043656: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2025-12-31 16:35:19.947] [31-12-2025 04:35:19 PM] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: 'Y'
+
+[2025-12-31 16:35:19.948] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (269.931, 78.002, 20.874) for damper 23630605, wall 1043656, orientation 'Y'
+
+[2025-12-31 16:35:19.948] [31-12-2025 04:35:19 PM] [DamperProcessing]   - Damper Placement Point: (269.931, 78.002, 20.874)
+
+[2025-12-31 16:35:19.949] [31-12-2025 04:35:19 PM] [DamperProcessing]   - Wall Centerline Point: (269.931, 78.002, 20.874)
+
+[2025-12-31 16:35:19.950] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Extracted damper type/family: TypeName='AFE_Fire Damper - Rectangular', FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular' for damper 23630605
+
+[2025-12-31 16:35:19.950] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Damper 23630605 has MEP connector: HasMepConnector=true, DamperConnectorSide='-Y' - will use asymmetric clearance
+
+[2025-12-31 16:35:19.952] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Generated deterministic GUID aa827a2c-555e-6ff7-9a23-868eed36c917 for MEP=23630605, Host=1043656, PlacementPoint=(269.931,78.002,20.874), Tolerance=30.5mm (using damper centroid, stable)
+
+[2025-12-31 16:35:19.952] [31-12-2025 04:35:19 PM] [DAMPER-PERF] CreateClashZoneForDamper called with 1 opening keys
+
+[2025-12-31 16:35:19.953] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='100x100-100x100'
+
+[2025-12-31 16:35:19.953] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Found HOST wall 1043692 for damper 23630613 - placement point is INSIDE wall bbox
+
+[2025-12-31 16:35:19.954] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Captured 'Fire Rating'='4hr' for Host element 1043692
+
+[2025-12-31 16:35:19.955] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Transformed wall 1043692 bounding box to host coordinates
+
+[2025-12-31 16:35:19.956] [31-12-2025 04:35:19 PM] [DamperProcessing] 🔍 GetStructuralElementType: Element=1043692, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2025-12-31 16:35:19.956] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Element 1043692 is Wall - returning 'Wall'
+
+[2025-12-31 16:35:19.958] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (275.180, 84.732, 21.088) for damper 23630613, wall 1043692
+
+[2025-12-31 16:35:19.958] [31-12-2025 04:35:19 PM] [DamperProcessing] 🔍 StructuralElementType for wall 1043692: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2025-12-31 16:35:19.959] [31-12-2025 04:35:19 PM] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: 'Y'
+
+[2025-12-31 16:35:19.961] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (275.180, 84.732, 21.088) for damper 23630613, wall 1043692, orientation 'Y'
+
+[2025-12-31 16:35:19.962] [31-12-2025 04:35:19 PM] [DamperProcessing]   - Damper Placement Point: (275.164, 84.732, 21.088)
+
+[2025-12-31 16:35:19.962] [31-12-2025 04:35:19 PM] [DamperProcessing]   - Wall Centerline Point: (275.180, 84.732, 21.088)
+
+[2025-12-31 16:35:19.963] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Extracted damper type/family: TypeName='AFE_Fire Damper - Rectangular', FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular' for damper 23630613
+
+[2025-12-31 16:35:19.963] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Damper 23630613 has MEP connector: HasMepConnector=true, DamperConnectorSide='-Y' - will use asymmetric clearance
+
+[2025-12-31 16:35:19.966] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Generated deterministic GUID e1268c9f-04c5-2639-af77-5f532444bc7e for MEP=23630613, Host=1043692, PlacementPoint=(275.164,84.732,21.088), Tolerance=30.5mm (using damper centroid, stable)
+
+[2025-12-31 16:35:19.966] [31-12-2025 04:35:19 PM] [DAMPER-PERF] CreateClashZoneForDamper called with 1 opening keys
+
+[2025-12-31 16:35:19.967] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='100x100-100x100'
+
+[2025-12-31 16:35:19.968] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Found HOST wall 1043692 for damper 23630617 - placement point is INSIDE wall bbox
+
+[2025-12-31 16:35:19.968] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Transformed wall 1043692 bounding box to host coordinates
+
+[2025-12-31 16:35:19.969] [31-12-2025 04:35:19 PM] [DamperProcessing] 🔍 GetStructuralElementType: Element=1043692, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2025-12-31 16:35:19.969] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Element 1043692 is Wall - returning 'Wall'
+
+[2025-12-31 16:35:19.971] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (275.180, 81.332, 21.563) for damper 23630617, wall 1043692
+
+[2025-12-31 16:35:19.972] [31-12-2025 04:35:19 PM] [DamperProcessing] 🔍 StructuralElementType for wall 1043692: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2025-12-31 16:35:19.972] [31-12-2025 04:35:19 PM] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: 'Y'
+
+[2025-12-31 16:35:19.972] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (275.180, 81.332, 21.563) for damper 23630617, wall 1043692, orientation 'Y'
+
+[2025-12-31 16:35:19.972] [31-12-2025 04:35:19 PM] [DamperProcessing]   - Damper Placement Point: (275.180, 81.332, 21.563)
+
+[2025-12-31 16:35:19.974] [31-12-2025 04:35:19 PM] [DamperProcessing]   - Wall Centerline Point: (275.180, 81.332, 21.563)
+
+[2025-12-31 16:35:19.974] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Extracted damper type/family: TypeName='AFE_Fire Damper - Rectangular', FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular' for damper 23630617
+
+[2025-12-31 16:35:19.975] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Damper 23630617 has MEP connector: HasMepConnector=true, DamperConnectorSide='-Y' - will use asymmetric clearance
+
+[2025-12-31 16:35:19.976] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Generated deterministic GUID aab6627b-ca39-2e21-9186-c778b5670ec6 for MEP=23630617, Host=1043692, PlacementPoint=(275.180,81.332,21.563), Tolerance=30.5mm (using damper centroid, stable)
+
+[2025-12-31 16:35:19.977] [31-12-2025 04:35:19 PM] [DAMPER-PERF] CreateClashZoneForDamper called with 1 opening keys
+
+[2025-12-31 16:35:19.977] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='100x100-100x100'
+
+[2025-12-31 16:35:19.978] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Found HOST wall 1043700 for damper 23630630 - placement point is INSIDE wall bbox
+
+[2025-12-31 16:35:19.979] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Captured 'Fire Rating'='4hr' for Host element 1043700
+
+[2025-12-31 16:35:19.979] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Transformed wall 1043700 bounding box to host coordinates
+
+[2025-12-31 16:35:19.981] [31-12-2025 04:35:19 PM] [DamperProcessing] 🔍 GetStructuralElementType: Element=1043700, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2025-12-31 16:35:19.981] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Element 1043700 is Wall - returning 'Wall'
+
+[2025-12-31 16:35:19.983] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (279.856, 74.377, 21.531) for damper 23630630, wall 1043700
+
+[2025-12-31 16:35:19.984] [31-12-2025 04:35:19 PM] [DamperProcessing] 🔍 StructuralElementType for wall 1043700: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2025-12-31 16:35:19.984] [31-12-2025 04:35:19 PM] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: 'Y'
+
+[2025-12-31 16:35:19.984] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (279.856, 74.377, 21.531) for damper 23630630, wall 1043700, orientation 'Y'
+
+[2025-12-31 16:35:19.985] [31-12-2025 04:35:19 PM] [DamperProcessing]   - Damper Placement Point: (279.853, 74.377, 21.531)
+
+[2025-12-31 16:35:19.985] [31-12-2025 04:35:19 PM] [DamperProcessing]   - Wall Centerline Point: (279.856, 74.377, 21.531)
+
+[2025-12-31 16:35:19.986] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Extracted damper type/family: TypeName='AFE_Fire Damper - Rectangular', FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular' for damper 23630630
+
+[2025-12-31 16:35:19.986] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Damper 23630630 has MEP connector: HasMepConnector=true, DamperConnectorSide='+Y' - will use asymmetric clearance
+
+[2025-12-31 16:35:19.988] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Generated deterministic GUID 3d4b92b7-b1db-9ec3-db78-3daf38f31caf for MEP=23630630, Host=1043700, PlacementPoint=(279.853,74.377,21.531), Tolerance=30.5mm (using damper centroid, stable)
+
+[2025-12-31 16:35:19.988] [31-12-2025 04:35:19 PM] [DAMPER-PERF] CreateClashZoneForDamper called with 1 opening keys
+
+[2025-12-31 16:35:19.989] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='100x100-100x100'
+
+[2025-12-31 16:35:19.989] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Found HOST wall 1043700 for damper 23630634 - placement point is INSIDE wall bbox
+
+[2025-12-31 16:35:19.990] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Transformed wall 1043700 bounding box to host coordinates
+
+[2025-12-31 16:35:19.991] [31-12-2025 04:35:19 PM] [DamperProcessing] 🔍 GetStructuralElementType: Element=1043700, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2025-12-31 16:35:19.991] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Element 1043700 is Wall - returning 'Wall'
+
+[2025-12-31 16:35:19.992] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (279.856, 72.379, 21.514) for damper 23630634, wall 1043700
+
+[2025-12-31 16:35:19.994] [31-12-2025 04:35:19 PM] [DamperProcessing] 🔍 StructuralElementType for wall 1043700: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2025-12-31 16:35:19.995] [31-12-2025 04:35:19 PM] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: 'Y'
+
+[2025-12-31 16:35:19.995] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (279.856, 72.379, 21.514) for damper 23630634, wall 1043700, orientation 'Y'
+
+[2025-12-31 16:35:19.995] [31-12-2025 04:35:19 PM] [DamperProcessing]   - Damper Placement Point: (279.853, 72.379, 21.514)
+
+[2025-12-31 16:35:19.996] [31-12-2025 04:35:19 PM] [DamperProcessing]   - Wall Centerline Point: (279.856, 72.379, 21.514)
+
+[2025-12-31 16:35:19.996] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Extracted damper type/family: TypeName='AFE_Fire Damper - Rectangular', FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular' for damper 23630634
+
+[2025-12-31 16:35:19.997] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Damper 23630634 has MEP connector: HasMepConnector=true, DamperConnectorSide='+Y' - will use asymmetric clearance
+
+[2025-12-31 16:35:19.998] [31-12-2025 04:35:19 PM] [DamperProcessing] ✅ Generated deterministic GUID a0b939f9-e281-c9d9-e980-1295450a8a2b for MEP=23630634, Host=1043700, PlacementPoint=(279.853,72.379,21.514), Tolerance=30.5mm (using damper centroid, stable)
+
+[2025-12-31 16:35:19.998] [31-12-2025 04:35:19 PM] [DAMPER-PERF] CreateClashZoneForDamper called with 1 opening keys
+
+[2025-12-31 16:35:20.000] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='100x100-100x100'
+
+[2025-12-31 16:35:20.000] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Found HOST wall 1043726 for damper 23630638 - placement point is INSIDE wall bbox
+
+[2025-12-31 16:35:20.001] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Captured 'Fire Rating'='4hr' for Host element 1043726
+
+[2025-12-31 16:35:20.002] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Transformed wall 1043726 bounding box to host coordinates
+
+[2025-12-31 16:35:20.003] [31-12-2025 04:35:20 PM] [DamperProcessing] 🔍 GetStructuralElementType: Element=1043726, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2025-12-31 16:35:20.003] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Element 1043726 is Wall - returning 'Wall'
+
+[2025-12-31 16:35:20.006] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (275.180, 69.117, 21.038) for damper 23630638, wall 1043726
+
+[2025-12-31 16:35:20.006] [31-12-2025 04:35:20 PM] [DamperProcessing] 🔍 StructuralElementType for wall 1043726: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2025-12-31 16:35:20.007] [31-12-2025 04:35:20 PM] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: 'Y'
+
+[2025-12-31 16:35:20.007] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (275.180, 69.117, 21.038) for damper 23630638, wall 1043726, orientation 'Y'
+
+[2025-12-31 16:35:20.008] [31-12-2025 04:35:20 PM] [DamperProcessing]   - Damper Placement Point: (275.180, 69.117, 21.038)
+
+[2025-12-31 16:35:20.008] [31-12-2025 04:35:20 PM] [DamperProcessing]   - Wall Centerline Point: (275.180, 69.117, 21.038)
+
+[2025-12-31 16:35:20.008] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Extracted damper type/family: TypeName='AFE_Fire Damper - Rectangular', FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular' for damper 23630638
+
+[2025-12-31 16:35:20.009] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Damper 23630638 has MEP connector: HasMepConnector=true, DamperConnectorSide='+Y' - will use asymmetric clearance
+
+[2025-12-31 16:35:20.011] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Generated deterministic GUID 8a8cac37-6fbe-641a-a080-a585e7170f4b for MEP=23630638, Host=1043726, PlacementPoint=(275.180,69.117,21.038), Tolerance=30.5mm (using damper centroid, stable)
+
+[2025-12-31 16:35:20.011] [31-12-2025 04:35:20 PM] [DAMPER-PERF] CreateClashZoneForDamper called with 1 opening keys
+
+[2025-12-31 16:35:20.011] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='100x100-100x100'
+
+[2025-12-31 16:35:20.012] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Found HOST wall 4866205 for damper 23630648 - placement point is INSIDE wall bbox
+
+[2025-12-31 16:35:20.013] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Captured 'Fire Rating'='4hr' for Host element 4866205
+
+[2025-12-31 16:35:20.014] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Transformed wall 4866205 bounding box to host coordinates
+
+[2025-12-31 16:35:20.014] [31-12-2025 04:35:20 PM] [DamperProcessing] 🔍 GetStructuralElementType: Element=4866205, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2025-12-31 16:35:20.015] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Element 4866205 is Wall - returning 'Wall'
+
+[2025-12-31 16:35:20.017] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (251.640, 73.270, 22.187) for damper 23630648, wall 4866205
+
+[2025-12-31 16:35:20.017] [31-12-2025 04:35:20 PM] [DamperProcessing] 🔍 StructuralElementType for wall 4866205: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2025-12-31 16:35:20.018] [31-12-2025 04:35:20 PM] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: 'Y'
+
+[2025-12-31 16:35:20.018] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (251.640, 73.270, 22.187) for damper 23630648, wall 4866205, orientation 'Y'
+
+[2025-12-31 16:35:20.019] [31-12-2025 04:35:20 PM] [DamperProcessing]   - Damper Placement Point: (251.640, 73.270, 22.187)
+
+[2025-12-31 16:35:20.019] [31-12-2025 04:35:20 PM] [DamperProcessing]   - Wall Centerline Point: (251.640, 73.270, 22.187)
+
+[2025-12-31 16:35:20.020] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Extracted damper type/family: TypeName='AFE_Fire Damper - Rectangular', FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular' for damper 23630648
+
+[2025-12-31 16:35:20.020] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Damper 23630648 has MEP connector: HasMepConnector=true, DamperConnectorSide='+Y' - will use asymmetric clearance
+
+[2025-12-31 16:35:20.023] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Generated deterministic GUID 6c060af4-2e41-83bc-f495-56aaff32abe5 for MEP=23630648, Host=4866205, PlacementPoint=(251.640,73.270,22.187), Tolerance=30.5mm (using damper centroid, stable)
+
+[2025-12-31 16:35:20.023] [31-12-2025 04:35:20 PM] [DAMPER-PERF] CreateClashZoneForDamper called with 1 opening keys
+
+[2025-12-31 16:35:20.024] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='100x100-100x100'
+
+[2025-12-31 16:35:20.024] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Found HOST wall 1043674 for damper 23630652 - placement point is INSIDE wall bbox
+
+[2025-12-31 16:35:20.025] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Captured 'Fire Rating'='4hr' for Host element 1043674
+
+[2025-12-31 16:35:20.026] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Transformed wall 1043674 bounding box to host coordinates
+
+[2025-12-31 16:35:20.026] [31-12-2025 04:35:20 PM] [DamperProcessing] 🔍 GetStructuralElementType: Element=1043674, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2025-12-31 16:35:20.027] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Element 1043674 is Wall - returning 'Wall'
+
+[2025-12-31 16:35:20.029] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (251.640, 60.825, 21.073) for damper 23630652, wall 1043674
+
+[2025-12-31 16:35:20.029] [31-12-2025 04:35:20 PM] [DamperProcessing] 🔍 StructuralElementType for wall 1043674: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2025-12-31 16:35:20.030] [31-12-2025 04:35:20 PM] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: 'Y'
+
+[2025-12-31 16:35:20.030] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (251.640, 60.825, 21.073) for damper 23630652, wall 1043674, orientation 'Y'
+
+[2025-12-31 16:35:20.031] [31-12-2025 04:35:20 PM] [DamperProcessing]   - Damper Placement Point: (251.640, 60.825, 21.073)
+
+[2025-12-31 16:35:20.031] [31-12-2025 04:35:20 PM] [DamperProcessing]   - Wall Centerline Point: (251.640, 60.825, 21.073)
+
+[2025-12-31 16:35:20.031] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Extracted damper type/family: TypeName='AFE_Fire Damper - Rectangular', FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular' for damper 23630652
+
+[2025-12-31 16:35:20.032] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Damper 23630652 has MEP connector: HasMepConnector=true, DamperConnectorSide='-Y' - will use asymmetric clearance
+
+[2025-12-31 16:35:20.034] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Generated deterministic GUID 8bad2572-8f5a-f644-6da3-d31054ff3e8a for MEP=23630652, Host=1043674, PlacementPoint=(251.640,60.825,21.073), Tolerance=30.5mm (using damper centroid, stable)
+
+[2025-12-31 16:35:20.035] [31-12-2025 04:35:20 PM] [DAMPER-PERF] CreateClashZoneForDamper called with 1 opening keys
+
+[2025-12-31 16:35:20.035] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='100x100-100x100'
+
+[2025-12-31 16:35:20.036] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Found HOST wall 1043726 for damper 23630658 - placement point is INSIDE wall bbox
+
+[2025-12-31 16:35:20.036] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Transformed wall 1043726 bounding box to host coordinates
+
+[2025-12-31 16:35:20.037] [31-12-2025 04:35:20 PM] [DamperProcessing] 🔍 GetStructuralElementType: Element=1043726, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2025-12-31 16:35:20.037] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Element 1043726 is Wall - returning 'Wall'
+
+[2025-12-31 16:35:20.040] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (275.180, 54.719, 21.941) for damper 23630658, wall 1043726
+
+[2025-12-31 16:35:20.041] [31-12-2025 04:35:20 PM] [DamperProcessing] 🔍 StructuralElementType for wall 1043726: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2025-12-31 16:35:20.041] [31-12-2025 04:35:20 PM] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: 'Y'
+
+[2025-12-31 16:35:20.041] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (275.180, 54.719, 21.941) for damper 23630658, wall 1043726, orientation 'Y'
+
+[2025-12-31 16:35:20.041] [31-12-2025 04:35:20 PM] [DamperProcessing]   - Damper Placement Point: (275.177, 54.719, 21.941)
+
+[2025-12-31 16:35:20.042] [31-12-2025 04:35:20 PM] [DamperProcessing]   - Wall Centerline Point: (275.180, 54.719, 21.941)
+
+[2025-12-31 16:35:20.042] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Extracted damper type/family: TypeName='AFE_Fire Damper - Rectangular', FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular' for damper 23630658
+
+[2025-12-31 16:35:20.042] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Damper 23630658 has MEP connector: HasMepConnector=true, DamperConnectorSide='+Y' - will use asymmetric clearance
+
+[2025-12-31 16:35:20.045] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Generated deterministic GUID 0544a9a0-89b8-0e08-2188-db8554cbad72 for MEP=23630658, Host=1043726, PlacementPoint=(275.177,54.719,21.941), Tolerance=30.5mm (using damper centroid, stable)
+
+[2025-12-31 16:35:20.045] [31-12-2025 04:35:20 PM] [DAMPER-PERF] CreateClashZoneForDamper called with 1 opening keys
+
+[2025-12-31 16:35:20.046] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='100x100-100x100'
+
+[2025-12-31 16:35:20.047] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Found HOST wall 1043726 for damper 23630662 - placement point is INSIDE wall bbox
+
+[2025-12-31 16:35:20.047] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Transformed wall 1043726 bounding box to host coordinates
+
+[2025-12-31 16:35:20.048] [31-12-2025 04:35:20 PM] [DamperProcessing] 🔍 GetStructuralElementType: Element=1043726, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2025-12-31 16:35:20.050] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Element 1043726 is Wall - returning 'Wall'
+
+[2025-12-31 16:35:20.052] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (275.180, 58.843, 22.088) for damper 23630662, wall 1043726
+
+[2025-12-31 16:35:20.053] [31-12-2025 04:35:20 PM] [DamperProcessing] 🔍 StructuralElementType for wall 1043726: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2025-12-31 16:35:20.053] [31-12-2025 04:35:20 PM] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: 'Y'
+
+[2025-12-31 16:35:20.054] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (275.180, 58.843, 22.088) for damper 23630662, wall 1043726, orientation 'Y'
+
+[2025-12-31 16:35:20.055] [31-12-2025 04:35:20 PM] [DamperProcessing]   - Damper Placement Point: (275.177, 58.843, 22.088)
+
+[2025-12-31 16:35:20.055] [31-12-2025 04:35:20 PM] [DamperProcessing]   - Wall Centerline Point: (275.180, 58.843, 22.088)
+
+[2025-12-31 16:35:20.055] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Extracted damper type/family: TypeName='AFE_Fire Damper - Rectangular', FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular' for damper 23630662
+
+[2025-12-31 16:35:20.056] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Damper 23630662 has MEP connector: HasMepConnector=true, DamperConnectorSide='+Y' - will use asymmetric clearance
+
+[2025-12-31 16:35:20.058] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Generated deterministic GUID c382454f-ca80-9aef-718d-c910cf6636e0 for MEP=23630662, Host=1043726, PlacementPoint=(275.177,58.843,22.088), Tolerance=30.5mm (using damper centroid, stable)
+
+[2025-12-31 16:35:20.058] [31-12-2025 04:35:20 PM] [DAMPER-PERF] CreateClashZoneForDamper called with 1 opening keys
+
+[2025-12-31 16:35:20.059] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='100x100-100x100'
+
+[2025-12-31 16:35:20.060] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Found HOST wall 1043726 for damper 23630666 - placement point is INSIDE wall bbox
+
+[2025-12-31 16:35:20.060] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Transformed wall 1043726 bounding box to host coordinates
+
+[2025-12-31 16:35:20.061] [31-12-2025 04:35:20 PM] [DamperProcessing] 🔍 GetStructuralElementType: Element=1043726, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2025-12-31 16:35:20.061] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Element 1043726 is Wall - returning 'Wall'
+
+[2025-12-31 16:35:20.063] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (275.180, 62.320, 22.088) for damper 23630666, wall 1043726
+
+[2025-12-31 16:35:20.064] [31-12-2025 04:35:20 PM] [DamperProcessing] 🔍 StructuralElementType for wall 1043726: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2025-12-31 16:35:20.064] [31-12-2025 04:35:20 PM] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: 'Y'
+
+[2025-12-31 16:35:20.065] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (275.180, 62.320, 22.088) for damper 23630666, wall 1043726, orientation 'Y'
+
+[2025-12-31 16:35:20.065] [31-12-2025 04:35:20 PM] [DamperProcessing]   - Damper Placement Point: (275.213, 62.320, 22.088)
+
+[2025-12-31 16:35:20.066] [31-12-2025 04:35:20 PM] [DamperProcessing]   - Wall Centerline Point: (275.180, 62.320, 22.088)
+
+[2025-12-31 16:35:20.066] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Extracted damper type/family: TypeName='AFE_Fire Damper - Rectangular', FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular' for damper 23630666
+
+[2025-12-31 16:35:20.067] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Damper 23630666 has MEP connector: HasMepConnector=true, DamperConnectorSide='+Y' - will use asymmetric clearance
+
+[2025-12-31 16:35:20.069] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Generated deterministic GUID 2eb5ed47-23c4-879e-2158-89c031afecb9 for MEP=23630666, Host=1043726, PlacementPoint=(275.213,62.320,22.088), Tolerance=30.5mm (using damper centroid, stable)
+
+[2025-12-31 16:35:20.069] [31-12-2025 04:35:20 PM] [DAMPER-PERF] CreateClashZoneForDamper called with 1 opening keys
+
+[2025-12-31 16:35:20.070] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='100x100-100x100'
+
+[2025-12-31 16:35:20.070] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Found HOST wall 1043853 for damper 23630674 - placement point is INSIDE wall bbox
+
+[2025-12-31 16:35:20.071] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Captured 'Fire Rating'='4hr' for Host element 1043853
+
+[2025-12-31 16:35:20.071] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Transformed wall 1043853 bounding box to host coordinates
+
+[2025-12-31 16:35:20.072] [31-12-2025 04:35:20 PM] [DamperProcessing] 🔍 GetStructuralElementType: Element=1043853, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2025-12-31 16:35:20.073] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Element 1043853 is Wall - returning 'Wall'
+
+[2025-12-31 16:35:20.075] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (288.655, 34.695, 21.941) for damper 23630674, wall 1043853
+
+[2025-12-31 16:35:20.075] [31-12-2025 04:35:20 PM] [DamperProcessing] 🔍 StructuralElementType for wall 1043853: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2025-12-31 16:35:20.076] [31-12-2025 04:35:20 PM] [DamperProcessing] 🔍 HostOrientation: 'X', MepElementOrientationDirection: 'X'
+
+[2025-12-31 16:35:20.076] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (288.655, 34.695, 21.941) for damper 23630674, wall 1043853, orientation 'X'
+
+[2025-12-31 16:35:20.077] [31-12-2025 04:35:20 PM] [DamperProcessing]   - Damper Placement Point: (288.655, 34.695, 21.941)
+
+[2025-12-31 16:35:20.077] [31-12-2025 04:35:20 PM] [DamperProcessing]   - Wall Centerline Point: (288.655, 34.695, 21.941)
+
+[2025-12-31 16:35:20.077] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Extracted damper type/family: TypeName='AFE_Fire Damper - Rectangular', FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular' for damper 23630674
+
+[2025-12-31 16:35:20.078] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Damper 23630674 has MEP connector: HasMepConnector=true, DamperConnectorSide='-X' - will use asymmetric clearance
+
+[2025-12-31 16:35:20.081] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Generated deterministic GUID f5597b3d-05f0-ef6f-af8a-7e3e043b2127 for MEP=23630674, Host=1043853, PlacementPoint=(288.655,34.695,21.941), Tolerance=30.5mm (using damper centroid, stable)
+
+[2025-12-31 16:35:20.081] [31-12-2025 04:35:20 PM] [DAMPER-PERF] CreateClashZoneForDamper called with 1 opening keys
+
+[2025-12-31 16:35:20.081] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='100x100-100x100'
+
+[2025-12-31 16:35:20.082] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Found HOST wall 1043853 for damper 23630678 - placement point is INSIDE wall bbox
+
+[2025-12-31 16:35:20.082] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Transformed wall 1043853 bounding box to host coordinates
+
+[2025-12-31 16:35:20.083] [31-12-2025 04:35:20 PM] [DamperProcessing] 🔍 GetStructuralElementType: Element=1043853, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2025-12-31 16:35:20.084] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Element 1043853 is Wall - returning 'Wall'
+
+[2025-12-31 16:35:20.086] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (293.781, 34.695, 21.941) for damper 23630678, wall 1043853
+
+[2025-12-31 16:35:20.086] [31-12-2025 04:35:20 PM] [DamperProcessing] 🔍 StructuralElementType for wall 1043853: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2025-12-31 16:35:20.087] [31-12-2025 04:35:20 PM] [DamperProcessing] 🔍 HostOrientation: 'X', MepElementOrientationDirection: 'X'
+
+[2025-12-31 16:35:20.087] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (293.781, 34.695, 21.941) for damper 23630678, wall 1043853, orientation 'X'
+
+[2025-12-31 16:35:20.087] [31-12-2025 04:35:20 PM] [DamperProcessing]   - Damper Placement Point: (293.781, 34.695, 21.941)
+
+[2025-12-31 16:35:20.088] [31-12-2025 04:35:20 PM] [DamperProcessing]   - Wall Centerline Point: (293.781, 34.695, 21.941)
+
+[2025-12-31 16:35:20.089] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Extracted damper type/family: TypeName='AFE_Fire Damper - Rectangular', FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular' for damper 23630678
+
+[2025-12-31 16:35:20.090] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Damper 23630678 has MEP connector: HasMepConnector=true, DamperConnectorSide='-X' - will use asymmetric clearance
+
+[2025-12-31 16:35:20.091] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Generated deterministic GUID e4545521-0ef0-87ab-86f4-57cab06b31c1 for MEP=23630678, Host=1043853, PlacementPoint=(293.781,34.695,21.941), Tolerance=30.5mm (using damper centroid, stable)
+
+[2025-12-31 16:35:20.092] [31-12-2025 04:35:20 PM] [DAMPER-PERF] CreateClashZoneForDamper called with 1 opening keys
+
+[2025-12-31 16:35:20.092] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='100x100-100x100'
+
+[2025-12-31 16:35:20.094] [31-12-2025 04:35:20 PM] [DamperProcessing] ✅ Bulk processing complete: 16 ClashZones created from 16 dampers
+
+[2025-12-31 16:35:20.094] [31-12-2025 04:35:20 PM] [REFRESH-REFACTORED] ✅ Damper processing complete: 16 ClashZones created
+
+[2025-12-31 16:35:20.095] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] Phase 2: Running detection (Mode=FullDetection)...
+
+[2025-12-31 16:35:20.102] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] 🔴 Running detection with FULL collector-level multi-filter optimization...
+
+[2025-12-31 16:35:20.105] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] View3D: Name='Test Area 1 small', IsSectionBoxActive=True
+
+[2025-12-31 16:35:20.106] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] ✅ Section box outline: Min=(222.13, 22.40, 12.90), Max=(311.31, 105.92, 28.86)
+
+[2025-12-31 16:35:20.106] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] Building MEP category filters for 2 categories: Ducts, Duct Accessories
+
+[2025-12-31 16:35:20.108] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] ✅ Added MEP category filter: Ducts -> OST_DuctCurves
+
+[2025-12-31 16:35:20.109] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] ⏭️ Skipping Duct Accessories category - handled separately by DamperProcessingService
+
+[2025-12-31 16:35:20.109] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] ✅ Built 1 MEP category filters
+
+[2025-12-31 16:35:20.110] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] ✅ Added host category filter: Walls -> OST_Walls
+
+[2025-12-31 16:35:20.112] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] ========== 5-STEP FILTER CONFIGURATION ==========
+
+[2025-12-31 16:35:20.112] [31-12-2025 04:35:20 PM] [5-STEP-FILTER] Filter 1 (Section Box): ✅ ACTIVE
+
+[2025-12-31 16:35:20.113] [31-12-2025 04:35:20 PM] [5-STEP-FILTER] Filter 2 (Reference File): 1 file(s) selected
+
+[2025-12-31 16:35:20.113] [31-12-2025 04:35:20 PM] [5-STEP-FILTER] Filter 3 (MEP Categories): 2 category/categories selected
+
+[2025-12-31 16:35:20.113] [31-12-2025 04:35:20 PM] [5-STEP-FILTER] Filter 4 (Host File): 1 file(s) selected
+
+[2025-12-31 16:35:20.114] [31-12-2025 04:35:20 PM] [5-STEP-FILTER] Filter 5 (Host Categories): 1 type(s) selected
+
+[2025-12-31 16:35:20.114] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] =================================================
+
+[2025-12-31 16:35:20.115] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] Collecting MEP elements with collector-level filters...
+
+[2025-12-31 16:35:20.120] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] ========== MEP ELEMENT COLLECTION: 5-STEP FILTER VERIFICATION ==========
+
+[2025-12-31 16:35:20.120] [31-12-2025 04:35:20 PM] [5-STEP-FILTER] ✅ Filter 1 (Section Box): Applied at collector level - BoundingBoxIntersectsFilter
+
+[2025-12-31 16:35:20.121] [31-12-2025 04:35:20 PM] [5-STEP-FILTER] ✅ Filter 3 (MEP Categories): Applied at collector level - 1 category filter(s)
+
+[2025-12-31 16:35:20.122] [31-12-2025 04:35:20 PM] [5-STEP-FILTER] ✅ Combined 2 filters into compound filter (LogicalAndFilter) - ALL applied at collector level BEFORE element loading
+
+[2025-12-31 16:35:20.122] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] Collecting MEP elements from ACTIVE document...
+
+[2025-12-31 16:35:20.123] [31-12-2025 04:35:20 PM] [5-STEP-FILTER] ✅ Filter 2 (Reference File): Active document - collector-level filters applied
+
+[2025-12-31 16:35:20.126] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] ✅ Collected 0 MEP elements from ACTIVE document (pre-filtered by Filters 1+3 at collector level)
+
+[2025-12-31 16:35:20.126] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] Collecting MEP elements from 1 linked files: CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002
+
+[2025-12-31 16:35:20.127] [31-12-2025 04:35:20 PM] [5-STEP-FILTER] ✅ Filter 2 (Reference File): 1 linked file(s) selected - collector-level filters applied per file
+
+[2025-12-31 16:35:20.128] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] Found 2 total link instances in document
+
+[2025-12-31 16:35:20.129] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR]   Available link: Name='CMO-GCI-MOD-ARC-ZZ-00002-2024.rvt : 1 : location Shared', Title='CMO-GCI-MOD-ARC-ZZ-00002-2024', PathName='CMO-GCI-MOD-ARC-ZZ-00002-2024'
+
+[2025-12-31 16:35:20.130] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR]   Available link: Name='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002.rvt : 4 : location Shared', Title='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002', PathName='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002'
+
+[2025-12-31 16:35:20.131] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] ✅ Matched linked file: Name='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002.rvt : 4 : location Shared', Title='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002'
+
+[2025-12-31 16:35:20.131] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] Matched 1 linked files for MEP element collection
+
+[2025-12-31 16:35:20.132] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] Collecting MEP elements from linked document: CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002
+
+[2025-12-31 16:35:20.135] [31-12-2025 04:35:20 PM] [LINK-TRANSFORM] ✅ Transformed section box for link 'CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002': Host Min(222.1,22.4,12.9) -> Link Min(222.1,22.4,12.9)
+
+[2025-12-31 16:35:20.218] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] ✅ Collected 82 MEP elements from linked document: CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002 (collector-level filters applied)
+
+[2025-12-31 16:35:20.219] [31-12-2025 04:35:20 PM] [5-STEP-FILTER] ========== MEP COLLECTION COMPLETE: 82 total elements (Filters 1+2+3 applied at collector level) ==========
+
+[2025-12-31 16:35:20.219] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] ✅ Collected 82 MEP elements (pre-filtered at collector level)
+
+[2025-12-31 16:35:20.220] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] Collecting host elements with collector-level filters...
+
+[2025-12-31 16:35:20.225] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] ========== HOST ELEMENT COLLECTION: 5-STEP FILTER VERIFICATION ==========
+
+[2025-12-31 16:35:20.225] [31-12-2025 04:35:20 PM] [5-STEP-FILTER] ✅ Filter 1 (Section Box): Applied at collector level - BoundingBoxIntersectsFilter
+
+[2025-12-31 16:35:20.226] [31-12-2025 04:35:20 PM] [5-STEP-FILTER] ✅ Filter 5 (Host Categories): Category filter applied at collector level - 1 category filter(s)
+
+[2025-12-31 16:35:20.226] [31-12-2025 04:35:20 PM] [5-STEP-FILTER] ⚠️ Filter 5 (Host Categories): Property filters (wall thickness, structural floors) applied AFTER collection (Revit API limitation)
+
+[2025-12-31 16:35:20.227] [31-12-2025 04:35:20 PM] [5-STEP-FILTER] ✅ Combined 2 filters into compound filter (LogicalAndFilter) - ALL applied at collector level BEFORE element loading
+
+[2025-12-31 16:35:20.227] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] Collecting host elements from 1 linked files: CMO-GCI-MOD-ARC-ZZ-00002-2024
+
+[2025-12-31 16:35:20.228] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] ⚠️ Host elements are ALWAYS in linked documents (skipping active document)
+
+[2025-12-31 16:35:20.228] [31-12-2025 04:35:20 PM] [5-STEP-FILTER] ✅ Filter 4 (Host File): 1 linked file(s) selected - collector-level filters applied per file
+
+[2025-12-31 16:35:20.230] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] Found 2 total link instances in document
+
+[2025-12-31 16:35:20.230] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR]   Available link: Name='CMO-GCI-MOD-ARC-ZZ-00002-2024.rvt : 1 : location Shared', Title='CMO-GCI-MOD-ARC-ZZ-00002-2024', PathName='CMO-GCI-MOD-ARC-ZZ-00002-2024'
+
+[2025-12-31 16:35:20.231] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR]   Available link: Name='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002.rvt : 4 : location Shared', Title='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002', PathName='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002'
+
+[2025-12-31 16:35:20.232] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] ✅ Matched linked file: Name='CMO-GCI-MOD-ARC-ZZ-00002-2024.rvt : 1 : location Shared', Title='CMO-GCI-MOD-ARC-ZZ-00002-2024'
+
+[2025-12-31 16:35:20.232] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] Matched 1 linked files for host element collection
+
+[2025-12-31 16:35:20.233] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] Collecting host elements from linked document: CMO-GCI-MOD-ARC-ZZ-00002-2024
+
+[2025-12-31 16:35:20.335] [31-12-2025 04:35:20 PM] [5-STEP-FILTER] ✅ Collected 50 elements from CMO-GCI-MOD-ARC-ZZ-00002-2024 (pre-filtered by Filters 1+5 at collector level)
+
+[2025-12-31 16:35:20.338] [31-12-2025 04:35:20 PM] [PROPERTY-FILTER] MinWallThickness setting loaded: 50mm (will filter walls thinner than this)
+
+[2025-12-31 16:35:20.340] [31-12-2025 04:35:20 PM] [5-STEP-FILTER] ✅ Filter 5 (Property Filters): Applied post-collection - 44 elements remaining after property filters
+
+[2025-12-31 16:35:20.340] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] ✅ Collected 44 host elements from linked document: CMO-GCI-MOD-ARC-ZZ-00002-2024
+
+[2025-12-31 16:35:20.341] [31-12-2025 04:35:20 PM] [5-STEP-FILTER] ========== HOST COLLECTION COMPLETE: 44 total elements (Filters 1+4+5 applied: 1+4+5(category) at collector level, 5(property) post-collection) ==========
+
+[2025-12-31 16:35:20.342] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] ✅ Collected 44 host elements (pre-filtered at collector level)
+
+[2025-12-31 16:35:20.343] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] Running intersection detection with MepIntersectionService (geometry caching enabled)...
+
+[2025-12-31 16:35:20.346] [31-12-2025 04:35:20 PM] [R24-FIX] FindIntersectionsBatch called: 82 MEP + 44 structural
+
+[2025-12-31 16:35:20.380] [31-12-2025 04:35:20 PM] [R24-FIX] Found 29 intersections
+
+[2025-12-31 16:35:20.381] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] Found 29 intersections from 82 MEP + 44 host elements
+
+[2025-12-31 16:35:20.381] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] Applying MEP intersection filters...
+
+[2025-12-31 16:35:20.384] [31-12-2025 04:35:20 PM] [DUCT-DAMPER-FILTER] Starting optimized duct-damper proximity filtering...
+
+[2025-12-31 16:35:20.568] [31-12-2025 04:35:20 PM] [DUCT-DAMPER-FILTER] Pre-collected 648 total dampers in host + linked documents
+
+[2025-12-31 16:35:20.572] [31-12-2025 04:35:20 PM] [DUCT-DAMPER-FILTER] Found 29 ducts and 0 dampers in intersections
+
+[2025-12-31 16:35:20.578] [31-12-2025 04:35:20 PM] [DUCT-DAMPER-FILTER] ✅ Filtering complete in 193ms: Removed 29 ducts near dampers, keeping 0 ducts + 0 dampers = 0 total zones
+
+[2025-12-31 16:35:20.578] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] After MEP intersection filtering: 0 intersections (removed 29 elements)
+
+[2025-12-31 16:35:20.600] [31-12-2025 04:35:20 PM] [CLASH-ZONE-SERVICE] [SECTION-BOX] Updated DB Section Box from View: Test Area 1 small
+
+[2025-12-31 16:35:20.600] [31-12-2025 04:35:20 PM] [CLASH-ZONE-SERVICE] [METHOD3] DEBUG: DetectNewClashZones called with 0 intersections
+
+[2025-12-31 16:35:20.600] [31-12-2025 04:35:20 PM] [CLASH-ZONE-SERVICE] [PERFORMANCE] Clash Zone Creation Strategy: UseStreamlinedClashZoneCreation = True
+
+[2025-12-31 16:35:20.601] [31-12-2025 04:35:20 PM] [CLASH-ZONE-SERVICE] [PERFORMANCE] Executing Streamlined Clash Zone Creation (Fast Path)...
+
+[2025-12-31 16:35:20.611] [31-12-2025 04:35:20 PM] [CLASH-ZONE-SERVICE] [STREAMLINED] Pre-cached parameter whitelist with 21 keys
+
+[2025-12-31 16:35:20.616] [31-12-2025 04:35:20 PM] [CLASH-ZONE-SERVICE] [STREAMLINED] Pre-fetched 0 GUIDs from database
+
+[2025-12-31 16:35:20.619] [31-12-2025 04:35:20 PM] [CLASH-ZONE-SERVICE] [STREAMLINED] Collected 7 potential sleeve candidates in 1ms
+
+[2025-12-31 16:35:20.620] [31-12-2025 04:35:20 PM] [CLASH-ZONE-SERVICE] [STREAMLINED] Pre-indexed 1 openings for O(1) existence checks in 1ms
+
+[2025-12-31 16:35:20.624] [31-12-2025 04:35:20 PM] [CLASH-ZONE-SERVICE] [STREAMLINED] Batch captured parameters for 0 MEP elements and 0 host elements
+
+[2025-12-31 16:35:20.624] [31-12-2025 04:35:20 PM] [CLASH-ZONE-SERVICE] [STREAMLINED] Pre-calculated 0 orientations in 0ms
+
+[2025-12-31 16:35:20.625] [31-12-2025 04:35:20 PM] [CLASH-ZONE-SERVICE] [STREAMLINED] Completed: Total=0 (New=0, Updated=0) in 15ms
+
+[2025-12-31 16:35:20.625] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] ✅ Converted 0 intersections to 0 clash zones
+
+[2025-12-31 16:35:20.627] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] Detection complete: 0 new zones, 16 total (duct accessories handled separately)
+
+[2025-12-31 16:35:20.627] [31-12-2025 04:35:20 PM] [REFRESH-REFACTORED] ✅ Merged results: 16 from intersections + 16 from dampers = 16 total
+
+[2025-12-31 16:35:20.628] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] Phase 3: Post-processing results...
+
+[2025-12-31 16:35:20.630] [31-12-2025 04:35:20 PM] [XML-CACHE] Updated cache with 16 clash zones
+
+[2025-12-31 16:35:20.631] [31-12-2025 04:35:20 PM] [INTERSECTION-PROCESSOR] Post-processing complete
+
+[2025-12-31 16:35:20.647] [31-12-2025 04:35:20 PM] [PARAM-CAPTURE-BATCH] Starting batch parameter capture for 16 zones...
+
+[2025-12-31 16:35:20.648] [31-12-2025 04:35:20 PM] [PARAM-CAPTURE-BATCH] Collected 16 unique MEP elements and 7 unique host elements
+
+[2025-12-31 16:35:20.662] [31-12-2025 04:35:20 PM] [PARAM-CAPTURE-BATCH] Element retrieval: 13ms (23 elements)
+
+[2025-12-31 16:35:20.703] [31-12-2025 04:35:20 PM] [PARAM-CAPTURE-BATCH] Parameter processing: 40ms
+
+[2025-12-31 16:35:20.705] [31-12-2025 04:35:20 PM] [PARAM-CAPTURE-BATCH] Parameter mapping: 1ms
+
+[2025-12-31 16:35:20.706] [31-12-2025 04:35:20 PM] [PARAM-CAPTURE-BATCH] ✅ Batch capture complete: 16 zones in 58ms
+
+[2025-12-31 16:35:20.706] [31-12-2025 04:35:20 PM] [PARAM-CAPTURE-BATCH] Total params: 176 → 192 (✅ NO LOSS)
+
+[2025-12-31 16:35:20.707] [31-12-2025 04:35:20 PM] [PARAM-CAPTURE-BATCH] Average: 12.0 params/zone
+
+[2025-12-31 16:35:20.708] [31-12-2025 04:35:20 PM] [PARAM-CAPTURE-BATCH] String pool size: 44 unique strings
+
+[2025-12-31 16:35:20.728] [31-12-2025 04:35:20 PM] [MERGE-SAVE] Starting MergeAndSave - AllClashZones: 16, NewClashZones: 16
+
+[2025-12-31 16:35:20.728] [31-12-2025 04:35:20 PM] [MERGE-SAVE] Loading enabled filter from: Ventilation
+
+[2025-12-31 16:35:20.732] [31-12-2025 04:35:20 PM] [MERGE-SAVE] ✅ Enabled filter found: 'Ventilation'
+
+[2025-12-31 16:35:20.734] [31-12-2025 04:35:20 PM] [SQLite] [SQLite] Assembly directory: C:\Users\jse1478.JSE24\AppData\Roaming\Autodesk\Revit\Addins\2024
+
+[2025-12-31 16:35:20.735] [31-12-2025 04:35:20 PM] [SQLite] [SQLite] ✅ Found dependency: System.Data.SQLite.dll
+
+[2025-12-31 16:35:20.735] [31-12-2025 04:35:20 PM] [SQLite] [SQLite] ✅ Found dependency: x64\SQLite.Interop.dll
+
+[2025-12-31 16:35:20.736] [31-12-2025 04:35:20 PM] [SQLite] [SQLite] Filters directory: C:\Users\jse1478.JSE24\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_suryasUEXJW\Filters
+
+[2025-12-31 16:35:20.736] [31-12-2025 04:35:20 PM] [SQLite] [SQLite] Database path: C:\Users\jse1478.JSE24\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_suryasUEXJW\Filters\Shared_Test_Model_COMO_suryasUEXJW_SleevePersistence.db
+
+[2025-12-31 16:35:20.737] [31-12-2025 04:35:20 PM] [SQLite] [SQLite] ✅ Connection opened successfully
+
+[2025-12-31 16:35:20.738] [31-12-2025 04:35:20 PM] [SQLite] [SQLite] ✅ Database ready (241664 bytes)
+
+[2025-12-31 16:35:20.738] [31-12-2025 04:35:20 PM] [CLASH-ZONE-PERSISTENCE] ✅ SQLite dual-write enabled: C:\Users\jse1478.JSE24\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_suryasUEXJW\Filters\Shared_Test_Model_COMO_suryasUEXJW_SleevePersistence.db
+
+[2025-12-31 16:35:20.739] [31-12-2025 04:35:20 PM] [PERSIST-NAME] Saving ALL clash zones: Raw='Ventilation', Normalized='Ventilation', TotalZones=16
+
+[2025-12-31 16:35:20.739] [31-12-2025 04:35:20 PM] [MERGE-SAVE] Calling SaveClashZones with 16 zones
+
+[2025-12-31 16:35:20.745] [31-12-2025 04:35:20 PM] [CLASH-ZONE-PERSISTENCE] SaveClashZones CALLED: Zones=16, Filter='Ventilation', TargetFilter=Ventilation, SQLiteRepo=EXISTS
+
+[2025-12-31 16:35:20.749] [31-12-2025 04:35:20 PM] [CLASH-ZONE-PERSISTENCE] Saving 16 clash zones across 1 categories
+
+[2025-12-31 16:35:20.750] [31-12-2025 04:35:20 PM] [CLASH-ZONE-PERSISTENCE] Enriched 0/16 zones with MEP orientation\n
+[2025-12-31 16:35:20.752] [31-12-2025 04:35:20 PM] [SQLite] [SQLite][BULK-OPTIMIZED] ⚡ Starting multi-category bulk save for 16 zones
+
+[2025-12-31 16:35:20.765] [31-12-2025 04:35:20 PM] [SQLite] [SQLite][BATCH] Extracted 1 unique file combos from 16 zones
+
+[2025-12-31 16:35:20.766] [31-12-2025 04:35:20 PM] [SQLite] [SQLite][BATCH] Found 1/1 existing file combos
+
+[2025-12-31 16:35:20.767] [31-12-2025 04:35:20 PM] [SQLite] [SQLite][BATCH-DEBUG] Sample existing combo key: CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002|CMO-GCI-MOD-ARC-ZZ-00002-2024|Duct Accessories
+
+[2025-12-31 16:35:20.770] [31-12-2025 04:35:20 PM] [SQLite] [SQLite][BATCH-DEBUG] New combos to insert: 0
+
+[2025-12-31 16:35:20.770] [31-12-2025 04:35:20 PM] [SQLite] [SQLite][BATCH-DEBUG] Mapped 16/16 zones to ComboIds
+
+[2025-12-31 16:35:20.771] [31-12-2025 04:35:20 PM] [SQLite] [SQLite][BATCH] ⚡ BatchGetOrCreateFileCombos completed in 8ms for 16 zones (0.5ms per zone)
+
+[2025-12-31 16:35:20.785] [31-12-2025 04:35:20 PM] [SQLite] [SQLite] ✅ Bulk R-tree index updated for 16 zones
+
+[2025-12-31 16:35:20.802] [31-12-2025 04:35:20 PM] [SQLite] [SQLite] ⚠️ InsertOrUpdateSleeveSnapshotsInternal: No valid zones! Total=16, Null=0, NoIds=16, WithSleeveId=0, WithClusterId=0
+
+[2025-12-31 16:35:20.803] [31-12-2025 04:35:20 PM] [SQLite] [SQLite][BULK-OPTIMIZED] ✅ Completed multi-category save in 51ms
+
+[2025-12-31 16:35:20.803] [31-12-2025 04:35:20 PM] [CLASH-ZONE-PERSISTENCE] Processing category 'Duct Accessories' (XML/Logging) with 16 zones
+
+[2025-12-31 16:35:20.808] [31-12-2025 04:35:20 PM] [PERSIST-DEBUG] Analyzing 16 valid zones for file combo grouping
+
+[2025-12-31 16:35:20.822] [31-12-2025 04:35:20 PM] [PERSIST-DEBUG]   Sample combo key: Linked='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002.rvt : 4 : location Shared', Host='CMO-GCI-MOD-ARC-ZZ-00002-2024.rvt : 1 : location Shared'
+
+[2025-12-31 16:35:20.822] [31-12-2025 04:35:20 PM] [PERSIST-DEBUG]   Sample combo key: Linked='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002.rvt : 4 : location Shared', Host='CMO-GCI-MOD-ARC-ZZ-00002-2024.rvt : 1 : location Shared'
+
+[2025-12-31 16:35:20.823] [31-12-2025 04:35:20 PM] [PERSIST-DEBUG]   Sample combo key: Linked='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002.rvt : 4 : location Shared', Host='CMO-GCI-MOD-ARC-ZZ-00002-2024.rvt : 1 : location Shared'
+
+[2025-12-31 16:35:20.823] [31-12-2025 04:35:20 PM] [PERSIST-DEBUG]   Sample combo key: Linked='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002.rvt : 4 : location Shared', Host='CMO-GCI-MOD-ARC-ZZ-00002-2024.rvt : 1 : location Shared'
+
+[2025-12-31 16:35:20.824] [31-12-2025 04:35:20 PM] [PERSIST-DEBUG]   Sample combo key: Linked='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002.rvt : 4 : location Shared', Host='CMO-GCI-MOD-ARC-ZZ-00002-2024.rvt : 1 : location Shared'
+
+[2025-12-31 16:35:20.824] [31-12-2025 04:35:20 PM] [PERSIST-DEBUG]   Sample combo key: Linked='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002.rvt : 4 : location Shared', Host='CMO-GCI-MOD-ARC-ZZ-00002-2024.rvt : 1 : location Shared'
+
+[2025-12-31 16:35:20.824] [31-12-2025 04:35:20 PM] [PERSIST-DEBUG]   Sample combo key: Linked='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002.rvt : 4 : location Shared', Host='CMO-GCI-MOD-ARC-ZZ-00002-2024.rvt : 1 : location Shared'
+
+[2025-12-31 16:35:20.824] [31-12-2025 04:35:20 PM] [PERSIST-DEBUG]   Sample combo key: Linked='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002.rvt : 4 : location Shared', Host='CMO-GCI-MOD-ARC-ZZ-00002-2024.rvt : 1 : location Shared'
+
+[2025-12-31 16:35:20.825] [31-12-2025 04:35:20 PM] [PERSIST-DEBUG]   Sample combo key: Linked='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002.rvt : 4 : location Shared', Host='CMO-GCI-MOD-ARC-ZZ-00002-2024.rvt : 1 : location Shared'
+
+[2025-12-31 16:35:20.825] [31-12-2025 04:35:20 PM] [PERSIST-DEBUG]   Sample combo key: Linked='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002.rvt : 4 : location Shared', Host='CMO-GCI-MOD-ARC-ZZ-00002-2024.rvt : 1 : location Shared'
+
+[2025-12-31 16:35:20.848] [31-12-2025 04:35:20 PM] [PERSIST-DEBUG] Valid combos to persist for 'Duct Accessories': 1
+
+[2025-12-31 16:35:20.848] [31-12-2025 04:35:20 PM] [PERSIST-DEBUG]   Combo: Linked='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002.rvt : 4 : location Shared', Host='CMO-GCI-MOD-ARC-ZZ-00002-2024.rvt : 1 : location Shared', Zones=16
+
+[2025-12-31 16:35:20.850] [31-12-2025 04:35:20 PM] [MERGE-SAVE] ✅ SaveClashZones completed successfully
+
+[2025-12-31 16:35:20.852] [31-12-2025 04:35:20 PM] [MERGE-SAVE] ✅ SECTION BOX ACTIVE: Min=(222.13, 22.40, 12.90), Max=(311.31, 105.92, 28.86)
+
+[2025-12-31 16:35:20.852] 
+[31-12-2025 04:35:20 PM] ========== IsCurrentClashFlag TRACING ==========
+
+[2025-12-31 16:35:20.853] [31-12-2025 04:35:20 PM] UseBatchReadyForPlacementUpdate = True
+
+[2025-12-31 16:35:20.853] [31-12-2025 04:35:20 PM] FilterNames: [Ventilation]
+
+[2025-12-31 16:35:20.853] [31-12-2025 04:35:20 PM] Categories: [Ducts, Duct Accessories]
+
+[2025-12-31 16:35:20.855] [31-12-2025 04:35:20 PM] SectionBox: Present
+
+[2025-12-31 16:35:20.856] [31-12-2025 04:35:20 PM] RESULT: markedCount = 16
+
+[2025-12-31 16:35:20.857] [31-12-2025 04:35:20 PM] DB FLAG STATS: Total=0, IsCurrentClash=1: 0, ReadyForPlacement=1: 0, IsResolved=1: 0
+
+[2025-12-31 16:35:20.858] [31-12-2025 04:35:20 PM] ========== END IsCurrentClashFlag TRACING ==========
+
+
+[2025-12-31 16:35:20.858] [31-12-2025 04:35:20 PM] [MERGE-SAVE] [SECTION-BOX-FILTER] ✅ Set ReadyForPlacementFlag=1 for 16 zones
+
+[2025-12-31 16:35:20.859] [31-12-2025 04:35:20 PM] [MERGE-SAVE] ⚠️ XML creation disabled - skipping base filter XML save (database only mode)
+

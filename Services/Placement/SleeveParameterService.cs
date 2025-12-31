@@ -829,9 +829,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                             if (structuralElement != null)
                             {
                                 // Retrieve thickness from linked file element
-                                if (structuralElement is Wall wall)
+                                if (structuralElement is Wall wall || (structuralElement?.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_Walls))
                                 {
-                                    currentThickness = wall.Width;
+                                    if (structuralElement is Wall w)
+                                    {
+                                        currentThickness = w.Width;
+                                    }
+                                    
+                                    // ✅ ROBUST: Fallback for compound walls in linked files
+                                    if (currentThickness <= 0.001)
+                                    {
+                                        Parameter p = structuralElement.get_Parameter(BuiltInParameter.WALL_ATTR_WIDTH_PARAM) ?? 
+                                                     structuralElement.LookupParameter("Width") ??
+                                                     structuralElement.LookupParameter("Thickness");
+                                        if (p != null && p.HasValue) 
+                                        {
+                                            currentThickness = p.AsDouble();
+                                        }
+                                        
+                                        if (currentThickness <= 0.001)
+                                        {
+                                            ElementId typeId = structuralElement.GetTypeId();
+                                            if (typeId != ElementId.InvalidElementId)
+                                            {
+                                                Element typeElem = linkDoc.GetElement(typeId);
+                                                if (typeElem != null)
+                                                {
+                                                    Parameter tp = typeElem.get_Parameter(BuiltInParameter.WALL_ATTR_WIDTH_PARAM) ?? 
+                                                                  typeElem.LookupParameter("Width") ??
+                                                                  typeElem.LookupParameter("Thickness");
+                                                    if (tp != null && tp.HasValue) 
+                                                    {
+                                                        currentThickness = tp.AsDouble();
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                                 else if (structuralElement is Floor floor)
                                 {

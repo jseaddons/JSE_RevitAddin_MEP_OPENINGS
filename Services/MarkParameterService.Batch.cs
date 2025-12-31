@@ -44,7 +44,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // 1. READ PHASE (Main Thread)
             stopwatchRead.Start();
             // Collect all potential sleeves efficiently
-            var allSleeves = GetAllSleevesForCategory(doc, category, markPrefixes); // Reusing existing collector (it's efficient enough as a filtered collector)
+            List<FamilyInstance> allSleeves;
+            using (var initContext = new SleeveDbContext(doc))
+            {
+                allSleeves = GetAllSleevesForCategory(doc, category, initContext, markPrefixes); 
+            }
             
             if (allSleeves.Count == 0)
             {

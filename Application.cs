@@ -228,10 +228,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS
         buttonUpdateDb.ToolTip = "Synchronize Database with Model.\nRun this after resizing sleeves or adding manual sleeves to update the DB.";
 
         // 5. DIAGNOSTIC TOOLS GROUP: Grouping diagnostic commands into a single dropdown
-        var pulldown = panel.AddPulldownButton("DiagnosticTools", "Diagnostic\nTools");
-        pulldown.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
-        pulldown.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
-        pulldown.ToolTip = "Access diagnostic and recovery tools.";
+        var pulldownData = new PulldownButtonData("DiagnosticTools", "Diagnostic\nTools");
+        pulldownData.ToolTip = "Access diagnostic and recovery tools.";
+        
+        var pulldown = panel.AddItem(pulldownData) as PulldownButton;
+        
+        if (pulldown != null)
+        {
+            pulldown.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
+            pulldown.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+        }
         
         // 5.1 Toggle Diagnostic
         var btn1 = pulldown.AddPushButton<ToggleDiagnosticCommand>("Toggle Diagnostic");

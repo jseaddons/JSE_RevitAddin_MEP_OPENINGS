@@ -1109,9 +1109,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 double framingThickness = 0.0;
                 double structuralElementThickness = 0.0;
 
-                if (wall is Wall wallElement)
+                if (wall is Wall || (wall?.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_Walls))
                 {
-                    wallThickness = wallElement.Width;
+                    if (wall is Wall wallElement)
+                    {
+                        wallThickness = wallElement.Width;
+                    }
+
+                    // ✅ ROBUST: Fallback for compound walls or category-based walls
+                    if (wallThickness <= 0.001)
+                    {
+                        Parameter p = wall.get_Parameter(BuiltInParameter.WALL_ATTR_WIDTH_PARAM) ?? 
+                                     wall.LookupParameter("Width") ??
+                                     wall.LookupParameter("Thickness");
+                        if (p != null && p.HasValue) wallThickness = p.AsDouble();
+                        
+                        if (wallThickness <= 0.001)
+                        {
+                            ElementId typeId = wall.GetTypeId();
+                            if (typeId != ElementId.InvalidElementId)
+                            {
+                                Element typeElem = wall.Document?.GetElement(typeId);
+                                if (typeElem != null)
+                                {
+                                    Parameter tp = typeElem.get_Parameter(BuiltInParameter.WALL_ATTR_WIDTH_PARAM) ?? 
+                                                  typeElem.LookupParameter("Width") ??
+                                                  typeElem.LookupParameter("Thickness");
+                                    if (tp != null && tp.HasValue) wallThickness = tp.AsDouble();
+                                }
+                            }
+                        }
+                    }
                     structuralElementThickness = wallThickness;
                 }
                 else if (wall is FamilyInstance framingInstance &&

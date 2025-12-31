@@ -736,9 +736,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
             {
                 if (element is Wall wall)
                 {
-                    // ✅ BBOX METHOD: For ducts, pipes, and cable trays, use bbox method (same as dampers) - cheaper and more reliable
-                    // This calculates the final placement point at wall centerline using bounding box center
-                    return GetWallCenterlinePointFromBbox(wall, intersectionPoint, hostDocument);
+                    // ✅ CRITICAL FIX: Use GetWallCenterlinePoint (projection method) instead of Bbox method
+                    // Bbox method causes offsets because wall bounding box can be expanded by joins/layers
+                    // Projection method accurately projects intersection point onto the wall's LocationCurve
+                    return GetWallCenterlinePoint(wall, intersectionPoint, hostDocument);
                 }
                 else
                     return intersectionPoint;

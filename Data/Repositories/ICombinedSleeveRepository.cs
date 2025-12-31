@@ -61,6 +61,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         List<CombinedSleeve> GetCombinedSleevesForCombo(int comboId, int filterId);
         
         /// <summary>
+        /// Retrieves all combined sleeves in the current document.
+        /// </summary>
+        /// <returns>List of combined sleeves</returns>
+        List<CombinedSleeve> GetAllCombinedSleeves();
+
+        /// <summary>
         /// Retrieves all constituents for a specific combined sleeve.
         /// </summary>
         /// <param name="combinedSleeveId">Combined sleeve ID</param>
