@@ -1,6 +1,0 @@
-[2026-01-02 20:35:31.344] 🔨 DLL BUILD TIME: 2026-01-02 20:34:50
-[2026-01-02 20:35:31.346] [20:35:31.345] FindIntersectionsBatchInternal CALLED - MEP=54, Structural=3, View=NULL
-[2026-01-02 20:35:31.347] [20:35:31.346]   > knownValidPairs=0, skipCheck=False
-[2026-01-02 20:35:31.351] [20:35:31.350] PREPROCESSING COMPLETE - Structural elements processed: 3, Time: 1ms
-[2026-01-02 20:35:31.353] [SPATIAL_GRID_INIT] OptimizationFlags.UseSpatialGrid = True
-[2026-01-02 20:35:31.361] [SPATIAL_GRID_INIT] _spatialService created successfully
