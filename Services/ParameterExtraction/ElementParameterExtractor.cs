@@ -26,9 +26,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ParameterExtraction
             _strategies = new List<IParameterExtractionStrategy>
             {
                 new DamperParameterExtractionStrategy(),
-                // Future: new WallParameterExtractionStrategy(),
-                // Future: new FloorParameterExtractionStrategy(),
-                // Future: new PipeParameterExtractionStrategy(),
+                new RectangularMepParameterExtractionStrategy(),
+                new WallParameterExtractionStrategy(),
+                new FloorParameterExtractionStrategy(),
+                new FramingParameterExtractionStrategy(),
                 new DefaultParameterExtractionStrategy() // Fallback for unknown elements
             };
 
