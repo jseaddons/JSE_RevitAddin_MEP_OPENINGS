@@ -809,6 +809,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         #endregion
 
+        #region SOLID Parameter Extraction (NEW - Phase 1)
+
+        /// <summary>
+        /// Enable unified parameter extraction using SOLID-compliant architecture.
+        /// When true: Uses IElementParameterExtractor with strategy pattern (new code).
+        /// When false: Uses legacy MepParameterHelper, ParameterSnapshotService (old code).
+        /// Default: false (safe rollout - old code works, enable to test new code).
+        /// Location: Services/ParameterExtraction/, Services/Refresh/DamperProcessingService.cs
+        /// Note: Old code remains fully functional - switch this flag to revert instantly.
+        /// </summary>
+        public static bool UseUnifiedParameterExtraction { get; set; } = false;
+
+        #endregion
+
         #region Parameter Service Performance Optimizations (NEW - High Impact)
 
         /// <summary>
