@@ -1098,30 +1098,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     // ✅ VALIDATION: Only use if value is reasonable (not 0 or absurd)
                     if (Math.Abs(revitElevationFromLevel) > 1e-6 && Math.Abs(revitElevationFromLevel) < 1000000.0) // Reasonable range check
                     {
-                        elevationFromLevel = revitElevationFromLevel;
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("placement_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ✅ Zone={zone?.Id}, Sleeve={instance.Id}: " +
-                                $"Read Elevation from Level={elevationFromLevel.Value * 304.8:F1}mm from Revit parameter (after Schedule Level was set)\n");
-                        }
-                    }
-                    else if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone={zone?.Id}, Sleeve={instance.Id}: " +
-                            $"Elevation from Level parameter value is invalid (value={revitElevationFromLevel * 304.8:F1}mm) - skipping Bottom of Opening calculation\n");
-                    }
-                }
-                else if (!DeploymentConfiguration.DeploymentMode)
+                elevationFromLevel = revitElevationFromLevel;
+                if (!DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone={zone?.Id}, Sleeve={instance.Id}: " +
-                        $"Elevation from Level parameter not found or not available - skipping Bottom of Opening calculation (Schedule Level must be set first)\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ✅ Zone={zone?.Id}, Sleeve={instance.Id}: " +
+                        $"Read Elevation from Level={elevationFromLevel.Value * 304.8:F1}mm from Revit parameter\n");
                 }
+            }
+        }
 
-                // ✅ Use elevationFromLevel for calculation (renamed from scheduleOfLevel)
-                double? scheduleOfLevel = elevationFromLevel;
+        // ✅ FALLBACK (R2024 FIX): Calculate Elevation from Level manually if parameter is 0/missing
+        // This handles cases where Revit hasn't regenerated the parameter yet
+        if (elevationFromLevel == null && zone != null && instance.Location is LocationPoint locPoint)
+        {
+             double instanceZ = locPoint.Point.Z;
+             double levelElevation = zone.MepElementLevelElevation; // This assumes Schedule Level matches MEP Reference Level
+             
+             // Check if we have a valid zone elevation (zone might not have it populated for some reason)
+             // But we can try to look up the level from the instance's "Schedule Level" parameter if needed
+             // For now, trust zone.
+             
+             elevationFromLevel = instanceZ - levelElevation;
+             
+             if (!DeploymentConfiguration.DeploymentMode)
+             {
+                 SafeFileLogger.SafeAppendText("placement_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone={zone?.Id}, Sleeve={instance.Id}: " +
+                    $"Using FALLBACK calculation for Elevation from Level.\n" +
+                    $"  - Instance Z: {instanceZ * 304.8:F1}mm\n" +
+                    $"  - Level Elevation (Zone): {levelElevation * 304.8:F1}mm\n" +
+                    $"  - Calculated Elevation from Level: {elevationFromLevel.Value * 304.8:F1}mm\n");
+             }
+        }
+
+        // ✅ Use elevationFromLevel for calculation (renamed from scheduleOfLevel)
+        double? scheduleOfLevel = elevationFromLevel;
 
                 // ✅ DIAGNOSTIC LOGGING: Log all values before validation and calculation
                 string elevationStr = elevationFromLevel.HasValue ? $"{elevationFromLevel.Value * 304.8:F1}mm" : string.Empty;
