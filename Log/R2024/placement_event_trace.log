@@ -769,3 +769,543 @@
 [10:34:22] AFTER_UpdateSleeveCoordinatesInXml
 [10:34:22] UPDATE_COORD_SUCCESS
 [10:34:23] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully
+[2026-01-02 14:50:28.690] [14:50:28] CLICK_OK: handler entered
+
+[2026-01-02 14:50:28.788] [14:50:28] CLICK_OK: raising external event
+
+[2026-01-02 14:50:28.813] [14:50:28] CLICK_OK: external event raised
+
+[14:50:29] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: 2026-01-02 14:50:29 🔥🔥🔥
+[14:50:29] STEP 1: Execute method started
+[14:50:29] STEP 2: Categories null=False, Count=1
+[14:50:29] STEP 3: MarkPrefixes null=False
+[14:50:29] STEP 9: ✅ Document is not linked, continuing
+[14:50:29] STEP 9.5: Categories count: 1, Categories: Duct Accessories
+[14:50:29] STEP 10: About to create orchestrator
+[14:50:29] STEP 10.5: Clearance settings count: 6
+[14:50:29] STEP 11: Orchestrator created successfully
+[14:50:29] STEP 12.5: About to convert 1 categories to filters
+[14:50:29] STEP 13: Converted to 1 filters
+[14:50:29] STEP 13.5: Filter names: Ventilation
+[14:50:29] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: 1
+[14:50:29] CLICK_OK: Begin placement for category=DuctAccessories, filter=Ventilation
+[14:50:29] LOAD_XML: zones=1
+[14:50:29] COMMAND_CREATED: category=Duct Accessories, xml=C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_aakashvP9A2H\Filters\Ventilation_duct_accessories.xml
+[14:50:31] COMMAND_EXECUTED: Placed=1, Skipped=0, Errors=0
+[14:50:31] ENTERING_UPDATE_COORD_BLOCK
+[14:50:31] BEFORE_UpdateSleeveCoordinatesInXml
+[14:50:31] SleeveCoordinateService_CREATED
+[14:50:31] CALLING_UpdateSleeveCoordinatesInXml: category=Duct Accessories (database-only)
+[14:50:31] AFTER_UpdateSleeveCoordinatesInXml
+[14:50:31] UPDATE_COORD_SUCCESS
+[14:50:32] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully
+[2026-01-02 15:07:32.807] [15:07:32] CLICK_OK: handler entered
+
+[2026-01-02 15:07:32.913] [15:07:32] CLICK_OK: raising external event
+
+[2026-01-02 15:07:32.952] [15:07:32] CLICK_OK: external event raised
+
+[15:07:33] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: 2026-01-02 15:07:33 🔥🔥🔥
+[15:07:33] STEP 1: Execute method started
+[15:07:33] STEP 2: Categories null=False, Count=1
+[15:07:33] STEP 3: MarkPrefixes null=False
+[15:07:33] STEP 9: ✅ Document is not linked, continuing
+[15:07:33] STEP 9.5: Categories count: 1, Categories: Duct Accessories
+[15:07:33] STEP 10: About to create orchestrator
+[15:07:33] STEP 10.5: Clearance settings count: 6
+[15:07:33] STEP 11: Orchestrator created successfully
+[15:07:33] STEP 12.5: About to convert 1 categories to filters
+[15:07:33] STEP 13: Converted to 1 filters
+[15:07:33] STEP 13.5: Filter names: Ventilation
+[15:07:33] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: 1
+[15:07:33] CLICK_OK: Begin placement for category=DuctAccessories, filter=Ventilation
+[15:07:33] LOAD_XML: zones=1
+[15:07:33] COMMAND_CREATED: category=Duct Accessories, xml=C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_aakashvP9A2H\Filters\Ventilation_duct_accessories.xml
+[15:07:35] COMMAND_EXECUTED: Placed=1, Skipped=0, Errors=0
+[15:07:35] ENTERING_UPDATE_COORD_BLOCK
+[15:07:35] BEFORE_UpdateSleeveCoordinatesInXml
+[15:07:35] SleeveCoordinateService_CREATED
+[15:07:35] CALLING_UpdateSleeveCoordinatesInXml: category=Duct Accessories (database-only)
+[15:07:35] AFTER_UpdateSleeveCoordinatesInXml
+[15:07:35] UPDATE_COORD_SUCCESS
+[15:07:36] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully
+[2026-01-02 15:08:24.112] [15:08:24] CLICK_OK: handler entered
+
+[2026-01-02 15:08:24.205] [15:08:24] CLICK_OK: raising external event
+
+[2026-01-02 15:08:24.236] [15:08:24] CLICK_OK: external event raised
+
+[15:08:24] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: 2026-01-02 15:08:24 🔥🔥🔥
+[15:08:24] STEP 1: Execute method started
+[15:08:24] STEP 2: Categories null=False, Count=1
+[15:08:24] STEP 3: MarkPrefixes null=False
+[15:08:24] STEP 9: ✅ Document is not linked, continuing
+[15:08:24] STEP 9.5: Categories count: 1, Categories: Duct Accessories
+[15:08:24] STEP 10: About to create orchestrator
+[15:08:24] STEP 10.5: Clearance settings count: 6
+[15:08:24] STEP 11: Orchestrator created successfully
+[15:08:24] STEP 12.5: About to convert 1 categories to filters
+[15:08:24] STEP 13: Converted to 1 filters
+[15:08:24] STEP 13.5: Filter names: Ventilation
+[15:08:24] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: 1
+[15:08:24] CLICK_OK: Begin placement for category=DuctAccessories, filter=Ventilation
+[15:08:24] LOAD_XML: zones=1
+[15:08:24] COMMAND_CREATED: category=Duct Accessories, xml=C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_aakashvP9A2H\Filters\Ventilation_duct_accessories.xml
+[15:08:27] COMMAND_EXECUTED: Placed=1, Skipped=0, Errors=0
+[15:08:27] ENTERING_UPDATE_COORD_BLOCK
+[15:08:27] BEFORE_UpdateSleeveCoordinatesInXml
+[15:08:27] SleeveCoordinateService_CREATED
+[15:08:27] CALLING_UpdateSleeveCoordinatesInXml: category=Duct Accessories (database-only)
+[15:08:27] AFTER_UpdateSleeveCoordinatesInXml
+[15:08:27] UPDATE_COORD_SUCCESS
+[15:08:28] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully
+[2026-01-02 15:23:43.826] [15:23:43] CLICK_OK: handler entered
+
+[2026-01-02 15:23:43.932] [15:23:43] CLICK_OK: raising external event
+
+[2026-01-02 15:23:43.967] [15:23:43] CLICK_OK: external event raised
+
+[15:23:44] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: 2026-01-02 15:23:44 🔥🔥🔥
+[15:23:44] STEP 1: Execute method started
+[15:23:44] STEP 2: Categories null=False, Count=1
+[15:23:44] STEP 3: MarkPrefixes null=False
+[15:23:44] STEP 9: ✅ Document is not linked, continuing
+[15:23:44] STEP 9.5: Categories count: 1, Categories: Duct Accessories
+[15:23:44] STEP 10: About to create orchestrator
+[15:23:44] STEP 10.5: Clearance settings count: 6
+[15:23:44] STEP 11: Orchestrator created successfully
+[15:23:44] STEP 12.5: About to convert 1 categories to filters
+[15:23:44] STEP 13: Converted to 1 filters
+[15:23:44] STEP 13.5: Filter names: Ventilation
+[15:23:44] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: 1
+[15:23:44] CLICK_OK: Begin placement for category=DuctAccessories, filter=Ventilation
+[15:23:44] LOAD_XML: zones=1
+[15:23:44] COMMAND_CREATED: category=Duct Accessories, xml=C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_aakashvP9A2H\Filters\Ventilation_duct_accessories.xml
+[15:23:47] COMMAND_EXECUTED: Placed=1, Skipped=0, Errors=0
+[15:23:47] ENTERING_UPDATE_COORD_BLOCK
+[15:23:47] BEFORE_UpdateSleeveCoordinatesInXml
+[15:23:47] SleeveCoordinateService_CREATED
+[15:23:47] CALLING_UpdateSleeveCoordinatesInXml: category=Duct Accessories (database-only)
+[15:23:47] AFTER_UpdateSleeveCoordinatesInXml
+[15:23:47] UPDATE_COORD_SUCCESS
+[15:23:48] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully
+[2026-01-02 15:30:05.019] [15:30:05] CLICK_OK: handler entered
+
+[2026-01-02 15:30:05.118] [15:30:05] CLICK_OK: raising external event
+
+[2026-01-02 15:30:05.150] [15:30:05] CLICK_OK: external event raised
+
+[15:30:05] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: 2026-01-02 15:30:05 🔥🔥🔥
+[15:30:05] STEP 1: Execute method started
+[15:30:05] STEP 2: Categories null=False, Count=1
+[15:30:05] STEP 3: MarkPrefixes null=False
+[15:30:05] STEP 9: ✅ Document is not linked, continuing
+[15:30:05] STEP 9.5: Categories count: 1, Categories: Duct Accessories
+[15:30:05] STEP 10: About to create orchestrator
+[15:30:05] STEP 10.5: Clearance settings count: 6
+[15:30:05] STEP 11: Orchestrator created successfully
+[15:30:05] STEP 12.5: About to convert 1 categories to filters
+[15:30:05] STEP 13: Converted to 1 filters
+[15:30:05] STEP 13.5: Filter names: Ventilation
+[15:30:05] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: 1
+[15:30:05] CLICK_OK: Begin placement for category=DuctAccessories, filter=Ventilation
+[15:30:05] LOAD_XML: zones=1
+[15:30:05] COMMAND_CREATED: category=Duct Accessories, xml=C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_aakashvP9A2H\Filters\Ventilation_duct_accessories.xml
+[15:30:08] COMMAND_EXECUTED: Placed=1, Skipped=0, Errors=0
+[15:30:08] ENTERING_UPDATE_COORD_BLOCK
+[15:30:08] BEFORE_UpdateSleeveCoordinatesInXml
+[15:30:08] SleeveCoordinateService_CREATED
+[15:30:08] CALLING_UpdateSleeveCoordinatesInXml: category=Duct Accessories (database-only)
+[15:30:08] AFTER_UpdateSleeveCoordinatesInXml
+[15:30:08] UPDATE_COORD_SUCCESS
+[15:30:09] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully
+[2026-01-02 15:39:32.909] [15:39:32] CLICK_OK: handler entered
+
+[2026-01-02 15:39:33.048] [15:39:33] CLICK_OK: raising external event
+
+[2026-01-02 15:39:33.067] [15:39:33] CLICK_OK: external event raised
+
+[15:39:33] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: 2026-01-02 15:39:33 🔥🔥🔥
+[15:39:33] STEP 1: Execute method started
+[15:39:33] STEP 2: Categories null=False, Count=4
+[15:39:33] STEP 3: MarkPrefixes null=False
+[15:39:33] STEP 9: ✅ Document is not linked, continuing
+[15:39:33] STEP 9.5: Categories count: 4, Categories: Ducts, Duct Accessories, Cable Trays, Pipes
+[15:39:33] STEP 10: About to create orchestrator
+[15:39:33] STEP 10.5: Clearance settings count: 15
+[15:39:33] STEP 11: Orchestrator created successfully
+[15:39:33] STEP 12.5: About to convert 4 categories to filters
+[15:39:35] STEP 13: Converted to 4 filters
+[15:39:35] STEP 13.5: Filter names: Ventilation, Ventilation, Ventilation, Ventilation
+[15:39:35] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: 4
+[15:39:35] CLICK_OK: Begin placement for category=Ducts, filter=Ventilation
+[15:39:36] LOAD_XML: zones=159
+[15:39:36] COMMAND_CREATED: category=Ducts, xml=C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model -00001\Filters\Ventilation_ducts.xml
+[15:40:00] COMMAND_EXECUTED: Placed=112, Skipped=0, Errors=0
+[15:40:00] ENTERING_UPDATE_COORD_BLOCK
+[15:40:00] BEFORE_UpdateSleeveCoordinatesInXml
+[15:40:00] SleeveCoordinateService_CREATED
+[15:40:00] CALLING_UpdateSleeveCoordinatesInXml: category=Ducts (database-only)
+[15:40:01] AFTER_UpdateSleeveCoordinatesInXml
+[15:40:01] UPDATE_COORD_SUCCESS
+[15:40:20] CLICK_OK: Begin placement for category=DuctAccessories, filter=Ventilation
+[15:40:20] LOAD_XML: zones=21
+[15:40:20] COMMAND_CREATED: category=Duct Accessories, xml=C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model -00001\Filters\Ventilation_duct_accessories.xml
+[15:40:33] COMMAND_EXECUTED: Placed=21, Skipped=0, Errors=0
+[15:40:33] ENTERING_UPDATE_COORD_BLOCK
+[15:40:33] BEFORE_UpdateSleeveCoordinatesInXml
+[15:40:33] SleeveCoordinateService_CREATED
+[15:40:33] CALLING_UpdateSleeveCoordinatesInXml: category=Duct Accessories (database-only)
+[15:40:33] AFTER_UpdateSleeveCoordinatesInXml
+[15:40:33] UPDATE_COORD_SUCCESS
+[15:40:38] CLICK_OK: Begin placement for category=CableTrays, filter=Ventilation
+[15:40:38] LOAD_XML: zones=133
+[15:40:38] COMMAND_CREATED: category=Cable Trays, xml=C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model -00001\Filters\Ventilation_cable_trays.xml
+[15:40:40] COMMAND_EXECUTED: Placed=0, Skipped=0, Errors=0
+[15:40:40] ENTERING_UPDATE_COORD_BLOCK
+[15:40:40] BEFORE_UpdateSleeveCoordinatesInXml
+[15:40:40] SleeveCoordinateService_CREATED
+[15:40:40] CALLING_UpdateSleeveCoordinatesInXml: category=Cable Trays (database-only)
+[15:40:41] AFTER_UpdateSleeveCoordinatesInXml
+[15:40:41] UPDATE_COORD_SUCCESS
+[15:40:42] CLICK_OK: Begin placement for category=Pipes, filter=Ventilation
+[15:40:43] LOAD_XML: zones=244
+[15:40:43] COMMAND_CREATED: category=Pipes, xml=C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model -00001\Filters\Ventilation_pipes.xml
+[15:41:04] COMMAND_EXECUTED: Placed=46, Skipped=0, Errors=0
+[15:41:04] ENTERING_UPDATE_COORD_BLOCK
+[15:41:04] BEFORE_UpdateSleeveCoordinatesInXml
+[15:41:04] SleeveCoordinateService_CREATED
+[15:41:04] CALLING_UpdateSleeveCoordinatesInXml: category=Pipes (database-only)
+[15:41:05] AFTER_UpdateSleeveCoordinatesInXml
+[15:41:05] UPDATE_COORD_SUCCESS
+[15:41:16] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully
+[2026-01-02 15:48:08.375] [15:48:08] CLICK_OK: handler entered
+
+[2026-01-02 15:48:08.464] [15:48:08] CLICK_OK: raising external event
+
+[2026-01-02 15:48:08.494] [15:48:08] CLICK_OK: external event raised
+
+[15:48:08] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: 2026-01-02 15:48:08 🔥🔥🔥
+[15:48:08] STEP 1: Execute method started
+[15:48:08] STEP 2: Categories null=False, Count=1
+[15:48:08] STEP 3: MarkPrefixes null=False
+[15:48:08] STEP 9: ✅ Document is not linked, continuing
+[15:48:08] STEP 9.5: Categories count: 1, Categories: Ducts
+[15:48:08] STEP 10: About to create orchestrator
+[15:48:08] STEP 10.5: Clearance settings count: 4
+[15:48:08] STEP 11: Orchestrator created successfully
+[15:48:08] STEP 12.5: About to convert 1 categories to filters
+[15:48:09] STEP 13: Converted to 1 filters
+[15:48:09] STEP 13.5: Filter names: Ventilation
+[15:48:09] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: 1
+[15:48:09] CLICK_OK: Begin placement for category=Ducts, filter=Ventilation
+[15:48:09] LOAD_XML: zones=37
+[15:48:09] COMMAND_CREATED: category=Ducts, xml=C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model -00001\Filters\Ventilation_ducts.xml
+[15:48:18] COMMAND_EXECUTED: Placed=37, Skipped=0, Errors=0
+[15:48:18] ENTERING_UPDATE_COORD_BLOCK
+[15:48:18] BEFORE_UpdateSleeveCoordinatesInXml
+[15:48:18] SleeveCoordinateService_CREATED
+[15:48:18] CALLING_UpdateSleeveCoordinatesInXml: category=Ducts (database-only)
+[15:48:18] AFTER_UpdateSleeveCoordinatesInXml
+[15:48:18] UPDATE_COORD_SUCCESS
+[15:48:24] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully
+[2026-01-02 15:55:02.276] [15:55:02] CLICK_OK: handler entered
+
+[2026-01-02 15:55:02.329] [15:55:02] CLICK_OK: raising external event
+
+[2026-01-02 15:55:02.363] [15:55:02] CLICK_OK: external event raised
+
+[15:55:02] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: 2026-01-02 15:55:02 🔥🔥🔥
+[15:55:02] STEP 1: Execute method started
+[15:55:02] STEP 2: Categories null=False, Count=1
+[15:55:02] STEP 3: MarkPrefixes null=False
+[15:55:02] STEP 9: ✅ Document is not linked, continuing
+[15:55:02] STEP 9.5: Categories count: 1, Categories: Duct Accessories
+[15:55:02] STEP 10: About to create orchestrator
+[15:55:02] STEP 10.5: Clearance settings count: 6
+[15:55:02] STEP 11: Orchestrator created successfully
+[15:55:02] STEP 12.5: About to convert 1 categories to filters
+[15:55:02] STEP 13: Converted to 1 filters
+[15:55:02] STEP 13.5: Filter names: Ventilation
+[15:55:02] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: 1
+[15:55:03] CLICK_OK: Begin placement for category=DuctAccessories, filter=Ventilation
+[15:55:03] LOAD_XML: zones=1
+[15:55:03] COMMAND_CREATED: category=Duct Accessories, xml=C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_aakashvP9A2H\Filters\Ventilation_duct_accessories.xml
+[15:55:05] COMMAND_EXECUTED: Placed=1, Skipped=0, Errors=0
+[15:55:05] ENTERING_UPDATE_COORD_BLOCK
+[15:55:05] BEFORE_UpdateSleeveCoordinatesInXml
+[15:55:05] SleeveCoordinateService_CREATED
+[15:55:05] CALLING_UpdateSleeveCoordinatesInXml: category=Duct Accessories (database-only)
+[15:55:05] AFTER_UpdateSleeveCoordinatesInXml
+[15:55:05] UPDATE_COORD_SUCCESS
+[15:55:06] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully
+[2026-01-02 15:56:39.918] [15:56:39] CLICK_OK: handler entered
+
+[2026-01-02 15:56:40.003] [15:56:40] CLICK_OK: raising external event
+
+[2026-01-02 15:56:40.036] [15:56:40] CLICK_OK: external event raised
+
+[15:56:40] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: 2026-01-02 15:56:40 🔥🔥🔥
+[15:56:40] STEP 1: Execute method started
+[15:56:40] STEP 2: Categories null=False, Count=1
+[15:56:40] STEP 3: MarkPrefixes null=False
+[15:56:40] STEP 9: ✅ Document is not linked, continuing
+[15:56:40] STEP 9.5: Categories count: 1, Categories: Duct Accessories
+[15:56:40] STEP 10: About to create orchestrator
+[15:56:40] STEP 10.5: Clearance settings count: 6
+[15:56:40] STEP 11: Orchestrator created successfully
+[15:56:40] STEP 12.5: About to convert 1 categories to filters
+[15:56:40] STEP 13: Converted to 1 filters
+[15:56:40] STEP 13.5: Filter names: Ventilation
+[15:56:40] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: 1
+[15:56:40] CLICK_OK: Begin placement for category=DuctAccessories, filter=Ventilation
+[15:56:40] LOAD_XML: zones=1
+[15:56:40] COMMAND_CREATED: category=Duct Accessories, xml=C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_aakashvP9A2H\Filters\Ventilation_duct_accessories.xml
+[15:56:43] COMMAND_EXECUTED: Placed=1, Skipped=0, Errors=0
+[15:56:43] ENTERING_UPDATE_COORD_BLOCK
+[15:56:43] BEFORE_UpdateSleeveCoordinatesInXml
+[15:56:43] SleeveCoordinateService_CREATED
+[15:56:43] CALLING_UpdateSleeveCoordinatesInXml: category=Duct Accessories (database-only)
+[15:56:43] AFTER_UpdateSleeveCoordinatesInXml
+[15:56:43] UPDATE_COORD_SUCCESS
+[15:56:44] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully
+[2026-01-02 16:08:04.606] [16:08:04] CLICK_OK: handler entered
+
+[2026-01-02 16:08:04.707] [16:08:04] CLICK_OK: raising external event
+
+[2026-01-02 16:08:04.748] [16:08:04] CLICK_OK: external event raised
+
+[16:08:05] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: 2026-01-02 16:08:05 🔥🔥🔥
+[16:08:05] STEP 1: Execute method started
+[16:08:05] STEP 2: Categories null=False, Count=1
+[16:08:05] STEP 3: MarkPrefixes null=False
+[16:08:05] STEP 9: ✅ Document is not linked, continuing
+[16:08:05] STEP 9.5: Categories count: 1, Categories: Duct Accessories
+[16:08:05] STEP 10: About to create orchestrator
+[16:08:05] STEP 10.5: Clearance settings count: 6
+[16:08:05] STEP 11: Orchestrator created successfully
+[16:08:05] STEP 12.5: About to convert 1 categories to filters
+[16:08:05] STEP 13: Converted to 1 filters
+[16:08:05] STEP 13.5: Filter names: Ventilation
+[16:08:05] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: 1
+[16:08:05] CLICK_OK: Begin placement for category=DuctAccessories, filter=Ventilation
+[16:08:05] LOAD_XML: zones=1
+[16:08:05] COMMAND_CREATED: category=Duct Accessories, xml=C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_aakashvP9A2H\Filters\Ventilation_duct_accessories.xml
+[16:08:07] COMMAND_EXECUTED: Placed=1, Skipped=0, Errors=0
+[16:08:07] ENTERING_UPDATE_COORD_BLOCK
+[16:08:08] BEFORE_UpdateSleeveCoordinatesInXml
+[16:08:08] SleeveCoordinateService_CREATED
+[16:08:08] CALLING_UpdateSleeveCoordinatesInXml: category=Duct Accessories (database-only)
+[16:08:08] AFTER_UpdateSleeveCoordinatesInXml
+[16:08:08] UPDATE_COORD_SUCCESS
+[16:08:09] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully
+[2026-01-02 16:51:20.133] [16:51:20] CLICK_OK: handler entered
+
+[2026-01-02 16:51:20.232] [16:51:20] CLICK_OK: raising external event
+
+[2026-01-02 16:51:20.269] [16:51:20] CLICK_OK: external event raised
+
+[16:51:20] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: 2026-01-02 16:51:20 🔥🔥🔥
+[16:51:20] STEP 1: Execute method started
+[16:51:20] STEP 2: Categories null=False, Count=1
+[16:51:20] STEP 3: MarkPrefixes null=False
+[16:51:20] STEP 9: ✅ Document is not linked, continuing
+[16:51:20] STEP 9.5: Categories count: 1, Categories: Duct Accessories
+[16:51:20] STEP 10: About to create orchestrator
+[16:51:20] STEP 10.5: Clearance settings count: 6
+[16:51:20] STEP 11: Orchestrator created successfully
+[16:51:20] STEP 12.5: About to convert 1 categories to filters
+[16:51:20] STEP 13: Converted to 1 filters
+[16:51:20] STEP 13.5: Filter names: Ventilation
+[16:51:20] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: 1
+[16:51:20] CLICK_OK: Begin placement for category=DuctAccessories, filter=Ventilation
+[16:51:20] LOAD_XML: zones=1
+[16:51:20] COMMAND_CREATED: category=Duct Accessories, xml=C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_aakashvP9A2H\Filters\Ventilation_duct_accessories.xml
+[16:51:23] COMMAND_EXECUTED: Placed=1, Skipped=0, Errors=0
+[16:51:23] ENTERING_UPDATE_COORD_BLOCK
+[16:51:23] BEFORE_UpdateSleeveCoordinatesInXml
+[16:51:23] SleeveCoordinateService_CREATED
+[16:51:23] CALLING_UpdateSleeveCoordinatesInXml: category=Duct Accessories (database-only)
+[16:51:23] AFTER_UpdateSleeveCoordinatesInXml
+[16:51:23] UPDATE_COORD_SUCCESS
+[16:51:24] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully
+[2026-01-02 16:56:05.907] [16:56:05] CLICK_OK: handler entered
+
+[2026-01-02 16:56:05.995] [16:56:05] CLICK_OK: raising external event
+
+[2026-01-02 16:56:06.031] [16:56:06] CLICK_OK: external event raised
+
+[16:56:06] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: 2026-01-02 16:56:06 🔥🔥🔥
+[16:56:06] STEP 1: Execute method started
+[16:56:06] STEP 2: Categories null=False, Count=1
+[16:56:06] STEP 3: MarkPrefixes null=False
+[16:56:06] STEP 9: ✅ Document is not linked, continuing
+[16:56:06] STEP 9.5: Categories count: 1, Categories: Duct Accessories
+[16:56:06] STEP 10: About to create orchestrator
+[16:56:06] STEP 10.5: Clearance settings count: 6
+[16:56:06] STEP 11: Orchestrator created successfully
+[16:56:06] STEP 12.5: About to convert 1 categories to filters
+[16:56:06] STEP 13: Converted to 1 filters
+[16:56:06] STEP 13.5: Filter names: Ventilation
+[16:56:06] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: 1
+[16:56:06] CLICK_OK: Begin placement for category=DuctAccessories, filter=Ventilation
+[16:56:06] LOAD_XML: zones=1
+[16:56:06] COMMAND_CREATED: category=Duct Accessories, xml=C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_aakashvP9A2H\Filters\Ventilation_duct_accessories.xml
+[16:56:09] COMMAND_EXECUTED: Placed=1, Skipped=0, Errors=0
+[16:56:09] ENTERING_UPDATE_COORD_BLOCK
+[16:56:09] BEFORE_UpdateSleeveCoordinatesInXml
+[16:56:09] SleeveCoordinateService_CREATED
+[16:56:09] CALLING_UpdateSleeveCoordinatesInXml: category=Duct Accessories (database-only)
+[16:56:09] AFTER_UpdateSleeveCoordinatesInXml
+[16:56:09] UPDATE_COORD_SUCCESS
+[16:56:10] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully
+[2026-01-02 16:59:57.803] [16:59:57] CLICK_OK: handler entered
+
+[2026-01-02 16:59:57.893] [16:59:57] CLICK_OK: raising external event
+
+[2026-01-02 16:59:57.915] [16:59:57] CLICK_OK: external event raised
+
+[16:59:58] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: 2026-01-02 16:59:58 🔥🔥🔥
+[16:59:58] STEP 1: Execute method started
+[16:59:58] STEP 2: Categories null=False, Count=1
+[16:59:58] STEP 3: MarkPrefixes null=False
+[16:59:58] STEP 9: ✅ Document is not linked, continuing
+[16:59:58] STEP 9.5: Categories count: 1, Categories: Duct Accessories
+[16:59:58] STEP 10: About to create orchestrator
+[16:59:58] STEP 10.5: Clearance settings count: 6
+[16:59:58] STEP 11: Orchestrator created successfully
+[16:59:58] STEP 12.5: About to convert 1 categories to filters
+[16:59:58] STEP 13: Converted to 1 filters
+[16:59:58] STEP 13.5: Filter names: Ventilation
+[16:59:58] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: 1
+[16:59:58] CLICK_OK: Begin placement for category=DuctAccessories, filter=Ventilation
+[16:59:58] LOAD_XML: zones=1
+[16:59:58] COMMAND_CREATED: category=Duct Accessories, xml=C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_aakashvP9A2H\Filters\Ventilation_duct_accessories.xml
+[17:00:00] COMMAND_EXECUTED: Placed=1, Skipped=0, Errors=0
+[17:00:00] ENTERING_UPDATE_COORD_BLOCK
+[17:00:00] BEFORE_UpdateSleeveCoordinatesInXml
+[17:00:00] SleeveCoordinateService_CREATED
+[17:00:00] CALLING_UpdateSleeveCoordinatesInXml: category=Duct Accessories (database-only)
+[17:00:00] AFTER_UpdateSleeveCoordinatesInXml
+[17:00:00] UPDATE_COORD_SUCCESS
+[17:00:01] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully
+[2026-01-02 17:02:22.062] [17:02:22] CLICK_OK: handler entered
+
+[2026-01-02 17:02:22.160] [17:02:22] CLICK_OK: raising external event
+
+[2026-01-02 17:02:22.193] [17:02:22] CLICK_OK: external event raised
+
+[17:02:22] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: 2026-01-02 17:02:22 🔥🔥🔥
+[17:02:22] STEP 1: Execute method started
+[17:02:22] STEP 2: Categories null=False, Count=1
+[17:02:22] STEP 3: MarkPrefixes null=False
+[17:02:22] STEP 9: ✅ Document is not linked, continuing
+[17:02:22] STEP 9.5: Categories count: 1, Categories: Duct Accessories
+[17:02:22] STEP 10: About to create orchestrator
+[17:02:22] STEP 10.5: Clearance settings count: 6
+[17:02:22] STEP 11: Orchestrator created successfully
+[17:02:22] STEP 12.5: About to convert 1 categories to filters
+[17:02:22] STEP 13: Converted to 1 filters
+[17:02:22] STEP 13.5: Filter names: Ventilation
+[17:02:22] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: 1
+[17:02:22] CLICK_OK: Begin placement for category=DuctAccessories, filter=Ventilation
+[17:02:22] LOAD_XML: zones=1
+[17:02:22] COMMAND_CREATED: category=Duct Accessories, xml=C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_aakashvP9A2H\Filters\Ventilation_duct_accessories.xml
+[17:02:25] COMMAND_EXECUTED: Placed=1, Skipped=0, Errors=0
+[17:02:25] ENTERING_UPDATE_COORD_BLOCK
+[17:02:25] BEFORE_UpdateSleeveCoordinatesInXml
+[17:02:25] SleeveCoordinateService_CREATED
+[17:02:25] CALLING_UpdateSleeveCoordinatesInXml: category=Duct Accessories (database-only)
+[17:02:25] AFTER_UpdateSleeveCoordinatesInXml
+[17:02:25] UPDATE_COORD_SUCCESS
+[17:02:26] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully
+[2026-01-02 17:14:17.638] [17:14:17] CLICK_OK: handler entered
+
+[2026-01-02 17:14:17.735] [17:14:17] CLICK_OK: raising external event
+
+[2026-01-02 17:14:17.767] [17:14:17] CLICK_OK: external event raised
+
+[17:14:18] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: 2026-01-02 17:14:18 🔥🔥🔥
+[17:14:18] STEP 1: Execute method started
+[17:14:18] STEP 2: Categories null=False, Count=1
+[17:14:18] STEP 3: MarkPrefixes null=False
+[17:14:18] STEP 9: ✅ Document is not linked, continuing
+[17:14:18] STEP 9.5: Categories count: 1, Categories: Duct Accessories
+[17:14:18] STEP 10: About to create orchestrator
+[17:14:18] STEP 10.5: Clearance settings count: 6
+[17:14:18] STEP 11: Orchestrator created successfully
+[17:14:18] STEP 12.5: About to convert 1 categories to filters
+[17:14:18] STEP 13: Converted to 1 filters
+[17:14:18] STEP 13.5: Filter names: Ventilation
+[17:14:18] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: 1
+[17:14:18] CLICK_OK: Begin placement for category=DuctAccessories, filter=Ventilation
+[17:14:18] LOAD_XML: zones=1
+[17:14:18] COMMAND_CREATED: category=Duct Accessories, xml=C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_aakashvP9A2H\Filters\Ventilation_duct_accessories.xml
+[17:14:21] COMMAND_EXECUTED: Placed=1, Skipped=0, Errors=0
+[17:14:21] ENTERING_UPDATE_COORD_BLOCK
+[17:14:21] BEFORE_UpdateSleeveCoordinatesInXml
+[17:14:21] SleeveCoordinateService_CREATED
+[17:14:21] CALLING_UpdateSleeveCoordinatesInXml: category=Duct Accessories (database-only)
+[17:14:21] AFTER_UpdateSleeveCoordinatesInXml
+[17:14:21] UPDATE_COORD_SUCCESS
+[17:14:22] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully
+[2026-01-02 17:54:46.566] [17:54:46] CLICK_OK: handler entered
+
+[2026-01-02 17:54:46.627] [17:54:46] CLICK_OK: raising external event
+
+[2026-01-02 17:54:46.656] [17:54:46] CLICK_OK: external event raised
+
+[17:54:47] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: 2026-01-02 17:54:47 🔥🔥🔥
+[17:54:47] STEP 1: Execute method started
+[17:54:47] STEP 2: Categories null=False, Count=1
+[17:54:47] STEP 3: MarkPrefixes null=False
+[17:54:47] STEP 9: ✅ Document is not linked, continuing
+[17:54:47] STEP 9.5: Categories count: 1, Categories: Duct Accessories
+[17:54:47] STEP 10: About to create orchestrator
+[17:54:47] STEP 10.5: Clearance settings count: 6
+[17:54:47] STEP 11: Orchestrator created successfully
+[17:54:47] STEP 12.5: About to convert 1 categories to filters
+[17:54:47] STEP 13: Converted to 1 filters
+[17:54:47] STEP 13.5: Filter names: Ventilation
+[17:54:47] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: 1
+[17:54:47] CLICK_OK: Begin placement for category=DuctAccessories, filter=Ventilation
+[17:54:47] LOAD_XML: zones=1
+[17:54:47] COMMAND_CREATED: category=Duct Accessories, xml=C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_aakashvP9A2H\Filters\Ventilation_duct_accessories.xml
+[17:54:49] COMMAND_EXECUTED: Placed=1, Skipped=0, Errors=0
+[17:54:49] ENTERING_UPDATE_COORD_BLOCK
+[17:54:49] BEFORE_UpdateSleeveCoordinatesInXml
+[17:54:49] SleeveCoordinateService_CREATED
+[17:54:49] CALLING_UpdateSleeveCoordinatesInXml: category=Duct Accessories (database-only)
+[17:54:50] AFTER_UpdateSleeveCoordinatesInXml
+[17:54:50] UPDATE_COORD_SUCCESS
+[17:54:50] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully
+[2026-01-02 18:42:13.794] [18:42:13] CLICK_OK: handler entered
+
+[2026-01-02 18:42:13.889] [18:42:13] CLICK_OK: raising external event
+
+[2026-01-02 18:42:13.923] [18:42:13] CLICK_OK: external event raised
+
+[18:42:14] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: 2026-01-02 18:42:14 🔥🔥🔥
+[18:42:14] STEP 1: Execute method started
+[18:42:14] STEP 2: Categories null=False, Count=1
+[18:42:14] STEP 3: MarkPrefixes null=False
+[18:42:14] STEP 9: ✅ Document is not linked, continuing
+[18:42:14] STEP 9.5: Categories count: 1, Categories: Duct Accessories
+[18:42:14] STEP 10: About to create orchestrator
+[18:42:14] STEP 10.5: Clearance settings count: 6
+[18:42:14] STEP 11: Orchestrator created successfully
+[18:42:14] STEP 12.5: About to convert 1 categories to filters
+[18:42:14] STEP 13: Converted to 1 filters
+[18:42:14] STEP 13.5: Filter names: Ventilation
+[18:42:14] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: 1
+[18:42:14] CLICK_OK: Begin placement for category=DuctAccessories, filter=Ventilation
+[18:42:14] LOAD_XML: zones=1
+[18:42:14] COMMAND_CREATED: category=Duct Accessories, xml=C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_aakashvP9A2H\Filters\Ventilation_duct_accessories.xml
+[18:42:16] COMMAND_EXECUTED: Placed=1, Skipped=0, Errors=0
+[18:42:16] ENTERING_UPDATE_COORD_BLOCK
+[18:42:16] BEFORE_UpdateSleeveCoordinatesInXml
+[18:42:16] SleeveCoordinateService_CREATED
+[18:42:16] CALLING_UpdateSleeveCoordinatesInXml: category=Duct Accessories (database-only)
+[18:42:16] AFTER_UpdateSleeveCoordinatesInXml
+[18:42:16] UPDATE_COORD_SUCCESS
+[18:42:17] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully

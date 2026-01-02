@@ -3372,7 +3372,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var mepBBox = mepElement.get_BoundingBox(null);
                     if (mepBBox == null) continue;
 
-                    var lineResult = GetElementLineWithSource(mepElement, mepBBox, null);
+                    var lineResult = MepIntersectionServiceStatic.GetElementLineWithSource(mepElement, mepBBox, null);
                     var line = lineResult.line;
                     
                     if (line == null) continue;

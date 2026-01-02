@@ -1,0 +1,340 @@
+[2026-01-02 18:42:10.897] [02-01-2026 18:42:10] ===== REFRESH LOG STARTED =====
+
+[2026-01-02 18:42:10.899] [02-01-2026 18:42:10] 🔨 BUILD TIMESTAMP: 2026-01-02 18:27:49 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+
+[2026-01-02 18:42:10.900] [02-01-2026 18:42:10] Filters (1): Ventilation
+
+[2026-01-02 18:42:10.901] [02-01-2026 18:42:10] MEP Categories (1): Duct Accessories
+
+[2026-01-02 18:42:10.903] [02-01-2026 18:42:10] Reference Files (1): CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002
+
+[2026-01-02 18:42:10.904] [02-01-2026 18:42:10] Host Files (1): CMO-GCI-MOD-ARC-ZZ-00002-2024
+
+[2026-01-02 18:42:10.909] [02-01-2026 18:42:10] ============================================
+
+
+[2026-01-02 18:42:10.912] [02-01-2026 18:42:10] ===== ExecuteRefreshInternal STARTED =====
+
+[2026-01-02 18:42:11.491] [02-01-2026 18:42:11] [HIERARCHICAL-RESET] ✅ Reset flags for 0 zones
+
+[2026-01-02 18:42:11.500] [02-01-2026 18:42:11] [SESSION-CONTEXT] ✅ Applied section box context. Marked 0 zones
+
+[2026-01-02 18:42:11.511] [02-01-2026 18:42:11] [XML-CACHE] ⚡ OPTIMIZATION: Skipping XML cache loading (database-only mode)
+
+[2026-01-02 18:42:11.515] [02-01-2026 18:42:11] [SQLite] [SQLite] Assembly directory: C:\Users\jse2084\AppData\Local\Temp\RevitAddins\JSE_RevitAddin_MEP_OPENINGS-Executing-20260102_184159_3153
+
+[2026-01-02 18:42:11.516] [02-01-2026 18:42:11] [SQLite] [SQLite] ✅ Found dependency: System.Data.SQLite.dll
+
+[2026-01-02 18:42:11.518] [02-01-2026 18:42:11] [SQLite] [SQLite] ✅ Found dependency: x64\SQLite.Interop.dll
+
+[2026-01-02 18:42:11.520] [02-01-2026 18:42:11] [SQLite] [SQLite] Filters directory: C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_aakashvP9A2H\Filters
+
+[2026-01-02 18:42:11.521] [02-01-2026 18:42:11] [SQLite] [SQLite] Database path: C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_aakashvP9A2H\Filters\Shared_Test_Model_COMO_aakashvP9A2H_SleevePersistence.db
+
+[2026-01-02 18:42:11.526] [02-01-2026 18:42:11] [SQLite] [SQLite] ✅ Connection opened successfully
+
+[2026-01-02 18:42:11.528] [02-01-2026 18:42:11] [SQLite] [SQLite] ⏭️ Skipping schema verification (session-cached)
+
+[2026-01-02 18:42:11.529] [02-01-2026 18:42:11] [SQLite] [SQLite] ✅ Database ready (286720 bytes)
+
+[2026-01-02 18:42:11.534] [02-01-2026 18:42:11] [SECTION-BOX] Capturing section box bounds for caching...
+
+[2026-01-02 18:42:11.539] [02-01-2026 18:42:11] [SECTION-BOX] ✅ Section box bounds captured and stored successfully
+
+[2026-01-02 18:42:11.564] [02-01-2026 18:42:11] [INTERSECTION-PROCESSOR] Phase 1: Preparing existing zones from XML cache...
+
+[2026-01-02 18:42:11.569] [02-01-2026 18:42:11] [CLASHZONE-CACHE] Loading data from database for reuse...
+
+[2026-01-02 18:42:11.578] [02-01-2026 18:42:11] [CLASHZONE-CACHE] ✅ Cache loaded: 0 filters in 7ms
+
+[2026-01-02 18:42:11.580] [02-01-2026 18:42:11] [XML-CACHE] Loaded 0 existing clash zones from cache
+
+[2026-01-02 18:42:11.582] [02-01-2026 18:42:11] [INTERSECTION-PROCESSOR] Using 0 existing clash zones from context
+
+[2026-01-02 18:42:11.590] [02-01-2026 18:42:11] [DB-COMBO-CHECK] Combo not found: Filter='Ventilation', Category='Duct Accessories', Linked='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002', Host='CMO-GCI-MOD-ARC-ZZ-00002-2024' → not processed
+
+[2026-01-02 18:42:11.592] [02-01-2026 18:42:11] [INTERSECTION-PROCESSOR] Decision Factors: EnableThreePointValidation=True, allCombosProcessed=False, hasUnresolvedZones=False, DeploymentMode=False
+
+[2026-01-02 18:42:11.593] [02-01-2026 18:42:11] [INTERSECTION-PROCESSOR] ⚠️ FULL DETECTION MODE: FullDetection: DeploymentMode OFF (testing mode) - always run detection to populate database (EnableThreePointValidation=True, allCombosProcessed=False)
+
+[2026-01-02 18:42:11.595] [02-01-2026 18:42:11] [INTERSECTION-PROCESSOR] ✅ FINAL DECISION: Mode=FullDetection, ShouldRunDetection=True, Reason='FullDetection: DeploymentMode OFF (testing mode) - always run detection to populate database (EnableThreePointValidation=True, allCombosProcessed=False)'
+
+[2026-01-02 18:42:11.597] [02-01-2026 18:42:11] [INTERSECTION-PROCESSOR] Decision: Mode=FullDetection, ShouldRunDetection=True, Reason='FullDetection: DeploymentMode OFF (testing mode) - always run detection to populate database (EnableThreePointValidation=True, allCombosProcessed=False)'
+
+[2026-01-02 18:42:11.598] [02-01-2026 18:42:11] [REFRESH-REFACTORED] ✅ Duct Accessories category selected → Routing to DamperProcessingService
+
+[2026-01-02 18:42:11.614] [02-01-2026 18:42:11] [DamperProcessing] Starting separate damper processing...
+
+[2026-01-02 18:42:11.622] [02-01-2026 18:42:11] [DamperProcessing] Found 2 total link instances in document
+
+[2026-01-02 18:42:11.624] [02-01-2026 18:42:11] [DamperProcessing] ✅ Matched linked file: Name='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002.rvt : 4 : location Shared', Title='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002', PathName='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002'
+
+[2026-01-02 18:42:11.626] [02-01-2026 18:42:11] [DamperProcessing] Matched 1 linked files for damper collection
+
+[2026-01-02 18:42:11.627] [02-01-2026 18:42:11] [DamperProcessing] Collecting dampers from linked document: CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002
+
+[2026-01-02 18:42:11.632] [02-01-2026 18:42:11] [DamperProcessing] ✅ Applied section box filter at collector level for document: CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002
+
+[2026-01-02 18:42:11.739] [02-01-2026 18:42:11] [DamperProcessing] Found 2 total Duct Accessories in document: CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002 (before damper filter)
+
+[2026-01-02 18:42:11.742] [02-01-2026 18:42:11] [DamperProcessing] ⏭️ SKIP: Damper 22573788 - FamilyName='AFE_DuctAccessory_VCD-Volume Control Damper - Rectangular', TypeName='AFE_Standard' contains VCD/VOLUME
+
+[2026-01-02 18:42:11.744] [02-01-2026 18:42:11] [DamperProcessing] ✅ PROCESS: Damper 23630658 - FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular', TypeName='AFE_Fire Damper - Rectangular'
+
+[2026-01-02 18:42:11.745] [02-01-2026 18:42:11] [DamperProcessing] ✅ Filtered to 1 Standard/Motorized dampers in document: CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002 (after damper type filter)
+
+[2026-01-02 18:42:11.748] [02-01-2026 18:42:11] [DamperProcessing] ✅ Collected 1 dampers from linked document: CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002
+
+[2026-01-02 18:42:11.750] [02-01-2026 18:42:11] [DamperProcessing] ========== DAMPER COLLECTION COMPLETE: 1 total dampers ==========
+
+[2026-01-02 18:42:11.751] [02-01-2026 18:42:11] [DamperProcessing] ✅ Collected 1 dampers from selected reference files (VCD/VOLUME excluded)
+
+[2026-01-02 18:42:12.034] [02-01-2026 18:42:12] [DamperProcessing] ✅ Collected 1 walls for intersection checking
+
+[2026-01-02 18:42:12.080] [02-01-2026 18:42:12] [DamperProcessing] ✅ Found HOST wall 1043726 for damper 23630658 - placement point is INSIDE wall bbox
+
+[2026-01-02 18:42:12.084] [02-01-2026 18:42:12] [DamperProcessing] ✅ Captured 'Fire Rating'='4hr' for Host element 1043726
+
+[2026-01-02 18:42:12.109] [02-01-2026 18:42:12] [DamperProcessing] ✅ Transformed wall 1043726 bounding box to host coordinates
+
+[2026-01-02 18:42:12.112] [02-01-2026 18:42:12] [DamperProcessing] ✅ Extracted damper dimensions: Width=150.0mm (from 'Dimensions_Width'), Height=175.0mm (from 'Dimensions_Height') for damper 23630658
+
+[2026-01-02 18:42:12.116] [02-01-2026 18:42:12] [DamperProcessing] 🔍 GetStructuralElementType: Element=1043726, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2026-01-02 18:42:12.118] [02-01-2026 18:42:12] [DamperProcessing] ✅ Element 1043726 is Wall - returning 'Wall'
+
+[2026-01-02 18:42:12.130] [02-01-2026 18:42:12] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (275.180, 54.719, 21.941) for damper 23630658, wall 1043726
+
+[2026-01-02 18:42:12.133] [02-01-2026 18:42:12] [DamperProcessing] 🔍 StructuralElementType for wall 1043726: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2026-01-02 18:42:12.135] [02-01-2026 18:42:12] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: 'Y'
+
+[2026-01-02 18:42:12.136] [02-01-2026 18:42:12] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (275.180, 54.719, 21.941) for damper 23630658, wall 1043726, orientation 'Y'
+
+[2026-01-02 18:42:12.138] [02-01-2026 18:42:12] [DamperProcessing]   - Damper Placement Point: (275.177, 54.719, 21.941)
+
+[2026-01-02 18:42:12.139] [02-01-2026 18:42:12] [DamperProcessing]   - Wall Centerline Point: (275.180, 54.719, 21.941)
+
+[2026-01-02 18:42:12.141] [02-01-2026 18:42:12] [DamperProcessing] ✅ Extracted damper type/family: TypeName='AFE_Fire Damper - Rectangular', FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular' for damper 23630658
+
+[2026-01-02 18:42:12.155] [02-01-2026 18:42:12] [DamperProcessing] ℹ️ Damper 23630658 is Standard Fire Damper (not MSFD/Motorized): TypeName='AFE_Fire Damper - Rectangular', FamilyName='AFE_DuctAccessory_FD-Fire Damper - Rectangular' - will use symmetric clearance (no connector offset)
+
+[2026-01-02 18:42:12.165] [02-01-2026 18:42:12] [DamperProcessing] ✅ Generated deterministic GUID 0544a9a0-89b8-0e08-2188-db8554cbad72 for MEP=23630658, Host=1043726, PlacementPoint=(275.177,54.719,21.941), Tolerance=30.5mm (using damper centroid, stable)
+
+[2026-01-02 18:42:12.167] [02-01-2026 18:42:12] [DAMPER-PERF] CreateClashZoneForDamper called with 1 opening keys
+
+[2026-01-02 18:42:12.174] [02-01-2026 18:42:12] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='100x100-100x100'
+
+[2026-01-02 18:42:12.178] [02-01-2026 18:42:12] [DamperProcessing] ✅ Bulk processing complete: 1 ClashZones created from 1 dampers
+
+[2026-01-02 18:42:12.179] [02-01-2026 18:42:12] [REFRESH-REFACTORED] ✅ Damper processing complete: 1 ClashZones created
+
+[2026-01-02 18:42:12.183] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] Phase 2: Running detection (Mode=FullDetection)...
+
+[2026-01-02 18:42:12.196] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] 🔴 Running detection with FULL collector-level multi-filter optimization...
+
+[2026-01-02 18:42:12.201] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] View3D: Name='Test Area 1 small', IsSectionBoxActive=True
+
+[2026-01-02 18:42:12.203] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] ✅ Section box outline: Min=(274.55, 52.03, 21.27), Max=(276.60, 55.42, 25.66)
+
+[2026-01-02 18:42:12.207] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] Building MEP category filters for 1 categories: Duct Accessories
+
+[2026-01-02 18:42:12.208] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] ⏭️ Skipping Duct Accessories category - handled separately by DamperProcessingService
+
+[2026-01-02 18:42:12.209] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] ⚠️ No valid MEP category filters built - check category names
+
+[2026-01-02 18:42:12.219] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] ✅ Added host category filter: Walls -> OST_Walls
+
+[2026-01-02 18:42:12.220] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] ========== 5-STEP FILTER CONFIGURATION ==========
+
+[2026-01-02 18:42:12.221] [02-01-2026 18:42:12] [5-STEP-FILTER] Filter 1 (Section Box): ✅ ACTIVE
+
+[2026-01-02 18:42:12.223] [02-01-2026 18:42:12] [5-STEP-FILTER] Filter 2 (Reference File): 1 file(s) selected
+
+[2026-01-02 18:42:12.225] [02-01-2026 18:42:12] [5-STEP-FILTER] Filter 3 (MEP Categories): 1 category/categories selected
+
+[2026-01-02 18:42:12.226] [02-01-2026 18:42:12] [5-STEP-FILTER] Filter 4 (Host File): 1 file(s) selected
+
+[2026-01-02 18:42:12.228] [02-01-2026 18:42:12] [5-STEP-FILTER] Filter 5 (Host Categories): 1 type(s) selected
+
+[2026-01-02 18:42:12.229] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] =================================================
+
+[2026-01-02 18:42:12.231] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] Collecting MEP elements with collector-level filters...
+
+[2026-01-02 18:42:12.242] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] ========== MEP ELEMENT COLLECTION: 5-STEP FILTER VERIFICATION ==========
+
+[2026-01-02 18:42:12.244] [02-01-2026 18:42:12] [5-STEP-FILTER] ✅ Filter 1 (Section Box): Applied at collector level - BoundingBoxIntersectsFilter
+
+[2026-01-02 18:42:12.245] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] ⚠️ No MEP category filters provided - returning empty list
+
+[2026-01-02 18:42:12.247] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] ✅ Collected 0 MEP elements (pre-filtered at collector level)
+
+[2026-01-02 18:42:12.249] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] Collecting host elements with collector-level filters...
+
+[2026-01-02 18:42:12.259] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] ========== HOST ELEMENT COLLECTION: 5-STEP FILTER VERIFICATION ==========
+
+[2026-01-02 18:42:12.261] [02-01-2026 18:42:12] [5-STEP-FILTER] ✅ Filter 1 (Section Box): Applied at collector level - BoundingBoxIntersectsFilter
+
+[2026-01-02 18:42:12.263] [02-01-2026 18:42:12] [5-STEP-FILTER] ✅ Filter 5 (Host Categories): Category filter applied at collector level - 1 category filter(s)
+
+[2026-01-02 18:42:12.267] [02-01-2026 18:42:12] [5-STEP-FILTER] ⚠️ Filter 5 (Host Categories): Property filters (wall thickness, structural floors) applied AFTER collection (Revit API limitation)
+
+[2026-01-02 18:42:12.270] [02-01-2026 18:42:12] [5-STEP-FILTER] ✅ Combined 2 filters into compound filter (LogicalAndFilter) - ALL applied at collector level BEFORE element loading
+
+[2026-01-02 18:42:12.274] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] Collecting host elements from 1 linked files: CMO-GCI-MOD-ARC-ZZ-00002-2024
+
+[2026-01-02 18:42:12.277] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] ⚠️ Host elements are ALWAYS in linked documents (skipping active document)
+
+[2026-01-02 18:42:12.281] [02-01-2026 18:42:12] [5-STEP-FILTER] ✅ Filter 4 (Host File): 1 linked file(s) selected - collector-level filters applied per file
+
+[2026-01-02 18:42:12.291] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] Found 2 total link instances in document
+
+[2026-01-02 18:42:12.293] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR]   Available link: Name='CMO-GCI-MOD-ARC-ZZ-00002-2024.rvt : 1 : location Shared', Title='CMO-GCI-MOD-ARC-ZZ-00002-2024', PathName='CMO-GCI-MOD-ARC-ZZ-00002-2024'
+
+[2026-01-02 18:42:12.294] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR]   Available link: Name='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002.rvt : 4 : location Shared', Title='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002', PathName='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002'
+
+[2026-01-02 18:42:12.297] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] ✅ Matched linked file: Name='CMO-GCI-MOD-ARC-ZZ-00002-2024.rvt : 1 : location Shared', Title='CMO-GCI-MOD-ARC-ZZ-00002-2024'
+
+[2026-01-02 18:42:12.298] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] Matched 1 linked files for host element collection
+
+[2026-01-02 18:42:12.300] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] Collecting host elements from linked document: CMO-GCI-MOD-ARC-ZZ-00002-2024
+
+[2026-01-02 18:42:12.582] [02-01-2026 18:42:12] [5-STEP-FILTER] ✅ Collected 1 elements from CMO-GCI-MOD-ARC-ZZ-00002-2024 (pre-filtered by Filters 1+5 at collector level)
+
+[2026-01-02 18:42:12.587] [02-01-2026 18:42:12] [PROPERTY-FILTER] MinWallThickness setting loaded: 7mm (will filter walls thinner than this)
+
+[2026-01-02 18:42:12.590] [02-01-2026 18:42:12] [5-STEP-FILTER] ✅ Filter 5 (Property Filters): Applied post-collection - 1 elements remaining after property filters
+
+[2026-01-02 18:42:12.592] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] ✅ Collected 1 host elements from linked document: CMO-GCI-MOD-ARC-ZZ-00002-2024
+
+[2026-01-02 18:42:12.594] [02-01-2026 18:42:12] [5-STEP-FILTER] ========== HOST COLLECTION COMPLETE: 1 total elements (Filters 1+4+5 applied: 1+4+5(category) at collector level, 5(property) post-collection) ==========
+
+[2026-01-02 18:42:12.596] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] ✅ Collected 1 host elements (pre-filtered at collector level)
+
+[2026-01-02 18:42:12.598] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] ⚠️ No elements collected - returning empty list
+
+[2026-01-02 18:42:12.602] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] Detection complete: 0 new zones, 0 total (duct accessories handled separately)
+
+[2026-01-02 18:42:12.604] [02-01-2026 18:42:12] [REFRESH-REFACTORED] ✅ Merged results: 0 from intersections + 1 from dampers = 1 total
+
+[2026-01-02 18:42:12.607] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] Phase 3: Post-processing results...
+
+[2026-01-02 18:42:12.611] [02-01-2026 18:42:12] [XML-CACHE] Updated cache with 1 clash zones
+
+[2026-01-02 18:42:12.613] [02-01-2026 18:42:12] [INTERSECTION-PROCESSOR] Post-processing complete
+
+[2026-01-02 18:42:12.648] [02-01-2026 18:42:12] [PARAM-CAPTURE-BATCH] Starting batch parameter capture for 1 zones...
+
+[2026-01-02 18:42:12.650] [02-01-2026 18:42:12] [PARAM-CAPTURE-BATCH] Collected 1 unique MEP elements and 1 unique host elements
+
+[2026-01-02 18:42:12.657] [02-01-2026 18:42:12] [PARAM-CAPTURE-BATCH] Element retrieval: 6ms (2 elements)
+
+[2026-01-02 18:42:12.675] [02-01-2026 18:42:12] [PARAM-CAPTURE-BATCH] Parameter processing: 15ms
+
+[2026-01-02 18:42:12.679] [02-01-2026 18:42:12] [PARAM-CAPTURE-BATCH] Parameter mapping: 1ms
+
+[2026-01-02 18:42:12.681] [02-01-2026 18:42:12] [PARAM-CAPTURE-BATCH] ✅ Batch capture complete: 1 zones in 31ms
+
+[2026-01-02 18:42:12.682] [02-01-2026 18:42:12] [PARAM-CAPTURE-BATCH] Total params: 11 → 12 (✅ NO LOSS)
+
+[2026-01-02 18:42:12.683] [02-01-2026 18:42:12] [PARAM-CAPTURE-BATCH] Average: 12.0 params/zone
+
+[2026-01-02 18:42:12.686] [02-01-2026 18:42:12] [PARAM-CAPTURE-BATCH] String pool size: 14 unique strings
+
+[2026-01-02 18:42:12.709] [02-01-2026 18:42:12] [MERGE-SAVE] Starting MergeAndSave - AllClashZones: 1, NewClashZones: 1
+
+[2026-01-02 18:42:12.711] [02-01-2026 18:42:12] [MERGE-SAVE] Loading enabled filter from: Ventilation
+
+[2026-01-02 18:42:12.754] [02-01-2026 18:42:12] [MERGE-SAVE] ✅ Enabled filter found: 'Ventilation'
+
+[2026-01-02 18:42:12.758] [02-01-2026 18:42:12] [SQLite] [SQLite] Assembly directory: C:\Users\jse2084\AppData\Local\Temp\RevitAddins\JSE_RevitAddin_MEP_OPENINGS-Executing-20260102_184159_3153
+
+[2026-01-02 18:42:12.759] [02-01-2026 18:42:12] [SQLite] [SQLite] ✅ Found dependency: System.Data.SQLite.dll
+
+[2026-01-02 18:42:12.761] [02-01-2026 18:42:12] [SQLite] [SQLite] ✅ Found dependency: x64\SQLite.Interop.dll
+
+[2026-01-02 18:42:12.763] [02-01-2026 18:42:12] [SQLite] [SQLite] Filters directory: C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_aakashvP9A2H\Filters
+
+[2026-01-02 18:42:12.765] [02-01-2026 18:42:12] [SQLite] [SQLite] Database path: C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_aakashvP9A2H\Filters\Shared_Test_Model_COMO_aakashvP9A2H_SleevePersistence.db
+
+[2026-01-02 18:42:12.769] [02-01-2026 18:42:12] [SQLite] [SQLite] ✅ Connection opened successfully
+
+[2026-01-02 18:42:12.771] [02-01-2026 18:42:12] [SQLite] [SQLite] ⏭️ Skipping schema verification (session-cached)
+
+[2026-01-02 18:42:12.772] [02-01-2026 18:42:12] [SQLite] [SQLite] ✅ Database ready (286720 bytes)
+
+[2026-01-02 18:42:12.774] [02-01-2026 18:42:12] [CLASH-ZONE-PERSISTENCE] ✅ SQLite dual-write enabled: C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_aakashvP9A2H\Filters\Shared_Test_Model_COMO_aakashvP9A2H_SleevePersistence.db
+
+[2026-01-02 18:42:12.776] [02-01-2026 18:42:12] [PERSIST-NAME] Saving ALL clash zones: Raw='Ventilation', Normalized='Ventilation', TotalZones=1
+
+[2026-01-02 18:42:12.777] [02-01-2026 18:42:12] [MERGE-SAVE] Calling SaveClashZones with 1 zones
+
+[2026-01-02 18:42:12.789] [02-01-2026 18:42:12] [CLASH-ZONE-PERSISTENCE] SaveClashZones CALLED: Zones=1, Filter='Ventilation', TargetFilter=Ventilation, SQLiteRepo=EXISTS
+
+[2026-01-02 18:42:12.797] [02-01-2026 18:42:12] [CLASH-ZONE-PERSISTENCE] Saving 1 clash zones across 1 categories
+
+[2026-01-02 18:42:12.800] [02-01-2026 18:42:12] [CLASH-ZONE-PERSISTENCE] Enriched 0/1 zones with MEP orientation\n
+[2026-01-02 18:42:12.804] [02-01-2026 18:42:12] [SQLite] [SQLite][BULK-OPTIMIZED] ⚡ Starting multi-category bulk save for 1 zones
+
+[2026-01-02 18:42:12.824] [02-01-2026 18:42:12] [SQLite] [SQLite][BATCH] Extracted 1 unique file combos from 1 zones
+
+[2026-01-02 18:42:12.826] [02-01-2026 18:42:12] [SQLite] [SQLite][BATCH] Found 0/1 existing file combos
+
+[2026-01-02 18:42:12.829] [02-01-2026 18:42:12] [SQLite] [SQLite][BATCH-DEBUG] New combos to insert: 1
+
+[2026-01-02 18:42:12.831] [02-01-2026 18:42:12] [SQLite] [SQLite][BATCH-DEBUG] Sample new combo: Linked='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002', Host='CMO-GCI-MOD-ARC-ZZ-00002-2024', Cat='Duct Accessories'
+
+[2026-01-02 18:42:12.833] [02-01-2026 18:42:12] [SQLite] [SQLite][BATCH-DEBUG] INSERT executed, rows affected: 1
+
+[2026-01-02 18:42:12.835] [02-01-2026 18:42:12] [SQLite] [SQLite][BATCH] Created 1 new file combos
+
+[2026-01-02 18:42:12.837] [02-01-2026 18:42:12] [SQLite] [SQLite][BATCH-DEBUG] Mapped 1/1 zones to ComboIds
+
+[2026-01-02 18:42:12.838] [02-01-2026 18:42:12] [SQLite] [SQLite][BATCH] ⚡ BatchGetOrCreateFileCombos completed in 12ms for 1 zones (12.0ms per zone)
+
+[2026-01-02 18:42:12.880] [02-01-2026 18:42:12] [SQLite] [SQLite] ✅ Bulk R-tree index updated for 1 zones
+
+[2026-01-02 18:42:12.904] [02-01-2026 18:42:12] [SQLite] [SQLite] ⚠️ InsertOrUpdateSleeveSnapshotsInternal: No valid zones! Total=1, Null=0, NoIds=1, WithSleeveId=0, WithClusterId=0
+
+[2026-01-02 18:42:12.906] [02-01-2026 18:42:12] [SQLite] [SQLite][BULK-OPTIMIZED] ✅ Completed multi-category save in 102ms
+
+[2026-01-02 18:42:12.907] [02-01-2026 18:42:12] [CLASH-ZONE-PERSISTENCE] Processing category 'Duct Accessories' (XML/Logging) with 1 zones
+
+[2026-01-02 18:42:12.916] [02-01-2026 18:42:12] [PERSIST-DEBUG] Analyzing 1 valid zones for file combo grouping
+
+[2026-01-02 18:42:12.924] [02-01-2026 18:42:12] [PERSIST-DEBUG]   Sample combo key: Linked='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002.rvt : 4 : location Shared', Host='CMO-GCI-MOD-ARC-ZZ-00002-2024.rvt : 1 : location Shared'
+
+[2026-01-02 18:42:12.929] [02-01-2026 18:42:12] [PERSIST-DEBUG] Valid combos to persist for 'Duct Accessories': 1
+
+[2026-01-02 18:42:12.931] [02-01-2026 18:42:12] [PERSIST-DEBUG]   Combo: Linked='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002.rvt : 4 : location Shared', Host='CMO-GCI-MOD-ARC-ZZ-00002-2024.rvt : 1 : location Shared', Zones=1
+
+[2026-01-02 18:42:12.933] [02-01-2026 18:42:12] [MERGE-SAVE] ✅ SaveClashZones completed successfully
+
+[2026-01-02 18:42:12.948] [02-01-2026 18:42:12] [REFRESH-REFACTORED] [FORCE-DETECTION] ⚡ Force Detection Mode enabled - resetting all flags (preserving GUIDs)
+
+[2026-01-02 18:42:12.952] [02-01-2026 18:42:12] [REFRESH-REFACTORED] [FORCE-DETECTION] ✅ Reset all flags for 0 zones - GUIDs preserved
+
+[2026-01-02 18:42:12.955] [02-01-2026 18:42:12] [MERGE-SAVE] ✅ SECTION BOX ACTIVE: Min=(274.55, 52.03, 21.27), Max=(276.60, 55.42, 25.66)
+
+[2026-01-02 18:42:12.956] 
+[02-01-2026 18:42:12] ========== IsCurrentClashFlag TRACING ==========
+
+[2026-01-02 18:42:12.958] [02-01-2026 18:42:12] UseBatchReadyForPlacementUpdate = True
+
+[2026-01-02 18:42:12.960] [02-01-2026 18:42:12] FilterNames: [Ventilation]
+
+[2026-01-02 18:42:12.962] [02-01-2026 18:42:12] Categories: [Duct Accessories]
+
+[2026-01-02 18:42:12.964] [02-01-2026 18:42:12] SectionBox: Present
+
+[2026-01-02 18:42:12.966] [02-01-2026 18:42:12] RESULT: markedCount = 1
+
+[2026-01-02 18:42:12.970] [02-01-2026 18:42:12] DB FLAG STATS: Total=0, IsCurrentClash=1: 0, ReadyForPlacement=1: 0, IsResolved=1: 0
+
+[2026-01-02 18:42:12.972] [02-01-2026 18:42:12] ========== END IsCurrentClashFlag TRACING ==========
+
+
+[2026-01-02 18:42:12.974] [02-01-2026 18:42:12] [MERGE-SAVE] [SECTION-BOX-FILTER] ✅ Set ReadyForPlacementFlag=1 for 1 zones
+
+[2026-01-02 18:42:12.976] [02-01-2026 18:42:12] [MERGE-SAVE] ⚠️ XML creation disabled - skipping base filter XML save (database only mode)
+

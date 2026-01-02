@@ -348,3 +348,255 @@
 [02-01-2026 10:34:06] Failed to load profile: Plumbing
 [02-01-2026 10:34:06] Failed to load profile: Fire Fighting
 [02-01-2026 10:34:06] Total profiles added: 5
+[02-01-2026 14:50:14] LoadProfileData: Checking project-specific file: C:\Users\jse2084\Documents\JSE_MEP_Profiles\profiles_Project_A263D173.xml
+[02-01-2026 14:50:14] File exists: True
+[02-01-2026 14:50:14] File content length: 1546
+[02-01-2026 14:50:14] Found profile name: mpef
+[02-01-2026 14:50:14] Found profile name: Mechanical
+[02-01-2026 14:50:14] Found profile name: Electrical
+[02-01-2026 14:50:14] Found profile name: Plumbing
+[02-01-2026 14:50:14] Found profile name: Fire Fighting
+[02-01-2026 14:50:14] Failed to load profile: mpef
+[02-01-2026 14:50:14] Failed to load profile: Mechanical
+[02-01-2026 14:50:14] Failed to load profile: Electrical
+[02-01-2026 14:50:14] Failed to load profile: Plumbing
+[02-01-2026 14:50:14] Failed to load profile: Fire Fighting
+[02-01-2026 14:50:14] Total profiles added: 5
+[02-01-2026 15:07:23] LoadProfileData: Checking project-specific file: C:\Users\jse2084\Documents\JSE_MEP_Profiles\profiles_Project_A263D173.xml
+[02-01-2026 15:07:23] File exists: True
+[02-01-2026 15:07:23] File content length: 1546
+[02-01-2026 15:07:23] Found profile name: mpef
+[02-01-2026 15:07:23] Found profile name: Mechanical
+[02-01-2026 15:07:23] Found profile name: Electrical
+[02-01-2026 15:07:23] Found profile name: Plumbing
+[02-01-2026 15:07:23] Found profile name: Fire Fighting
+[02-01-2026 15:07:23] Failed to load profile: mpef
+[02-01-2026 15:07:23] Failed to load profile: Mechanical
+[02-01-2026 15:07:23] Failed to load profile: Electrical
+[02-01-2026 15:07:23] Failed to load profile: Plumbing
+[02-01-2026 15:07:23] Failed to load profile: Fire Fighting
+[02-01-2026 15:07:23] Total profiles added: 5
+[02-01-2026 15:08:12] LoadProfileData: Checking project-specific file: C:\Users\jse2084\Documents\JSE_MEP_Profiles\profiles_Project_A263D173.xml
+[02-01-2026 15:08:12] File exists: True
+[02-01-2026 15:08:12] File content length: 1546
+[02-01-2026 15:08:12] Found profile name: mpef
+[02-01-2026 15:08:12] Found profile name: Mechanical
+[02-01-2026 15:08:12] Found profile name: Electrical
+[02-01-2026 15:08:12] Found profile name: Plumbing
+[02-01-2026 15:08:12] Found profile name: Fire Fighting
+[02-01-2026 15:08:12] Failed to load profile: mpef
+[02-01-2026 15:08:12] Failed to load profile: Mechanical
+[02-01-2026 15:08:12] Failed to load profile: Electrical
+[02-01-2026 15:08:12] Failed to load profile: Plumbing
+[02-01-2026 15:08:12] Failed to load profile: Fire Fighting
+[02-01-2026 15:08:12] Total profiles added: 5
+[02-01-2026 15:23:32] LoadProfileData: Checking project-specific file: C:\Users\jse2084\Documents\JSE_MEP_Profiles\profiles_Project_A263D173.xml
+[02-01-2026 15:23:32] File exists: True
+[02-01-2026 15:23:32] File content length: 1546
+[02-01-2026 15:23:32] Found profile name: mpef
+[02-01-2026 15:23:32] Found profile name: Mechanical
+[02-01-2026 15:23:32] Found profile name: Electrical
+[02-01-2026 15:23:32] Found profile name: Plumbing
+[02-01-2026 15:23:32] Found profile name: Fire Fighting
+[02-01-2026 15:23:32] Failed to load profile: mpef
+[02-01-2026 15:23:32] Failed to load profile: Mechanical
+[02-01-2026 15:23:32] Failed to load profile: Electrical
+[02-01-2026 15:23:32] Failed to load profile: Plumbing
+[02-01-2026 15:23:32] Failed to load profile: Fire Fighting
+[02-01-2026 15:23:32] Total profiles added: 5
+[02-01-2026 15:29:50] LoadProfileData: Checking project-specific file: C:\Users\jse2084\Documents\JSE_MEP_Profiles\profiles_Project_A263D173.xml
+[02-01-2026 15:29:50] File exists: True
+[02-01-2026 15:29:50] File content length: 1546
+[02-01-2026 15:29:50] Found profile name: mpef
+[02-01-2026 15:29:50] Found profile name: Mechanical
+[02-01-2026 15:29:50] Found profile name: Electrical
+[02-01-2026 15:29:50] Found profile name: Plumbing
+[02-01-2026 15:29:50] Found profile name: Fire Fighting
+[02-01-2026 15:29:50] Failed to load profile: mpef
+[02-01-2026 15:29:50] Failed to load profile: Mechanical
+[02-01-2026 15:29:50] Failed to load profile: Electrical
+[02-01-2026 15:29:50] Failed to load profile: Plumbing
+[02-01-2026 15:29:50] Failed to load profile: Fire Fighting
+[02-01-2026 15:29:50] Total profiles added: 5
+[02-01-2026 15:38:52] LoadProfileData: Checking project-specific file: C:\Users\jse2084\Desktop\Ram _ Working Folder\Scripts\13-10-2025 ( 2023 Sample file for Testing)\JSE_MEP_Profiles\profiles_Project_3862C05C.xml
+[02-01-2026 15:38:52] File exists: True
+[02-01-2026 15:38:52] File content length: 951679
+[02-01-2026 15:38:52] Found profile name: mepf
+[02-01-2026 15:38:52] Found profile name: Mechanical
+[02-01-2026 15:38:52] Found profile name: Electrical
+[02-01-2026 15:38:52] Found profile name: Plumbing
+[02-01-2026 15:38:52] Found profile name: Fire Fighting
+[02-01-2026 15:38:52] Failed to load profile: mepf
+[02-01-2026 15:38:52] Failed to load profile: Mechanical
+[02-01-2026 15:38:52] Failed to load profile: Electrical
+[02-01-2026 15:38:52] Failed to load profile: Plumbing
+[02-01-2026 15:38:52] Failed to load profile: Fire Fighting
+[02-01-2026 15:38:52] Total profiles added: 5
+[02-01-2026 15:47:43] LoadProfileData: Checking project-specific file: C:\Users\jse2084\Desktop\Ram _ Working Folder\Scripts\13-10-2025 ( 2023 Sample file for Testing)\JSE_MEP_Profiles\profiles_Project_3862C05C.xml
+[02-01-2026 15:47:43] File exists: True
+[02-01-2026 15:47:43] File content length: 951679
+[02-01-2026 15:47:43] Found profile name: mepf
+[02-01-2026 15:47:43] Found profile name: Mechanical
+[02-01-2026 15:47:43] Found profile name: Electrical
+[02-01-2026 15:47:43] Found profile name: Plumbing
+[02-01-2026 15:47:43] Found profile name: Fire Fighting
+[02-01-2026 15:47:43] Failed to load profile: mepf
+[02-01-2026 15:47:43] Failed to load profile: Mechanical
+[02-01-2026 15:47:43] Failed to load profile: Electrical
+[02-01-2026 15:47:43] Failed to load profile: Plumbing
+[02-01-2026 15:47:43] Failed to load profile: Fire Fighting
+[02-01-2026 15:47:43] Total profiles added: 5
+[02-01-2026 15:54:46] LoadProfileData: Checking project-specific file: C:\Users\jse2084\Documents\JSE_MEP_Profiles\profiles_Project_A263D173.xml
+[02-01-2026 15:54:46] File exists: True
+[02-01-2026 15:54:46] File content length: 1546
+[02-01-2026 15:54:46] Found profile name: mpef
+[02-01-2026 15:54:46] Found profile name: Mechanical
+[02-01-2026 15:54:46] Found profile name: Electrical
+[02-01-2026 15:54:46] Found profile name: Plumbing
+[02-01-2026 15:54:46] Found profile name: Fire Fighting
+[02-01-2026 15:54:46] Failed to load profile: mpef
+[02-01-2026 15:54:46] Failed to load profile: Mechanical
+[02-01-2026 15:54:46] Failed to load profile: Electrical
+[02-01-2026 15:54:46] Failed to load profile: Plumbing
+[02-01-2026 15:54:46] Failed to load profile: Fire Fighting
+[02-01-2026 15:54:46] Total profiles added: 5
+[02-01-2026 15:56:10] LoadProfileData: Checking project-specific file: C:\Users\jse2084\Documents\JSE_MEP_Profiles\profiles_Project_A263D173.xml
+[02-01-2026 15:56:10] File exists: True
+[02-01-2026 15:56:10] File content length: 1546
+[02-01-2026 15:56:10] Found profile name: mpef
+[02-01-2026 15:56:10] Found profile name: Mechanical
+[02-01-2026 15:56:10] Found profile name: Electrical
+[02-01-2026 15:56:10] Found profile name: Plumbing
+[02-01-2026 15:56:10] Found profile name: Fire Fighting
+[02-01-2026 15:56:10] Failed to load profile: mpef
+[02-01-2026 15:56:10] Failed to load profile: Mechanical
+[02-01-2026 15:56:10] Failed to load profile: Electrical
+[02-01-2026 15:56:10] Failed to load profile: Plumbing
+[02-01-2026 15:56:10] Failed to load profile: Fire Fighting
+[02-01-2026 15:56:10] Total profiles added: 5
+[02-01-2026 15:56:27] LoadProfileData: Checking project-specific file: C:\Users\jse2084\Documents\JSE_MEP_Profiles\profiles_Project_A263D173.xml
+[02-01-2026 15:56:27] File exists: True
+[02-01-2026 15:56:27] File content length: 1546
+[02-01-2026 15:56:27] Found profile name: mpef
+[02-01-2026 15:56:27] Found profile name: Mechanical
+[02-01-2026 15:56:27] Found profile name: Electrical
+[02-01-2026 15:56:27] Found profile name: Plumbing
+[02-01-2026 15:56:27] Found profile name: Fire Fighting
+[02-01-2026 15:56:27] Failed to load profile: mpef
+[02-01-2026 15:56:27] Failed to load profile: Mechanical
+[02-01-2026 15:56:27] Failed to load profile: Electrical
+[02-01-2026 15:56:27] Failed to load profile: Plumbing
+[02-01-2026 15:56:27] Failed to load profile: Fire Fighting
+[02-01-2026 15:56:27] Total profiles added: 5
+[02-01-2026 16:07:52] LoadProfileData: Checking project-specific file: C:\Users\jse2084\Documents\JSE_MEP_Profiles\profiles_Project_A263D173.xml
+[02-01-2026 16:07:52] File exists: True
+[02-01-2026 16:07:52] File content length: 1546
+[02-01-2026 16:07:52] Found profile name: mpef
+[02-01-2026 16:07:52] Found profile name: Mechanical
+[02-01-2026 16:07:52] Found profile name: Electrical
+[02-01-2026 16:07:52] Found profile name: Plumbing
+[02-01-2026 16:07:52] Found profile name: Fire Fighting
+[02-01-2026 16:07:53] Failed to load profile: mpef
+[02-01-2026 16:07:53] Failed to load profile: Mechanical
+[02-01-2026 16:07:53] Failed to load profile: Electrical
+[02-01-2026 16:07:53] Failed to load profile: Plumbing
+[02-01-2026 16:07:53] Failed to load profile: Fire Fighting
+[02-01-2026 16:07:53] Total profiles added: 5
+[02-01-2026 16:51:09] LoadProfileData: Checking project-specific file: C:\Users\jse2084\Documents\JSE_MEP_Profiles\profiles_Project_A263D173.xml
+[02-01-2026 16:51:09] File exists: True
+[02-01-2026 16:51:09] File content length: 1546
+[02-01-2026 16:51:09] Found profile name: mpef
+[02-01-2026 16:51:09] Found profile name: Mechanical
+[02-01-2026 16:51:09] Found profile name: Electrical
+[02-01-2026 16:51:09] Found profile name: Plumbing
+[02-01-2026 16:51:09] Found profile name: Fire Fighting
+[02-01-2026 16:51:09] Failed to load profile: mpef
+[02-01-2026 16:51:09] Failed to load profile: Mechanical
+[02-01-2026 16:51:09] Failed to load profile: Electrical
+[02-01-2026 16:51:09] Failed to load profile: Plumbing
+[02-01-2026 16:51:09] Failed to load profile: Fire Fighting
+[02-01-2026 16:51:09] Total profiles added: 5
+[02-01-2026 16:55:56] LoadProfileData: Checking project-specific file: C:\Users\jse2084\Documents\JSE_MEP_Profiles\profiles_Project_A263D173.xml
+[02-01-2026 16:55:56] File exists: True
+[02-01-2026 16:55:56] File content length: 1546
+[02-01-2026 16:55:56] Found profile name: mpef
+[02-01-2026 16:55:56] Found profile name: Mechanical
+[02-01-2026 16:55:56] Found profile name: Electrical
+[02-01-2026 16:55:56] Found profile name: Plumbing
+[02-01-2026 16:55:56] Found profile name: Fire Fighting
+[02-01-2026 16:55:56] Failed to load profile: mpef
+[02-01-2026 16:55:56] Failed to load profile: Mechanical
+[02-01-2026 16:55:56] Failed to load profile: Electrical
+[02-01-2026 16:55:56] Failed to load profile: Plumbing
+[02-01-2026 16:55:56] Failed to load profile: Fire Fighting
+[02-01-2026 16:55:56] Total profiles added: 5
+[02-01-2026 16:59:48] LoadProfileData: Checking project-specific file: C:\Users\jse2084\Documents\JSE_MEP_Profiles\profiles_Project_A263D173.xml
+[02-01-2026 16:59:48] File exists: True
+[02-01-2026 16:59:48] File content length: 1546
+[02-01-2026 16:59:48] Found profile name: mpef
+[02-01-2026 16:59:48] Found profile name: Mechanical
+[02-01-2026 16:59:48] Found profile name: Electrical
+[02-01-2026 16:59:48] Found profile name: Plumbing
+[02-01-2026 16:59:48] Found profile name: Fire Fighting
+[02-01-2026 16:59:48] Failed to load profile: mpef
+[02-01-2026 16:59:48] Failed to load profile: Mechanical
+[02-01-2026 16:59:48] Failed to load profile: Electrical
+[02-01-2026 16:59:48] Failed to load profile: Plumbing
+[02-01-2026 16:59:48] Failed to load profile: Fire Fighting
+[02-01-2026 16:59:48] Total profiles added: 5
+[02-01-2026 17:02:10] LoadProfileData: Checking project-specific file: C:\Users\jse2084\Documents\JSE_MEP_Profiles\profiles_Project_A263D173.xml
+[02-01-2026 17:02:10] File exists: True
+[02-01-2026 17:02:10] File content length: 1546
+[02-01-2026 17:02:10] Found profile name: mpef
+[02-01-2026 17:02:10] Found profile name: Mechanical
+[02-01-2026 17:02:10] Found profile name: Electrical
+[02-01-2026 17:02:10] Found profile name: Plumbing
+[02-01-2026 17:02:10] Found profile name: Fire Fighting
+[02-01-2026 17:02:10] Failed to load profile: mpef
+[02-01-2026 17:02:10] Failed to load profile: Mechanical
+[02-01-2026 17:02:10] Failed to load profile: Electrical
+[02-01-2026 17:02:10] Failed to load profile: Plumbing
+[02-01-2026 17:02:10] Failed to load profile: Fire Fighting
+[02-01-2026 17:02:10] Total profiles added: 5
+[02-01-2026 17:14:06] LoadProfileData: Checking project-specific file: C:\Users\jse2084\Documents\JSE_MEP_Profiles\profiles_Project_A263D173.xml
+[02-01-2026 17:14:06] File exists: True
+[02-01-2026 17:14:06] File content length: 1546
+[02-01-2026 17:14:06] Found profile name: mpef
+[02-01-2026 17:14:06] Found profile name: Mechanical
+[02-01-2026 17:14:06] Found profile name: Electrical
+[02-01-2026 17:14:06] Found profile name: Plumbing
+[02-01-2026 17:14:06] Found profile name: Fire Fighting
+[02-01-2026 17:14:06] Failed to load profile: mpef
+[02-01-2026 17:14:06] Failed to load profile: Mechanical
+[02-01-2026 17:14:06] Failed to load profile: Electrical
+[02-01-2026 17:14:06] Failed to load profile: Plumbing
+[02-01-2026 17:14:06] Failed to load profile: Fire Fighting
+[02-01-2026 17:14:06] Total profiles added: 5
+[02-01-2026 17:54:31] LoadProfileData: Checking project-specific file: C:\Users\jse2084\Documents\JSE_MEP_Profiles\profiles_Project_A263D173.xml
+[02-01-2026 17:54:31] File exists: True
+[02-01-2026 17:54:31] File content length: 1546
+[02-01-2026 17:54:31] Found profile name: mpef
+[02-01-2026 17:54:31] Found profile name: Mechanical
+[02-01-2026 17:54:31] Found profile name: Electrical
+[02-01-2026 17:54:31] Found profile name: Plumbing
+[02-01-2026 17:54:31] Found profile name: Fire Fighting
+[02-01-2026 17:54:31] Failed to load profile: mpef
+[02-01-2026 17:54:31] Failed to load profile: Mechanical
+[02-01-2026 17:54:31] Failed to load profile: Electrical
+[02-01-2026 17:54:31] Failed to load profile: Plumbing
+[02-01-2026 17:54:31] Failed to load profile: Fire Fighting
+[02-01-2026 17:54:31] Total profiles added: 5
+[02-01-2026 18:41:59] LoadProfileData: Checking project-specific file: C:\Users\jse2084\Documents\JSE_MEP_Profiles\profiles_Project_A263D173.xml
+[02-01-2026 18:41:59] File exists: True
+[02-01-2026 18:41:59] File content length: 1546
+[02-01-2026 18:41:59] Found profile name: mpef
+[02-01-2026 18:41:59] Found profile name: Mechanical
+[02-01-2026 18:41:59] Found profile name: Electrical
+[02-01-2026 18:41:59] Found profile name: Plumbing
+[02-01-2026 18:41:59] Found profile name: Fire Fighting
+[02-01-2026 18:41:59] Failed to load profile: mpef
+[02-01-2026 18:41:59] Failed to load profile: Mechanical
+[02-01-2026 18:41:59] Failed to load profile: Electrical
+[02-01-2026 18:41:59] Failed to load profile: Plumbing
+[02-01-2026 18:41:59] Failed to load profile: Fire Fighting
+[02-01-2026 18:41:59] Total profiles added: 5

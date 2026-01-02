@@ -1,0 +1,92 @@
+[2026-01-02 20:35:35.449] [20:35:35.448] [SetDepthParameter] Zone=e90a7cb6-bade-a0dc-0741-e6a350974656, HostType='Wall', IsWallHost=True, IsFramingHost=False, UsedCache=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, FinalThickness=200.0mm
+
+[2026-01-02 20:35:35.452] [20:35:35.452] [SetDepthParameter] ✅ Zone=e90a7cb6-bade-a0dc-0741-e6a350974656, Sleeve=1210476: Set Depth=200.0mm
+
+[2026-01-02 20:35:35.581] [20:35:35.581] [SetDepthParameter] Zone=edfd5dca-bdac-8a33-7ce4-78d2ff0b0cb4, HostType='Wall', IsWallHost=True, IsFramingHost=False, UsedCache=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, FinalThickness=200.0mm
+
+[2026-01-02 20:35:35.583] [20:35:35.582] [SetDepthParameter] ✅ Zone=edfd5dca-bdac-8a33-7ce4-78d2ff0b0cb4, Sleeve=1210485: Set Depth=200.0mm
+
+[2026-01-02 20:35:35.687] [20:35:35.687] [SetDepthParameter] Zone=a60cfb2c-6455-8967-4840-eaab7e13bdc5, HostType='Wall', IsWallHost=True, IsFramingHost=False, UsedCache=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, FinalThickness=200.0mm
+
+[2026-01-02 20:35:35.690] [20:35:35.689] [SetDepthParameter] ✅ Zone=a60cfb2c-6455-8967-4840-eaab7e13bdc5, Sleeve=1210492: Set Depth=200.0mm
+
+[2026-01-02 20:35:35.775] [20:35:35.775] [SetDepthParameter] Zone=db86329e-1010-2021-a4c3-2b9e3e98021a, HostType='Wall', IsWallHost=True, IsFramingHost=False, UsedCache=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, FinalThickness=200.0mm
+
+[2026-01-02 20:35:35.777] [20:35:35.776] [SetDepthParameter] ✅ Zone=db86329e-1010-2021-a4c3-2b9e3e98021a, Sleeve=1210499: Set Depth=200.0mm
+
+[2026-01-02 20:35:35.869] [20:35:35.869] [SetDepthParameter] Zone=0d5bc810-bfb7-4bbb-2444-fa26b583ed82, HostType='Wall', IsWallHost=True, IsFramingHost=False, UsedCache=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, FinalThickness=200.0mm
+
+[2026-01-02 20:35:35.871] [20:35:35.870] [SetDepthParameter] ✅ Zone=0d5bc810-bfb7-4bbb-2444-fa26b583ed82, Sleeve=1210506: Set Depth=200.0mm
+
+[2026-01-02 20:35:35.963] [20:35:35.962] [SetDepthParameter] Zone=9054642b-26fd-79c7-2d65-3ab037771243, HostType='Wall', IsWallHost=True, IsFramingHost=False, UsedCache=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, FinalThickness=200.0mm
+
+[2026-01-02 20:35:35.965] [20:35:35.964] [SetDepthParameter] ✅ Zone=9054642b-26fd-79c7-2d65-3ab037771243, Sleeve=1210513: Set Depth=200.0mm
+
+[2026-01-02 20:35:36.060] [20:35:36.060] [SetDepthParameter] Zone=ee69ca6f-52c2-6f16-eeb5-4979293fd1e6, HostType='Wall', IsWallHost=True, IsFramingHost=False, UsedCache=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, FinalThickness=200.0mm
+
+[2026-01-02 20:35:36.062] [20:35:36.062] [SetDepthParameter] ✅ Zone=ee69ca6f-52c2-6f16-eeb5-4979293fd1e6, Sleeve=1210520: Set Depth=200.0mm
+
+[2026-01-02 20:35:36.155] [20:35:36.155] [SetDepthParameter] Zone=b375875a-240b-b59a-2b68-bbf300a9145d, HostType='Wall', IsWallHost=True, IsFramingHost=False, UsedCache=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, FinalThickness=200.0mm
+
+[2026-01-02 20:35:36.157] [20:35:36.157] [SetDepthParameter] ✅ Zone=b375875a-240b-b59a-2b68-bbf300a9145d, Sleeve=1210527: Set Depth=200.0mm
+
+[2026-01-02 20:35:36.249] [20:35:36.248] [SetDepthParameter] Zone=c2d60296-f2a7-fa6d-665e-941f035331b6, HostType='Wall', IsWallHost=True, IsFramingHost=False, UsedCache=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, FinalThickness=200.0mm
+
+[2026-01-02 20:35:36.251] [20:35:36.250] [SetDepthParameter] ✅ Zone=c2d60296-f2a7-fa6d-665e-941f035331b6, Sleeve=1210534: Set Depth=200.0mm
+
+[2026-01-02 20:35:36.349] [20:35:36.349] [SetDepthParameter] Zone=661b5e54-02f1-b59b-07f2-b22b7fbdb183, HostType='Wall', IsWallHost=True, IsFramingHost=False, UsedCache=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, FinalThickness=200.0mm
+
+[2026-01-02 20:35:36.351] [20:35:36.351] [SetDepthParameter] ✅ Zone=661b5e54-02f1-b59b-07f2-b22b7fbdb183, Sleeve=1210541: Set Depth=200.0mm
+
+[2026-01-02 20:35:36.448] [20:35:36.447] [SetDepthParameter] Zone=091186e8-2ce9-f546-bf55-e9084850265e, HostType='Wall', IsWallHost=True, IsFramingHost=False, UsedCache=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, FinalThickness=200.0mm
+
+[2026-01-02 20:35:36.450] [20:35:36.449] [SetDepthParameter] ✅ Zone=091186e8-2ce9-f546-bf55-e9084850265e, Sleeve=1210548: Set Depth=200.0mm
+
+[2026-01-02 20:35:36.558] [20:35:36.557] [SetDepthParameter] Zone=3f3107a3-1ff4-60f2-bebc-a52a386aa2e0, HostType='Wall', IsWallHost=True, IsFramingHost=False, UsedCache=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, FinalThickness=200.0mm
+
+[2026-01-02 20:35:36.560] [20:35:36.559] [SetDepthParameter] ✅ Zone=3f3107a3-1ff4-60f2-bebc-a52a386aa2e0, Sleeve=1210555: Set Depth=200.0mm
+
+[2026-01-02 20:35:36.658] [20:35:36.657] [SetDepthParameter] Zone=30808e2b-18c0-40db-60c3-4208b93ac49e, HostType='Wall', IsWallHost=True, IsFramingHost=False, UsedCache=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, FinalThickness=200.0mm
+
+[2026-01-02 20:35:36.660] [20:35:36.659] [SetDepthParameter] ✅ Zone=30808e2b-18c0-40db-60c3-4208b93ac49e, Sleeve=1210562: Set Depth=200.0mm
+
+[2026-01-02 20:35:36.753] [20:35:36.753] [SetDepthParameter] Zone=df7fc73d-898f-9c2d-29b7-0c673b9b8c64, HostType='Wall', IsWallHost=True, IsFramingHost=False, UsedCache=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, FinalThickness=200.0mm
+
+[2026-01-02 20:35:36.755] [20:35:36.755] [SetDepthParameter] ✅ Zone=df7fc73d-898f-9c2d-29b7-0c673b9b8c64, Sleeve=1210569: Set Depth=200.0mm
+
+[2026-01-02 20:35:36.850] [20:35:36.850] [SetDepthParameter] Zone=720e069c-a6a6-25fe-1056-445e5f0e7aac, HostType='Wall', IsWallHost=True, IsFramingHost=False, UsedCache=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, FinalThickness=200.0mm
+
+[2026-01-02 20:35:36.852] [20:35:36.851] [SetDepthParameter] ✅ Zone=720e069c-a6a6-25fe-1056-445e5f0e7aac, Sleeve=1210576: Set Depth=200.0mm
+
+[2026-01-02 20:35:36.945] [20:35:36.945] [SetDepthParameter] Zone=049cd767-5dd6-cd86-93b1-07e9c5e91455, HostType='Wall', IsWallHost=True, IsFramingHost=False, UsedCache=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, FinalThickness=200.0mm
+
+[2026-01-02 20:35:36.947] [20:35:36.946] [SetDepthParameter] ✅ Zone=049cd767-5dd6-cd86-93b1-07e9c5e91455, Sleeve=1210583: Set Depth=200.0mm
+
+[2026-01-02 20:35:37.042] [20:35:37.041] [SetDepthParameter] Zone=2031e5e3-284f-f716-e3f7-64ce8a6a00c9, HostType='Wall', IsWallHost=True, IsFramingHost=False, UsedCache=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, FinalThickness=200.0mm
+
+[2026-01-02 20:35:37.044] [20:35:37.043] [SetDepthParameter] ✅ Zone=2031e5e3-284f-f716-e3f7-64ce8a6a00c9, Sleeve=1210590: Set Depth=200.0mm
+
+[2026-01-02 20:35:37.137] [20:35:37.136] [SetDepthParameter] Zone=6c8919ef-e5a7-bb03-804e-7efc809efd31, HostType='Wall', IsWallHost=True, IsFramingHost=False, UsedCache=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, FinalThickness=200.0mm
+
+[2026-01-02 20:35:37.139] [20:35:37.138] [SetDepthParameter] ✅ Zone=6c8919ef-e5a7-bb03-804e-7efc809efd31, Sleeve=1210597: Set Depth=200.0mm
+
+[2026-01-02 20:35:37.231] [20:35:37.231] [SetDepthParameter] Zone=23970e7f-c4be-e0c0-13ca-aa5427283ab4, HostType='Wall', IsWallHost=True, IsFramingHost=False, UsedCache=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, FinalThickness=200.0mm
+
+[2026-01-02 20:35:37.233] [20:35:37.232] [SetDepthParameter] ✅ Zone=23970e7f-c4be-e0c0-13ca-aa5427283ab4, Sleeve=1210604: Set Depth=200.0mm
+
+[2026-01-02 20:35:37.321] [20:35:37.320] [SetDepthParameter] Zone=3674d177-7325-2b17-7e42-c79460bffd18, HostType='Wall', IsWallHost=True, IsFramingHost=False, UsedCache=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, FinalThickness=200.0mm
+
+[2026-01-02 20:35:37.323] [20:35:37.322] [SetDepthParameter] ✅ Zone=3674d177-7325-2b17-7e42-c79460bffd18, Sleeve=1210611: Set Depth=200.0mm
+
+[2026-01-02 20:35:37.416] [20:35:37.415] [SetDepthParameter] Zone=e83315b6-5ebf-60fb-5a98-11b4612eb77f, HostType='Wall', IsWallHost=True, IsFramingHost=False, UsedCache=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, FinalThickness=200.0mm
+
+[2026-01-02 20:35:37.419] [20:35:37.418] [SetDepthParameter] ✅ Zone=e83315b6-5ebf-60fb-5a98-11b4612eb77f, Sleeve=1210618: Set Depth=200.0mm
+
+[2026-01-02 20:35:37.513] [20:35:37.512] [SetDepthParameter] Zone=c52f27f2-825a-cee3-ff19-44780ebac505, HostType='Wall', IsWallHost=True, IsFramingHost=False, UsedCache=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, FinalThickness=200.0mm
+
+[2026-01-02 20:35:37.515] [20:35:37.514] [SetDepthParameter] ✅ Zone=c52f27f2-825a-cee3-ff19-44780ebac505, Sleeve=1210625: Set Depth=200.0mm
+
+[2026-01-02 20:35:37.609] [20:35:37.609] [SetDepthParameter] Zone=f4ed0093-18c1-fe0c-b7e4-0dc9ce4e0a17, HostType='Wall', IsWallHost=True, IsFramingHost=False, UsedCache=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, FinalThickness=200.0mm
+
+[2026-01-02 20:35:37.611] [20:35:37.611] [SetDepthParameter] ✅ Zone=f4ed0093-18c1-fe0c-b7e4-0dc9ce4e0a17, Sleeve=1210632: Set Depth=200.0mm
+

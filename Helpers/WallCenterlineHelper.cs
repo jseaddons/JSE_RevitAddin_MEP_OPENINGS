@@ -9,6 +9,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
         /// ✅ SIMPLE METHOD: Get wall centerline point using bounding box center (no ray tracing/projection).
         /// Gets wall bounding box, calculates center point, and merges with intersection point based on orientation.
         /// This is more reliable than projection/ray tracing methods which can find wall face instead of centerline.
+        /// ✅ CRITICAL FIX: Transform bbox center to HOST coordinates for linked walls before merging.
         /// </summary>
         public static XYZ GetWallCenterlinePointFromBbox(Wall wall, XYZ intersectionPoint, Document hostDocument = null)
         {
@@ -27,7 +28,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
             
             try
             {
-                // ✅ STEP 1: Get wall bounding box
+                // ✅ STEP 1: Get wall bounding box (in LOCAL coordinate space for linked walls)
                 BoundingBoxXYZ wallBbox = wall.get_BoundingBox(null);
                 if (wallBbox == null)
                 {
@@ -35,17 +36,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                     return intersectionPoint;
                 }
                 
-                // ✅ STEP 2: Calculate wall bounding box center (this is the wall centerline)
-                XYZ wallBboxCenter = new XYZ(
+                // ✅ STEP 2: Calculate wall bounding box center (this is the wall centerline in LOCAL coords)
+                XYZ wallBboxCenterLocal = new XYZ(
                     (wallBbox.Min.X + wallBbox.Max.X) / 2.0,
                     (wallBbox.Min.Y + wallBbox.Max.Y) / 2.0,
                     (wallBbox.Min.Z + wallBbox.Max.Z) / 2.0
                 );
                 
+                // ✅ CRITICAL FIX: Transform bbox center to HOST coordinates for linked walls
+                XYZ wallBboxCenter = wallBboxCenterLocal;
+                Transform linkTransform = null;
+                Document wallDoc = wall.Document;
+                
+                if (hostDocument != null && wallDoc != null && wallDoc != hostDocument)
+                {
+                    // Wall is from linked document, find the RevitLinkInstance
+                    var linkInstances = new FilteredElementCollector(hostDocument)
+                        .OfClass(typeof(RevitLinkInstance))
+                        .Cast<RevitLinkInstance>();
+                    
+                    foreach (var linkInstance in linkInstances)
+                    {
+                        var linkDoc = linkInstance.GetLinkDocument();
+                        if (linkDoc != null && linkDoc.Equals(wallDoc))
+                        {
+                            linkTransform = linkInstance.GetTotalTransform();
+                            break;
+                        }
+                    }
+                    
+                    // Transform bbox center from LOCAL to HOST coordinates
+                    if (linkTransform != null && !linkTransform.IsIdentity)
+                    {
+                        wallBboxCenter = linkTransform.OfPoint(wallBboxCenterLocal);
+                        if (OptimizationFlags.UseDiagnosticMode)
+                        {
+                            DebugLogger.Log($"[CENTERLINE-DEBUG] LINKED WALL: Transformed bbox center from LOCAL ({wallBboxCenterLocal.X:F6}, {wallBboxCenterLocal.Y:F6}, {wallBboxCenterLocal.Z:F6}) to HOST ({wallBboxCenter.X:F6}, {wallBboxCenter.Y:F6}, {wallBboxCenter.Z:F6})");
+                        }
+                    }
+                }
+                
                 if (OptimizationFlags.UseDiagnosticMode)
                 {
-                    DebugLogger.Log($"[CENTERLINE-DEBUG] Wall bbox: Min=({wallBbox.Min.X:F6}ft, {wallBbox.Min.Y:F6}ft, {wallBbox.Min.Z:F6}ft), Max=({wallBbox.Max.X:F6}ft, {wallBbox.Max.Y:F6}ft, {wallBbox.Max.Z:F6}ft)");
-                    DebugLogger.Log($"[CENTERLINE-DEBUG] Wall bbox center (centerline): ({wallBboxCenter.X:F6}ft, {wallBboxCenter.Y:F6}ft, {wallBboxCenter.Z:F6}ft)");
+                    DebugLogger.Log($"[CENTERLINE-DEBUG] Wall bbox (local): Min=({wallBbox.Min.X:F6}ft, {wallBbox.Min.Y:F6}ft, {wallBbox.Min.Z:F6}ft), Max=({wallBbox.Max.X:F6}ft, {wallBbox.Max.Y:F6}ft, {wallBbox.Max.Z:F6}ft)");
+                    DebugLogger.Log($"[CENTERLINE-DEBUG] Wall bbox center (host coords): ({wallBboxCenter.X:F6}ft, {wallBboxCenter.Y:F6}ft, {wallBboxCenter.Z:F6}ft)");
                 }
                 
                 // ✅ STEP 3: Get wall direction to determine orientation
@@ -69,13 +103,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                     wallDirection = (end - start).Normalize();
                 }
                 
-                // ✅ STEP 4: Determine if wall is X-wall or Y-wall
+                // ✅ Transform wall direction to host coordinates if linked
+                if (linkTransform != null && !linkTransform.IsIdentity)
+                {
+                    wallDirection = linkTransform.OfVector(wallDirection).Normalize();
+                }
+                
+                // ✅ STEP 4: Determine if wall is X-wall or Y-wall (in HOST coordinate system)
                 double absX = Math.Abs(wallDirection.X);
                 double absY = Math.Abs(wallDirection.Y);
                 bool isXWall = absX > absY;
                 bool isYWall = absY > absX;
                 
                 // ✅ STEP 5: Merge coordinates based on wall orientation
+                // NOW both wallBboxCenter and intersectionPoint are in HOST coordinates!
                 XYZ centerlinePoint;
                 if (isXWall)
                 {
@@ -179,9 +220,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                     {
                         var curve = locationCurve.Curve;
                         
-                        // ✅ STEP 1: Project intersection point onto wall curve (along wall length)
-                        // This gives us a point on the wall centerline at the same position along the wall
-                        double curveParam = curve.Project(intersectionPoint).Parameter;
+                        // ✅ STEP 1: Transform intersection point to Local Space if needed
+                        XYZ localIntersectionPoint = intersectionPoint;
+                        if (linkTransform != null && !linkTransform.IsIdentity)
+                        {
+                            // Convert Host Point -> Local Point to allow valid projection onto Local Curve
+                            localIntersectionPoint = linkTransform.Inverse.OfPoint(intersectionPoint);
+                            DebugLogger.Log($"[CENTERLINE-DEBUG] Transformed Intersection to Local Space: {localIntersectionPoint}");
+                        }
+                        
+                        // ✅ STEP 2: Project LOCAL intersection point onto wall curve
+                        // This gives us a point on the wall centerline in Local Space
+                        double curveParam = curve.Project(localIntersectionPoint).Parameter;
                         XYZ pointOnCurve = curve.Evaluate(curveParam, true);
                         
                         // ✅ LINKED DOCUMENT FIX: Transform point on curve to host coordinates if needed

@@ -1,38 +1,38 @@
-[2026-01-02 10:34:16.716] [10:34:16.715] [DB-LOAD-MEP] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: MepWidth=0.492126ft (150.0mm), MepHeight=0.574147ft (175.0mm)
+[2026-01-02 18:42:13.025] [18:42:13.024] [DB-LOAD-MEP] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: MepWidth=0.492126ft (150.0mm), MepHeight=0.574147ft (175.0mm)
 
-[2026-01-02 10:34:18.526] [10:34:18.525] [DB-LOAD-MEP] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: MepWidth=0.492126ft (150.0mm), MepHeight=0.574147ft (175.0mm)
+[2026-01-02 18:42:14.442] [18:42:14.441] [DB-LOAD-MEP] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: MepWidth=0.492126ft (150.0mm), MepHeight=0.574147ft (175.0mm)
 
-[2026-01-02 10:34:18.614] [10:34:18.613] [DB-LOAD-MEP] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: MepWidth=0.492126ft (150.0mm), MepHeight=0.574147ft (175.0mm)
+[2026-01-02 18:42:14.509] [18:42:14.508] [DB-LOAD-MEP] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: MepWidth=0.492126ft (150.0mm), MepHeight=0.574147ft (175.0mm)
 
-[2026-01-02 10:34:18.853] [10:34:18.852] [STRATEGY-READ] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: MepElementWidth=0.492126ft (150.0mm), MepElementHeight=0.574147ft (175.0mm)
+[2026-01-02 18:42:14.751] [18:42:14.751] [STRATEGY-READ] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: MepElementWidth=0.492126ft (150.0mm), MepElementHeight=0.574147ft (175.0mm)
 
-[2026-01-02 10:34:18.859] [10:34:18.858] [STRATEGY-CONNECTOR-DETECTION] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: HasMepConnector=False, DamperConnectorSide='' (World Coordinate Direction), HostOrientation='Y', StructuralElementType='Wall'
+[2026-01-02 18:42:14.757] [18:42:14.757] [STRATEGY-CONNECTOR-DETECTION] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: HasMepConnector=False, DamperConnectorSide='' (World Coordinate Direction), HostOrientation='Y', StructuralElementType='Wall'
 
-[2026-01-02 10:34:18.860] [10:34:18.859] [STRATEGY-CLEARANCE] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: MEP=100mm, Other=50mm
+[2026-01-02 18:42:14.759] [18:42:14.758] [STRATEGY-CLEARANCE] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: MEP=100mm, Other=50mm
 
-[2026-01-02 10:34:18.862] [10:34:18.861] [STRATEGY-BRANCHING] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: HasMepConnector=False, DamperConnectorSide=''
+[2026-01-02 18:42:14.761] [18:42:14.760] [STRATEGY-BRANCHING] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: HasMepConnector=False, DamperConnectorSide=''
 
-[2026-01-02 10:34:18.863] [10:34:18.863] [STRATEGY-BRANCH-DECISION] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: Branch=SYMMETRIC PATH (no MEP connector), HasMepConnector=False, DamperConnectorSide=''
+[2026-01-02 18:42:14.762] [18:42:14.762] [STRATEGY-BRANCH-DECISION] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: Branch=SYMMETRIC PATH (no MEP connector), HasMepConnector=False, DamperConnectorSide=''
 
-[2026-01-02 10:34:18.867] [10:34:18.866] [STRATEGY-STANDARD-FINAL] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: Base(150.0mm) + Clearance(100.0mm) = Final(250.0mm x 275.0mm)
+[2026-01-02 18:42:14.765] [18:42:14.765] [STRATEGY-STANDARD-FINAL] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: Base(150.0mm) + Clearance(100.0mm) = Final(250.0mm x 275.0mm)
 
-[2026-01-02 10:34:18.896] [10:34:18.894] [TRACE] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: StructId=1043726, Not in HostDoc, checking Links... Found in Link 'CMO-GCI-MOD-ARC-ZZ-00002-2024', HostFound=True, HostType=Wall, 
+[2026-01-02 18:42:14.794] [18:42:14.792] [TRACE] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: StructId=1043726, Not in HostDoc, checking Links... Found in Link 'CMO-GCI-MOD-ARC-ZZ-00002-2024', HostFound=True, HostType=Wall, 
 
-[2026-01-02 10:34:18.900] [10:34:18.899] [TRACE] Found damper element in linked document: CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002, storing link transform
+[2026-01-02 18:42:14.797] [18:42:14.796] [TRACE] Found damper element in linked document: CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002, storing link transform
 
-[2026-01-02 10:34:18.901] [10:34:18.901] [TRACE] SOURCE POINT: Using LocationPoint (Body Center) + LinkTransform: (275.177, 54.473, 21.900)
+[2026-01-02 18:42:14.799] [18:42:14.798] [TRACE] SOURCE POINT: Using LocationPoint (Body Center) + LinkTransform: (275.177, 54.473, 21.900)
 
-[2026-01-02 10:34:18.903] [10:34:18.902] [TRACE] 👉 ENTERING LOCATION CURVE LOGIC
+[2026-01-02 18:42:14.800] [18:42:14.800] [TRACE] 👉 ENTERING LOCATION CURVE LOGIC
 
-[2026-01-02 10:34:18.906] [10:34:18.905] [TRACE] Found Link Transform: CMO-GCI-MOD-ARC-ZZ-00002-2024.rvt : 1 : location Shared
+[2026-01-02 18:42:14.803] [18:42:14.803] [TRACE] Found Link Transform: CMO-GCI-MOD-ARC-ZZ-00002-2024.rvt : 1 : location Shared
 
-[2026-01-02 10:34:18.907] [10:34:18.907] [TRACE] Y-WALL: Using projected X=275.180, keeping source Y=54.473, Z=21.900
+[2026-01-02 18:42:14.805] [18:42:14.804] [TRACE] Y-WALL: Using projected X=275.180, keeping source Y=54.473, Z=21.900
 
-[2026-01-02 10:34:18.909] [10:34:18.908] [TRACE] ✅ CURVE PROJECTION SUCCESS: Source=(275.177, 54.473, 21.900) -> Projected=(275.180, 54.473, 13.780) -> Final=(275.180, 54.473, 21.900), WallRunsAlongY=True
+[2026-01-02 18:42:14.807] [18:42:14.806] [TRACE] ✅ CURVE PROJECTION SUCCESS: Source=(275.177, 54.473, 21.900) -> Projected=(275.180, 54.473, 13.780) -> Final=(275.180, 54.473, 21.900), WallRunsAlongY=True
 
-[2026-01-02 10:34:22.621] [10:34:22.621] [DB-LOAD-MEP] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: MepWidth=0.492126ft (150.0mm), MepHeight=0.574147ft (175.0mm)
+[2026-01-02 18:42:16.740] [18:42:16.739] [DB-LOAD-MEP] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: MepWidth=0.492126ft (150.0mm), MepHeight=0.574147ft (175.0mm)
 
-[2026-01-02 10:34:22.696] [10:34:22.695] [DB-LOAD-MEP] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: MepWidth=0.492126ft (150.0mm), MepHeight=0.574147ft (175.0mm)
+[2026-01-02 18:42:16.801] [18:42:16.800] [DB-LOAD-MEP] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: MepWidth=0.492126ft (150.0mm), MepHeight=0.574147ft (175.0mm)
 
-[2026-01-02 10:34:22.877] [10:34:22.877] [DB-LOAD-MEP] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: MepWidth=0.492126ft (150.0mm), MepHeight=0.574147ft (175.0mm)
+[2026-01-02 18:42:16.991] [18:42:16.990] [DB-LOAD-MEP] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: MepWidth=0.492126ft (150.0mm), MepHeight=0.574147ft (175.0mm)
 

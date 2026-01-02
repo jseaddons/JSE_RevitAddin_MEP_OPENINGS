@@ -1,0 +1,63 @@
+[2026-01-02 20:35:42.693] === PLACEMENT PERFORMANCE MONITOR STARTED ===
+Timestamp: 2026-01-02 20:35:42
+Log File: ClusterPlacement_Ducts_2026-01-02_20-35-42.log
+Start Memory: 166.30 MB
+
+
+[2026-01-02 20:35:42.825] [20:35:42.825] Load Clash Zones from Database: 106ms, Memory: -3645.54 KB, Items: 23
+
+[2026-01-02 20:35:42.830] [20:35:42.830] Populate Clash Zone Cache: 1ms, Memory: 8.00 KB, Items: 23
+
+[2026-01-02 20:35:42.841] [20:35:42.840] Filter Clash Zones: 8ms, Memory: 184.00 KB, Items: 23
+
+[2026-01-02 20:35:42.895] [20:35:42.894] Prepare Sleeve Data: 48ms, Memory: 1648.00 KB, Items: 23
+
+[2026-01-02 20:35:42.916] [20:35:42.915] Group Sleeves by Host/System/Orientation: 19ms, Memory: 360.00 KB, Items: 2
+
+[2026-01-02 20:35:43.371] [20:35:43.371] Form Clusters: 453ms, Memory: -399.12 KB, Items: 16
+
+[2026-01-02 20:35:43.726] [20:35:43.725] Pre-Calculate Clusters (Parallel): 353ms, Memory: -2087.58 KB, Items: 5
+
+[2026-01-02 20:35:44.803] [20:35:44.803] Place Clusters Loop: 1075ms, Memory: 5152.13 KB, Items: 5
+
+[2026-01-02 20:35:44.805] [20:35:44.804]   Place Cluster Sleeve: 953ms (avg: 190.6ms, calls: 5, items: 0)
+
+[2026-01-02 20:35:44.807] [20:35:44.806]   Determine Rotation Angle: 33ms (avg: 8.3ms, calls: 4, items: 0)
+
+[2026-01-02 20:35:44.809] [20:35:44.808]   Calculate Rotated Bounding Box: 4ms (avg: 1.0ms, calls: 4, items: 0)
+
+[2026-01-02 20:35:45.993] [20:35:45.993] Cleanup Individual Sleeves: 244ms, Memory: -1598.66 KB, Items: 0
+
+[2026-01-02 20:35:46.388] === PLACEMENT PERFORMANCE REPORT ===
+Generated: 2026-01-02 20:35:46
+Total Time: 3695ms (00:03)
+Total Individual Sleeves: 0
+Total Clusters: 5
+
+=== MEMORY USAGE ===
+Start: 166.30 MB
+End: 164.73 MB
+Delta: -1.58 MB
+Memory per Item: -322.74 KB
+
+=== OPERATION BREAKDOWN ===
+Operation                                   Calls        Total        Avg        Min        Max      Items    Items/s
+--------------------------------------------------------------------------------------------------------------
+Place Clusters Loop                             1         1075ms    1075.0ms      1075ms      1075ms          5         5/s
+Form Clusters                                   1          453ms     453.0ms       453ms       453ms         16        35/s
+Pre-Calculate Clusters (Parallel)               1          353ms     353.0ms       353ms       353ms          5        14/s
+Cleanup Individual Sleeves                      1          244ms     244.0ms       244ms       244ms          0         0/s
+Load Clash Zones from Database                  1          106ms     106.0ms       106ms       106ms         23       217/s
+Prepare Sleeve Data                             1           48ms      48.0ms        48ms        48ms         23       479/s
+Group Sleeves by Host/System/Orientation        1           19ms      19.0ms        19ms        19ms          2       105/s
+Filter Clash Zones                              1            8ms       8.0ms         8ms         8ms         23      2875/s
+Populate Clash Zone Cache                       1            1ms       1.0ms         1ms         1ms         23     23000/s
+
+=== PERFORMANCE TARGETS ===
+Clusters/Second: 1 (target: 10+)
+Status: ⚠️ BELOW TARGET
+
+=== END OF REPORT ===
+
+[2026-01-02 20:35:46.405] [20:35:46.405] Save Cluster Data to Database: 266ms, Memory: -1247.52 KB, Items: 5
+

@@ -29,15 +29,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         private readonly Document _doc;
         private readonly bool _isForceDetectionMode;
         private readonly PlacementPerformanceMonitor? _performanceMonitor;
+        private readonly HostPropertyCache? _hostPropertyCache; // ✅ Phase 2: Host Cache
 
         /// <summary>
         /// ✅ DIP COMPLIANCE: Constructor accepts optional performance monitor for dependency injection.
         /// </summary>
-        public PlacementPointAdjustmentService(Document doc, PlacementPerformanceMonitor? performanceMonitor = null, bool isForceDetectionMode = false)
+        public PlacementPointAdjustmentService(
+            Document doc, 
+            PlacementPerformanceMonitor? performanceMonitor = null, 
+            bool isForceDetectionMode = false,
+            HostPropertyCache? hostPropertyCache = null) // ✅ Phase 2: Host Cache Injection
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _performanceMonitor = performanceMonitor;
             _isForceDetectionMode = isForceDetectionMode;
+            _hostPropertyCache = hostPropertyCache;
         }
 
         /// <summary>
@@ -123,6 +129,75 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 return placementPoint;
             }
 
+                // ✅ PHASE 2: Use HostPropertyCache for Robust Wall Centering
+                if (_hostPropertyCache != null && zone.StructuralElementIdValue > 0)
+                {
+                    try
+                    {
+                        // ✅ CRITICAL FIX: Ensure we use the correct element ID for cache lookup.
+                        // The cache stores properties keyed by the element itself.
+                        ElementId hostId = new ElementId(zone.StructuralElementIdValue);
+                        
+                        // ✅ CRITICAL FIX: Use ElementRetrievalService to check if element is in linked doc
+                        // The cache logic assumes local coordinates, which fails for linked instances with transforms
+                        // For linked elements, we MUST skip the cache and fall back to the robust WallCenterlineHelper
+                        Element hostElement = ElementRetrievalService.GetElementFromDocumentOrLinked(_doc, hostId);
+                        
+                        if (hostElement != null)
+                        {
+                             // ✅ LINKED MODEL CHECK: If element is from a linked document, skip cache
+                             // HostPropertyCache computes properties in local space, but we need Host Space adjustments
+                             // The WallCenterlineHelper (fallback below) handles inverse transforms correctly.
+                             if (hostElement.Document.Title != _doc.Title)
+                             {
+                                 if (!DeploymentConfiguration.DeploymentMode)
+                                 {
+                                     SafeFileLogger.SafeAppendText("placement_debug.log",
+                                         $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] 🔄 SKIPPING CACHE (Linked Element): Zone {zone.Id}, HostId={zone.StructuralElementIdValue} is in linked doc '{hostElement.Document.Title}' - using robust fallback\n");
+                                 }
+                                 goto SkipCache; // Jump to fallback
+                             }
+
+                             // Get cached properties (calculates once per host)
+                             // This is the authoritative source for the wall's geometry in the current session.
+                             HostProperties props = _hostPropertyCache.GetOrCompute(hostElement);
+                         
+                         if (props != null && props.Normal != null && !props.Normal.IsZeroLength())
+                         {
+                             // ✅ CALCULATE CENTERLINE PROJECTION:
+                             // AdjustedPoint = Point - ((Point - Center) dot Normal) * Normal
+                             // This projects the point onto the centerline plane defined by Center and Normal
+                             
+                             XYZ centerPoint = new XYZ(props.CenterlineX, props.CenterlineY, props.CenterlineZ);
+                             XYZ vectorToCenter = placementPoint - centerPoint;
+                             double distanceToCenterPlane = vectorToCenter.DotProduct(props.Normal);
+                             
+                             XYZ adjustedPoint = placementPoint - (props.Normal * distanceToCenterPlane);
+                             
+                             if (!DeploymentConfiguration.DeploymentMode)
+                             {
+                                 SafeFileLogger.SafeAppendText("placement_debug.log",
+                                     $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ✅ CACHE HIT: Zone {zone.Id}, HostId={zone.StructuralElementIdValue}\n" +
+                                     $"  Inputs: Point=({placementPoint.X:F3}, {placementPoint.Y:F3}, {placementPoint.Z:F3}), Normal=({props.Normal.X:F3}, {props.Normal.Y:F3}, {props.Normal.Z:F3})\n" +
+                                     $"  Result: Offset={distanceToCenterPlane * 304.8:F1}mm, Adjusted=({adjustedPoint.X:F3}, {adjustedPoint.Y:F3}, {adjustedPoint.Z:F3})\n");
+                             }
+                             
+                             return adjustedPoint;
+                         }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ⚠️ CACHE ERROR: {ex.Message} - Falling back to standard logic\n");
+                    }
+                }
+            }
+            
+            SkipCache:
+
             // ✅ PERFORMANCE: Use pre-calculated sleeve placement point from database (enables multi-threading)
             // ✅ CRITICAL: SleevePlacementPoint is now calculated during refresh using bbox method (same as dampers)
             // This is the final placement point at wall centerline, no adjustment needed
@@ -141,95 +216,59 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     $"PlacementPoint (Input)=({placementPoint.X:F6}ft, {placementPoint.Y:F6}ft, {placementPoint.Z:F6}ft)\n");
             }
             
-            // ✅ FORCE DETECTION MODE: If active, ALWAYS use intersection point directly without any saved data
-            // This ensures force detection uses fresh calculated intersection points from clash detection
-            // Even if saved placement point exists, it's from a previous operation and must be recalculated
-            if (_isForceDetectionMode)
-            {
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] 🔄🔄🔄 FORCE DETECTION MODE ACTIVE: Zone {zone.Id}\n" +
-                        $"  Saved SleevePlacementPoint (IGNORED): ({zone.SleevePlacementPointX:F6}ft, {zone.SleevePlacementPointY:F6}ft, {zone.SleevePlacementPointZ:F6}ft)\n" +
-                        $"  Fresh IntersectionPoint (WILL USE): ({placementPoint.X:F6}ft, {placementPoint.Y:F6}ft, {placementPoint.Z:F6}ft)\n" +
-                        $"  Will calculate fresh centerline from geometry and structural element geometry.\n");
-                }
-                // Use intersection point and calculate centerline fresh - do NOT return saved point
-                // Continue to fallback calculation below
-            }
-            else if (hasSleevePlacementPoint)
-            {
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] 📦 USING SAVED PLACEMENT POINT (FORCE DETECTION OFF): Zone {zone.Id}\n" +
-                        $"  Saved SleevePlacementPoint: ({zone.SleevePlacementPointX:F6}ft, {zone.SleevePlacementPointY:F6}ft, {zone.SleevePlacementPointZ:F6}ft) [{zone.SleevePlacementPointX * 304.8:F1}mm, {zone.SleevePlacementPointY * 304.8:F1}mm, {zone.SleevePlacementPointZ * 304.8:F1}mm]\n");
-                }
-                // ✅ USE SAVED SLEEVE PLACEMENT POINT: Pre-calculated during refresh using bbox method (no Revit API calls needed)
-                // This enables multi-threading because it's just data access, not Revit API calls
-                // ✅ CRITICAL: Construct XYZ from saved X/Y/Z values (more reliable than computed property)
-                // This is the final placement point at wall centerline, calculated during refresh when wall element was available
-                XYZ savedPlacementPoint = new XYZ(zone.SleevePlacementPointX, zone.SleevePlacementPointY, zone.SleevePlacementPointZ);
-                
-                // ✅ CRITICAL FIX: Validate saved placement point against intersection point
-                // Saved point should be adjustment TO CENTERLINE of the intersection point
-                // If distance is too large (>300mm), this is stale data from cluster or wrong clash - recalculate
-                double distance = placementPoint.DistanceTo(savedPlacementPoint);
-                const double MAX_VALID_OFFSET = 0.984252; // 300mm in feet - reasonable wall/framing centerline offset
-                
-                if (distance > MAX_VALID_OFFSET)
-                {
-                    // ✅ STALE DATA DETECTED: Distance too large, saved point is from different clash or cluster
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ⚠️ STALE PLACEMENT POINT: Zone {zone.Id}, " +
-                            $"InputPoint=({placementPoint.X:F6}ft, {placementPoint.Y:F6}ft, {placementPoint.Z:F6}ft), " +
-                            $"SavedPlacementPoint=({savedPlacementPoint.X:F6}ft, {savedPlacementPoint.Y:F6}ft, {savedPlacementPoint.Z:F6}ft), " +
-                            $"Distance={distance * 304.8:F1}mm > {MAX_VALID_OFFSET * 304.8:F1}mm - RECALCULATING from geometry (saved point is stale/wrong)\n");
-                    }
-                    // Fall through to calculation logic
-                }
-                else
-                {
-                    // ✅ VALID SAVED POINT: Distance within reasonable range for centerline adjustment
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        XYZ difference = savedPlacementPoint - placementPoint;
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ✅ USING SAVED SLEEVE PLACEMENT POINT: Zone {zone.Id}, " +
-                            $"InputPoint=({placementPoint.X:F6}ft, {placementPoint.Y:F6}ft, {placementPoint.Z:F6}ft), " +
-                            $"SavedPlacementPoint=({savedPlacementPoint.X:F6}ft, {savedPlacementPoint.Y:F6}ft, {savedPlacementPoint.Z:F6}ft), " +
-                            $"Difference=({difference.X:F6}ft, {difference.Y:F6}ft, {difference.Z:F6}ft), " +
-                            $"Distance={distance * 304.8:F1}mm - VALID offset, using saved point\n");
-                    }
-                    return savedPlacementPoint; // Use pre-calculated sleeve placement point (valid)
-                }
-            }
+            // ✅ CRITICAL FIX: Check WallCenterlinePoint FIRST (always populated by Refresh)
+            // SleevePlacementPoint may be zeros if placement hasn't happened yet, but WallCenterlinePoint is always set during Refresh
+            bool hasWallCenterline = (zone.WallCenterlinePointX != 0.0 || zone.WallCenterlinePointY != 0.0 || zone.WallCenterlinePointZ != 0.0);
             
-            // ✅ BACKWARD COMPATIBILITY: Check for WallCenterlinePoint (old data format)
-            // ✅ NOTE: In force detection mode, this is skipped (already bypassed above)
-            bool hasWallCenterline = !_isForceDetectionMode && (zone.WallCenterlinePointX != 0.0 || zone.WallCenterlinePointY != 0.0 || zone.WallCenterlinePointZ != 0.0);
+            // ✅ FORCE DETECTION MODE OR NORMAL MODE: Use WallCenterlinePoint if available (source of truth from Refresh)
             if (hasWallCenterline)
             {
-                // Use WallCenterlinePoint for backward compatibility with old data
                 XYZ savedCenterlinePoint = new XYZ(zone.WallCenterlinePointX, zone.WallCenterlinePointY, zone.WallCenterlinePointZ);
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ⚠️ USING WALL CENTERLINE (BACKWARD COMPATIBILITY): Zone {zone.Id}, " +
-                        $"Using WallCenterlinePoint (old format) - consider refreshing to update to SleevePlacementPoint\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ✅ USING WALL CENTERLINE POINT: Zone {zone.Id}, " +
+                        $"WallCenterlinePoint=({savedCenterlinePoint.X:F6}ft, {savedCenterlinePoint.Y:F6}ft, {savedCenterlinePoint.Z:F6}ft), " +
+                        $"ForceMode={_isForceDetectionMode}\n");
                 }
-                return savedCenterlinePoint;
+                return savedCenterlinePoint; // ✅ CRITICAL: Actually RETURN the point!
             }
-            else if (!DeploymentConfiguration.DeploymentMode)
+            
+            // ✅ FALLBACK 1: Try SleevePlacementPoint if WallCenterlinePoint is not available
+            if (hasSleevePlacementPoint)
             {
-                // ✅ DIAGNOSTIC: Log when wall centerline is NOT available (this causes "half in and out" issue)
+                XYZ savedPlacementPoint = new XYZ(zone.SleevePlacementPointX, zone.SleevePlacementPointY, zone.SleevePlacementPointZ);
+                
+                // Validate saved placement point against intersection point
+                double distance = placementPoint.DistanceTo(savedPlacementPoint);
+                const double MAX_VALID_OFFSET = 5.0; // 5 feet to accommodate thick walls
+                
+                if (distance <= MAX_VALID_OFFSET)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ✅ USING SLEEVE PLACEMENT POINT: Zone {zone.Id}, " +
+                            $"SleevePlacementPoint=({savedPlacementPoint.X:F6}ft, {savedPlacementPoint.Y:F6}ft, {savedPlacementPoint.Z:F6}ft), " +
+                            $"Distance={distance * 304.8:F1}mm\n");
+                    }
+                    return savedPlacementPoint;
+                }
+                else if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("placement_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ⚠️ STALE PLACEMENT POINT: Zone {zone.Id}, " +
+                        $"Distance={distance * 304.8:F1}mm > {MAX_VALID_OFFSET * 304.8:F1}mm - RECALCULATING\n");
+                }
+            }
+            
+            // ✅ FALLBACK 2: No saved data available - calculate fresh (requires Revit API)
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
                 SafeFileLogger.SafeAppendText("placement_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ⚠️⚠️⚠️ NO WALL CENTERLINE SAVED: Zone {zone.Id}, " +
-                    $"WallCenterlinePointX={zone.WallCenterlinePointX:F6}ft, " +
-                    $"WallCenterlinePointY={zone.WallCenterlinePointY:F6}ft, " +
-                    $"WallCenterlinePointZ={zone.WallCenterlinePointZ:F6}ft - " +
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ⚠️⚠️⚠️ NO SAVED CENTERLINE: Zone {zone.Id}, " +
+                    $"WallCenterlinePoint=({zone.WallCenterlinePointX:F6}ft, {zone.WallCenterlinePointY:F6}ft, {zone.WallCenterlinePointZ:F6}ft), " +
+                    $"SleevePlacementPoint=({zone.SleevePlacementPointX:F6}ft, {zone.SleevePlacementPointY:F6}ft, {zone.SleevePlacementPointZ:F6}ft) - " +
                     $"Will use FALLBACK calculation (may cause 'half in and out' issue)\n");
             }
 

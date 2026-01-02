@@ -63,12 +63,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         // Note: Not readonly because it needs to be recreated with performance monitor when available
         private PlacementPointAdjustmentService _placementPointAdjustmentService;
         
-        // ? PHASE 1 OPTIMIZATION: Caching for performance improvements
+        // ✅ PHASE 1 OPTIMIZATION: Caching for performance improvements
         private Dictionary<ElementId, XYZ> _placementPointCache = new Dictionary<ElementId, XYZ>();
         private Dictionary<string, Level> _levelCache = new Dictionary<string, Level>();
         private Dictionary<string, FamilySymbol> _familySymbolCache = new Dictionary<string, FamilySymbol>();
         
-        // ? SOLID REFACTORED: Optional refactored command services (injected when flag enabled)
+        // ✅ HOST PROPERTY CACHE: Cache host wall/floor/framing properties to fix "half in/out" issues
+        // Ensures consistent centerline, thickness, and orientation for all sleeves on the same host
+        private HostPropertyCache _hostPropertyCache;
+        
+        // ✅ SOLID REFACTORED: Optional refactored command services (injected when flag enabled)
         private readonly IFileNameNormalizer? _fileNameNormalizer;
         private readonly ISectionBoxChecker? _sectionBoxChecker;
         
@@ -160,13 +164,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ? SRP COMPLIANCE: Initialize rotation service (delegates wall/floor rotation logic)
             _rotationService = new SleeveRotationService();
             
-            // ? SRP COMPLIANCE: Initialize parameter service (delegates all parameter setting operations)
+            // ✅ SRP COMPLIANCE: Initialize parameter service (delegates all parameter setting operations)
             // Note: Performance monitor will be set later in PlaceAllSleevesInTransaction, so we pass null here
-            _parameterService = new SleeveParameterService(doc, isReplayPath, null,dbOptimizer);
+            // Note: Host property cache will be initialized fresh in PlaceAllSleevesInTransaction
+            _parameterService = new SleeveParameterService(doc, isReplayPath, null, dbOptimizer, null);
             
             // ? SRP COMPLIANCE: Initialize placement point adjustment service
             // Note: Performance monitor will be set later in PlaceAllSleevesInTransaction, so we pass null here
-            _placementPointAdjustmentService = new PlacementPointAdjustmentService(doc, null, _isForceDetectionMode);
+            // Note: Host property cache needed for robust wall centering
+            _placementPointAdjustmentService = new PlacementPointAdjustmentService(doc, null, _isForceDetectionMode, null);
             
             // ? SOLID REFACTORED: Initialize refactored services (create if not provided when flag enabled)
             if (OptimizationFlags.UseRefactoredCommandServices)
@@ -222,25 +228,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
             
+            // ✅ HOST PROPERTY CACHE: Initialize fresh cache for this placement batch
+            // Ensures consistent host properties for all sleeves on the same wall/floor/framing
+            // MUST be initialized BEFORE creating dependent services
+            _hostPropertyCache = new HostPropertyCache(_doc);
+
             // ? PERFORMANCE MONITORING: Initialize performance monitor if enabled
             if (OptimizationFlags.UsePerformanceMonitoring)
             {
                 string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
                 string performanceLogName = $"NewSleevePlacer_{timestamp}.log";
                 _performanceMonitor = new Services.Placement.PlacementPerformanceMonitor(performanceLogName);
-                
-                // Recreate services with performance monitor for proper tracking
-                _parameterService = new SleeveParameterService(_doc, _isReplayPath, _performanceMonitor,_dbOptimizer);
-                _placementPointAdjustmentService = new PlacementPointAdjustmentService(_doc, _performanceMonitor, _isForceDetectionMode);
             }
+            
+            // ✅ DEPENDENCY INJECTON FIX: Always recreate services to inject the fresh _hostPropertyCache
+            // This ensures PlacementPointAdjustmentService has the cache needed for wall centering
+            // Performance monitor will be null if flag is disabled, which is handled gracefully by services
+            _parameterService = new SleeveParameterService(_doc, _isReplayPath, _performanceMonitor, _dbOptimizer, _hostPropertyCache);
+            _placementPointAdjustmentService = new PlacementPointAdjustmentService(_doc, _performanceMonitor, _isForceDetectionMode, _hostPropertyCache);
             
             // ? PARAMETER BATCHING: Reset flags at start of each placement run
             _parameterService.ResetFlushFlag();
             
-            // ? DAMPER PLACEMENT OFFSET: Clear stored offsets at start of each placement run
+            // ✅ DAMPER PLACEMENT OFFSET: Clear stored offsets at start of each placement run
             _damperPlacementAdjustments?.Clear();
             
-            // ? DIAGNOSTIC: Log batching flag status at placement start (ALWAYS log, even in deployment mode)
+            // ✅ DIAGNOSTIC: Log batching flag status at placement start (ALWAYS log, even in deployment mode)
             SafeFileLogger.SafeAppendText("placement_debug.log",
                 $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] --- PLACEMENT START --- UseBatchedParameterWrites={OptimizationFlags.UseBatchedParameterWrites}, Zones={clashZones?.Count ?? 0}\n");
             

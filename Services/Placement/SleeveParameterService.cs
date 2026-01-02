@@ -40,6 +40,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         
         // ✅ PERSISTENCE: Database optimizer for batch updates (Phase 6)
         private readonly DatabaseWriteOptimizer? _dbOptimizer;
+        
+        // ✅ HOST PROPERTY CACHE: Cache for consistent host properties (Phase 10)
+        private readonly HostPropertyCache? _hostPropertyCache;
 
         // ✅ PERFORMANCE OPTIMIZATION: Parameter Batching (SOLID POINT 10)
         private readonly Dictionary<ElementId, Dictionary<string, object>> _deferredParameters = new();
@@ -50,17 +53,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         private readonly Dictionary<string, double?> _elevationCache = new();
         private readonly Dictionary<string, Parameter> _parameterCache = new();
         private readonly Dictionary<int, double> _thicknessCache = new();
+        private List<Level>? _sortedLevelsCache = null; // ✅ Optimization: Cache sorted levels for Z-lookup
 
         public SleeveParameterService(
             Document doc,
             bool isReplayPath = false,
             PlacementPerformanceMonitor? performanceMonitor = null,
-            DatabaseWriteOptimizer? dbOptimizer = null) // ✅ Phase 6: Inject Optimizer (Optional)
+            DatabaseWriteOptimizer? dbOptimizer = null, // ✅ Phase 6: Inject Optimizer (Optional)
+            HostPropertyCache? hostPropertyCache = null) // ✅ Phase 10: Inject Host Property Cache (Optional)
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _isReplayPath = isReplayPath;
             _performanceMonitor = performanceMonitor;
             _dbOptimizer = dbOptimizer;
+            _hostPropertyCache = hostPropertyCache;
         }
 
         /// <summary>
@@ -143,6 +149,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                         SetScheduleLevelFromMepReferenceLevel(instance, zone, currentSleeveId);
                     }
 
+
+
                     // ✅ BOTTOM OF OPENING: Calculate and set "Bottom of Opening" for RectangularOpeningOnWall sleeves
                     if (OptimizationFlags.UseBottomOfOpeningCalculation && !isCircular)
                     {
@@ -189,6 +197,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                         SetScheduleLevelFromMepReferenceLevel(instance, zone, currentSleeveId);
                     }
 
+
+
                     // ✅ BOTTOM OF OPENING: Calculate and set "Bottom of Opening" for RectangularOpeningOnWall sleeves
                     if (OptimizationFlags.UseBottomOfOpeningCalculation && !isCircular)
                     {
@@ -210,8 +220,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             bool isWallHost = zone.StructuralElementType == "Wall" || zone.StructuralElementType == "Walls";
             bool isFramingHost = string.Equals(zone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
             
-            // Get the correct thickness based on host type
-            double thickness = GetThickness(zone, isWallHost, isFramingHost);
+            // ✅ PHASE 10: Try to get thickness from host property cache first (consistent across all sleeves on same host)
+            double thickness = 0.0;
+            bool usedCache = false;
+            
+            if (_hostPropertyCache != null && zone.StructuralElementIdValue > 0)
+            {
+                try
+                {
+                    Element hostElement = _doc.GetElement(new ElementId(zone.StructuralElementIdValue));
+                    if (hostElement != null)
+                    {
+                        HostProperties hostProps = _hostPropertyCache.GetOrCompute(hostElement);
+                        if (hostProps != null && hostProps.Thickness > 0)
+                        {
+                            thickness = hostProps.Thickness;
+                            usedCache = true;
+                            
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("depth_parameter_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SetDepthParameter] ✅ CACHE HIT: Zone={zone.Id}, HostId={hostElement.Id}, CachedThickness={thickness * 304.8:F1}mm\n");
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("depth_parameter_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetDepthParameter] ⚠️ CACHE FAILED: Zone={zone.Id}, Error={ex.Message}\n");
+                    }
+                }
+            }
+            
+            // Fallback to zone data if cache not available or failed
+            if (!usedCache)
+            {
+                thickness = GetThickness(zone, isWallHost, isFramingHost);
+            }
             
             // ✅ DIAGNOSTIC: Log thickness values from ClashZone before fallback
             if (!DeploymentConfiguration.DeploymentMode)
@@ -220,10 +268,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     $"[{DateTime.Now:HH:mm:ss.fff}] [SetDepthParameter] Zone={zone.Id}, " +
                     $"HostType='{zone.StructuralElementType}', " +
                     $"IsWallHost={isWallHost}, IsFramingHost={isFramingHost}, " +
+                    $"UsedCache={usedCache}, " +
                     $"WallThickness={zone.WallThickness * 304.8:F1}mm, " +
                     $"FramingThickness={zone.FramingThickness * 304.8:F1}mm, " +
                     $"StructuralElementThickness={zone.StructuralElementThickness * 304.8:F1}mm, " +
-                    $"CalculatedThickness={thickness * 304.8:F1}mm\n");
+                    $"FinalThickness={thickness * 304.8:F1}mm\n");
             }
             
             // ✅ CRITICAL FIX: For PATH 3 (Non-Fresh), if thickness is 0, retrieve from linked file
@@ -1067,204 +1116,241 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 
             try
             {
-                // ✅ PHASE 8: "CAPTURE ONCE" - Prioritize database value if already captured
-                // This eliminates dependency on Revit's lazy parameters for second runs or clusters
+                // ✅ PHASE 8: REFINED R2024 STRATEGY
+                // Individuals: Prioritize stable MEP parameter (allow 0.0).
+                // Clusters/Combined: Calculate from Placed Z (since they represent an aggregate).
+                // ✅ SIMPLIFIED: Use Z-coordinate calculation for ALL sleeves
+                // This avoids parameter dependency issues and DLL caching problems
                 double? elevationFromLevel = null;
-                
-                if (zone != null && Math.Abs(zone.ElevationFromLevel) > 1e-6)
+
+                if (zone != null && instance.Location is LocationPoint locPoint)
                 {
-                    elevationFromLevel = zone.ElevationFromLevel;
-                    if (!DeploymentConfiguration.DeploymentMode)
+                    double instanceZ = locPoint.Point.Z;
+
+                    // ✅ R2024 FIX: Find nearest level BELOW the sleeve
+                    // Don't rely on MEP element's level (might be above, causing negative elevation)
+                    // Don't rely on zone.MepElementLevelElevation (might be from wrong level)
+
+
+                    double? levelElevation = null;
+
+                    // ✅ R2024 FIX: Prioritize the Sleeve's assigned Level (matches Revit UI)
+                    if (instance.LevelId != null && instance.LevelId != ElementId.InvalidElementId)
                     {
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] 💾 DB SOURCE Used: Zone={zone.Id}, Elevation={elevationFromLevel.Value * 304.8:F1}mm\n");
-                    }
-                }
-                else
-                {
-                    // ✅ PRIMARY Revit SOURCE: Read "Elevation from Level" from Revit parameter
-                    Parameter elevationFromLevelParam = instance.LookupParameter("Elevation from Level");
-                    if (elevationFromLevelParam != null && elevationFromLevelParam.StorageType == StorageType.Double)
-                    {
-                        double revitElevationFromLevel = elevationFromLevelParam.AsDouble();
-                        // ✅ VALIDATION: Only use if value is reasonable (not 0 or absurd)
-                        if (Math.Abs(revitElevationFromLevel) > 1e-6 && Math.Abs(revitElevationFromLevel) < 1000000.0) // Reasonable range check
+                        Level sleeveLevel = _doc.GetElement(instance.LevelId) as Level;
+                        if (sleeveLevel != null)
                         {
-                            elevationFromLevel = revitElevationFromLevel;
+                            levelElevation = sleeveLevel.Elevation;
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
                                 SafeFileLogger.SafeAppendText("placement_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ✅ Zone={zone?.Id}, Sleeve={instance.Id}: " +
-                                    $"Read Elevation from Level={elevationFromLevel.Value * 304.8:F1}mm from Revit parameter\n");
+                                    $"[{DateTime.Now:HH:mm:ss.fff}] [BOTTOM-OF-OPENING] ✅ Used Sleeve Level: '{sleeveLevel.Name}' at {sleeveLevel.Elevation * 304.8:F1}mm\n");
                             }
                         }
                     }
-                }
 
-        // ✅ FALLBACK (R2024 FIX): Calculate Elevation from Level manually if parameter is 0/missing
-        // This handles cases where Revit hasn't regenerated the parameter yet
-        // CRITICAL FIX: Trigger fallback if value is 0.0 (Revit lazy load) OR null
-        if ((elevationFromLevel == null || Math.Abs(elevationFromLevel.Value) < 0.001) && zone != null && instance.Location is LocationPoint locPoint)
-        {
-             double instanceZ = locPoint.Point.Z;
-             double levelElevation = zone.MepElementLevelElevation; // This assumes Schedule Level matches MEP Reference Level
-             
-             // Check if we have a valid zone elevation (zone might not have it populated for some reason)
-             // But we can try to look up the level from the instance's "Schedule Level" parameter if needed
-             // For now, trust zone.
-             
-             elevationFromLevel = instanceZ - levelElevation;
-             
-             if (!DeploymentConfiguration.DeploymentMode)
-             {
-                 SafeFileLogger.SafeAppendText("placement_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone={zone?.Id}, Sleeve={instance.Id}: " +
-                    $"Using FALLBACK calculation for Elevation from Level.\n" +
-                    $"  - Instance Z: {instanceZ * 304.8:F1}mm\n" +
-                    $"  - Level Elevation (Zone): {levelElevation * 304.8:F1}mm\n" +
-                    $"  - Calculated Elevation from Level: {elevationFromLevel.Value * 304.8:F1}mm\n");
-             }
-        }
+                    // Fallback: Use Cached Sorted Levels (O(1) vs O(N))
+                    if (!levelElevation.HasValue)
+                    {
+                        if (_sortedLevelsCache == null)
+                        {
+                            _sortedLevelsCache = new FilteredElementCollector(_doc)
+                                .OfClass(typeof(Level))
+                                .Cast<Level>()
+                                .OrderByDescending(l => l.Elevation)
+                                .ToList();
+                        }
 
-        // ✅ PHASE 6: PERSISTENCE - Capture Elevation to Database ("Capture Once")
-        // Store the valid elevation (whether from Revit or Fallback) to DB for future reliability
-        if (elevationFromLevel.HasValue && zone != null && _dbOptimizer != null)
-        {
-            if (isCluster)
-            {
-                // ✅ CLUSTER SUPPORT: Update ClusterSleeves table
-                _dbOptimizer.QueueClusterElevationUpdate(instance.Id.IntegerValue, elevationFromLevel.Value);
-            }
-            else if (isCombined)
-            {
-                // ✅ COMBINED SUPPORT: Update CombinedSleeves table
-                _dbOptimizer.QueueCombinedElevationUpdate(instance.Id.IntegerValue, elevationFromLevel.Value);
-            }
-            else
-            {
-                // ✅ DEFAULT: Update ClashZones table
-                _dbOptimizer.QueueElevationUpdate(zone.Id.ToString(), elevationFromLevel.Value);
-            }
-            
-            if (!DeploymentConfiguration.DeploymentMode)
-            {
-                 SafeFileLogger.SafeAppendText("placement_elevation.log",
-                    $"[{DateTime.Now:HH:mm:ss}] 💾 PERSISTENCE: Queued ElevationFromLevel={elevationFromLevel.Value:F4} for Zone={zone.Id} (Cluster={isCluster}, Combined={isCombined}, ID={instance.Id})\n");
-            }
-        }
+                        // Find closest level below or at instance Z
+                        // Since list is sorted descending, the first one <= instanceZ is the closest below
+                        Level nearestLevel = _sortedLevelsCache.FirstOrDefault(l => l.Elevation <= instanceZ + 0.001); // Small tolerance
 
-        // ✅ Use elevationFromLevel for calculation (renamed from scheduleOfLevel)
-        double? scheduleOfLevel = elevationFromLevel;
+                        if (nearestLevel != null)
+                        {
+                            levelElevation = nearestLevel.Elevation;
 
-                // ✅ DIAGNOSTIC LOGGING: Log all values before validation and calculation
-                string elevationStr = elevationFromLevel.HasValue ? $"{elevationFromLevel.Value * 304.8:F1}mm" : string.Empty;
-                string scheduleStr = scheduleOfLevel.HasValue ? $"{scheduleOfLevel.Value * 304.8:F1}mm" : string.Empty;
-                SafeFileLogger.SafeAppendText("placement_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] 🔍 DIAGNOSTIC: Zone={zone?.Id}, Sleeve={instance.Id}\n" +
-                    $"  - elevationFromLevel (read from param): {elevationFromLevel?.ToString() ?? "null"} ({elevationStr})\n" +
-                    $"  - scheduleOfLevel (for calculation): {scheduleOfLevel?.ToString() ?? "null"} ({scheduleStr})\n" +
-                    $"  - height: {height} ({height * 304.8:F1}mm)\n");
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("placement_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss.fff}] [BOTTOM-OF-OPENING] 🔍 Found Level Below: '{nearestLevel.Name}' at {nearestLevel.Elevation * 304.8:F1}mm for Sleeve at {instanceZ * 304.8:F1}mm\n");
+                            }
+                        }
+                        // Fallback to zone level if no level found below (e.g. basement/foundation case)
+                        else if (!string.IsNullOrWhiteSpace(zone.MepElementLevelName))
+                        {
+                            Level? mepLevel = new FilteredElementCollector(_doc)
+                               .OfClass(typeof(Level))
+                               .Cast<Level>()
+                               .FirstOrDefault(l => string.Equals(l.Name, zone.MepElementLevelName, StringComparison.OrdinalIgnoreCase));
 
-                // ✅ VALIDATION: Check if Schedule of Level is valid
-                if (!scheduleOfLevel.HasValue || 
-                    !BottomOfOpeningCalculationService.IsValidScheduleOfLevel(scheduleOfLevel.Value))
-                {
+                            if (mepLevel != null)
+                            {
+                                levelElevation = mepLevel.Elevation;
+                            }
+                        }
+                        else
+                        {
+                            levelElevation = zone.MepElementLevelElevation;
+                        }
+
+                        if (levelElevation.HasValue)
+                        {
+                            elevationFromLevel = instanceZ - levelElevation.Value;
+
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("placement_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚙️ Z-COORDINATE CALC: Sleeve={instance.Id}, Z={instanceZ * 304.8:F1}mm, LevelElev={levelElevation * 304.8:F1}mm, Result={elevationFromLevel.Value * 304.8:F1}mm\n");
+                            }
+                        }
+                    }
+
+                    // ✅ PHASE 6: PERSISTENCE - Capture Elevation to Database for CLUSTER/COMBINED ONLY
+                    // Individual sleeves: Elevation is persisted in SetElevationFromLevelParameter (called before this method)
+                    // Cluster/Combined sleeves: Elevation is calculated here from Z-coordinates and persisted here
+                    if (elevationFromLevel.HasValue && zone != null && _dbOptimizer != null)
+                    {
+                        if (isCluster)
+                        {
+                            // ✅ CLUSTER SUPPORT: Update ClusterSleeves table
+                            _dbOptimizer.QueueClusterElevationUpdate(instance.Id.IntegerValue, elevationFromLevel.Value);
+                        }
+                        else if (isCombined)
+                        {
+                            // ✅ COMBINED SUPPORT: Update CombinedSleeves table
+                            _dbOptimizer.QueueCombinedElevationUpdate(instance.Id.IntegerValue, elevationFromLevel.Value);
+                        }
+                        else
+                        {
+                            // ✅ INDIVIDUAL: Already persisted in SetElevationFromLevelParameter - skip to avoid duplicate
+                            // This block should not execute for individuals since SetElevationFromLevelParameter handles it
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("placement_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ UNEXPECTED: Individual sleeve persistence in SetBottomOfOpeningParameter (should be in SetElevationFromLevelParameter)\n");
+                            }
+                        }
+
+                        if (!DeploymentConfiguration.DeploymentMode && (isCluster || isCombined))
+                        {
+                            SafeFileLogger.SafeAppendText("placement_elevation.log",
+                               $"[{DateTime.Now:HH:mm:ss}] 💾 PERSISTENCE: Queued ElevationFromLevel={elevationFromLevel.Value:F4} for Zone={zone.Id} (Cluster={isCluster}, Combined={isCombined}, ID={instance.Id})\n");
+                        }
+                    }
+
+                    // ✅ Use elevationFromLevel for calculation (renamed from scheduleOfLevel)
+                    double? scheduleOfLevel = elevationFromLevel;
+
+                    // ✅ DIAGNOSTIC LOGGING: Log all values before validation and calculation
+                    string elevationStr = elevationFromLevel.HasValue ? $"{elevationFromLevel.Value * 304.8:F1}mm" : string.Empty;
+                    string scheduleStr = scheduleOfLevel.HasValue ? $"{scheduleOfLevel.Value * 304.8:F1}mm" : string.Empty;
                     SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone={zone?.Id}, Sleeve={instance.Id}: " +
-                        $"Schedule of Level parameter not found or invalid (value={scheduleOfLevel?.ToString() ?? "null"}) - skipping\n" +
-                        $"  - IsValidScheduleOfLevel check: {scheduleOfLevel.HasValue && BottomOfOpeningCalculationService.IsValidScheduleOfLevel(scheduleOfLevel.Value)}\n");
-                    return; // Graceful degradation - skip if Schedule of Level is missing or invalid
-                }
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] 🔍 DIAGNOSTIC: Zone={zone?.Id}, Sleeve={instance.Id}\n" +
+                        $"  - elevationFromLevel (read from param): {elevationFromLevel?.ToString() ?? "null"} ({elevationStr})\n" +
+                        $"  - scheduleOfLevel (for calculation): {scheduleOfLevel?.ToString() ?? "null"} ({scheduleStr})\n" +
+                        $"  - height: {height} ({height * 304.8:F1}mm)\n");
 
-                // ✅ VALIDATION: Check if Height is valid
-                if (!BottomOfOpeningCalculationService.IsValidHeight(height))
-                {
-                    SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone={zone?.Id}, Sleeve={instance.Id}: " +
-                        $"Height is invalid (value={height * 304.8:F1}mm) - skipping\n" +
-                        $"  - IsValidHeight check: {BottomOfOpeningCalculationService.IsValidHeight(height)}\n");
-                    return; // Graceful degradation - skip if Height is invalid
-                }
-
-                // ✅ CALCULATION: Calculate Bottom of Opening directly from Reference Level (PRIMARY SOURCE)
-                // ✅ FORMULA: Bottom of Opening = Placement Z - Reference Level Elevation - (Height / 2.0)
-                // This is equivalent to: Bottom of Opening = Elevation from Level - (Height / 2.0)
-                // where Elevation from Level = Placement Z - Reference Level Elevation
-                // Reference Level is the PRIMARY source of truth for this calculation
-                double? bottomOfOpening = BottomOfOpeningCalculationService.CalculateBottomOfOpening(
-                    scheduleOfLevel.Value, height);
-                
-                // ✅ DIAGNOSTIC LOGGING: Log calculation result
-                string bottomOfOpeningStr = bottomOfOpening.HasValue ? $"{bottomOfOpening.Value * 304.8:F1}mm" : string.Empty;
-                SafeFileLogger.SafeAppendText("placement_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] 🔍 CALCULATION RESULT: Zone={zone?.Id}, Sleeve={instance.Id}\n" +
-                    $"  - Input: scheduleOfLevel={scheduleOfLevel.Value} ({scheduleOfLevel.Value * 304.8:F1}mm), height={height} ({height * 304.8:F1}mm)\n" +
-                    $"  - Formula: bottomOfOpening = scheduleOfLevel - (height / 2.0) = {scheduleOfLevel.Value} - ({height} / 2.0) = {scheduleOfLevel.Value - (height / 2.0)}\n" +
-                    $"  - Calculated result: {bottomOfOpening?.ToString() ?? "null"} ({bottomOfOpeningStr})\n");
-
-                if (!bottomOfOpening.HasValue)
-                {
-                    if (!DeploymentConfiguration.DeploymentMode)
+                    // ✅ VALIDATION: Check if Schedule of Level is valid
+                    if (!scheduleOfLevel.HasValue ||
+                        !BottomOfOpeningCalculationService.IsValidScheduleOfLevel(scheduleOfLevel.Value))
                     {
                         SafeFileLogger.SafeAppendText("placement_debug.log",
                             $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone={zone?.Id}, Sleeve={instance.Id}: " +
-                            $"Calculation returned null (Schedule={scheduleOfLevel.Value * 304.8:F1}mm, Height={height * 304.8:F1}mm) - skipping\n");
+                            $"Schedule of Level parameter not found or invalid (value={scheduleOfLevel?.ToString() ?? "null"}) - skipping\n" +
+                            $"  - IsValidScheduleOfLevel check: {scheduleOfLevel.HasValue && BottomOfOpeningCalculationService.IsValidScheduleOfLevel(scheduleOfLevel.Value)}\n");
+                        return; // Graceful degradation - skip if Schedule of Level is missing or invalid
                     }
-                    return; // Graceful degradation - skip if calculation fails
-                }
 
-                // ✅ PARAMETER SETTING: Set "Bottom Of Opening" parameter with batching support
-                // Parameter name is "Bottom Of Opening" (capital O in "Of") as shown in Revit Properties
-                var bottomParam = instance.LookupParameter("Bottom Of Opening")  // ✅ FIRST: Exact name from Properties
-                               ?? instance.LookupParameter("Bottom of Opening")
-                               ?? instance.LookupParameter("BottomOfOpening")
-                               ?? instance.Symbol?.LookupParameter("Bottom Of Opening")
-                               ?? instance.Symbol?.LookupParameter("Bottom of Opening")
-                               ?? instance.Symbol?.LookupParameter("BottomOfOpening");
-                
-                if (bottomParam != null && !bottomParam.IsReadOnly)
-                {
-                    string paramName = bottomParam.Definition.Name;
-                    
-                    // ✅ DIAGNOSTIC LOGGING: Log before setting parameter
-                    SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] 🔍 BEFORE SETTING: Zone={zone?.Id}, Sleeve={instance.Id}\n" +
-                        $"  - Parameter name: '{paramName}'\n" +
-                        $"  - Parameter storage type: {bottomParam.StorageType}\n" +
-                        $"  - Parameter is read-only: {bottomParam.IsReadOnly}\n" +
-                        $"  - Value to set: {bottomOfOpening.Value} ({bottomOfOpening.Value * 304.8:F1}mm)\n" +
-                        $"  - UseBatchedParameterWrites: {OptimizationFlags.UseBatchedParameterWrites}\n");
-                    
-                    if (OptimizationFlags.UseBatchedParameterWrites)
+                    // ✅ VALIDATION: Check if Height is valid
+                    if (!BottomOfOpeningCalculationService.IsValidHeight(height))
                     {
-                        if (!_deferredParameters.ContainsKey(currentSleeveId))
-                            _deferredParameters[currentSleeveId] = new Dictionary<string, object>();
-                        _deferredParameters[currentSleeveId][paramName] = bottomOfOpening.Value;
-                        
                         SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ✅ DEFERRED: Zone={zone?.Id}, Sleeve={instance.Id}: " +
-                            $"Added to deferred parameters: {paramName}={bottomOfOpening.Value * 304.8:F1}mm (will be flushed later)\n");
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone={zone?.Id}, Sleeve={instance.Id}: " +
+                            $"Height is invalid (value={height * 304.8:F1}mm) - skipping\n" +
+                            $"  - IsValidHeight check: {BottomOfOpeningCalculationService.IsValidHeight(height)}\n");
+                        return; // Graceful degradation - skip if Height is invalid
+                    }
+
+                    // ✅ CALCULATION: Calculate Bottom of Opening directly from Reference Level (PRIMARY SOURCE)
+                    // ✅ FORMULA: Bottom of Opening = Placement Z - Reference Level Elevation - (Height / 2.0)
+                    // This is equivalent to: Bottom of Opening = Elevation from Level - (Height / 2.0)
+                    // where Elevation from Level = Placement Z - Reference Level Elevation
+                    // Reference Level is the PRIMARY source of truth for this calculation
+                    double? bottomOfOpening = BottomOfOpeningCalculationService.CalculateBottomOfOpening(
+                        scheduleOfLevel.Value, height);
+
+                    // ✅ DIAGNOSTIC LOGGING: Log calculation result
+                    string bottomOfOpeningStr = bottomOfOpening.HasValue ? $"{bottomOfOpening.Value * 304.8:F1}mm" : string.Empty;
+                    SafeFileLogger.SafeAppendText("placement_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] 🔍 CALCULATION RESULT: Zone={zone?.Id}, Sleeve={instance.Id}\n" +
+                        $"  - Input: scheduleOfLevel={scheduleOfLevel.Value} ({scheduleOfLevel.Value * 304.8:F1}mm), height={height} ({height * 304.8:F1}mm)\n" +
+                        $"  - Formula: bottomOfOpening = scheduleOfLevel - (height / 2.0) = {scheduleOfLevel.Value} - ({height} / 2.0) = {scheduleOfLevel.Value - (height / 2.0)}\n" +
+                        $"  - Calculated result: {bottomOfOpening?.ToString() ?? "null"} ({bottomOfOpeningStr})\n");
+
+                    if (!bottomOfOpening.HasValue)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("placement_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone={zone?.Id}, Sleeve={instance.Id}: " +
+                                $"Calculation returned null (Schedule={scheduleOfLevel.Value * 304.8:F1}mm, Height={height * 304.8:F1}mm) - skipping\n");
+                        }
+                        return; // Graceful degradation - skip if calculation fails
+                    }
+
+                    // ✅ PARAMETER SETTING: Set "Bottom Of Opening" parameter with batching support
+                    // Parameter name is "Bottom Of Opening" (capital O in "Of") as shown in Revit Properties
+                    var bottomParam = instance.LookupParameter("Bottom Of Opening")  // ✅ FIRST: Exact name from Properties
+                                   ?? instance.LookupParameter("Bottom of Opening")
+                                   ?? instance.LookupParameter("BottomOfOpening")
+                                   ?? instance.Symbol?.LookupParameter("Bottom Of Opening")
+                                   ?? instance.Symbol?.LookupParameter("Bottom of Opening")
+                                   ?? instance.Symbol?.LookupParameter("BottomOfOpening");
+
+                    if (bottomParam != null && !bottomParam.IsReadOnly)
+                    {
+                        string paramName = bottomParam.Definition.Name;
+
+                        // ✅ DIAGNOSTIC LOGGING: Log before setting parameter
+                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] 🔍 BEFORE SETTING: Zone={zone?.Id}, Sleeve={instance.Id}\n" +
+                            $"  - Parameter name: '{paramName}'\n" +
+                            $"  - Parameter storage type: {bottomParam.StorageType}\n" +
+                            $"  - Parameter is read-only: {bottomParam.IsReadOnly}\n" +
+                            $"  - Value to set: {bottomOfOpening.Value} ({bottomOfOpening.Value * 304.8:F1}mm)\n" +
+                            $"  - UseBatchedParameterWrites: {OptimizationFlags.UseBatchedParameterWrites}\n");
+
+                        if (OptimizationFlags.UseBatchedParameterWrites)
+                        {
+                            if (!_deferredParameters.ContainsKey(currentSleeveId))
+                                _deferredParameters[currentSleeveId] = new Dictionary<string, object>();
+                            _deferredParameters[currentSleeveId][paramName] = bottomOfOpening.Value;
+
+                            SafeFileLogger.SafeAppendText("placement_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ✅ DEFERRED: Zone={zone?.Id}, Sleeve={instance.Id}: " +
+                                $"Added to deferred parameters: {paramName}={bottomOfOpening.Value * 304.8:F1}mm (will be flushed later)\n");
+                        }
+                        else
+                        {
+                            bottomParam.Set(bottomOfOpening.Value);
+
+                            // ✅ DIAGNOSTIC LOGGING: Verify value was set correctly
+                            double actualValue = bottomParam.AsDouble();
+                            SafeFileLogger.SafeAppendText("placement_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ✅ SET DIRECTLY: Zone={zone?.Id}, Sleeve={instance.Id}: " +
+                                $"Set {paramName}={bottomOfOpening.Value * 304.8:F1}mm, " +
+                                $"Actual value after set: {actualValue * 304.8:F1}mm " +
+                                $"(Match: {Math.Abs(actualValue - bottomOfOpening.Value) < 1e-6})\n");
+                        }
                     }
                     else
                     {
-                        bottomParam.Set(bottomOfOpening.Value);
-                        
-                        // ✅ DIAGNOSTIC LOGGING: Verify value was set correctly
-                        double actualValue = bottomParam.AsDouble();
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ✅ SET DIRECTLY: Zone={zone?.Id}, Sleeve={instance.Id}: " +
-                            $"Set {paramName}={bottomOfOpening.Value * 304.8:F1}mm, " +
-                            $"Actual value after set: {actualValue * 304.8:F1}mm " +
-                            $"(Match: {Math.Abs(actualValue - bottomOfOpening.Value) < 1e-6})\n");
-                    }
-                }
-                else
-                {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone={zone?.Id}, Sleeve={instance.Id}: " +
-                            $"'Bottom of Opening' parameter not found or read-only (tried: 'Bottom of Opening', 'Bottom Of Opening', 'BottomOfOpening' on instance and symbol)\n");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("placement_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone={zone?.Id}, Sleeve={instance.Id}: " +
+                                $"'Bottom of Opening' parameter not found or read-only (tried: 'Bottom of Opening', 'Bottom Of Opening', 'BottomOfOpening' on instance and symbol)\n");
+                        }
                     }
                 }
             }
@@ -1362,6 +1448,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         /// </summary>
         private void SetElevationFromLevelParameter(FamilyInstance instance, ClashZone zone, ElementId currentSleeveId)
         {
+            // ✅ UNCONDITIONAL LOGGING: Always log entry to verify method is called
+            SafeFileLogger.SafeAppendTextAlways("placement_debug.log",
+                $"[{DateTime.Now:HH:mm:ss.fff}] [ELEVATION-FROM-LEVEL] 🔍 ENTRY: Zone={zone?.Id}, Sleeve={instance?.Id}\n");
+            
             if (instance == null || zone == null) return;
 
             try
@@ -1475,6 +1565,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     double levelElevation = referenceLevelElevation.Value;
                     // ✅ FORMULA: Elevation from Level = Placement Z - Reference Level Elevation (without Height/2)
                     double elevationFromLevel = placementZ - levelElevation;
+
+                    // ✅ PERSISTENCE: Save calculated elevation to zone object for database update
+                    if (zone != null)
+                    {
+                        zone.ElevationFromLevel = elevationFromLevel;
+                        
+                        // ✅ DATABASE PERSISTENCE: Queue elevation update to database
+                        if (_dbOptimizer != null)
+                        {
+                            _dbOptimizer.QueueElevationUpdate(zone.Id.ToString(), elevationFromLevel);
+                            
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("placement_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [ELEVATION-FROM-LEVEL] 💾 QUEUED DB UPDATE: Zone={zone.Id}, Elevation={elevationFromLevel * 304.8:F1}mm\n");
+                            }
+                        }
+                    }
 
                     if (!DeploymentConfiguration.DeploymentMode)
                     {

@@ -1,0 +1,46 @@
+[2026-01-02 20:35:31.726] [2026-01-02 20:35:31.726] [SET] Zone (MEP=740243, Category=Ducts): Setting SleevePlacementPoint=(49.517364ft, 1.049869ft, 7.946029ft), Intersection=(49.517364ft, 0.721785ft, 7.946029ft), Source=Bbox Method
+
+[2026-01-02 20:35:31.800] [2026-01-02 20:35:31.799] [SET] Zone (MEP=739979, Category=Ducts): Setting SleevePlacementPoint=(5.525990ft, 1.049869ft, 4.921260ft), Intersection=(5.525990ft, 0.721785ft, 4.921260ft), Source=Bbox Method
+
+[2026-01-02 20:35:31.842] [2026-01-02 20:35:31.841] [SET] Zone (MEP=736453, Category=Ducts): Setting SleevePlacementPoint=(51.541698ft, 1.049869ft, 10.542496ft), Intersection=(51.541698ft, 0.721785ft, 10.542496ft), Source=Bbox Method
+
+[2026-01-02 20:35:31.890] [2026-01-02 20:35:31.889] [SET] Zone (MEP=735733, Category=Ducts): Setting SleevePlacementPoint=(35.252625ft, 1.049869ft, 4.839239ft), Intersection=(35.252625ft, 0.721785ft, 4.839239ft), Source=Bbox Method
+
+[2026-01-02 20:35:31.959] [2026-01-02 20:35:31.959] [SET] Zone (MEP=735253, Category=Ducts): Setting SleevePlacementPoint=(23.974409ft, 1.049869ft, 4.180099ft), Intersection=(23.974409ft, 0.721785ft, 4.180099ft), Source=Bbox Method
+
+[2026-01-02 20:35:32.004] [2026-01-02 20:35:32.003] [SET] Zone (MEP=740031, Category=Ducts): Setting SleevePlacementPoint=(11.123346ft, 1.049869ft, 2.441273ft), Intersection=(11.123346ft, 0.721785ft, 2.441273ft), Source=Bbox Method
+
+[2026-01-02 20:35:32.046] [2026-01-02 20:35:32.045] [SET] Zone (MEP=736572, Category=Ducts): Setting SleevePlacementPoint=(53.709717ft, 1.049869ft, 5.207907ft), Intersection=(53.709717ft, 0.721785ft, 5.207907ft), Source=Bbox Method
+
+[2026-01-02 20:35:32.096] [2026-01-02 20:35:32.095] [SET] Zone (MEP=735391, Category=Ducts): Setting SleevePlacementPoint=(25.420322ft, 1.049869ft, 10.322623ft), Intersection=(25.420322ft, 0.721785ft, 10.322623ft), Source=Bbox Method
+
+[2026-01-02 20:35:32.143] [2026-01-02 20:35:32.142] [SET] Zone (MEP=740116, Category=Ducts): Setting SleevePlacementPoint=(6.913696ft, 1.049869ft, 8.421724ft), Intersection=(6.913696ft, 0.721785ft, 8.421724ft), Source=Bbox Method
+
+[2026-01-02 20:35:32.184] [2026-01-02 20:35:32.184] [SET] Zone (MEP=735808, Category=Ducts): Setting SleevePlacementPoint=(35.252625ft, 1.049869ft, 10.416667ft), Intersection=(35.252625ft, 0.721785ft, 10.416667ft), Source=Bbox Method
+
+[2026-01-02 20:35:32.229] [2026-01-02 20:35:32.229] [SET] Zone (MEP=739990, Category=Ducts): Setting SleevePlacementPoint=(3.182415ft, 1.049869ft, 2.214567ft), Intersection=(3.182415ft, 0.721785ft, 2.214567ft), Source=Bbox Method
+
+[2026-01-02 20:35:32.281] [2026-01-02 20:35:32.280] [SET] Zone (MEP=736422, Category=Ducts): Setting SleevePlacementPoint=(49.711806ft, 1.049869ft, 10.562212ft), Intersection=(49.711806ft, 0.721785ft, 10.562212ft), Source=Bbox Method
+
+[2026-01-02 20:35:32.323] [2026-01-02 20:35:32.322] [SET] Zone (MEP=735656, Category=Ducts): Setting SleevePlacementPoint=(30.240213ft, 1.049869ft, 4.216802ft), Intersection=(30.240213ft, 0.721785ft, 4.216802ft), Source=Bbox Method
+
+[2026-01-02 20:35:32.364] [2026-01-02 20:35:32.364] [SET] Zone (MEP=735155, Category=Ducts): Setting SleevePlacementPoint=(16.551837ft, 1.049869ft, 4.511155ft), Intersection=(16.551837ft, 0.721785ft, 4.511155ft), Source=Bbox Method
+
+[2026-01-02 20:35:32.405] [2026-01-02 20:35:32.405] [SET] Zone (MEP=740244, Category=Ducts): Setting SleevePlacementPoint=(51.347256ft, 1.049869ft, 7.926314ft), Intersection=(51.347256ft, 0.721785ft, 7.926314ft), Source=Bbox Method
+
+[2026-01-02 20:35:32.452] [2026-01-02 20:35:32.451] [SET] Zone (MEP=739950, Category=Ducts): Setting SleevePlacementPoint=(8.989161ft, 1.049869ft, 2.441194ft), Intersection=(8.989161ft, 0.721785ft, 2.441194ft), Source=Bbox Method
+
+[2026-01-02 20:35:32.500] [2026-01-02 20:35:32.499] [SET] Zone (MEP=735336, Category=Ducts): Setting SleevePlacementPoint=(24.176612ft, 1.049869ft, 10.416667ft), Intersection=(24.176612ft, 0.721785ft, 10.416667ft), Source=Bbox Method
+
+[2026-01-02 20:35:32.547] [2026-01-02 20:35:32.546] [SET] Zone (MEP=740042, Category=Ducts): Setting SleevePlacementPoint=(13.172572ft, 1.049869ft, 2.441273ft), Intersection=(13.172572ft, 0.721785ft, 2.441273ft), Source=Bbox Method
+
+[2026-01-02 20:35:32.590] [2026-01-02 20:35:32.590] [SET] Zone (MEP=730932, Category=Ducts): Setting SleevePlacementPoint=(1.049869ft, 4.987875ft, 6.848097ft), Intersection=(0.721785ft, 4.987875ft, 6.848097ft), Source=Bbox Method
+
+[2026-01-02 20:35:32.632] [2026-01-02 20:35:32.631] [SET] Zone (MEP=730902, Category=Ducts): Setting SleevePlacementPoint=(1.049869ft, 10.237219ft, 10.465879ft), Intersection=(0.721785ft, 10.237219ft, 10.465879ft), Source=Bbox Method
+
+[2026-01-02 20:35:32.673] [2026-01-02 20:35:32.673] [SET] Zone (MEP=730475, Category=Ducts): Setting SleevePlacementPoint=(48.935290ft, 1.049869ft, 5.207793ft), Intersection=(48.935290ft, 0.721785ft, 5.207793ft), Source=Bbox Method
+
+[2026-01-02 20:35:32.715] [2026-01-02 20:35:32.715] [SET] Zone (MEP=730851, Category=Ducts): Setting SleevePlacementPoint=(51.283181ft, 1.049869ft, 5.165309ft), Intersection=(51.283181ft, 0.721785ft, 5.165309ft), Source=Bbox Method
+
+[2026-01-02 20:35:32.756] [2026-01-02 20:35:32.756] [SET] Zone (MEP=730976, Category=Ducts): Setting SleevePlacementPoint=(1.049869ft, 10.565303ft, 8.366142ft), Intersection=(0.721785ft, 10.565303ft, 8.366142ft), Source=Bbox Method
+

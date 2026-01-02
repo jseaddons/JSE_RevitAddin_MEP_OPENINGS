@@ -1,0 +1,92 @@
+[2026-01-02 20:35:31.719] [2026-01-02 20:35:31.718] [ClashZoneService] ✅ Size parameter (String): Element 740243, Value='475x200', Doc=ME-00001
+
+[2026-01-02 20:35:31.798] [2026-01-02 20:35:31.797] [ClashZoneService] ✅ Size parameter (String): Element 739979, Value='500ø', Doc=ME-00001
+
+[2026-01-02 20:35:31.840] [2026-01-02 20:35:31.839] [ClashZoneService] ✅ Size parameter (String): Element 736453, Value='500x300', Doc=ME-00001
+
+[2026-01-02 20:35:31.887] [2026-01-02 20:35:31.886] [ClashZoneService] ✅ Size parameter (String): Element 735733, Value='250x250', Doc=ME-00001
+
+[2026-01-02 20:35:31.957] [2026-01-02 20:35:31.956] [ClashZoneService] ✅ Size parameter (String): Element 735253, Value='900x500', Doc=ME-00001
+
+[2026-01-02 20:35:32.002] [2026-01-02 20:35:32.002] [ClashZoneService] ✅ Size parameter (String): Element 740031, Value='500ø', Doc=ME-00001
+
+[2026-01-02 20:35:32.044] [2026-01-02 20:35:32.043] [ClashZoneService] ✅ Size parameter (String): Element 736572, Value='500x300', Doc=ME-00001
+
+[2026-01-02 20:35:32.094] [2026-01-02 20:35:32.093] [ClashZoneService] ✅ Size parameter (String): Element 735391, Value='400x200', Doc=ME-00001
+
+[2026-01-02 20:35:32.141] [2026-01-02 20:35:32.140] [ClashZoneService] ✅ Size parameter (String): Element 740116, Value='500ø', Doc=ME-00001
+
+[2026-01-02 20:35:32.183] [2026-01-02 20:35:32.182] [ClashZoneService] ✅ Size parameter (String): Element 735808, Value='250x250', Doc=ME-00001
+
+[2026-01-02 20:35:32.227] [2026-01-02 20:35:32.226] [ClashZoneService] ✅ Size parameter (String): Element 739990, Value='500ø', Doc=ME-00001
+
+[2026-01-02 20:35:32.279] [2026-01-02 20:35:32.278] [ClashZoneService] ✅ Size parameter (String): Element 736422, Value='475x200', Doc=ME-00001
+
+[2026-01-02 20:35:32.321] [2026-01-02 20:35:32.320] [ClashZoneService] ✅ Size parameter (String): Element 735656, Value='900x500', Doc=ME-00001
+
+[2026-01-02 20:35:32.362] [2026-01-02 20:35:32.361] [ClashZoneService] ✅ Size parameter (String): Element 735155, Value='500x500', Doc=ME-00001
+
+[2026-01-02 20:35:32.403] [2026-01-02 20:35:32.402] [ClashZoneService] ✅ Size parameter (String): Element 740244, Value='500x300', Doc=ME-00001
+
+[2026-01-02 20:35:32.449] [2026-01-02 20:35:32.448] [ClashZoneService] ✅ Size parameter (String): Element 739950, Value='500ø', Doc=ME-00001
+
+[2026-01-02 20:35:32.498] [2026-01-02 20:35:32.497] [ClashZoneService] ✅ Size parameter (String): Element 735336, Value='250x250', Doc=ME-00001
+
+[2026-01-02 20:35:32.545] [2026-01-02 20:35:32.544] [ClashZoneService] ✅ Size parameter (String): Element 740042, Value='500ø', Doc=ME-00001
+
+[2026-01-02 20:35:32.589] [2026-01-02 20:35:32.588] [ClashZoneService] ✅ Size parameter (String): Element 730932, Value='650x300', Doc=ME-00001
+
+[2026-01-02 20:35:32.630] [2026-01-02 20:35:32.629] [ClashZoneService] ✅ Size parameter (String): Element 730902, Value='500x300', Doc=ME-00001
+
+[2026-01-02 20:35:32.672] [2026-01-02 20:35:32.671] [ClashZoneService] ✅ Size parameter (String): Element 730475, Value='475x200', Doc=ME-00001
+
+[2026-01-02 20:35:32.713] [2026-01-02 20:35:32.712] [ClashZoneService] ✅ Size parameter (String): Element 730851, Value='850x400', Doc=ME-00001
+
+[2026-01-02 20:35:32.755] [2026-01-02 20:35:32.754] [ClashZoneService] ✅ Size parameter (String): Element 730976, Value='800x350', Doc=ME-00001
+
+[2026-01-02 20:35:32.866] [20:35:32.866] [PARAM-CAPTURE] ⚠️ Schedule of Level NOT FOUND for element 740243 (tried: 'Elevation from Level', 'Schedule of Level', 'Schedule Level')
+
+[2026-01-02 20:35:32.870] [20:35:32.869] [PARAM-CAPTURE] ⚠️ Schedule of Level NOT FOUND for element 739979 (tried: 'Elevation from Level', 'Schedule of Level', 'Schedule Level')
+
+[2026-01-02 20:35:32.872] [20:35:32.872] [PARAM-CAPTURE] ⚠️ Schedule of Level NOT FOUND for element 736453 (tried: 'Elevation from Level', 'Schedule of Level', 'Schedule Level')
+
+[2026-01-02 20:35:32.875] [20:35:32.874] [PARAM-CAPTURE] ⚠️ Schedule of Level NOT FOUND for element 735733 (tried: 'Elevation from Level', 'Schedule of Level', 'Schedule Level')
+
+[2026-01-02 20:35:32.878] [20:35:32.878] [PARAM-CAPTURE] ⚠️ Schedule of Level NOT FOUND for element 735253 (tried: 'Elevation from Level', 'Schedule of Level', 'Schedule Level')
+
+[2026-01-02 20:35:32.881] [20:35:32.880] [PARAM-CAPTURE] ⚠️ Schedule of Level NOT FOUND for element 740031 (tried: 'Elevation from Level', 'Schedule of Level', 'Schedule Level')
+
+[2026-01-02 20:35:32.883] [20:35:32.883] [PARAM-CAPTURE] ⚠️ Schedule of Level NOT FOUND for element 736572 (tried: 'Elevation from Level', 'Schedule of Level', 'Schedule Level')
+
+[2026-01-02 20:35:32.886] [20:35:32.886] [PARAM-CAPTURE] ⚠️ Schedule of Level NOT FOUND for element 735391 (tried: 'Elevation from Level', 'Schedule of Level', 'Schedule Level')
+
+[2026-01-02 20:35:32.889] [20:35:32.889] [PARAM-CAPTURE] ⚠️ Schedule of Level NOT FOUND for element 740116 (tried: 'Elevation from Level', 'Schedule of Level', 'Schedule Level')
+
+[2026-01-02 20:35:32.892] [20:35:32.891] [PARAM-CAPTURE] ⚠️ Schedule of Level NOT FOUND for element 735808 (tried: 'Elevation from Level', 'Schedule of Level', 'Schedule Level')
+
+[2026-01-02 20:35:32.895] [20:35:32.894] [PARAM-CAPTURE] ⚠️ Schedule of Level NOT FOUND for element 739990 (tried: 'Elevation from Level', 'Schedule of Level', 'Schedule Level')
+
+[2026-01-02 20:35:32.898] [20:35:32.897] [PARAM-CAPTURE] ⚠️ Schedule of Level NOT FOUND for element 736422 (tried: 'Elevation from Level', 'Schedule of Level', 'Schedule Level')
+
+[2026-01-02 20:35:32.900] [20:35:32.900] [PARAM-CAPTURE] ⚠️ Schedule of Level NOT FOUND for element 735656 (tried: 'Elevation from Level', 'Schedule of Level', 'Schedule Level')
+
+[2026-01-02 20:35:32.903] [20:35:32.903] [PARAM-CAPTURE] ⚠️ Schedule of Level NOT FOUND for element 735155 (tried: 'Elevation from Level', 'Schedule of Level', 'Schedule Level')
+
+[2026-01-02 20:35:32.906] [20:35:32.905] [PARAM-CAPTURE] ⚠️ Schedule of Level NOT FOUND for element 740244 (tried: 'Elevation from Level', 'Schedule of Level', 'Schedule Level')
+
+[2026-01-02 20:35:32.909] [20:35:32.908] [PARAM-CAPTURE] ⚠️ Schedule of Level NOT FOUND for element 739950 (tried: 'Elevation from Level', 'Schedule of Level', 'Schedule Level')
+
+[2026-01-02 20:35:32.915] [20:35:32.915] [PARAM-CAPTURE] ⚠️ Schedule of Level NOT FOUND for element 735336 (tried: 'Elevation from Level', 'Schedule of Level', 'Schedule Level')
+
+[2026-01-02 20:35:32.918] [20:35:32.917] [PARAM-CAPTURE] ⚠️ Schedule of Level NOT FOUND for element 740042 (tried: 'Elevation from Level', 'Schedule of Level', 'Schedule Level')
+
+[2026-01-02 20:35:32.921] [20:35:32.920] [PARAM-CAPTURE] ⚠️ Schedule of Level NOT FOUND for element 730932 (tried: 'Elevation from Level', 'Schedule of Level', 'Schedule Level')
+
+[2026-01-02 20:35:32.924] [20:35:32.923] [PARAM-CAPTURE] ⚠️ Schedule of Level NOT FOUND for element 730902 (tried: 'Elevation from Level', 'Schedule of Level', 'Schedule Level')
+
+[2026-01-02 20:35:32.926] [20:35:32.926] [PARAM-CAPTURE] ⚠️ Schedule of Level NOT FOUND for element 730475 (tried: 'Elevation from Level', 'Schedule of Level', 'Schedule Level')
+
+[2026-01-02 20:35:32.929] [20:35:32.928] [PARAM-CAPTURE] ⚠️ Schedule of Level NOT FOUND for element 730851 (tried: 'Elevation from Level', 'Schedule of Level', 'Schedule Level')
+
+[2026-01-02 20:35:32.931] [20:35:32.931] [PARAM-CAPTURE] ⚠️ Schedule of Level NOT FOUND for element 730976 (tried: 'Elevation from Level', 'Schedule of Level', 'Schedule Level')
+

@@ -1,4 +1,4 @@
-[2026-01-02 10:34:18.993] [10:34:18.992] [SetDepthParameter] Zone=0544a9a0-89b8-0e08-2188-db8554cbad72, HostType='Wall', IsWallHost=True, IsFramingHost=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, CalculatedThickness=200.0mm
+[2026-01-02 18:42:14.895] [18:42:14.893] [SetDepthParameter] Zone=0544a9a0-89b8-0e08-2188-db8554cbad72, HostType='Wall', IsWallHost=True, IsFramingHost=False, UsedCache=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, FinalThickness=200.0mm
 
-[2026-01-02 10:34:18.996] [10:34:18.995] [SetDepthParameter] ✅ Zone=0544a9a0-89b8-0e08-2188-db8554cbad72, Sleeve=745302: Set Depth=200.0mm
+[2026-01-02 18:42:14.898] [18:42:14.897] [SetDepthParameter] ✅ Zone=0544a9a0-89b8-0e08-2188-db8554cbad72, Sleeve=745585: Set Depth=200.0mm
 

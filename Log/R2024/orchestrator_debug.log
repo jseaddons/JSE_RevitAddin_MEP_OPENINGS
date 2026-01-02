@@ -1,20 +1,20 @@
-[2026-01-02 10:34:18.555] [10:34:18] 🔥 BEFORE VERIFICATION CALL
+[2026-01-02 18:42:14.450] [18:42:14] 🔥 BEFORE VERIFICATION CALL
 
-[2026-01-02 10:34:22.729] [10:34:22] AFTER ExecuteUniversalSleevePlacement, ABOUT TO CALL ExecuteClusteringForCategory for filter=Ventilation, category=DuctAccessories
+[2026-01-02 18:42:16.831] [18:42:16] AFTER ExecuteUniversalSleevePlacement, ABOUT TO CALL ExecuteClusteringForCategory for filter=Ventilation, category=DuctAccessories
 
-[10:34:22] 🔥 DIRECT IO: AdoptToDocumentFlag=True, FilterId=1
-[10:34:22] 🔥 DIRECT IO: PATH 1a CHECK - AdoptToDocument=True, NoInvalidatedZones=True, Queried by FilterId=1, Category=Duct Accessories, Found 0 clusters
-[10:34:22] 🔥 DIRECT IO: PATH 1a CHECK - No clusters in DB, using PATH 2 (database), comboId=1
-[10:34:22] 🔨 BUILD TIMESTAMP: 2026-01-02 10:33:41 | VERSION: R2024 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
-[10:34:22] 🔥 DIRECT IO: isPath1Replay=False, comboId=1, filterId=1 (DATABASE-ONLY, NO XML)
-[2026-01-02 10:34:22.774] [10:34:22] 🔥🔥🔥 ABOUT TO CALL ClusterSleeves: category=Duct Accessories, isPath1Replay=False, comboId=1, filterId=1 (DATABASE-ONLY, NO XML)
+[18:42:16] 🔥 DIRECT IO: AdoptToDocumentFlag=True, FilterId=1
+[18:42:16] 🔥 DIRECT IO: PATH 1a CHECK - AdoptToDocument=True, NoInvalidatedZones=True, Queried by FilterId=1, Category=Duct Accessories, Found 0 clusters
+[18:42:16] 🔥 DIRECT IO: PATH 1a CHECK - No clusters in DB, using PATH 2 (database), comboId=1
+[18:42:16] 🔨 BUILD TIMESTAMP: 2026-01-02 18:27:49 | VERSION: R2024 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+[18:42:16] 🔥 DIRECT IO: isPath1Replay=False, comboId=1, filterId=1 (DATABASE-ONLY, NO XML)
+[2026-01-02 18:42:16.874] [18:42:16] 🔥🔥🔥 ABOUT TO CALL ClusterSleeves: category=Duct Accessories, isPath1Replay=False, comboId=1, filterId=1 (DATABASE-ONLY, NO XML)
 
-[10:34:22] 🔥 DIRECT IO: BEFORE ClusterServiceFactory.CreateWithAllServices
-[10:34:22] 🔥 DIRECT IO: CALLING ClusterServiceFactory.CreateWithAllServices NOW
-[10:34:22] 🔥 DIRECT IO: ClusterServiceFactory.CreateWithAllServices RETURNED
-[10:34:22] 🔥 DIRECT IO: BEFORE ClusterSleeves CALL (isPath1Replay=False, comboId=1, filterId=1)
-[10:34:23] 🔥 DIRECT IO: ClusterSleeves RETURNED SUCCESS: placed=0, deleted=0
-[2026-01-02 10:34:23.057] [10:34:23] 🔥🔥🔥 ClusterSleeves RETURNED: placedCount=0, deletedCount=0
+[18:42:16] 🔥 DIRECT IO: BEFORE ClusterServiceFactory.CreateWithAllServices
+[18:42:16] 🔥 DIRECT IO: CALLING ClusterServiceFactory.CreateWithAllServices NOW
+[18:42:16] 🔥 DIRECT IO: ClusterServiceFactory.CreateWithAllServices RETURNED
+[18:42:16] 🔥 DIRECT IO: BEFORE ClusterSleeves CALL (isPath1Replay=False, comboId=1, filterId=1)
+[18:42:17] 🔥 DIRECT IO: ClusterSleeves RETURNED SUCCESS: placed=0, deleted=0
+[2026-01-02 18:42:17.175] [18:42:17] 🔥🔥🔥 ClusterSleeves RETURNED: placedCount=0, deletedCount=0
 
-[2026-01-02 10:34:23.064] [10:34:23] AFTER ExecuteClusteringForCategory completed for filter=Ventilation, category=DuctAccessories
+[2026-01-02 18:42:17.182] [18:42:17] AFTER ExecuteClusteringForCategory completed for filter=Ventilation, category=DuctAccessories
 
