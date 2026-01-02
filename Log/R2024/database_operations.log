@@ -1,9 +1,9 @@
-[2026-01-02 10:27:57.015] === DATABASE SELECT ===
+[2026-01-02 10:34:13.502] === DATABASE SELECT ===
 Table: Filters
 WHERE: FilterName='Ventilation' AND Category='Duct Accessories'
 ---
 
-[2026-01-02 10:27:57.018] === DATABASE OPERATION ===
+[2026-01-02 10:34:13.506] === DATABASE OPERATION ===
 Operation: INSERT
 Table: Filters
 Parameters:
@@ -13,7 +13,7 @@ Parameters:
 Info: Creating new filter
 ---
 
-[2026-01-02 10:27:57.019] === DATABASE OPERATION ===
+[2026-01-02 10:34:13.507] === DATABASE OPERATION ===
 Operation: INSERT
 Table: Filters
 Parameters:
@@ -24,7 +24,7 @@ Rows Affected: 1
 Info: ✅ Created FilterId=1
 ---
 
-[2026-01-02 10:27:57.046] === DATABASE OPERATION ===
+[2026-01-02 10:34:13.531] === DATABASE OPERATION ===
 Operation: UPDATE
 Table: Filters
 Parameters:
@@ -34,7 +34,7 @@ Parameters:
 Info: Saving UI state for FilterId=1
 ---
 
-[2026-01-02 10:27:57.230] === DATABASE OPERATION ===
+[2026-01-02 10:34:13.706] === DATABASE OPERATION ===
 Operation: UPDATE
 Table: Filters
 Parameters:
@@ -45,25 +45,12 @@ Rows Affected: 1
 Info: ✅ Saved UI state - HostCategories: 1, AdoptToDocumentFlag: 1
 ---
 
-[2026-01-02 10:28:01.012] === DATABASE SELECT ===
+[2026-01-02 10:34:17.951] === DATABASE SELECT ===
 Table: Filters
 WHERE: FilterName='Ventilation' AND Category='Duct Accessories'
 ---
 
-[2026-01-02 10:28:01.013] === DATABASE SELECT ===
-Table: Filters
-WHERE: FilterName='Ventilation' AND Category='Duct Accessories'
-Results: 1 row(s)
-Sample Row:
-  FilterId = 1
----
-
-[2026-01-02 10:28:01.728] === DATABASE SELECT ===
-Table: Filters
-WHERE: FilterName='Ventilation' AND Category='Duct Accessories'
----
-
-[2026-01-02 10:28:01.729] === DATABASE SELECT ===
+[2026-01-02 10:34:17.952] === DATABASE SELECT ===
 Table: Filters
 WHERE: FilterName='Ventilation' AND Category='Duct Accessories'
 Results: 1 row(s)
@@ -71,12 +58,12 @@ Sample Row:
   FilterId = 1
 ---
 
-[2026-01-02 10:28:01.790] === DATABASE SELECT ===
+[2026-01-02 10:34:18.656] === DATABASE SELECT ===
 Table: Filters
 WHERE: FilterName='Ventilation' AND Category='Duct Accessories'
 ---
 
-[2026-01-02 10:28:01.790] === DATABASE SELECT ===
+[2026-01-02 10:34:18.657] === DATABASE SELECT ===
 Table: Filters
 WHERE: FilterName='Ventilation' AND Category='Duct Accessories'
 Results: 1 row(s)
@@ -84,33 +71,46 @@ Sample Row:
   FilterId = 1
 ---
 
-[2026-01-02 10:28:02.157] === DATABASE OPERATION ===
+[2026-01-02 10:34:18.717] === DATABASE SELECT ===
+Table: Filters
+WHERE: FilterName='Ventilation' AND Category='Duct Accessories'
+---
+
+[2026-01-02 10:34:18.718] === DATABASE SELECT ===
+Table: Filters
+WHERE: FilterName='Ventilation' AND Category='Duct Accessories'
+Results: 1 row(s)
+Sample Row:
+  FilterId = 1
+---
+
+[2026-01-02 10:34:19.051] === DATABASE OPERATION ===
 Operation: UPDATE
 Table: ClashZones
 Parameters:
   ClashZoneGuid = 0544a9a0-89b8-0e08-2188-db8554cbad72
-  SleeveInstanceId = 745292
+  SleeveInstanceId = 745302
   RowExists = True
 Rows Affected: 1
-Info: ✅ Updated SleeveInstanceId=745292 for zone 0544a9a0-89b8-0e08-2188-db8554cbad72
+Info: ✅ Updated SleeveInstanceId=745302 for zone 0544a9a0-89b8-0e08-2188-db8554cbad72
 ---
 
-[2026-01-02 10:28:02.203] === DATABASE OPERATION ===
+[2026-01-02 10:34:19.099] === DATABASE OPERATION ===
 Operation: UPDATE
 Table: ClashZones
 Parameters:
   ClashZoneGuid = 0544a9a0-89b8-0e08-2188-db8554cbad72
-  SleeveInstanceId = 745292
+  SleeveInstanceId = 745302
   RowExists = True
 Rows Affected: 1
-Info: ✅ Updated SleeveInstanceId=745292 for zone 0544a9a0-89b8-0e08-2188-db8554cbad72
+Info: ✅ Updated SleeveInstanceId=745302 for zone 0544a9a0-89b8-0e08-2188-db8554cbad72
 ---
 
-[2026-01-02 10:28:02.280] === DATABASE OPERATION ===
+[2026-01-02 10:34:19.177] === DATABASE OPERATION ===
 Operation: INSERT
 Table: SleeveSnapshots
 Parameters:
-  SleeveInstanceId = 745292
+  SleeveInstanceId = 745302
   ClusterInstanceId = NULL
   SourceType = Individual
   FilterId = 1
@@ -123,29 +123,29 @@ Parameters:
   HostDocKeysJson = ["CMO-GCI-MOD-ARC-ZZ-00002-2024"]
   ClashZoneGuid = 0544A9A0-89B8-0E08-2188-DB8554CBAD72
 Rows Affected: 1
-Info: ✅ Inserted NEW snapshot for SleeveId=745292, ClusterId=, MEP params: 13 (System Type, System Name, System Abbreviation, Reference Level, Schedule of Level (+8 more)), Host params: 1
+Info: ✅ Inserted NEW snapshot for SleeveId=745302, ClusterId=, MEP params: 13 (System Type, System Name, System Abbreviation, Reference Level, Schedule of Level (+8 more)), Host params: 1
 ---
 
-[2026-01-02 10:28:02.285] [2026-01-02 10:28:02.284] [SleevePersistenceService] ✅ Saved sleeve snapshots for 1 placed sleeves (FilterId=1)
+[2026-01-02 10:34:19.183] [2026-01-02 10:34:19.182] [SleevePersistenceService] ✅ Saved sleeve snapshots for 1 placed sleeves (FilterId=1)
 
-[2026-01-02 10:28:05.332] === DATABASE OPERATION ===
+[2026-01-02 10:34:22.668] === DATABASE OPERATION ===
 Operation: UPDATE
 Table: ClashZones
 Parameters:
   ClashZoneGuid = 0544a9a0-89b8-0e08-2188-db8554cbad72
-  SleeveInstanceId = 745292
+  SleeveInstanceId = 745302
   RowExists = True
 Rows Affected: 1
-Info: ✅ Updated SleeveInstanceId=745292 for zone 0544a9a0-89b8-0e08-2188-db8554cbad72
+Info: ✅ Updated SleeveInstanceId=745302 for zone 0544a9a0-89b8-0e08-2188-db8554cbad72
 ---
 
-[2026-01-02 10:28:05.410] === DATABASE SELECT ===
+[2026-01-02 10:34:22.769] === DATABASE SELECT ===
 Table: ClusterSleeves
 WHERE: FilterId=1 AND Category='Duct Accessories'
 Info: Checking for existing cluster data by FilterId+Category
 ---
 
-[2026-01-02 10:28:05.410] === DATABASE SELECT ===
+[2026-01-02 10:34:22.770] === DATABASE SELECT ===
 Table: ClusterSleeves
 WHERE: FilterId=1 AND Category='Duct Accessories'
 Results: 0 row(s)

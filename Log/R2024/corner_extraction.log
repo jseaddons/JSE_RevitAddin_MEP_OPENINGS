@@ -1,18 +1,18 @@
-[2026-01-02 10:28:05.338] [10:28:05] [ORCHESTRATOR] ⚙️ Corner Extraction block ENTERED for category DuctAccessories
+[2026-01-02 10:34:22.675] [10:34:22] [ORCHESTRATOR] ⚙️ Corner Extraction block ENTERED for category DuctAccessories
 
-[2026-01-02 10:28:05.352] [10:28:05] [INFO] Found 1 zones with SleeveInstanceId > 0 for category 'Duct Accessories'
+[2026-01-02 10:34:22.699] [10:34:22] [INFO] Found 1 zones with SleeveInstanceId > 0 for category 'Duct Accessories'
 
-[2026-01-02 10:28:05.358] [10:28:05] [START] BATCH EXTRACTION: Processing 1 zones...
+[2026-01-02 10:34:22.706] [10:34:22] [START] BATCH EXTRACTION: Processing 1 zones...
 
-[2026-01-02 10:28:05.365] [10:28:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 745292
-   -> C1=(275.180,54.063,21.407), C2=(275.180,55.047,21.407)
-   -> C3=(275.180,54.063,22.392), C4=(275.180,55.047,22.392)
+[2026-01-02 10:34:22.715] [10:34:22] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 745302
+   -> C1=(275.180,54.063,21.407), C2=(275.180,54.883,21.407)
+   -> C3=(275.180,54.063,22.392), C4=(275.180,54.883,22.392)
 
-[2026-01-02 10:28:05.367] [10:28:05] [SUCCESS] Extracted corners for 745292
+[2026-01-02 10:34:22.717] [10:34:22] [SUCCESS] Extracted corners for 745302
 
-[2026-01-02 10:28:05.368] [10:28:05] [SUCCESS] BATCH EXTRACTION FINISHED: 1 extracted, 0 failed
+[2026-01-02 10:34:22.719] [10:34:22] [SUCCESS] BATCH EXTRACTION FINISHED: 1 extracted, 0 failed
 
-[2026-01-02 10:28:05.370] [10:28:05] [SAVE] 📝 Calling BatchUpdateSleeveCorners with 1 results...
+[2026-01-02 10:34:22.721] [10:34:22] [SAVE] 📝 Calling BatchUpdateSleeveCorners with 1 results...
 
-[2026-01-02 10:28:05.374] [10:28:05] [SAVE] ✅ BatchUpdateSleeveCorners completed.
+[2026-01-02 10:34:22.726] [10:34:22] [SAVE] ✅ BatchUpdateSleeveCorners completed.
 

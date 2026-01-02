@@ -231,21 +231,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             try
             {
                 // ✅ OPTIMIZATION: Use parameterized bulk update query
-                var parameterNames = updates.Select(u => u.ParameterName).Distinct().ToList();
-                var sleeveGuids = updates.Select(u => u.SleeveGuid).Distinct().ToList();
+                // Group by TableName and ParameterName to ensure valid SQL generation
+                var groups = updates
+                    .GroupBy(u => new { u.TableName, u.ParameterName, u.KeyColumnName })
+                    .ToList();
 
-                foreach (var parameterName in parameterNames)
+                foreach (var group in groups)
                 {
-                    var parameterUpdates = updates.Where(u => u.ParameterName == parameterName).ToList();
+                    var tableName = group.Key.TableName;
+                    var parameterName = group.Key.ParameterName;
+                    var keyColumnName = group.Key.KeyColumnName;
+                    var groupUpdates = group.ToList();
                     
                     // ✅ OPTIMIZATION: Use CASE WHEN for bulk updates
+                    // Dynamic table and key column support
                     var updateQuery = $@"
-                        UPDATE SleeveParameters 
-                        SET {parameterName} = CASE SleeveGuid 
-                            {string.Join(" ", parameterUpdates.Select(u => $"WHEN '{u.SleeveGuid}' THEN '{u.ParameterValue}' "))}
+                        UPDATE {tableName} 
+                        SET {parameterName} = CASE {keyColumnName} 
+                            {string.Join(" ", groupUpdates.Select(u => $"WHEN '{u.Key}' THEN '{u.ParameterValue}' "))}
                             ELSE {parameterName} 
                         END
-                        WHERE SleeveGuid IN ({string.Join(",", parameterUpdates.Select(u => $"'{u.SleeveGuid}'"))})";
+                        WHERE {keyColumnName} IN ({string.Join(",", groupUpdates.Select(u => $"'{u.Key}'"))})";
 
                     using (var command = new SQLiteCommand(updateQuery, (SQLiteConnection)_dbContext.Connection))
                     {
@@ -274,15 +280,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             try
             {
                 // ✅ OPTIMIZATION: Use parameterized query for single update
+                // Dynamic table and key column support
                 var updateQuery = $@"
-                    UPDATE SleeveParameters 
+                    UPDATE {update.TableName} 
                     SET {update.ParameterName} = @parameterValue
-                    WHERE SleeveGuid = @sleeveGuid";
+                    WHERE {update.KeyColumnName} = @key";
 
                 var parameters = new[]
                 {
                     new System.Data.SQLite.SQLiteParameter("@parameterValue", update.ParameterValue),
-                    new System.Data.SQLite.SQLiteParameter("@sleeveGuid", update.SleeveGuid)
+                    new System.Data.SQLite.SQLiteParameter("@key", update.Key)
                 };
 
                 using (var command = new SQLiteCommand(updateQuery, (SQLiteConnection)_dbContext.Connection))
@@ -411,6 +418,80 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             }
         }
 
+        /// <summary>
+        /// ✅ BATCH PROCESSING: Queue an elevation update for ClashZones table.
+        /// Persists the calculated ElevationFromLevel to DB ("Capture Once").
+        /// </summary>
+        public void QueueElevationUpdate(string clashZoneGuid, double elevationFromLevel)
+        {
+            // Use existing queue mechanism but target ClashZones table
+            // We use ClashZoneGuid as key since SleeveGuid might not be unique/existent for all zones
+            var batchKey = $"{clashZoneGuid}_ElevationFromLevel";
+            
+            if (!_batchUpdates.ContainsKey(batchKey))
+            {
+                _batchUpdates[batchKey] = new List<ParameterUpdateBatch>();
+            }
+
+            _batchUpdates[batchKey].Add(new ParameterUpdateBatch
+            {
+                Key = clashZoneGuid,          // Use ClashZoneGuid as the primary key
+                ParameterName = "ElevationFromLevel",
+                ParameterValue = elevationFromLevel,
+                TableName = "ClashZones",     // ✅ TARGET TABLE: ClashZones
+                KeyColumnName = "ClashZoneGuid", // ✅ KEY COLUMN: ClashZoneGuid
+                Timestamp = DateTime.Now
+            });
+        }
+
+        /// <summary>
+        /// ✅ BATCH PROCESSING: Queue an elevation update for ClusterSleeves table.
+        /// Persists the calculated ElevationFromLevel to DB ("Capture Once").
+        /// </summary>
+        public void QueueClusterElevationUpdate(int clusterInstanceId, double elevationFromLevel)
+        {
+            var batchKey = $"{clusterInstanceId}_ElevationFromLevel_Cluster"; // Unique key for batching
+            
+            if (!_batchUpdates.ContainsKey(batchKey))
+            {
+                _batchUpdates[batchKey] = new List<ParameterUpdateBatch>();
+            }
+
+            _batchUpdates[batchKey].Add(new ParameterUpdateBatch
+            {
+                Key = clusterInstanceId.ToString(),          // Use ClusterInstanceId (Revit ID)
+                ParameterName = "ElevationFromLevel",
+                ParameterValue = elevationFromLevel,
+                TableName = "ClusterSleeves",     // ✅ TARGET TABLE: ClusterSleeves
+                KeyColumnName = "ClusterInstanceId", // ✅ KEY COLUMN: ClusterInstanceId
+                Timestamp = DateTime.Now
+            });
+        }
+
+        /// <summary>
+        /// ✅ BATCH PROCESSING: Queue an elevation update for CombinedSleeves table.
+        /// Persists the calculated ElevationFromLevel to DB ("Capture Once").
+        /// </summary>
+        public void QueueCombinedElevationUpdate(int combinedInstanceId, double elevationFromLevel)
+        {
+            var batchKey = $"{combinedInstanceId}_ElevationFromLevel_Combined"; // Unique key for batching
+            
+            if (!_batchUpdates.ContainsKey(batchKey))
+            {
+                _batchUpdates[batchKey] = new List<ParameterUpdateBatch>();
+            }
+
+            _batchUpdates[batchKey].Add(new ParameterUpdateBatch
+            {
+                Key = combinedInstanceId.ToString(),          // Use CombinedInstanceId (Revit ID)
+                ParameterName = "ElevationFromLevel",
+                ParameterValue = elevationFromLevel,
+                TableName = "CombinedSleeves",     // ✅ TARGET TABLE: CombinedSleeves
+                KeyColumnName = "CombinedInstanceId", // ✅ KEY COLUMN: CombinedInstanceId
+                Timestamp = DateTime.Now
+            });
+        }
+
         #region Helper Classes
 
         /// <summary>
@@ -419,10 +500,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         /// </summary>
         private class ParameterUpdateBatch
         {
-            public string SleeveGuid { get; set; } = string.Empty;
+            public string Key { get; set; } = string.Empty; // Generic Key (SleeveGuid or ClashZoneGuid)
+            
+            // Legacy support
+            public string SleeveGuid 
+            { 
+                get => Key; 
+                set => Key = value; 
+            }
+            
             public string ParameterName { get; set; } = string.Empty;
             public object ParameterValue { get; set; } = string.Empty;
             public ElementId SleeveId { get; set; } = ElementId.InvalidElementId;
+            public string TableName { get; set; } = "SleeveParameters"; // Default for backward compatibility
+            public string KeyColumnName { get; set; } = "SleeveGuid";   // Default for backward compatibility
             public DateTime Timestamp { get; set; }
         }
 

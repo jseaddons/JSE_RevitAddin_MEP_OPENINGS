@@ -145,6 +145,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// Host orientation: 'X', 'Y', 'Z'
         /// </summary>
         public string HostOrientation { get; set; }
+
+        /// <summary>
+        /// Elevation from Level (internally calculated or from Revit param)
+        /// Used for reliable Bottom of Opening calculation.
+        /// </summary>
+        public double? ElevationFromLevel { get; set; }
         
         // ============================================================================
         // CORNER COORDINATES (World Space)

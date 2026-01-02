@@ -76,8 +76,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
         /// <returns>True if value is valid (within reasonable bounds and not zero), false otherwise.</returns>
         public static bool IsValidScheduleOfLevel(double scheduleOfLevel)
         {
-            // Valid if within reasonable bounds and not exactly zero (zero might indicate unset parameter)
-            return Math.Abs(scheduleOfLevel) > 0.001 && Math.Abs(scheduleOfLevel) <= 10000.0;
+            // Valid if within reasonable bounds. 
+            // ✅ CRITICAL FIX for R2024: Allow 0.0! (Fallback calculation might yield 0 if sleeve is at Level elevation)
+            // Previously we rejected 0 assuming it meant "unset parameter", but with fallback, 0 is a valid offset.
+            return Math.Abs(scheduleOfLevel) <= 10000.0;
         }
 
         /// <summary>

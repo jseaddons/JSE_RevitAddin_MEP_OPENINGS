@@ -6,6 +6,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
     /// <summary>
     /// Helper to efficiently extract all relevant MEP parameters from a FamilyInstance in a single API call.
     /// </summary>
+    [System.Obsolete("Use IElementParameterExtractor and strategies (e.g., DamperParameterExtractionStrategy) instead.")]
     public static class MepParameterHelper
     {
         public class MepParameterSnapshot

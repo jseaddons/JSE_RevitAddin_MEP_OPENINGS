@@ -12,6 +12,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// Service for managing Host Element parameter transfer functionality
     /// Handles Wall, Structural Framing, and Floor parameter extraction and UI management
     /// </summary>
+    [System.Obsolete("Use IElementParameterExtractor and strategies instead. This service will be removed in future phases.")]
     public class HostParameterService
     {
         private readonly LinkedFileService _linkedFileService;

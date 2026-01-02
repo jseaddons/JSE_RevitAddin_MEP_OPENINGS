@@ -29,6 +29,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public double? Corner4Y { get; set; }
         public double? Corner4Z { get; set; }
         
+        /// <summary>
+        /// ✅ PERSISTENCE: Elevation from Level for cluster sleeve (Capture Once)
+        /// </summary>
+        public double? ElevationFromLevel { get; set; }
+
         public double? RotationAngleDeg { get; set; }
         
         // Host Info

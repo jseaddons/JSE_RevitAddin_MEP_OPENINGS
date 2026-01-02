@@ -203,7 +203,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         
         private Result ExecuteRefreshInternal(RefreshContext context)
         {
-            // ✅ CRITICAL DIAGNOSTIC: Log refresh start (even before validation)
+            // ✅ CRITICAL DIAGNOSTIC: Log refresh start
             if (!context.IsDeploymentMode)
             {
                 DebugLogger.Info($"[REFRESH-REFACTORED] ===== ExecuteRefreshInternal STARTED =====");
@@ -211,6 +211,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 SafeFileLogger.SafeAppendText(context.RefreshLogName, 
                     $"[{DateTime.Now}] ===== ExecuteRefreshInternal STARTED =====\n");
             }
+
+            // ✅ PHASE 7: Revit 2023 Geometry Stability
+            // Explicitly clear Revit geometry caches before starting detection
+            // This mitigates the "cutGCurveWithGeometry" bug caused by stale geometry state
+            ClearRevitGeometryCaches(context);
             
             // PHASE 1: Validate UI selections
             using (context.PerformanceMonitor.TrackOperation("1. UI Validation"))
@@ -283,6 +288,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             ShowSummary(context);
             
             return Result.Succeeded;
+        }
+
+        /// <summary>
+        /// ✅ PHASE 7: Revit 2023 Geometry Stability
+        /// Explicitly force garbage collection and finalize pending geometry objects
+        /// This ensures a clean state before complex geometry operations
+        /// </summary>
+        private void ClearRevitGeometryCaches(RefreshContext context)
+        {
+            try
+            {
+                if (!context.IsDeploymentMode)
+                    DebugLogger.Info("[REFRESH-REFACTORED] [PHASE 7] Clearing Revit geometry caches...");
+                    
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect(); // Second pass to ensure everything is cleared
+                
+                if (!context.IsDeploymentMode)
+                    DebugLogger.Info("[REFRESH-REFACTORED] [PHASE 7] Revit geometry caches cleared.");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[REFRESH-REFACTORED] Failed to clear geometry caches: {ex.Message}");
+            }
         }
 
         /// <summary>

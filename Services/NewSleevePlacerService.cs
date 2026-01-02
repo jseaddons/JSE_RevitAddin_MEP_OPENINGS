@@ -38,6 +38,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly Services.Interfaces.Refactor.IFlagManager _flagManager;
         private readonly bool _isReplayPath;
         private readonly string _filterName;
+        private readonly DatabaseWriteOptimizer? _dbOptimizer;
         
         // ? OOP METHOD: Insulation-aware sizing service (SOLID principles)
         private readonly IInsulationAwareSizingService _sizingService;
@@ -112,7 +113,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ? PARALLEL PLANNING: Optional planner for parallel pre-computation (enabled via safety flag)
             ISleevePlacementPlanner? planner = null,
             // ? FORCE DETECTION MODE
-            bool isForceDetectionMode = false)
+            bool isForceDetectionMode = false,
+            DatabaseWriteOptimizer? dbOptimizer = null)
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _conditions = conditions ?? new OpeningConditions();
@@ -138,6 +140,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _clearanceSettings = clearanceSettings ?? new Dictionary<string, double>();
             _sleeveRepository = sleeveRepository ?? throw new ArgumentNullException(nameof(sleeveRepository));
             _zoneFilterService = zoneFilterService; // Can be null for now
+            _dbOptimizer = dbOptimizer;
             _familyManager = familyManager; // Can be null for now
             _flagManager = flagManager; // Passed as IFlagManager? (can be null)
             _isReplayPath = isReplayPath;
@@ -159,7 +162,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             // ? SRP COMPLIANCE: Initialize parameter service (delegates all parameter setting operations)
             // Note: Performance monitor will be set later in PlaceAllSleevesInTransaction, so we pass null here
-            _parameterService = new SleeveParameterService(doc, isReplayPath, null);
+            _parameterService = new SleeveParameterService(doc, isReplayPath, null,dbOptimizer);
             
             // ? SRP COMPLIANCE: Initialize placement point adjustment service
             // Note: Performance monitor will be set later in PlaceAllSleevesInTransaction, so we pass null here
@@ -227,7 +230,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 _performanceMonitor = new Services.Placement.PlacementPerformanceMonitor(performanceLogName);
                 
                 // Recreate services with performance monitor for proper tracking
-                _parameterService = new SleeveParameterService(_doc, _isReplayPath, _performanceMonitor);
+                _parameterService = new SleeveParameterService(_doc, _isReplayPath, _performanceMonitor,_dbOptimizer);
                 _placementPointAdjustmentService = new PlacementPointAdjustmentService(_doc, _performanceMonitor, _isForceDetectionMode);
             }
             
@@ -1315,7 +1318,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             
                 // ? OOP METHOD: Use insulation-aware sizing service for consistent calculation (SOLID principles)
-                // Formula: RawSize + (2 × InsulationThickness) + (2 × Clearance)
+                // Formula: RawSize + (2 ï¿½ InsulationThickness) + (2 ï¿½ Clearance)
                 // ? CRITICAL REFACTOR: Use ROUNDED calculation directly in the service
                 // This centralizes rounding logic and ensures dimensions are final and consistent
                 var settings = ApplicationProfileService.Instance.GetCurrentSettings();

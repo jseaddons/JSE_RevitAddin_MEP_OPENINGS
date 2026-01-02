@@ -36,41 +36,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
     {
         private readonly Document _doc;
         private readonly bool _isReplayPath;
-        
-        // ✅ PERFORMANCE MONITORING: Performance monitor for tracking operations
         private readonly PlacementPerformanceMonitor? _performanceMonitor;
         
-        // ✅ PARAMETER BATCHING: Deferred parameter writes (4-6× faster placement)
-        // Accumulates parameter values during placement loop, writes all after single regeneration
-        // Key: ElementId of sleeve instance
-        // Value: Dictionary of parameter name → value (double or string)
-        private Dictionary<ElementId, Dictionary<string, object>> _deferredParameters = 
-            new Dictionary<ElementId, Dictionary<string, object>>();
-        
-        // ✅ SAFETY FLAG: Prevents multiple flushes (critical for performance)
+        // ✅ PERSISTENCE: Database optimizer for batch updates (Phase 6)
+        private readonly DatabaseWriteOptimizer? _dbOptimizer;
+
+        // ✅ PERFORMANCE OPTIMIZATION: Parameter Batching (SOLID POINT 10)
+        private readonly Dictionary<ElementId, Dictionary<string, object>> _deferredParameters = new();
         private bool _hasFlushedParameters = false;
-        
+
         // ✅ PERFORMANCE OPTIMIZATION: Caching for expensive operations
-        // Level lookup cache - prevents repeated level searches for same level names
-        private readonly Dictionary<string, Level> _levelCache = new Dictionary<string, Level>();
-        
-        // Elevation calculation cache - stores pre-calculated elevation values
-        private readonly Dictionary<string, double> _elevationCache = new Dictionary<string, double>();
-        
-        // Parameter name resolution cache - stores resolved parameter names
-        private readonly Dictionary<string, Parameter> _parameterCache = new Dictionary<string, Parameter>();
-        
-        // Host thickness cache - stores calculated thickness values
-        private readonly Dictionary<int, double> _thicknessCache = new Dictionary<int, double>();
+        private readonly Dictionary<string, Level> _levelCache = new();
+        private readonly Dictionary<string, double?> _elevationCache = new();
+        private readonly Dictionary<string, Parameter> _parameterCache = new();
+        private readonly Dictionary<int, double> _thicknessCache = new();
 
         public SleeveParameterService(
             Document doc,
             bool isReplayPath = false,
-            PlacementPerformanceMonitor? performanceMonitor = null)
+            PlacementPerformanceMonitor? performanceMonitor = null,
+            DatabaseWriteOptimizer? dbOptimizer = null) // ✅ Phase 6: Inject Optimizer (Optional)
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _isReplayPath = isReplayPath;
             _performanceMonitor = performanceMonitor;
+            _dbOptimizer = dbOptimizer;
         }
 
         /// <summary>
@@ -80,24 +70,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         /// </summary>
         public void SetSleeveParameters(
             FamilyInstance instance, 
-            double width, 
-            double height, 
+            double width,
+            double height,
             double diameter, 
             bool isCircular, 
-            ClashZone zone)
+            ClashZone zone,
+            bool isCluster = false,
+            bool isCombined = false)
         {
-            // ✅ PERFORMANCE MONITORING: Track parameter setting
             using (var tracker = _performanceMonitor?.TrackOperation("Set Sleeve Parameters"))
             {
-                if (instance == null) return;
-
-                // ✅ SAFE ELEMENT VALIDATION: Validate instance is still valid (avoids document mismatch bug)
-                if (OptimizationFlags.UseSafeElementValidation)
-                {
-                    if (!ValidateElement(instance))
-                        return;
-                }
-
                 var currentSleeveId = instance.Id;
 
                 // ✅ CRITICAL FIX: Rounding is now done in NewSleevePlacerService BEFORE calling SetSleeveParameters
@@ -164,7 +146,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     // ✅ BOTTOM OF OPENING: Calculate and set "Bottom of Opening" for RectangularOpeningOnWall sleeves
                     if (OptimizationFlags.UseBottomOfOpeningCalculation && !isCircular)
                     {
-                        SetBottomOfOpeningParameter(instance, roundedHeight, currentSleeveId, zone);
+                        SetBottomOfOpeningParameter(instance, roundedHeight, currentSleeveId, zone, isCluster, isCombined);
                     }
                 }
                 else
@@ -182,7 +164,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                             fallbackName: "Sleeve Width");
                         SetParameter(instance, "Height", roundedHeight, currentSleeveId, 
                             fallbackName: "Sleeve Height");
-                        tracker?.SetItemCount(1);
                     }
 
                     // ✅ SRP COMPLIANCE: Delegate depth parameter setting to dedicated method
@@ -1046,7 +1027,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         /// Applies to: RectangularOpeningOnWall family only.
         /// Preserves all optimization features: batching, performance monitoring, safe validation, diagnostic logging.
         /// </summary>
-        private void SetBottomOfOpeningParameter(FamilyInstance instance, double height, ElementId currentSleeveId, ClashZone zone = null)
+        private void SetBottomOfOpeningParameter(FamilyInstance instance, double height, ElementId currentSleeveId, ClashZone zone = null, bool isCluster = false, bool isCombined = false)
         {
             if (!DeploymentConfiguration.DeploymentMode)
             {
@@ -1086,31 +1067,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 
             try
             {
-                // ✅ PRIMARY SOURCE: Read "Elevation from Level" from Revit parameter (after Schedule Level is set, Revit calculates this automatically)
-                // ✅ CRITICAL: This is the ONLY source - Revit's automatic calculation after Schedule Level is set
-                // ✅ NO FALLBACK: If Revit hasn't calculated it, skip Bottom of Opening calculation (graceful degradation)
-                // ✅ FORMULA: Bottom of Opening = Elevation from Level - (Height / 2)
+                // ✅ PHASE 8: "CAPTURE ONCE" - Prioritize database value if already captured
+                // This eliminates dependency on Revit's lazy parameters for second runs or clusters
                 double? elevationFromLevel = null;
-                Parameter elevationFromLevelParam = instance.LookupParameter("Elevation from Level");
-                if (elevationFromLevelParam != null && elevationFromLevelParam.StorageType == StorageType.Double)
+                
+                if (zone != null && Math.Abs(zone.ElevationFromLevel) > 1e-6)
                 {
-                    double revitElevationFromLevel = elevationFromLevelParam.AsDouble();
-                    // ✅ VALIDATION: Only use if value is reasonable (not 0 or absurd)
-                    if (Math.Abs(revitElevationFromLevel) > 1e-6 && Math.Abs(revitElevationFromLevel) < 1000000.0) // Reasonable range check
+                    elevationFromLevel = zone.ElevationFromLevel;
+                    if (!DeploymentConfiguration.DeploymentMode)
                     {
-                elevationFromLevel = revitElevationFromLevel;
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ✅ Zone={zone?.Id}, Sleeve={instance.Id}: " +
-                        $"Read Elevation from Level={elevationFromLevel.Value * 304.8:F1}mm from Revit parameter\n");
+                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] 💾 DB SOURCE Used: Zone={zone.Id}, Elevation={elevationFromLevel.Value * 304.8:F1}mm\n");
+                    }
                 }
-            }
-        }
+                else
+                {
+                    // ✅ PRIMARY Revit SOURCE: Read "Elevation from Level" from Revit parameter
+                    Parameter elevationFromLevelParam = instance.LookupParameter("Elevation from Level");
+                    if (elevationFromLevelParam != null && elevationFromLevelParam.StorageType == StorageType.Double)
+                    {
+                        double revitElevationFromLevel = elevationFromLevelParam.AsDouble();
+                        // ✅ VALIDATION: Only use if value is reasonable (not 0 or absurd)
+                        if (Math.Abs(revitElevationFromLevel) > 1e-6 && Math.Abs(revitElevationFromLevel) < 1000000.0) // Reasonable range check
+                        {
+                            elevationFromLevel = revitElevationFromLevel;
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("placement_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ✅ Zone={zone?.Id}, Sleeve={instance.Id}: " +
+                                    $"Read Elevation from Level={elevationFromLevel.Value * 304.8:F1}mm from Revit parameter\n");
+                            }
+                        }
+                    }
+                }
 
         // ✅ FALLBACK (R2024 FIX): Calculate Elevation from Level manually if parameter is 0/missing
         // This handles cases where Revit hasn't regenerated the parameter yet
-        if (elevationFromLevel == null && zone != null && instance.Location is LocationPoint locPoint)
+        // CRITICAL FIX: Trigger fallback if value is 0.0 (Revit lazy load) OR null
+        if ((elevationFromLevel == null || Math.Abs(elevationFromLevel.Value) < 0.001) && zone != null && instance.Location is LocationPoint locPoint)
         {
              double instanceZ = locPoint.Point.Z;
              double levelElevation = zone.MepElementLevelElevation; // This assumes Schedule Level matches MEP Reference Level
@@ -1130,6 +1124,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     $"  - Level Elevation (Zone): {levelElevation * 304.8:F1}mm\n" +
                     $"  - Calculated Elevation from Level: {elevationFromLevel.Value * 304.8:F1}mm\n");
              }
+        }
+
+        // ✅ PHASE 6: PERSISTENCE - Capture Elevation to Database ("Capture Once")
+        // Store the valid elevation (whether from Revit or Fallback) to DB for future reliability
+        if (elevationFromLevel.HasValue && zone != null && _dbOptimizer != null)
+        {
+            if (isCluster)
+            {
+                // ✅ CLUSTER SUPPORT: Update ClusterSleeves table
+                _dbOptimizer.QueueClusterElevationUpdate(instance.Id.IntegerValue, elevationFromLevel.Value);
+            }
+            else if (isCombined)
+            {
+                // ✅ COMBINED SUPPORT: Update CombinedSleeves table
+                _dbOptimizer.QueueCombinedElevationUpdate(instance.Id.IntegerValue, elevationFromLevel.Value);
+            }
+            else
+            {
+                // ✅ DEFAULT: Update ClashZones table
+                _dbOptimizer.QueueElevationUpdate(zone.Id.ToString(), elevationFromLevel.Value);
+            }
+            
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                 SafeFileLogger.SafeAppendText("placement_elevation.log",
+                    $"[{DateTime.Now:HH:mm:ss}] 💾 PERSISTENCE: Queued ElevationFromLevel={elevationFromLevel.Value:F4} for Zone={zone.Id} (Cluster={isCluster}, Combined={isCombined}, ID={instance.Id})\n");
+            }
         }
 
         // ✅ Use elevationFromLevel for calculation (renamed from scheduleOfLevel)
@@ -1559,7 +1580,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             if (string.IsNullOrWhiteSpace(cacheKey)) return null;
 
             // ✅ CACHE HIT: Return cached elevation
-            if (_elevationCache.TryGetValue(cacheKey, out double cachedElevation))
+            if (_elevationCache.TryGetValue(cacheKey, out double? cachedElevation))
             {
                 return cachedElevation;
             }

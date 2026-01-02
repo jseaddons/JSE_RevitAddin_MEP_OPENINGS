@@ -616,6 +616,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     if (AddColumnIfMissing("ClashZones", "MepElementFamilyName", "TEXT", transaction))
                         _logger("[SQLite] ✅ Added MepElementFamilyName column to ClashZones (damper family name: Motorised Smoke Damper, etc.)");
                     
+                    // ✅ PHASE 6: PERSISTENCE - Add ElevationFromLevel column to ClashZones (Real-time capture)
+                    if (AddColumnIfMissing("ClashZones", "ElevationFromLevel", "REAL DEFAULT 0.0", transaction))
+                        _logger("[SQLite] ✅ Added ElevationFromLevel column to ClashZones (Capture Once)");
+                    
+                    // ✅ PHASE 6: PERSISTENCE - Add ElevationFromLevel column to ClusterSleeves
+                    // Check if ClusterSleeves table exists first (it should be created by EnsureClusterSleevesTable)
+                    try
+                    {
+                        AddColumnIfMissing("ClusterSleeves", "ElevationFromLevel", "REAL", transaction);
+                    }
+                    catch
+                    {
+                        // Ignore if table doesn't exist yet (EnsureClusterSleevesTable handles new creation)
+                    }
+
+                    // ✅ PHASE 6: PERSISTENCE - Add ElevationFromLevel column to CombinedSleeves
+                    try
+                    {
+                        AddColumnIfMissing("CombinedSleeves", "ElevationFromLevel", "REAL", transaction);
+                    }
+                    catch
+                    {
+                        // Ignore if table doesn't exist yet
+                    }
+
                     // ✅ SIZE PARAMETER VALUE: Add string column for Size parameter value (e.g., "20 mmø", "200 mm dia symbol")
                     // This is the exact text from the Size parameter, stored for transfer to sleeve MEP_Size parameter
                     if (AddColumnIfMissing("ClashZones", "MepElementSizeParameterValue", "TEXT DEFAULT ''", transaction))

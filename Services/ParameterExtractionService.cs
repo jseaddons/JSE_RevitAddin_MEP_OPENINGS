@@ -16,6 +16,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public List<string> Values { get; set; } = new List<string>();
     }
 
+    [System.Obsolete("Use IElementParameterExtractor and strategies instead. This service will be removed in future phases.")]
     public class ParameterExtractionService
     {
         private Document _document; // Store document reference for row creation

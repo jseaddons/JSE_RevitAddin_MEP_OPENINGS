@@ -173,6 +173,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
             get => _wallCenterlinePointZ;
             set => _wallCenterlinePointZ = value;
         }
+
+        /// <summary>
+        /// ✅ PERSISTENCE: The calculated Elevation from Level for the placed sleeve.
+        /// Captures the value at placement time ("Capture Once") to avoid reliance on lazy Revit parameters.
+        /// Formula: SleevePlacementPoint.Z - MepElementLevelElevation
+        /// </summary>
+        public double ElevationFromLevel { get; set; } = 0.0;
         
         /// <summary>
         /// The bounding box of the clash zone

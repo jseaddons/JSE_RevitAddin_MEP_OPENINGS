@@ -1,12 +1,12 @@
-[2026-01-02 10:28:01.917] [10:28:01.916] [DAMPER-PRE-STRATEGY] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, RawMEP W=150.0mm, H=175.0mm, DB Clearances: MEP=100mm, Other=50mm, IsInsulated=False, HasConditions=True, HasClearanceSettings=True
+[2026-01-02 10:34:18.829] [10:34:18.829] [DAMPER-PRE-STRATEGY] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, RawMEP W=150.0mm, H=175.0mm, DB Clearances: MEP=100mm, Other=50mm, IsInsulated=False, HasConditions=True, HasClearanceSettings=True
 
-[2026-01-02 10:28:01.942] [10:28:01.941] [DAMPER-STRATEGY-ENTRY] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, Conditions=True, ClearanceSettings=True, IsInsulated=False
+[2026-01-02 10:34:18.851] [10:34:18.850] [DAMPER-STRATEGY-ENTRY] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, Conditions=True, ClearanceSettings=True, IsInsulated=False
 
-[2026-01-02 10:28:01.948] [10:28:01.947] [DAMPER-STRATEGY-CLEARANCE] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, MEP Clearance=100mm, Other Clearance=50mm, IsInsulated=False (Forced False), Raw MEP W=150.0mm, H=175.0mm
+[2026-01-02 10:34:18.857] [10:34:18.856] [DAMPER-STRATEGY-CLEARANCE] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, MEP Clearance=100mm, Other Clearance=50mm, IsInsulated=False (Forced False), Raw MEP W=150.0mm, H=175.0mm
 
-[2026-01-02 10:28:01.958] [10:28:01.957] [DAMPER-CLEARANCE-BREAKDOWN] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, HasConnector=True, ConnectorDir='+Y', Left=50.0mm, Right=100.0mm, Top=50.0mm, Bottom=50.0mm, WidthTotal=150.0mm, HeightTotal=100.0mm, Base W=150.0mm, H=175.0mm, Final W=300.0mm, H=275.0mm
+[2026-01-02 10:34:18.865] [10:34:18.864] [DAMPER-CLEARANCE-BREAKDOWN] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, HasConnector=False, SymmetricClearance=50.0mm (all sides), WidthTotal=100.0mm, HeightTotal=100.0mm, Base W=150.0mm, H=175.0mm, Final W=250.0mm, H=275.0mm
 
-[2026-01-02 10:28:01.964] [10:28:01.964] [DAMPER-POST-STRATEGY] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, Final W=0.984252ft (300.0mm), H=0.902231ft (275.0mm), ClearanceApplied W=150.0mm, H=100.0mm
+[2026-01-02 10:34:18.869] [10:34:18.869] [DAMPER-POST-STRATEGY] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, Final W=0.820210ft (250.0mm), H=0.902231ft (275.0mm), ClearanceApplied W=100.0mm, H=100.0mm
 
-[2026-01-02 10:28:01.968] [10:28:01.967] [DAMPER-ROUNDING] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, Width 300.0mm -> 300.0mm, Height 275.0mm -> 300.0mm (RoundingValue=50mm, AlwaysUp=True)
+[2026-01-02 10:34:18.873] [10:34:18.872] [DAMPER-ROUNDING] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, Width 250.0mm -> 250.0mm, Height 275.0mm -> 300.0mm (RoundingValue=50mm, AlwaysUp=True)
 

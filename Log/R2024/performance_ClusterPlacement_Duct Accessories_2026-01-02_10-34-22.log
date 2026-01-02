@@ -1,0 +1,54 @@
+[2026-01-02 10:34:22.838] === PLACEMENT PERFORMANCE MONITOR STARTED ===
+Timestamp: 2026-01-02 10:34:22
+Log File: ClusterPlacement_Duct Accessories_2026-01-02_10-34-22.log
+Start Memory: 319.17 MB
+
+
+[2026-01-02 10:34:22.885] [10:34:22.884] Load Clash Zones from Database: 25ms, Memory: 952.00 KB, Items: 1
+
+[2026-01-02 10:34:22.890] [10:34:22.890] Populate Clash Zone Cache: 1ms, Memory: 0.00 KB, Items: 1
+
+[2026-01-02 10:34:22.901] [10:34:22.900] Filter Clash Zones: 8ms, Memory: 184.00 KB, Items: 1
+
+[2026-01-02 10:34:22.918] [10:34:22.918] Prepare Sleeve Data: 12ms, Memory: 816.00 KB, Items: 1
+
+[2026-01-02 10:34:22.939] [10:34:22.939] Group Sleeves by Host/System/Orientation: 19ms, Memory: 360.00 KB, Items: 1
+
+[2026-01-02 10:34:22.980] [10:34:22.979] Form Clusters: 32ms, Memory: 559.82 KB, Items: 1
+
+[2026-01-02 10:34:23.001] [10:34:23.001] Pre-Calculate Clusters (Parallel): 19ms, Memory: 152.00 KB, Items: 0
+
+[2026-01-02 10:34:23.025] [10:34:23.023] Place Clusters Loop: 21ms, Memory: 384.00 KB, Items: 0
+
+[2026-01-02 10:34:23.030] [10:34:23.030] Cleanup Individual Sleeves: 1ms, Memory: 40.00 KB, Items: 0
+
+[2026-01-02 10:34:23.048] === PLACEMENT PERFORMANCE REPORT ===
+Generated: 2026-01-02 10:34:23
+Total Time: 210ms (00:00)
+Total Individual Sleeves: 0
+Total Clusters: 0
+
+=== MEMORY USAGE ===
+Start: 319.17 MB
+End: 317.97 MB
+Delta: -1.20 MB
+
+=== OPERATION BREAKDOWN ===
+Operation                                   Calls        Total        Avg        Min        Max      Items    Items/s
+--------------------------------------------------------------------------------------------------------------
+Form Clusters                                   1           32ms      32.0ms        32ms        32ms          1        31/s
+Load Clash Zones from Database                  1           25ms      25.0ms        25ms        25ms          1        40/s
+Place Clusters Loop                             1           21ms      21.0ms        21ms        21ms          0         0/s
+Group Sleeves by Host/System/Orientation        1           19ms      19.0ms        19ms        19ms          1        53/s
+Pre-Calculate Clusters (Parallel)               1           19ms      19.0ms        19ms        19ms          0         0/s
+Prepare Sleeve Data                             1           12ms      12.0ms        12ms        12ms          1        83/s
+Filter Clash Zones                              1            8ms       8.0ms         8ms         8ms          1       125/s
+Populate Clash Zone Cache                       1            1ms       1.0ms         1ms         1ms          1      1000/s
+Cleanup Individual Sleeves                      1            1ms       1.0ms         1ms         1ms          0         0/s
+
+=== PERFORMANCE TARGETS ===
+
+=== END OF REPORT ===
+
+[2026-01-02 10:34:23.055] [10:34:23.055] Save Cluster Data to Database: 19ms, Memory: 352.00 KB, Items: 0
+

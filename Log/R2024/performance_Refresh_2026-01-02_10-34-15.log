@@ -1,45 +1,45 @@
-[2026-01-02 10:27:59.771] === REFRESH PERFORMANCE REPORT ===
-Generated: 2026-01-02 10:27:59
-🔨 Build Timestamp: 2026-01-02 10:27:14 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
-Total Time: 1548ms (00:01)
+[2026-01-02 10:34:16.677] === REFRESH PERFORMANCE REPORT ===
+Generated: 2026-01-02 10:34:16
+🔨 Build Timestamp: 2026-01-02 10:33:41 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+Total Time: 1554ms (00:01)
 Total Clash Zones: 1
 
 === MEMORY USAGE ===
-Start: 317.78 MB
-End: 315.65 MB
-Delta: -2.13 MB
-Memory per Zone: -2183.66 KB (target: <5 KB)
+Start: 318.16 MB
+End: 315.64 MB
+Delta: -2.51 MB
+Memory per Zone: -2573.70 KB (target: <5 KB)
 
 === OPERATION BREAKDOWN ===
 Operation                         Calls      Total        Avg        Min        Max      Items
 ----------------------------------------------------------------------------------------------------
-6. Intersection Processing            1       1060ms    1060.0ms      1060ms      1060ms         1/s
-Damper Processing (Total)             1        641ms     641.0ms       641ms       641ms         2/s
-Collect Walls                         1        344ms     344.0ms       344ms       344ms         3/s
-9. Save                               1        287ms     287.0ms       287ms       287ms         3/s
-6b. Host Element Collection           1        281ms     281.0ms       281ms       281ms         4/s
-9a. Database/XML Save                 1        157ms     157.0ms       157ms       157ms         6/s
-Collect Dampers                       1        148ms     148.0ms       148ms       148ms         7/s
-9a8. Repo Bulk Save                   1        109ms     109.0ms       109ms       109ms         9/s
-9. Process Dampers (Bulk Optimized)        1        105ms     105.0ms       105ms       105ms        10/s
+6. Intersection Processing            1       1016ms    1016.0ms      1016ms      1016ms         1/s
+Damper Processing (Total)             1        602ms     602.0ms       602ms       602ms         2/s
+9. Save                               1        331ms     331.0ms       331ms       331ms         3/s
+Collect Walls                         1        297ms     297.0ms       297ms       297ms         3/s
+6b. Host Element Collection           1        275ms     275.0ms       275ms       275ms         4/s
+9a. Database/XML Save                 1        178ms     178.0ms       178ms       178ms         6/s
+Collect Dampers                       1        158ms     158.0ms       158ms       158ms         6/s
+9a8. Repo Bulk Save                   1        122ms     122.0ms       122ms       122ms         8/s
+9. Process Dampers (Bulk Optimized)        1        102ms     102.0ms       102ms       102ms        10/s
 8. Parameter Capture                  1         62ms      62.0ms        62ms        62ms        16/s
-9b. Set ReadyForPlacement Flags        1         37ms      37.0ms        37ms        37ms        27/s
-PrepareExistingZones                  1         33ms      33.0ms        33ms        33ms         0/s
+9b. Set ReadyForPlacement Flags        1         57ms      57.0ms        57ms        57ms        18/s
+PrepareExistingZones                  1         34ms      34.0ms        34ms        34ms         0/s
 Batch Capture (Dampers)               1         32ms      32.0ms        32ms        32ms         0/s
-3. Hierarchical Flag Reset            1         26ms      26.0ms        26ms        26ms         0/s
+3. Hierarchical Flag Reset            1         27ms      27.0ms        27ms        27ms         0/s
 3. Load Existing Zones                1         19ms      19.0ms        19ms        19ms         0/s
 6a. MEP Element Collection            1         13ms      13.0ms        13ms        13ms         0/s
 6a1. Section Box Outline              1          7ms       7.0ms         7ms         7ms         0/s
 PostProcess                           1          7ms       7.0ms         7ms         7ms         0/s
+9a1. Deduplicate Storage              1          7ms       7.0ms         7ms         7ms         0/s
 3B. Legacy Flag Sync                  1          5ms       5.0ms         5ms         5ms         0/s
-9a1. Deduplicate Storage              1          4ms       4.0ms         4ms         4ms         0/s
+9a7. Enrich Orientation               1          3ms       3.0ms         3ms         3ms         0/s
 9a7. Group File Combos                1          3ms       3.0ms         3ms         3ms         0/s
 1. UI Validation                      1          2ms       2.0ms         2ms         2ms         0/s
-2. XML Loading                        1          2ms       2.0ms         2ms         2ms         0/s
 4. Flag Sync                          1          2ms       2.0ms         2ms         2ms         0/s
 Cache Levels                          1          2ms       2.0ms         2ms         2ms         0/s
+2. XML Loading                        1          1ms       1.0ms         1ms         1ms         0/s
 9a01. Group By Cat                    1          1ms       1.0ms         1ms         1ms         0/s
-9a7. Enrich Orientation               1          1ms       1.0ms         1ms         1ms         0/s
 9a6. Filter Valid Zones               1          1ms       1.0ms         1ms         1ms         0/s
 9a7b. Loop Overhead                   1          1ms       1.0ms         1ms         1ms         0/s
 10. Cleanup                           1          1ms       1.0ms         1ms         1ms         0/s

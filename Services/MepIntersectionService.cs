@@ -551,12 +551,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             var results = new List<(Element, Element, BoundingBoxXYZ, XYZ)>();
 
+            // ✅ R2023 FIX: Force clearing of geometry caches before run
+            // R2023 has a bug where Options.View locks geometry references
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+
             // ✅ DIAGNOSTIC LOG: Use SafeFileLogger (should log to safefilelogger_diagnostic.log)
             try
             {
                 var buildTime = System.IO.File.GetLastWriteTime(System.Reflection.Assembly.GetExecutingAssembly().Location);
                 SafeFileLogger.SafeAppendText("DIAGNOSTIC_TEST.log", $"🔨 DLL BUILD TIME: {buildTime:yyyy-MM-dd HH:mm:ss}");
-                SafeFileLogger.SafeAppendText("DIAGNOSTIC_TEST.log", $"[{DateTime.Now:HH:mm:ss.fff}] FindIntersectionsBatchInternal CALLED - MEP={mepElements.Count}, Structural={structuralElements.Count}");
+                SafeFileLogger.SafeAppendText("DIAGNOSTIC_TEST.log", $"[{DateTime.Now:HH:mm:ss.fff}] FindIntersectionsBatchInternal CALLED - MEP={mepElements.Count}, Structural={structuralElements.Count}, View={(view3D == null ? "NULL" : view3D.Id.ToString())}");
+                SafeFileLogger.SafeAppendText("DIAGNOSTIC_TEST.log", $"[{DateTime.Now:HH:mm:ss.fff}]   > knownValidPairs={(knownValidPairs?.Count ?? 0)}, skipCheck={skipKnownPairsGeometryCheck}");
             }
             catch (Exception diagEx)
             {
@@ -987,9 +993,58 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                         if (mepEntry.line != null)
                         {
-                            using (var sci = solidToCheck.IntersectWithCurve(mepEntry.line, new SolidCurveIntersectionOptions()))
+                            SolidCurveIntersection sci = null;
+                            bool intersectionsFound = false;
+                            
+                            try
                             {
-                                if (sci.SegmentCount > 0)
+                                sci = solidToCheck.IntersectWithCurve(mepEntry.line, new SolidCurveIntersectionOptions());
+                            }
+                            catch (Autodesk.Revit.Exceptions.ArgumentException argEx) when (argEx.Message.Contains("cutGCurveWithGeometry"))
+                            {
+                                // ✅ R2023 RECOVERY: Known bug with geometry intersection
+                                if (OptimizationFlags.UseDiagnosticMode)
+                                    log?.Invoke($"[R2023-RECOVERY] ⚠️ Caught cutGCurveWithGeometry error for MEP {mepEntry.mepElement.Id} vs Struct {structEntry.element.Id}. Attempting recovery...");
+                                
+                                // RECOVERY: Try to get fresh curve without references (lighter weight)
+                                try
+                                {
+                                    var freshOpts = new Options { ComputeReferences = false, DetailLevel = ViewDetailLevel.Coarse };
+                                    
+                                    // Force geometry extraction to ensure internal state is reset/refreshed
+                                    var freshGeom = mepEntry.mepElement.get_Geometry(freshOpts);
+                                    
+                                    // Extract line again
+                                    var lineRes = GetElementLineWithSource(mepEntry.mepElement, mepEntry.mepBBox, null);
+                                    var freshCurve = lineRes.line; 
+                                    
+                                    if (freshCurve != null)
+                                    {
+                                         // ✅ FIX: Apply Transform if needed (Crucial for Linked Elements where line is in local coords)
+                                         if (mepEntry.mepTransform != null && !lineRes.isFallbackLine)
+                                         {
+                                             freshCurve = Line.CreateBound(
+                                                 mepEntry.mepTransform.OfPoint(freshCurve.GetEndPoint(0)), 
+                                                 mepEntry.mepTransform.OfPoint(freshCurve.GetEndPoint(1)));
+                                         }
+                                         
+                                         sci = solidToCheck.IntersectWithCurve(freshCurve, new SolidCurveIntersectionOptions());
+                                    }
+                                }
+                                catch
+                                {
+                                    // Fallback failed
+                                    log?.Invoke($"[R2023-RECOVERY] ❌ Recovery failed.");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                // General error
+                            }
+
+                            using (sci)
+                            {
+                                if (sci != null && sci.SegmentCount > 0)
                                 {
                                     // ✅ PARALLEL FIX: Extract actual intersection points from SCI
                                     var sciPoints = new List<XYZ>();
@@ -999,6 +1054,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         sciPoints.Add(curve.GetEndPoint(0));
                                         sciPoints.Add(curve.GetEndPoint(1));
                                     }
+                                    
+
                                     
                                     // Calculate proper intersection bbox and center (Using local static helper)
                                     var intsBBox = CreateBoundingBox(sciPoints);
@@ -3315,7 +3372,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var mepBBox = mepElement.get_BoundingBox(null);
                     if (mepBBox == null) continue;
 
-                    var lineResult = MepIntersectionServiceStatic.GetElementLineWithSource(mepElement, mepBBox, null);
+                    var lineResult = GetElementLineWithSource(mepElement, mepBBox, null);
                     var line = lineResult.line;
                     
                     if (line == null) continue;

@@ -1,140 +1,138 @@
-[10:28:01] BUILD TIMESTAMP: 2026-01-02 10:27:14 | Assembly=JSE_RevitAddin_MEP_OPENINGS.dll | Version=1.0.0.0
-[10:28:01] === NEW PLACEMENT RUN STARTED ===
-[2026-01-02 10:28:01.682] [10:28:01.681] [DB-LOAD] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: Loaded MepElementLevelName='LEVEL-01', MepElementLevelElevation=33.464567ft (10200.0mm)
+[10:34:18] BUILD TIMESTAMP: 2026-01-02 10:33:41 | Assembly=JSE_RevitAddin_MEP_OPENINGS.dll | Version=1.0.0.0
+[10:34:18] === NEW PLACEMENT RUN STARTED ===
+[2026-01-02 10:34:18.610] [10:34:18.609] [DB-LOAD] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: Loaded MepElementLevelName='LEVEL-01', MepElementLevelElevation=33.464567ft (10200.0mm)
 
-[10:28:01] [DATA-SOURCE] ✅ Using DATABASE for filter 'Ventilation', category 'Duct Accessories' (1 eligible zones)
-[10:28:01] 🔥 BEFORE FILTERING: 1 zones loaded
-[10:28:01] Sample: ID=0544a9a0-89b8-0e08-2188-db8554cbad72, Category='Duct Accessories', HostType='Wall', SourceDoc='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002', HostDoc=''
-[10:28:01] 🔥 FILTER STARTED: 1 zones incoming
-[10:28:01] Sample zones BEFORE filtering:
-[10:28:01]   Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: Category='Duct Accessories', HostType='Wall', SourceDoc='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002', HostDoc='', IP=(275.177,54.719,21.941)
-[10:28:01] Checking Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: Category='Duct Accessories' vs Command='Duct Accessories', HostType='Wall', SourceDoc='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002', HostDoc=''
-[10:28:01] ✅ Passed category filter
-[10:28:01] ✅ Passed host type filter
-[10:28:01] ✅ Passed reference file filter
-[10:28:01] ✅ Passed host file filter
-[10:28:01] 🔥 FILTERING COMPLETED: 1 -> 1 clash zones
-[10:28:01] Filter breakdown: afterCategory=1, afterHostType=1, afterRefFile=1, afterHostFile=1, afterSection=1
-[10:28:01] UI Selections: HostTypes=[Walls], RefFiles=[CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002], HostFiles=[CMO-GCI-MOD-ARC-ZZ-00002-2024]
-[2026-01-02 10:28:01.781] [10:28:01.780] [COMMAND] ✅ USING NEW SERVICE: NewSleevePlacerService (SRP-compliant)
+[10:34:18] [DATA-SOURCE] ✅ Using DATABASE for filter 'Ventilation', category 'Duct Accessories' (1 eligible zones)
+[10:34:18] 🔥 BEFORE FILTERING: 1 zones loaded
+[10:34:18] Sample: ID=0544a9a0-89b8-0e08-2188-db8554cbad72, Category='Duct Accessories', HostType='Wall', SourceDoc='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002', HostDoc=''
+[10:34:18] 🔥 FILTER STARTED: 1 zones incoming
+[10:34:18] Sample zones BEFORE filtering:
+[10:34:18]   Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: Category='Duct Accessories', HostType='Wall', SourceDoc='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002', HostDoc='', IP=(275.177,54.719,21.941)
+[10:34:18] Checking Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: Category='Duct Accessories' vs Command='Duct Accessories', HostType='Wall', SourceDoc='CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002', HostDoc=''
+[10:34:18] ✅ Passed category filter
+[10:34:18] ✅ Passed host type filter
+[10:34:18] ✅ Passed reference file filter
+[10:34:18] ✅ Passed host file filter
+[10:34:18] 🔥 FILTERING COMPLETED: 1 -> 1 clash zones
+[10:34:18] Filter breakdown: afterCategory=1, afterHostType=1, afterRefFile=1, afterHostFile=1, afterSection=1
+[10:34:18] UI Selections: HostTypes=[Walls], RefFiles=[CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002], HostFiles=[CMO-GCI-MOD-ARC-ZZ-00002-2024]
+[2026-01-02 10:34:18.709] [10:34:18.708] [COMMAND] ✅ USING NEW SERVICE: NewSleevePlacerService (SRP-compliant)
 
-[2026-01-02 10:28:01.811] [10:28:01.811] [COMMAND] ⚠️ FORCE DETECTION MODE ACTIVE: Will ignore saved data and recalculate all points
+[2026-01-02 10:34:18.736] [10:34:18.735] [COMMAND] ⚠️ FORCE DETECTION MODE ACTIVE: Will ignore saved data and recalculate all points
 
-[2026-01-02 10:28:01.829] [10:28:01.828] [NewSleevePlacer] --- PLACEMENT START --- UseBatchedParameterWrites=True, Zones=1
+[2026-01-02 10:34:18.750] [10:34:18.750] [NewSleevePlacer] --- PLACEMENT START --- UseBatchedParameterWrites=True, Zones=1
 
-[2026-01-02 10:28:01.831] [10:28:01.830] [NewSleevePlacer] ?? ZONE FLAGS: Total=1, IsResolved=0, IsClusterResolved=0
+[2026-01-02 10:34:18.752] [10:34:18.752] [NewSleevePlacer] ?? ZONE FLAGS: Total=1, IsResolved=0, IsClusterResolved=0
 
-[2026-01-02 10:28:01.895] [10:28:01.894] [NewSleevePlacer] ?? ATTEMPTING PLACEMENT: Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, IsReplayPath=False, SleeveId=-1
+[2026-01-02 10:34:18.808] [10:34:18.807] [NewSleevePlacer] ?? ATTEMPTING PLACEMENT: Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, IsReplayPath=False, SleeveId=-1
 
-[2026-01-02 10:28:01.902] [10:28:01.902] [NewSleevePlacer] ?? PlaceSleeveNormal START: Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, HasPlanningDto=False
+[2026-01-02 10:34:18.817] [10:34:18.816] [NewSleevePlacer] ?? PlaceSleeveNormal START: Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, HasPlanningDto=False
 
-[2026-01-02 10:28:01.971] [10:28:01.970] [NewSleevePlacer] ?? FINAL DIMENSIONS: Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, W=0.984252ft (300.0mm), H=0.984252ft (300.0mm), D=0.000000ft (0.0mm), Circular=False
+[2026-01-02 10:34:18.877] [10:34:18.876] [NewSleevePlacer] ?? FINAL DIMENSIONS: Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, W=0.820210ft (250.0mm), H=0.984252ft (300.0mm), D=0.000000ft (0.0mm), Circular=False
 
-[2026-01-02 10:28:01.973] [10:28:01.972] [NewSleevePlacer] ?? FAMILY: Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, FamilyName='RectangularOpeningOnWall'
+[2026-01-02 10:34:18.878] [10:34:18.878] [NewSleevePlacer] ?? FAMILY: Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, FamilyName='RectangularOpeningOnWall'
 
-[2026-01-02 10:28:01.978] [10:28:01.978] [PlacementPointAdjustment] 🔄 DELEGATING to DamperPlacementPointService: Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, OriginalPoint=(275.177493ft, 54.718726ft, 21.940617ft), WallCenterline=(275.180446ft, 54.718726ft, 21.940617ft)
+[2026-01-02 10:34:18.884] [10:34:18.883] [PlacementPointAdjustment] 🔄 DELEGATING to DamperPlacementPointService: Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, OriginalPoint=(275.177493ft, 54.718726ft, 21.940617ft), WallCenterline=(275.180446ft, 54.718726ft, 21.940617ft)
 
-[2026-01-02 10:28:02.005] [10:28:02.004] [PlacementPointAdjustment] ✅ RETURNED from DamperPlacementPointService: Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, AdjustedPoint=(275.180446ft, 54.472663ft, 21.899606ft)
+[2026-01-02 10:34:18.911] [10:34:18.910] [PlacementPointAdjustment] ✅ RETURNED from DamperPlacementPointService: Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, AdjustedPoint=(275.180446ft, 54.472663ft, 21.899606ft)
 
-[2026-01-02 10:28:02.008] [10:28:02.008] [NewSleevePlacer] ? APPLIED DAMPER OFFSET: Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, Offset=(0.0, 25.0, 0.0)mm, AfterOffset=(275.180, 54.555, 21.900)
+[2026-01-02 10:34:18.914] [10:34:18.913] [NewSleevePlacer] ?? PLACEMENT POINT: Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, Point=(275.180, 54.473, 21.900)
 
-[2026-01-02 10:28:02.010] [10:28:02.009] [NewSleevePlacer] ?? PLACEMENT POINT: Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, Point=(275.180, 54.555, 21.900)
+[2026-01-02 10:34:18.981] [10:34:18.980] [NewSleevePlacer] ? INSTANCE CREATED: Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, InstanceId=745302
 
-[2026-01-02 10:28:02.078] [10:28:02.077] [NewSleevePlacer] ? INSTANCE CREATED: Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, InstanceId=745292
+[2026-01-02 10:34:18.987] [10:34:18.986] [SleeveParameterService] [PARAMETERS] Zone=0544a9a0-89b8-0e08-2188-db8554cbad72, Sleeve=745302, Width=250.0mm, Height=300.0mm, Diameter=0.0mm
 
-[2026-01-02 10:28:02.084] [10:28:02.084] [SleeveParameterService] [PARAMETERS] Zone=0544a9a0-89b8-0e08-2188-db8554cbad72, Sleeve=745292, Width=300.0mm, Height=300.0mm, Diameter=0.0mm
+[2026-01-02 10:34:18.999] [10:34:18.998] [SleeveParameterService] ✅ IMMEDIATE (CRITICAL): Set 'Sleeve Instance ID'=745302 for sleeve 745302
 
-[2026-01-02 10:28:02.097] [10:28:02.096] [SleeveParameterService] ✅ IMMEDIATE (CRITICAL): Set 'Sleeve Instance ID'=745292 for sleeve 745292
+[2026-01-02 10:34:19.002] [10:34:19.002] [SleeveParameterService] ✅ IMMEDIATE: Set 'MEP_ElementId'=23630658 for sleeve 745302
 
-[2026-01-02 10:28:02.100] [10:28:02.099] [SleeveParameterService] ✅ IMMEDIATE: Set 'MEP_ElementId'=23630658 for sleeve 745292
+[2026-01-02 10:34:19.013] [10:34:19.012] [SleeveParameterService] [SCHEDULE-LEVEL] ✅ Zone=0544a9a0-89b8-0e08-2188-db8554cbad72, Sleeve=745302: Found Level 'LEVEL-01' from MepElementLevelName (database - extracted during refresh) - CACHED
 
-[2026-01-02 10:28:02.111] [10:28:02.110] [SleeveParameterService] [SCHEDULE-LEVEL] ✅ Zone=0544a9a0-89b8-0e08-2188-db8554cbad72, Sleeve=745292: Found Level 'LEVEL-01' from MepElementLevelName (database - extracted during refresh) - CACHED
+[2026-01-02 10:34:19.016] [10:34:19.015] [SleeveParameterService] [SCHEDULE-LEVEL] ✅ Zone=0544a9a0-89b8-0e08-2188-db8554cbad72, Sleeve=745302: Set 'Schedule Level' to 'LEVEL-01' (ID: 723858, StorageType=ElementId) - CACHED PARAMETER
 
-[2026-01-02 10:28:02.114] [10:28:02.113] [SleeveParameterService] [SCHEDULE-LEVEL] ✅ Zone=0544a9a0-89b8-0e08-2188-db8554cbad72, Sleeve=745292: Set 'Schedule Level' to 'LEVEL-01' (ID: 723858, StorageType=ElementId) - CACHED PARAMETER
+[2026-01-02 10:34:19.033] [10:34:19.032] [SleeveParameterService] [BOTTOM-OF-OPENING] 🔍 ENTRY: Zone=0544a9a0-89b8-0e08-2188-db8554cbad72, Sleeve=745302, Height=300.0mm
 
-[2026-01-02 10:28:02.130] [10:28:02.129] [SleeveParameterService] [BOTTOM-OF-OPENING] 🔍 ENTRY: Zone=0544a9a0-89b8-0e08-2188-db8554cbad72, Sleeve=745292, Height=300.0mm
+[2026-01-02 10:34:19.035] [10:34:19.034] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone=0544a9a0-89b8-0e08-2188-db8554cbad72, Sleeve=745302: Elevation from Level parameter value is invalid (value=0.0mm) - skipping Bottom of Opening calculation
 
-[2026-01-02 10:28:02.131] [10:28:02.131] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone=0544a9a0-89b8-0e08-2188-db8554cbad72, Sleeve=745292: Elevation from Level parameter value is invalid (value=0.0mm) - skipping Bottom of Opening calculation
-
-[2026-01-02 10:28:02.133] [10:28:02.132] [SleeveParameterService] [BOTTOM-OF-OPENING] 🔍 DIAGNOSTIC: Zone=0544a9a0-89b8-0e08-2188-db8554cbad72, Sleeve=745292
+[2026-01-02 10:34:19.036] [10:34:19.036] [SleeveParameterService] [BOTTOM-OF-OPENING] 🔍 DIAGNOSTIC: Zone=0544a9a0-89b8-0e08-2188-db8554cbad72, Sleeve=745302
   - elevationFromLevel (read from param): null ()
   - scheduleOfLevel (for calculation): null ()
   - height: 0.984251968503937 (300.0mm)
 
-[2026-01-02 10:28:02.135] [10:28:02.135] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone=0544a9a0-89b8-0e08-2188-db8554cbad72, Sleeve=745292: Schedule of Level parameter not found or invalid (value=null) - skipping
+[2026-01-02 10:34:19.038] [10:34:19.037] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone=0544a9a0-89b8-0e08-2188-db8554cbad72, Sleeve=745302: Schedule of Level parameter not found or invalid (value=null) - skipping
   - IsValidScheduleOfLevel check: False
 
-[2026-01-02 10:28:02.139] [10:28:02.138] [NewSleevePlacer] ? PLACED: Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, SleeveId=745292
+[2026-01-02 10:34:19.041] [10:34:19.040] [NewSleevePlacer] ? PLACED: Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, SleeveId=745302
 
-[2026-01-02 10:28:02.140] [10:28:02.139] [NewSleevePlacer] ? SET FLAG: Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: IsResolved=true, SleeveId=745292
+[2026-01-02 10:34:19.042] [10:34:19.042] [NewSleevePlacer] ? SET FLAG: Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: IsResolved=true, SleeveId=745302
 
-[2026-01-02 10:28:02.158] [10:28:02.157] [NewSleevePlacer] ? IMMEDIATE DB UPDATE: Set SleeveInstanceId=745292 for zone 0544a9a0-89b8-0e08-2188-db8554cbad72
+[2026-01-02 10:34:19.053] [10:34:19.052] [NewSleevePlacer] ? IMMEDIATE DB UPDATE: Set SleeveInstanceId=745302 for zone 0544a9a0-89b8-0e08-2188-db8554cbad72
 
-[2026-01-02 10:28:02.168] [10:28:02.167] [NewSleevePlacer] [BATCH-BBOX] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: Calculated bbox from DEFERRED params - W=300.0mm, H=300.0mm, D=200.0mm
+[2026-01-02 10:34:19.062] [10:34:19.062] [NewSleevePlacer] [BATCH-BBOX] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: Calculated bbox from DEFERRED params - W=250.0mm, H=300.0mm, D=200.0mm
 
-[2026-01-02 10:28:02.297] [10:28:02][FlagManager] [INFO] | correlationId=6789c876 📝 BATCH: Flagging 1 clash zones as placed (Resetting IsCurrentClash)
+[2026-01-02 10:34:19.194] [10:34:19][FlagManager] [INFO] | correlationId=0cad9cd5 📝 BATCH: Flagging 1 clash zones as placed (Resetting IsCurrentClash)
 
-[2026-01-02 10:28:02.304] [10:28:02][FlagManager] [INFO] | correlationId=6789c876 ✅ BATCH: Updated flags for 1 clash zones
+[2026-01-02 10:34:19.201] [10:34:19][FlagManager] [INFO] | correlationId=0cad9cd5 ✅ BATCH: Updated flags for 1 clash zones
 
-[2026-01-02 10:28:02.317] [10:28:02.317] [SleeveParameterService] [BATCH-PARAMS] 🔍 FLUSHING: Sleeve=745292, Parameters=9
+[2026-01-02 10:34:19.221] [10:34:19.221] [SleeveParameterService] [BATCH-PARAMS] 🔍 FLUSHING: Sleeve=745302, Parameters=9
 
-[2026-01-02 10:28:02.319] [10:28:02.318] [SleeveParameterService] [BATCH-PARAMS]   - Width: 0.984251968503937 (300.0mm)
+[2026-01-02 10:34:19.223] [10:34:19.222] [SleeveParameterService] [BATCH-PARAMS]   - Width: 0.820209973753281 (250.0mm)
 
-[2026-01-02 10:28:02.321] [10:28:02.320] [SleeveParameterService] [BATCH-PARAMS]   - Sleeve Width: 0.984251968503937 (300.0mm)
+[2026-01-02 10:34:19.225] [10:34:19.224] [SleeveParameterService] [BATCH-PARAMS]   - Sleeve Width: 0.820209973753281 (250.0mm)
 
-[2026-01-02 10:28:02.322] [10:28:02.322] [SleeveParameterService] [BATCH-PARAMS]   - Height: 0.984251968503937 (300.0mm)
+[2026-01-02 10:34:19.227] [10:34:19.226] [SleeveParameterService] [BATCH-PARAMS]   - Height: 0.984251968503937 (300.0mm)
 
-[2026-01-02 10:28:02.323] [10:28:02.323] [SleeveParameterService] [BATCH-PARAMS]   - Sleeve Height: 0.984251968503937 (300.0mm)
+[2026-01-02 10:34:19.229] [10:34:19.228] [SleeveParameterService] [BATCH-PARAMS]   - Sleeve Height: 0.984251968503937 (300.0mm)
 
-[2026-01-02 10:28:02.325] [10:28:02.324] [SleeveParameterService] [BATCH-PARAMS]   - Depth: 0.656167979002625 (200.0mm)
+[2026-01-02 10:34:19.231] [10:34:19.230] [SleeveParameterService] [BATCH-PARAMS]   - Depth: 0.656167979002625 (200.0mm)
 
-[2026-01-02 10:28:02.326] [10:28:02.326] [SleeveParameterService] [BATCH-PARAMS]   - Sleeve Instance ID: 745292 (745292)
+[2026-01-02 10:34:19.234] [10:34:19.232] [SleeveParameterService] [BATCH-PARAMS]   - Sleeve Instance ID: 745302 (745302)
 
-[2026-01-02 10:28:02.328] [10:28:02.327] [SleeveParameterService] [BATCH-PARAMS]   - MEP_Category: Duct Accessories (Duct Accessories)
+[2026-01-02 10:34:19.236] [10:34:19.235] [SleeveParameterService] [BATCH-PARAMS]   - MEP_Category: Duct Accessories (Duct Accessories)
 
-[2026-01-02 10:28:02.330] [10:28:02.329] [SleeveParameterService] [BATCH-PARAMS]   - MEP_ElementId: 23630658 (23630658)
+[2026-01-02 10:34:19.238] [10:34:19.237] [SleeveParameterService] [BATCH-PARAMS]   - MEP_ElementId: 23630658 (23630658)
 
-[2026-01-02 10:28:02.332] [10:28:02.331] [SleeveParameterService] [BATCH-PARAMS]   - Schedule Level: 723858 (723858)
+[2026-01-02 10:34:19.240] [10:34:19.239] [SleeveParameterService] [BATCH-PARAMS]   - Schedule Level: 723858 (723858)
 
-[2026-01-02 10:28:02.335] [10:28:02.334] [SleeveParameterService] [BATCH-PARAMS] [SCHEDULE-LEVEL] ✅ Set 'Schedule Level' to ElementId 723858 (Level: LEVEL-01) on sleeve 745292
+[2026-01-02 10:34:19.242] [10:34:19.242] [SleeveParameterService] [BATCH-PARAMS] [SCHEDULE-LEVEL] ✅ Set 'Schedule Level' to ElementId 723858 (Level: LEVEL-01) on sleeve 745302
 
-[2026-01-02 10:28:02.345] [10:28:02.345] [COMMAND] ✅ NEW SERVICE RESULT: Placed=1, Skipped=0, Errors=0
+[2026-01-02 10:34:19.253] [10:34:19.253] [COMMAND] ✅ NEW SERVICE RESULT: Placed=1, Skipped=0, Errors=0
 
-[2026-01-02 10:28:05.248] [10:28:05] UniversalSleevePlacementCommand executed: Placed=1, Skipped=0, Errors=0
+[2026-01-02 10:34:22.574] [10:34:22] UniversalSleevePlacementCommand executed: Placed=1, Skipped=0, Errors=0
 
-[2026-01-02 10:28:05.251] [10:28:05] ExecuteUniversalSleevePlacement SUCCESS: Placed=1, Skipped=0, Errors=0
+[2026-01-02 10:34:22.577] [10:34:22] ExecuteUniversalSleevePlacement SUCCESS: Placed=1, Skipped=0, Errors=0
 
-[10:28:05] [BOUNDING_BOX_BEFORE_REGEN] Found 2 sleeves before regeneration
-[10:28:05] [BOUNDING_BOX_BEFORE_REGEN] Sleeve 735831: Min=(275.180446, 59.275652, 21.358268), Max=(275.836614, 59.767778, 21.850394)
-[10:28:05] [BOUNDING_BOX_BEFORE_REGEN] Sleeve 745292: Min=(274.852362, 54.062558, 21.407480), Max=(275.508530, 55.046810, 22.391732)
-[10:28:05] [BOUNDING_BOX_AFTER_REGEN] Found 2 sleeves after regeneration
-[10:28:05] [BOUNDING_BOX_AFTER_REGEN] Sleeve 735831: Min=(275.180446, 59.275652, 21.358268), Max=(275.836614, 59.767778, 21.850394)
-[10:28:05] [BOUNDING_BOX_AFTER_REGEN] Sleeve 745292: Min=(274.852362, 54.062558, 21.407480), Max=(275.508530, 55.046810, 22.391732)
-[10:28:05] [UpdateSleeveCoordinatesInXml] CALLED with xmlFilePath: NULL
-[10:28:05] [UpdateSleeveCoordinatesInXml] Found 2 sleeves in Revit model
-[10:28:05] [UpdateSleeveCoordinatesInXml] 🔍 Loading clash zones from database for category 'Duct Accessories' (database-only mode)
-[2026-01-02 10:28:05.285] [10:28:05.285] [DB-LOAD] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: Loaded MepElementLevelName='LEVEL-01', MepElementLevelElevation=33.464567ft (10200.0mm)
+[10:34:22] [BOUNDING_BOX_BEFORE_REGEN] Found 2 sleeves before regeneration
+[10:34:22] [BOUNDING_BOX_BEFORE_REGEN] Sleeve 735831: Min=(275.180446, 59.275652, 21.358268), Max=(275.836614, 59.767778, 21.850394)
+[10:34:22] [BOUNDING_BOX_BEFORE_REGEN] Sleeve 745302: Min=(274.852362, 54.062558, 21.407480), Max=(275.508530, 54.882768, 22.391732)
+[10:34:22] [BOUNDING_BOX_AFTER_REGEN] Found 2 sleeves after regeneration
+[10:34:22] [BOUNDING_BOX_AFTER_REGEN] Sleeve 735831: Min=(275.180446, 59.275652, 21.358268), Max=(275.836614, 59.767778, 21.850394)
+[10:34:22] [BOUNDING_BOX_AFTER_REGEN] Sleeve 745302: Min=(274.852362, 54.062558, 21.407480), Max=(275.508530, 54.882768, 22.391732)
+[10:34:22] [UpdateSleeveCoordinatesInXml] CALLED with xmlFilePath: NULL
+[10:34:22] [UpdateSleeveCoordinatesInXml] Found 2 sleeves in Revit model
+[10:34:22] [UpdateSleeveCoordinatesInXml] 🔍 Loading clash zones from database for category 'Duct Accessories' (database-only mode)
+[2026-01-02 10:34:22.615] [10:34:22.615] [DB-LOAD] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: Loaded MepElementLevelName='LEVEL-01', MepElementLevelElevation=33.464567ft (10200.0mm)
 
-[10:28:05] [UpdateSleeveCoordinatesInXml] 🔍 Database query returned 1 zones for category 'Duct Accessories'
-[10:28:05] [UpdateSleeveCoordinatesInXml] ✅ DATABASE-ONLY: Loaded 1 clash zones from database for category 'Duct Accessories' (all zones)
-[10:28:05] [UpdateSleeveCoordinatesInXml] DEBUG: Zones with placement point: 1/1, Zones with SleeveInstanceId>0: 1/1, Zones with ClusterSleeveInstanceId>0: 0/1
-[10:28:05] [UpdateSleeveCoordinatesInXml] SAMPLE: Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, SPP=(275.180, 54.555, 21.900), SleeveId=745292, ClusterId=-1
-[10:28:05] [UpdateSleeveCoordinatesInXml] Loaded 1 clash zones from database
-[10:28:05] [UpdateSleeveCoordinatesInXml] 1 out of 1 clash zones have SleeveInstanceId > 0
-[10:28:05] [UpdateSleeveCoordinatesInXml] Looking for sleeves with IDs: [745292...]
-[10:28:05] [UPDATE_COORD_DEBUG] Looking for 1 sleeve IDs: [745292...]
-[10:28:05] [UPDATE_COORD_DEBUG] Found 2 sleeves in Revit: [735831, 745292...]
-[10:28:05] [UPDATE_COORD_DEBUG] Matching IDs: 1 out of 1
-[10:28:05] [DIRECT-ID-MATCH] Found individual sleeve 745292 by ID
-[10:28:05] [BOUNDING_BOX_BEFORE_SET] ClashZone 0544a9a0-89b8-0e08-2188-db8554cbad72, Sleeve 745292: BEFORE - ClashZone has: MinX=274.688320, MinY=54.226600, MinZ=21.407480, MaxX=275.672572, MaxY=54.882768, MaxZ=22.391732
-[10:28:05] [BOUNDING_BOX_BEFORE_SET] Revit bbox from sleeve 745292: Min=(274.852362, 54.062558, 21.407480), Max=(275.508530, 55.046810, 22.391732)
-[10:28:05] [BOUNDING_BOX_AFTER_SET] ClashZone 0544a9a0-89b8-0e08-2188-db8554cbad72, Sleeve 745292: AFTER - ClashZone now has: MinX=274.852362, MinY=54.062558, MinZ=21.407480, MaxX=275.508530, MaxY=55.046810, MaxZ=22.391732
-[10:28:05] [UPDATED] Sleeve 745292: Min=(274.852362, 54.062558, 21.407480), Max=(275.508530, 55.046810, 22.391732)
-[10:28:05] [UpdateSleeveCoordinatesInXml] After UpdateSleeveCoordinates: 1 out of 1 clash zones with SleeveInstanceId now have bounding boxes
-[10:28:05] [UpdateSleeveCoordinatesInXml] ✅ DATABASE: Updated SleeveInstanceId for 1 zones, bounding boxes for 1 zones, cluster bounding boxes for 0 zones
-[10:28:05] [UpdateSleeveCoordinatesInXml] ✅ DATABASE-ONLY: All coordinates saved to database (XML obsolete)
-[10:28:05] [UpdateSleeveCoordinatesInXml] COMPLETED - Updated coordinates for 2 sleeves
-[2026-01-02 10:28:05.347] [10:28:05.346] [DB-LOAD] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: Loaded MepElementLevelName='LEVEL-01', MepElementLevelElevation=33.464567ft (10200.0mm)
+[10:34:22] [UpdateSleeveCoordinatesInXml] 🔍 Database query returned 1 zones for category 'Duct Accessories'
+[10:34:22] [UpdateSleeveCoordinatesInXml] ✅ DATABASE-ONLY: Loaded 1 clash zones from database for category 'Duct Accessories' (all zones)
+[10:34:22] [UpdateSleeveCoordinatesInXml] DEBUG: Zones with placement point: 1/1, Zones with SleeveInstanceId>0: 1/1, Zones with ClusterSleeveInstanceId>0: 0/1
+[10:34:22] [UpdateSleeveCoordinatesInXml] SAMPLE: Zone 0544a9a0-89b8-0e08-2188-db8554cbad72, SPP=(275.180, 54.473, 21.900), SleeveId=745302, ClusterId=-1
+[10:34:22] [UpdateSleeveCoordinatesInXml] Loaded 1 clash zones from database
+[10:34:22] [UpdateSleeveCoordinatesInXml] 1 out of 1 clash zones have SleeveInstanceId > 0
+[10:34:22] [UpdateSleeveCoordinatesInXml] Looking for sleeves with IDs: [745302...]
+[10:34:22] [UPDATE_COORD_DEBUG] Looking for 1 sleeve IDs: [745302...]
+[10:34:22] [UPDATE_COORD_DEBUG] Found 2 sleeves in Revit: [735831, 745302...]
+[10:34:22] [UPDATE_COORD_DEBUG] Matching IDs: 1 out of 1
+[10:34:22] [DIRECT-ID-MATCH] Found individual sleeve 745302 by ID
+[10:34:22] [BOUNDING_BOX_BEFORE_SET] ClashZone 0544a9a0-89b8-0e08-2188-db8554cbad72, Sleeve 745302: BEFORE - ClashZone has: MinX=274.770341, MinY=54.144579, MinZ=21.407480, MaxX=275.590551, MaxY=54.800747, MaxZ=22.391732
+[10:34:22] [BOUNDING_BOX_BEFORE_SET] Revit bbox from sleeve 745302: Min=(274.852362, 54.062558, 21.407480), Max=(275.508530, 54.882768, 22.391732)
+[10:34:22] [BOUNDING_BOX_AFTER_SET] ClashZone 0544a9a0-89b8-0e08-2188-db8554cbad72, Sleeve 745302: AFTER - ClashZone now has: MinX=274.852362, MinY=54.062558, MinZ=21.407480, MaxX=275.508530, MaxY=54.882768, MaxZ=22.391732
+[10:34:22] [UPDATED] Sleeve 745302: Min=(274.852362, 54.062558, 21.407480), Max=(275.508530, 54.882768, 22.391732)
+[10:34:22] [UpdateSleeveCoordinatesInXml] After UpdateSleeveCoordinates: 1 out of 1 clash zones with SleeveInstanceId now have bounding boxes
+[10:34:22] [UpdateSleeveCoordinatesInXml] ✅ DATABASE: Updated SleeveInstanceId for 1 zones, bounding boxes for 1 zones, cluster bounding boxes for 0 zones
+[10:34:22] [UpdateSleeveCoordinatesInXml] ✅ DATABASE-ONLY: All coordinates saved to database (XML obsolete)
+[10:34:22] [UpdateSleeveCoordinatesInXml] COMPLETED - Updated coordinates for 2 sleeves
+[2026-01-02 10:34:22.692] [10:34:22.691] [DB-LOAD] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: Loaded MepElementLevelName='LEVEL-01', MepElementLevelElevation=33.464567ft (10200.0mm)
 
-[2026-01-02 10:28:05.508] [10:28:05.507] [DB-LOAD] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: Loaded MepElementLevelName='LEVEL-01', MepElementLevelElevation=33.464567ft (10200.0mm)
+[2026-01-02 10:34:22.873] [10:34:22.873] [DB-LOAD] Zone 0544a9a0-89b8-0e08-2188-db8554cbad72: Loaded MepElementLevelName='LEVEL-01', MepElementLevelElevation=33.464567ft (10200.0mm)
 
