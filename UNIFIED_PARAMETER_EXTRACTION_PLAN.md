@@ -31,9 +31,83 @@
 - Fire Rating
 - (Optionally: Host orientation, thickness, centerline, etc. if required for downstream logic)
 
-**Note:**
-- The extraction logic should use prioritized/fallback lists for parameters like width/height/diameter to ensure robust capture across different family naming conventions.
-- All captured parameters should be included in the `AllParameters` dictionary for full traceability and future-proofing.
+---
+
+## ClashZone Parameters Required for Individual Sleeve Placement
+
+> **Scope**: Parameters needed BEFORE placing a sleeve. Corners, RCS bbox, and other post-placement data are NOT included here.
+
+### For ALL Sleeve Types (Walls, Framing, Floors)
+
+| Parameter | Column | Purpose |
+|-----------|--------|---------|
+| Clash Zone ID | ClashZoneGuid | Unique identifier |
+| MEP Element ID | MepElementId | Source MEP element |
+| Host Element ID | HostElementId | Target wall/floor/framing |
+| Placement Point | SleevePlacementX/Y/Z | Where to place sleeve |
+| Wall Centerline | WallCenterlinePointX/Y/Z | Pre-calculated wall center |
+| Host Orientation | HostOrientation | X/Y/Z orientation of host |
+| Structural Type | StructuralType | Wall/Floor/StructuralFraming |
+| Host Thickness | StructuralThickness, WallThickness, FramingThickness | For sleeve depth |
+
+### MEP Sizing Parameters (Critical)
+
+| Parameter | Column | Purpose |
+|-----------|--------|---------|
+| MEP Width | MepWidth | Sleeve width calculation |
+| MEP Height | MepHeight | Sleeve height calculation |
+| Outer Diameter | MepElementOuterDiameter | For round sleeves (pipes) |
+| Nominal Diameter | MepElementNominalDiameter | For round sleeves (pipes) |
+| Size String | MepElementSizeParameterValue | For parameter transfer |
+| Formatted Size | MepElementFormattedSize | For display/transfer |
+
+### Orientation Parameters (Critical for FLOORS)
+
+| Parameter | Column | Purpose |
+|-----------|--------|---------|
+| MEP Orientation Direction | MepOrientationDirection | X/Y direction |
+| MEP Orientation Vector | MepOrientationX, MepOrientationY, MepOrientationZ | Duct/pipe direction vector |
+| Rotation Angle (Rad) | MepRotationAngleRad | Angle in radians |
+| Rotation Angle (Deg) | MepRotationAngleDeg | Angle in degrees |
+| **Pre-calculated Cos** | **MepRotationCos** | cos(angle) - avoids Math.Cos during placement |
+| **Pre-calculated Sin** | **MepRotationSin** | sin(angle) - avoids Math.Sin during placement |
+| Angle to X-axis | MepAngleToXRad, MepAngleToXDeg | For floor sleeve rotation |
+| Angle to Y-axis | MepAngleToYRad, MepAngleToYDeg | For floor sleeve rotation |
+
+### Damper-Specific Parameters (Duct Accessories)
+
+| Parameter | Column | Purpose |
+|-----------|--------|---------|
+| Type Name | MepElementTypeName | MSD/MSFD/Standard detection |
+| Family Name | MepElementFamilyName | Damper family identification |
+| Has MEP Connector | HasMepConnector | 0/1 for asymmetric clearance |
+| Connector Side | DamperConnectorSide | +Y/-Y/Left/Right for offset |
+| Is Standard Damper | IsStandardDamper | 0=MSFD, 1=Standard FD |
+
+### Level Parameters
+
+| Parameter | Column | Purpose |
+|-----------|--------|---------|
+| Level Name | MepElementLevelName | Reference level for sleeve |
+| Level Elevation | MepElementLevelElevation | For Elevation from Level calc |
+
+### Insulation Parameters
+
+| Parameter | Column | Purpose |
+|-----------|--------|---------|
+| Is Insulated | IsInsulated | 0/1 for sizing adjustment |
+| Insulation Thickness | InsulationThickness | Additional clearance |
+
+### Parameter Values for Transfer
+
+| Parameter | Column | Purpose |
+|-----------|--------|---------|
+| MEP Parameters JSON | MepParameterValuesJson | All MEP params for transfer |
+| Host Parameters JSON | HostParameterValuesJson | All Host params for transfer |
+
+---
+
+**Key Optimization**: Pre-calculated cos/sin values eliminate repeated `Math.Cos()` and `Math.Sin()` calls during floor sleeve placement.
 
 
 # Unified Parameter Extraction and DB Dumping Plan (SOLID & Optimized)
