@@ -46,8 +46,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Existence
                     return false;
 
                 // ✅ VALIDATION: Verify it's actually a sleeve (not just any FamilyInstance)
+                // ✅ FIX: Include Duct Accessories, Pipe Accessories, and Mechanical Equipment for damper sleeves
                 bool isSleeve = (sleeve.Category?.Name == "Generic Models" || 
-                                 sleeve.Category?.Name == "Structural Connections") &&
+                                 sleeve.Category?.Name == "Structural Connections" ||
+                                 sleeve.Category?.Name == "Duct Accessories" ||
+                                 sleeve.Category?.Name == "Pipe Accessories" ||
+                                 sleeve.Category?.Name == "Mechanical Equipment") &&
                                 (sleeve.Symbol?.FamilyName?.Contains("Sleeve", StringComparison.OrdinalIgnoreCase) == true ||
                                  sleeve.Symbol?.FamilyName?.Contains("Opening", StringComparison.OrdinalIgnoreCase) == true);
 

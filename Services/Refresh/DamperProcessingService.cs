@@ -1076,21 +1076,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 }
 
                 // ✅ STEP 3: Extract damper dimensions (Width and Height) - CRITICAL for placement sizing
+                // ✅ ALIGNED with DamperPlacementStrategy.GetMepElementSize() to prevent parameter mismatch
                 double damperWidth = 0.0;
                 double damperHeight = 0.0;
 
                 var damperInstance = damper as FamilyInstance;
                 if (damperInstance != null)
                 {
-                    var widthParam = damperInstance.LookupParameter(PARAM_WIDTH) ??
-                                    damperInstance.LookupParameter("Damper Width") ??
-                                    damperInstance.LookupParameter("width");
-                    var heightParam = damperInstance.LookupParameter(PARAM_HEIGHT) ??
-                                     damperInstance.LookupParameter("Damper Height") ??
-                                     damperInstance.LookupParameter("height");
+                    // ✅ CRITICAL: Match exact parameter lookup order from DamperPlacementStrategy.GetMepElementSize()
+                    var widthParam = damperInstance.LookupParameter("Damper Width") ??
+                                    damperInstance.LookupParameter("Width") ??
+                                    damperInstance.LookupParameter("width") ??
+                                    damperInstance.LookupParameter("Dimensions_Width") ??
+                                    damperInstance.LookupParameter("Dimensions Width") ??
+                                    damperInstance.LookupParameter("Dimension Width") ??
+                                    damperInstance.LookupParameter("dimensions width") ??
+                                    damperInstance.LookupParameter("dimension width");
+                                    
+                    var heightParam = damperInstance.LookupParameter("Damper Height") ??
+                                     damperInstance.LookupParameter("Height") ??
+                                     damperInstance.LookupParameter("height") ??
+                                     damperInstance.LookupParameter("Dimensions_Height") ??
+                                     damperInstance.LookupParameter("Dimensions Height") ??
+                                     damperInstance.LookupParameter("Dimension Height") ??
+                                     damperInstance.LookupParameter("dimensions height") ??
+                                     damperInstance.LookupParameter("dimension height");
 
                     damperWidth = widthParam?.AsDouble() ?? 0.0;
                     damperHeight = heightParam?.AsDouble() ?? 0.0;
+                    
+                    // ✅ Log which parameter was found for debugging
+                    if (!DeploymentConfiguration.DeploymentMode && (damperWidth > 0 || damperHeight > 0))
+                    {
+                        _logger($"[DamperProcessing] ✅ Extracted damper dimensions: Width={damperWidth * 304.8:F1}mm (from '{widthParam?.Definition?.Name}'), Height={damperHeight * 304.8:F1}mm (from '{heightParam?.Definition?.Name}') for damper {damper.Id}");
+                    }
+                    else if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        _logger($"[DamperProcessing] ⚠️ Could not extract damper dimensions (Width/Height = 0) for damper {damper.Id} - will fallback to BBox sizing");
+                    }
                 }
 
                 // ✅ STEP 4: Create ClashZone using ClashZoneService_Legacy.CreateClashZone
@@ -1492,14 +1515,159 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                             out Connector connector,
                             wallOrientation: hostOrientation);
 
-                        if (connector != null && !string.IsNullOrEmpty(connectorSide))
+                        // ✅ CRITICAL FIX: Only set HasMepConnector=true if connector is CONNECTED to another MEP element
+                        // Previously was setting true for ANY connector, causing 25mm offset for unconnected dampers
+                        // Now only applies asymmetric clearance for dampers that actually have ductwork connected
+                        if (connector != null && !string.IsNullOrEmpty(connectorSide) && connector.IsConnected)
                         {
-                            hasMepConnector = true;
-                            damperConnectorSide = connectorSide;
+                            // ✅ TYPE-BASED CHECK: Only MSFD/Motorized dampers should have asymmetric clearance
+                            // Standard Fire Dampers (FD) should use symmetric clearance
+                            bool isMsfdOrMotorized = 
+                                (damperTypeName?.IndexOf("MSFD", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                (damperTypeName?.IndexOf("MSD", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                (damperTypeName?.IndexOf("MD", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                (damperTypeName?.IndexOf("Motorized", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                (damperTypeName?.IndexOf("Motor", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                (damperFamilyName?.IndexOf("MSFD", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                (damperFamilyName?.IndexOf("MSD", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                (damperFamilyName?.IndexOf("MD", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                (damperFamilyName?.IndexOf("Motorized", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                (damperFamilyName?.IndexOf("Motor", StringComparison.OrdinalIgnoreCase) >= 0);
+                            
+                            if (!isMsfdOrMotorized)
+                            {
+                                // Standard Fire Damper - use symmetric clearance (no offset)
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    _logger($"[DamperProcessing] ℹ️ Damper {damper.Id} is Standard Fire Damper (not MSFD/Motorized): TypeName='{damperTypeName}', FamilyName='{damperFamilyName}' - will use symmetric clearance (no connector offset)");
+                                }
+                            }
+                            else
+                            {
+                            // ✅ ADDITIONAL CHECK: Check if connector visibility is turned OFF via family parameter
+                            // Some families have visibility toggle parameters - if OFF, treat as standard damper
+                            bool connectorVisibilityOff = false;
+                            try
+                            {
+                                // Check common visibility parameter names (case-insensitive)
+                                // ✅ IMPORTANT: Some parameters have INVERTED logic (e.g., "Not Required" = 1 means motor NOT visible)
+                                var positiveVisibilityParams = new[] { 
+                                    "Show Connector", "Connector Visible", "Connector Visibility", 
+                                    "ShowConnector", "ConnectorVisible", "ConnectorVisibility",
+                                    "Show_Connector", "Connector_Visible", "Connector_Visibility",
+                                    "MEP Connector Visible", "MEP_Connector_Visible",
+                                    "Visibility_Motor Required", // 1 = Motor IS visible (Required)
+                                    "visibility_motor", "Visibility Motor", "Visibility_Motor",
+                                    "Motor Visible", "Motor_Visible", "Show Motor", "Show_Motor"
+                                };
+                                
+                                // ✅ INVERTED parameters: value=1 means motor is NOT visible
+                                var invertedVisibilityParams = new[] {
+                                    "Visibility_Motor Not Required" // 1 = Motor NOT visible (Not Required)
+                                };
+                                
+                                // Check positive parameters first (1 = visible)
+                                foreach (var paramName in positiveVisibilityParams)
+                                {
+                                    var visParam = damperInstance.LookupParameter(paramName);
+                                    if (visParam != null)
+                                    {
+                                        // Check if parameter is a Yes/No (integer 0/1) or string
+                                        if (visParam.StorageType == StorageType.Integer)
+                                        {
+                                            int visValue = visParam.AsInteger();
+                                            if (visValue == 0) // 0 = OFF/No = motor not visible
+                                            {
+                                                connectorVisibilityOff = true;
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                {
+                                                    _logger($"[DamperProcessing] ℹ️ Damper {damper.Id} has '{paramName}'=0 (OFF) - treating as standard damper (no connector offset)");
+                                                }
+                                                break;
+                                            }
+                                        }
+                                        else if (visParam.StorageType == StorageType.String)
+                                        {
+                                            string visValue = visParam.AsString()?.ToLowerInvariant() ?? "";
+                                            if (visValue == "no" || visValue == "off" || visValue == "false" || visValue == "0")
+                                            {
+                                                connectorVisibilityOff = true;
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                {
+                                                    _logger($"[DamperProcessing] ℹ️ Damper {damper.Id} has '{paramName}'='{visValue}' - treating as standard damper (no connector offset)");
+                                                }
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Check inverted parameters (1 = NOT visible)
+                                if (!connectorVisibilityOff)
+                                {
+                                    foreach (var paramName in invertedVisibilityParams)
+                                    {
+                                        var visParam = damperInstance.LookupParameter(paramName);
+                                        
+                                        // ✅ DIAGNOSTIC: Log whether parameter was found
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            if (visParam != null)
+                                            {
+                                                _logger($"[DamperProcessing] 🔍 VISIBILITY CHECK: Found '{paramName}' param, StorageType={visParam.StorageType}, Value={visParam.AsInteger()}");
+                                            }
+                                            else
+                                            {
+                                                _logger($"[DamperProcessing] 🔍 VISIBILITY CHECK: Parameter '{paramName}' NOT FOUND in damper {damper.Id}");
+                                            }
+                                        }
+                                        
+                                        if (visParam != null)
+                                        {
+                                            if (visParam.StorageType == StorageType.Integer)
+                                            {
+                                                int visValue = visParam.AsInteger();
+                                                // ✅ INVERTED: 1 = "Not Required" = motor NOT visible
+                                                if (visValue == 1)
+                                                {
+                                                    connectorVisibilityOff = true;
+                                                    if (!DeploymentConfiguration.DeploymentMode)
+                                                    {
+                                                        _logger($"[DamperProcessing] ℹ️ Damper {damper.Id} has '{paramName}'=1 (CHECKED) - motor NOT visible, treating as standard damper (no connector offset)");
+                                                    }
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            catch (Exception visEx)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    _logger($"[DamperProcessing] ⚠️ Error checking connector visibility for damper {damper.Id}: {visEx.Message}");
+                                }
+                            }
+                            
+                            // Only set HasMepConnector=true if visibility is ON (or not found)
+                            if (!connectorVisibilityOff)
+                            {
+                                hasMepConnector = true;
+                                damperConnectorSide = connectorSide;
 
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    _logger($"[DamperProcessing] ✅ Damper {damper.Id} has CONNECTED MEP connector: HasMepConnector=true, DamperConnectorSide='{connectorSide}' - will use asymmetric clearance");
+                                }
+                            }
+                            } // end: isMsfdOrMotorized else block
+                        } // end: connector connected check
+                        else if (connector != null && !connector.IsConnected)
+                        {
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                _logger($"[DamperProcessing] ✅ Damper {damper.Id} has MEP connector: HasMepConnector=true, DamperConnectorSide='{connectorSide}' - will use asymmetric clearance");
+                                _logger($"[DamperProcessing] ℹ️ Damper {damper.Id} has connector but it's NOT CONNECTED to ductwork - will use symmetric clearance");
                             }
                         }
                         else

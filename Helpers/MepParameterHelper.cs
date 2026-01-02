@@ -1,7 +1,7 @@
 using Autodesk.Revit.DB;
 using System.Collections.Generic;
 
-namespace JSE_MEPOPENING_23.Helpers
+namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
 {
     /// <summary>
     /// Helper to efficiently extract all relevant MEP parameters from a FamilyInstance in a single API call.

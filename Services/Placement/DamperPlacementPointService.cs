@@ -115,15 +115,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                   Element damperElement = null;
                   
                   // Fix: zone.MepElementId is of type ElementId, so compare IntegerValue > 0
+                  Transform damperLinkTransform = null; // Store link transform for damper coordinate conversion
                   if (zone.MepElementId?.IntegerValue > 0) 
                   {
                       // Fix: zone.MepElementId is already ElementId, do not wrap in new ElementId()
                       damperElement = _doc.GetElement(zone.MepElementId);
-                  }
-                  
-                  if (damperElement == null && zone.MepElementId?.IntegerValue > 0)
-                  {
-                      // Double check logic or fallback if needed
+                      
+                      // ✅ CRITICAL FIX: If damper is in linked model, search linked documents
+                      if (damperElement == null)
+                      {
+                          var links = new FilteredElementCollector(_doc)
+                              .OfClass(typeof(RevitLinkInstance))
+                              .Cast<RevitLinkInstance>();
+                          
+                          foreach (var link in links)
+                          {
+                              try
+                              {
+                                  var linkDoc = link.GetLinkDocument();
+                                  if (linkDoc != null)
+                                  {
+                                      damperElement = linkDoc.GetElement(zone.MepElementId);
+                                      if (damperElement != null)
+                                      {
+                                          // ✅ CRITICAL: Store link transform for coordinate conversion
+                                          damperLinkTransform = link.GetTotalTransform();
+                                          SafeFileLogger.SafeAppendText("damper_placement_trace.log", 
+                                              $"[{DateTime.Now:HH:mm:ss.fff}] [TRACE] Found damper element in linked document: {linkDoc.Title}, storing link transform\n");
+                                          break;
+                                      }
+                                  }
+                              }
+                              catch { /* Ignore link access errors */ }
+                          }
+                      }
                   }
                   
                   // Use the 'mepElement' passed into the method context if available, else retrieve
@@ -134,12 +159,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                   if (damperElement is FamilyInstance fi && fi.Location is LocationPoint lp)
                   {
                       sourcePoint = lp.Point;
-                      damperTrace = $"Using LocationPoint (Body Center): ({sourcePoint.X:F3}, {sourcePoint.Y:F3}, {sourcePoint.Z:F3})";
+                      
+                      // ✅ CRITICAL: Transform from link-local to host coordinates if damper is in linked document
+                      if (damperLinkTransform != null)
+                      {
+                          sourcePoint = damperLinkTransform.OfPoint(sourcePoint);
+                          damperTrace = $"Using LocationPoint (Body Center) + LinkTransform: ({sourcePoint.X:F3}, {sourcePoint.Y:F3}, {sourcePoint.Z:F3})";
+                      }
+                      else
+                      {
+                          damperTrace = $"Using LocationPoint (Body Center): ({sourcePoint.X:F3}, {sourcePoint.Y:F3}, {sourcePoint.Z:F3})";
+                      }
                   }
                   else if (damperElement is FamilyInstance fi2)
                   {
                        sourcePoint = fi2.GetTransform().Origin;
-                       damperTrace = $"Using Transform Origin (Fallback): ({sourcePoint.X:F3}, {sourcePoint.Y:F3}, {sourcePoint.Z:F3})";
+                       
+                       // ✅ Transform if from linked document
+                       if (damperLinkTransform != null)
+                       {
+                           sourcePoint = damperLinkTransform.OfPoint(sourcePoint);
+                           damperTrace = $"Using Transform Origin (Fallback) + LinkTransform: ({sourcePoint.X:F3}, {sourcePoint.Y:F3}, {sourcePoint.Z:F3})";
+                       }
+                       else
+                       {
+                           damperTrace = $"Using Transform Origin (Fallback): ({sourcePoint.X:F3}, {sourcePoint.Y:F3}, {sourcePoint.Z:F3})";
+                       }
                   }
                   else
                   {
@@ -187,19 +232,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                             {
                                 XYZ projectedPoint = result.XYZPoint;
                                 
-                                // The projected point is ON the wall centerline.
-                                // However, the user might want the Vertical (Z) of the Damper kept.
-                                // Usually, Wall Location Line is at Base Constraint (Z=0 or Level).
-                                // So ProjectedPoint.Z will be at wall base.
-                                // We want: X,Y from Wall Center, Z from Damper.
+                                // ✅ CRITICAL FIX (2024): Only replace the coordinate perpendicular to wall direction
+                                // For Y-walls (runs along Y): Only replace X coordinate with centerline X
+                                // For X-walls (runs along X): Only replace Y coordinate with centerline Y
+                                // This prevents 100mm drift that occurs when both coordinates are replaced
+                                XYZ finalPoint;
                                 
-                                XYZ finalPoint = new XYZ(projectedPoint.X, projectedPoint.Y, sourcePoint.Z);
+                                // Determine wall orientation from the curve direction
+                                Curve wallCurve = locCurve.Curve;
+                                XYZ wallDirection = (wallCurve.GetEndPoint(1) - wallCurve.GetEndPoint(0)).Normalize();
+                                
+                                // Check if wall runs primarily along X or Y axis
+                                bool wallRunsAlongY = Math.Abs(wallDirection.Y) > Math.Abs(wallDirection.X);
+                                
+                                if (wallRunsAlongY)
+                                {
+                                    // Y-wall (runs N-S): Keep source Y (position along wall), use projected X (centerline), keep source Z
+                                    finalPoint = new XYZ(projectedPoint.X, sourcePoint.Y, sourcePoint.Z);
+                                    
+                                    SafeFileLogger.SafeAppendText("damper_placement_trace.log", 
+                                       $"[{DateTime.Now:HH:mm:ss.fff}] [TRACE] Y-WALL: Using projected X={projectedPoint.X:F3}, keeping source Y={sourcePoint.Y:F3}, Z={sourcePoint.Z:F3}\n");
+                                }
+                                else
+                                {
+                                    // X-wall (runs E-W): Keep source X (position along wall), use projected Y (centerline), keep source Z
+                                    finalPoint = new XYZ(sourcePoint.X, projectedPoint.Y, sourcePoint.Z);
+                                    
+                                    SafeFileLogger.SafeAppendText("damper_placement_trace.log", 
+                                       $"[{DateTime.Now:HH:mm:ss.fff}] [TRACE] X-WALL: Keeping source X={sourcePoint.X:F3}, using projected Y={projectedPoint.Y:F3}, Z={sourcePoint.Z:F3}\n");
+                                }
                                 
                                 SafeFileLogger.SafeAppendText("damper_placement_trace.log", 
                                    $"[{DateTime.Now:HH:mm:ss.fff}] [TRACE] ✅ CURVE PROJECTION SUCCESS: " +
                                    $"Source=({sourcePoint.X:F3}, {sourcePoint.Y:F3}, {sourcePoint.Z:F3}) -> " +
                                    $"Projected=({projectedPoint.X:F3}, {projectedPoint.Y:F3}, {projectedPoint.Z:F3}) -> " +
-                                   $"Final=({finalPoint.X:F3}, {finalPoint.Y:F3}, {finalPoint.Z:F3})\n");
+                                   $"Final=({finalPoint.X:F3}, {finalPoint.Y:F3}, {finalPoint.Z:F3}), WallRunsAlongY={wallRunsAlongY}\n");
                                 
                                 return finalPoint;
                             }

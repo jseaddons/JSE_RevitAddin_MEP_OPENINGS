@@ -152,3 +152,185 @@
 [31-12-2025 19:33:05] [OK_BUTTON_DEBUG] Database Filter='Ventilation', Category='Duct Accessories': 1/1 unresolved (NoSleeve=1, ReadyForPlacement=1)
 [31-12-2025 19:33:05] [OK_BUTTON_DEBUG] ✅ OK button enabled: True (unresolved: 1 from database)
 [31-12-2025 19:33:05] RefreshService.ExecuteRefresh() method completed successfully
+[02-01-2026 09:36:59] === ON_REFRESH_CLICK STARTED ===
+[02-01-2026 09:36:59] [SECTION-BOX] PRE-REFRESH: Updated DB Section Box from View: {3D}
+[02-01-2026 09:36:59] [ON_REFRESH_CLICK] UI Selections - Filters: 1 [Ventilation]
+[02-01-2026 09:36:59] [ON_REFRESH_CLICK] UI Selections - MEP Categories: 1 [Duct Accessories]
+[02-01-2026 09:36:59] [ON_REFRESH_CLICK] UI Selections - Reference Files: 1 [ME-00001]
+[02-01-2026 09:36:59] [ON_REFRESH_CLICK] UI Selections - Host Files: 1 [AR-00001_detached]
+[02-01-2026 09:36:59] [ON_REFRESH_CLICK] Creating refresh service...
+[02-01-2026 09:36:59] [ON_REFRESH_CLICK] Calling ExecuteRefresh...
+[02-01-2026 09:37:02] [ON_REFRESH_CLICK] ExecuteRefresh completed
+[02-01-2026 09:37:02] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[02-01-2026 09:37:02] [OK_BUTTON_DEBUG] Checking database for unresolved zones
+[02-01-2026 09:37:02] [OK_BUTTON_DEBUG] Database Filter='Ventilation', Category='Duct Accessories': 21/21 unresolved (NoSleeve=0, ReadyForPlacement=21)
+[02-01-2026 09:37:02] [OK_BUTTON_DEBUG] ✅ OK button enabled: True (unresolved: 21 from database)
+[02-01-2026 09:37:02] RefreshService.ExecuteRefresh() method completed successfully
+[02-01-2026 09:38:09] === ON_REFRESH_CLICK STARTED ===
+[02-01-2026 09:38:09] [SECTION-BOX] PRE-REFRESH: Updated DB Section Box from View: {3D}
+[02-01-2026 09:38:09] [ON_REFRESH_CLICK] UI Selections - Filters: 1 [Ventilation]
+[02-01-2026 09:38:09] [ON_REFRESH_CLICK] UI Selections - MEP Categories: 1 [Duct Accessories]
+[02-01-2026 09:38:09] [ON_REFRESH_CLICK] UI Selections - Reference Files: 1 [ME-00001]
+[02-01-2026 09:38:09] [ON_REFRESH_CLICK] UI Selections - Host Files: 1 [AR-00001_detached]
+[02-01-2026 09:38:09] [ON_REFRESH_CLICK] Creating refresh service...
+[02-01-2026 09:38:09] [ON_REFRESH_CLICK] Calling ExecuteRefresh...
+[02-01-2026 09:38:11] [ON_REFRESH_CLICK] ExecuteRefresh completed
+[02-01-2026 09:38:11] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[02-01-2026 09:38:11] [OK_BUTTON_DEBUG] Checking database for unresolved zones
+[02-01-2026 09:38:12] [OK_BUTTON_DEBUG] Database Filter='Ventilation', Category='Duct Accessories': 21/21 unresolved (NoSleeve=0, ReadyForPlacement=21)
+[02-01-2026 09:38:12] [OK_BUTTON_DEBUG] ✅ OK button enabled: True (unresolved: 21 from database)
+[02-01-2026 09:38:12] RefreshService.ExecuteRefresh() method completed successfully
+[02-01-2026 09:38:57] === ON_REFRESH_CLICK STARTED ===
+[02-01-2026 09:38:57] [SECTION-BOX] PRE-REFRESH: Updated DB Section Box from View: {3D}
+[02-01-2026 09:38:57] [ON_REFRESH_CLICK] UI Selections - Filters: 1 [Ventilation]
+[02-01-2026 09:38:57] [ON_REFRESH_CLICK] UI Selections - MEP Categories: 1 [Duct Accessories]
+[02-01-2026 09:38:57] [ON_REFRESH_CLICK] UI Selections - Reference Files: 1 [ME-00001]
+[02-01-2026 09:38:57] [ON_REFRESH_CLICK] UI Selections - Host Files: 1 [AR-00001_detached]
+[02-01-2026 09:38:57] [ON_REFRESH_CLICK] Creating refresh service...
+[02-01-2026 09:38:57] [ON_REFRESH_CLICK] Calling ExecuteRefresh...
+[02-01-2026 09:39:00] [ON_REFRESH_CLICK] ExecuteRefresh completed
+[02-01-2026 09:39:00] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[02-01-2026 09:39:00] [OK_BUTTON_DEBUG] Checking database for unresolved zones
+[02-01-2026 09:39:00] [OK_BUTTON_DEBUG] Database Filter='Ventilation', Category='Duct Accessories': 21/21 unresolved (NoSleeve=0, ReadyForPlacement=21)
+[02-01-2026 09:39:00] [OK_BUTTON_DEBUG] ✅ OK button enabled: True (unresolved: 21 from database)
+[02-01-2026 09:39:00] RefreshService.ExecuteRefresh() method completed successfully
+[02-01-2026 09:48:56] === ON_REFRESH_CLICK STARTED ===
+[02-01-2026 09:48:56] [SECTION-BOX] PRE-REFRESH: Updated DB Section Box from View: Test Area 1 small
+[02-01-2026 09:48:56] [ON_REFRESH_CLICK] UI Selections - Filters: 1 [Ventilation]
+[02-01-2026 09:48:56] [ON_REFRESH_CLICK] UI Selections - MEP Categories: 1 [Duct Accessories]
+[02-01-2026 09:48:56] [ON_REFRESH_CLICK] UI Selections - Reference Files: 1 [CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002]
+[02-01-2026 09:48:56] [ON_REFRESH_CLICK] UI Selections - Host Files: 1 [CMO-GCI-MOD-ARC-ZZ-00002-2024]
+[02-01-2026 09:48:56] [ON_REFRESH_CLICK] Creating refresh service...
+[02-01-2026 09:48:56] [ON_REFRESH_CLICK] Calling ExecuteRefresh...
+[02-01-2026 09:49:00] [ON_REFRESH_CLICK] ExecuteRefresh completed
+[02-01-2026 09:49:00] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[02-01-2026 09:49:00] [OK_BUTTON_DEBUG] Checking database for unresolved zones
+[02-01-2026 09:49:00] [OK_BUTTON_DEBUG] Database Filter='Ventilation', Category='Duct Accessories': 1/1 unresolved (NoSleeve=1, ReadyForPlacement=1)
+[02-01-2026 09:49:00] [OK_BUTTON_DEBUG] ✅ OK button enabled: True (unresolved: 1 from database)
+[02-01-2026 09:49:00] RefreshService.ExecuteRefresh() method completed successfully
+[02-01-2026 09:59:03] === ON_REFRESH_CLICK STARTED ===
+[02-01-2026 09:59:03] [SECTION-BOX] PRE-REFRESH: Updated DB Section Box from View: Test Area 1 small
+[02-01-2026 09:59:03] [ON_REFRESH_CLICK] UI Selections - Filters: 1 [Ventilation]
+[02-01-2026 09:59:03] [ON_REFRESH_CLICK] UI Selections - MEP Categories: 1 [Duct Accessories]
+[02-01-2026 09:59:03] [ON_REFRESH_CLICK] UI Selections - Reference Files: 1 [CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002]
+[02-01-2026 09:59:03] [ON_REFRESH_CLICK] UI Selections - Host Files: 1 [CMO-GCI-MOD-ARC-ZZ-00002-2024]
+[02-01-2026 09:59:03] [ON_REFRESH_CLICK] Creating refresh service...
+[02-01-2026 09:59:03] [ON_REFRESH_CLICK] Calling ExecuteRefresh...
+[02-01-2026 09:59:05] [ON_REFRESH_CLICK] ExecuteRefresh completed
+[02-01-2026 09:59:05] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[02-01-2026 09:59:05] [OK_BUTTON_DEBUG] Checking database for unresolved zones
+[02-01-2026 09:59:05] [OK_BUTTON_DEBUG] Database Filter='Ventilation', Category='Duct Accessories': 1/1 unresolved (NoSleeve=1, ReadyForPlacement=1)
+[02-01-2026 09:59:05] [OK_BUTTON_DEBUG] ✅ OK button enabled: True (unresolved: 1 from database)
+[02-01-2026 09:59:05] RefreshService.ExecuteRefresh() method completed successfully
+[02-01-2026 09:59:36] === ON_REFRESH_CLICK STARTED ===
+[02-01-2026 09:59:36] [SECTION-BOX] PRE-REFRESH: Updated DB Section Box from View: Test Area 1 small
+[02-01-2026 09:59:36] [ON_REFRESH_CLICK] UI Selections - Filters: 1 [Ventilation]
+[02-01-2026 09:59:36] [ON_REFRESH_CLICK] UI Selections - MEP Categories: 1 [Duct Accessories]
+[02-01-2026 09:59:36] [ON_REFRESH_CLICK] UI Selections - Reference Files: 1 [CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002]
+[02-01-2026 09:59:36] [ON_REFRESH_CLICK] UI Selections - Host Files: 1 [CMO-GCI-MOD-ARC-ZZ-00002-2024]
+[02-01-2026 09:59:36] [ON_REFRESH_CLICK] Creating refresh service...
+[02-01-2026 09:59:36] [ON_REFRESH_CLICK] Calling ExecuteRefresh...
+[02-01-2026 09:59:38] [ON_REFRESH_CLICK] ExecuteRefresh completed
+[02-01-2026 09:59:38] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[02-01-2026 09:59:38] [OK_BUTTON_DEBUG] Checking database for unresolved zones
+[02-01-2026 09:59:38] [OK_BUTTON_DEBUG] Database Filter='Ventilation', Category='Duct Accessories': 1/1 unresolved (NoSleeve=1, ReadyForPlacement=1)
+[02-01-2026 09:59:38] [OK_BUTTON_DEBUG] ✅ OK button enabled: True (unresolved: 1 from database)
+[02-01-2026 09:59:38] RefreshService.ExecuteRefresh() method completed successfully
+[02-01-2026 10:05:26] === ON_REFRESH_CLICK STARTED ===
+[02-01-2026 10:05:26] [SECTION-BOX] PRE-REFRESH: Updated DB Section Box from View: Test Area 1 small
+[02-01-2026 10:05:26] [ON_REFRESH_CLICK] UI Selections - Filters: 1 [Ventilation]
+[02-01-2026 10:05:26] [ON_REFRESH_CLICK] UI Selections - MEP Categories: 1 [Duct Accessories]
+[02-01-2026 10:05:26] [ON_REFRESH_CLICK] UI Selections - Reference Files: 1 [CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002]
+[02-01-2026 10:05:26] [ON_REFRESH_CLICK] UI Selections - Host Files: 1 [CMO-GCI-MOD-ARC-ZZ-00002-2024]
+[02-01-2026 10:05:26] [ON_REFRESH_CLICK] Creating refresh service...
+[02-01-2026 10:05:26] [ON_REFRESH_CLICK] Calling ExecuteRefresh...
+[02-01-2026 10:05:27] [ON_REFRESH_CLICK] ExecuteRefresh completed
+[02-01-2026 10:05:27] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[02-01-2026 10:05:27] [OK_BUTTON_DEBUG] Checking database for unresolved zones
+[02-01-2026 10:05:27] [OK_BUTTON_DEBUG] Database Filter='Ventilation', Category='Duct Accessories': 1/1 unresolved (NoSleeve=1, ReadyForPlacement=1)
+[02-01-2026 10:05:27] [OK_BUTTON_DEBUG] ✅ OK button enabled: True (unresolved: 1 from database)
+[02-01-2026 10:05:27] RefreshService.ExecuteRefresh() method completed successfully
+[02-01-2026 10:17:04] === ON_REFRESH_CLICK STARTED ===
+[02-01-2026 10:17:04] [SECTION-BOX] PRE-REFRESH: Updated DB Section Box from View: Test Area 1 small
+[02-01-2026 10:17:04] [ON_REFRESH_CLICK] UI Selections - Filters: 1 [Ventilation]
+[02-01-2026 10:17:04] [ON_REFRESH_CLICK] UI Selections - MEP Categories: 1 [Duct Accessories]
+[02-01-2026 10:17:04] [ON_REFRESH_CLICK] UI Selections - Reference Files: 1 [CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002]
+[02-01-2026 10:17:04] [ON_REFRESH_CLICK] UI Selections - Host Files: 1 [CMO-GCI-MOD-ARC-ZZ-00002-2024]
+[02-01-2026 10:17:04] [ON_REFRESH_CLICK] Creating refresh service...
+[02-01-2026 10:17:04] [ON_REFRESH_CLICK] Calling ExecuteRefresh...
+[02-01-2026 10:17:06] [ON_REFRESH_CLICK] ExecuteRefresh completed
+[02-01-2026 10:17:06] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[02-01-2026 10:17:06] [OK_BUTTON_DEBUG] Checking database for unresolved zones
+[02-01-2026 10:17:06] [OK_BUTTON_DEBUG] Database Filter='Ventilation', Category='Duct Accessories': 1/1 unresolved (NoSleeve=1, ReadyForPlacement=1)
+[02-01-2026 10:17:06] [OK_BUTTON_DEBUG] ✅ OK button enabled: True (unresolved: 1 from database)
+[02-01-2026 10:17:06] RefreshService.ExecuteRefresh() method completed successfully
+[02-01-2026 10:17:39] === ON_REFRESH_CLICK STARTED ===
+[02-01-2026 10:17:39] [SECTION-BOX] PRE-REFRESH: Updated DB Section Box from View: Test Area 1 small
+[02-01-2026 10:17:39] [ON_REFRESH_CLICK] UI Selections - Filters: 1 [Ventilation]
+[02-01-2026 10:17:39] [ON_REFRESH_CLICK] UI Selections - MEP Categories: 1 [Duct Accessories]
+[02-01-2026 10:17:39] [ON_REFRESH_CLICK] UI Selections - Reference Files: 1 [CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002]
+[02-01-2026 10:17:39] [ON_REFRESH_CLICK] UI Selections - Host Files: 1 [CMO-GCI-MOD-ARC-ZZ-00002-2024]
+[02-01-2026 10:17:39] [ON_REFRESH_CLICK] Creating refresh service...
+[02-01-2026 10:17:39] [ON_REFRESH_CLICK] Calling ExecuteRefresh...
+[02-01-2026 10:17:41] [ON_REFRESH_CLICK] ExecuteRefresh completed
+[02-01-2026 10:17:41] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[02-01-2026 10:17:41] [OK_BUTTON_DEBUG] Checking database for unresolved zones
+[02-01-2026 10:17:41] [OK_BUTTON_DEBUG] Database Filter='Ventilation', Category='Duct Accessories': 1/1 unresolved (NoSleeve=1, ReadyForPlacement=1)
+[02-01-2026 10:17:41] [OK_BUTTON_DEBUG] ✅ OK button enabled: True (unresolved: 1 from database)
+[02-01-2026 10:17:41] RefreshService.ExecuteRefresh() method completed successfully
+[02-01-2026 10:21:41] === ON_REFRESH_CLICK STARTED ===
+[02-01-2026 10:21:41] [SECTION-BOX] PRE-REFRESH: Updated DB Section Box from View: Test Area 1 small
+[02-01-2026 10:21:41] [ON_REFRESH_CLICK] UI Selections - Filters: 1 [Ventilation]
+[02-01-2026 10:21:41] [ON_REFRESH_CLICK] UI Selections - MEP Categories: 1 [Duct Accessories]
+[02-01-2026 10:21:41] [ON_REFRESH_CLICK] UI Selections - Reference Files: 1 [CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002]
+[02-01-2026 10:21:41] [ON_REFRESH_CLICK] UI Selections - Host Files: 1 [CMO-GCI-MOD-ARC-ZZ-00002-2024]
+[02-01-2026 10:21:41] [ON_REFRESH_CLICK] Creating refresh service...
+[02-01-2026 10:21:41] [ON_REFRESH_CLICK] Calling ExecuteRefresh...
+[02-01-2026 10:21:42] [ON_REFRESH_CLICK] ExecuteRefresh completed
+[02-01-2026 10:21:42] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[02-01-2026 10:21:42] [OK_BUTTON_DEBUG] Checking database for unresolved zones
+[02-01-2026 10:21:43] [OK_BUTTON_DEBUG] Database Filter='Ventilation', Category='Duct Accessories': 1/1 unresolved (NoSleeve=1, ReadyForPlacement=1)
+[02-01-2026 10:21:43] [OK_BUTTON_DEBUG] ✅ OK button enabled: True (unresolved: 1 from database)
+[02-01-2026 10:21:43] RefreshService.ExecuteRefresh() method completed successfully
+[02-01-2026 10:22:49] === ON_REFRESH_CLICK STARTED ===
+[02-01-2026 10:22:49] [SECTION-BOX] PRE-REFRESH: Updated DB Section Box from View: Test Area 1 small
+[02-01-2026 10:22:49] [ON_REFRESH_CLICK] UI Selections - Filters: 1 [Ventilation]
+[02-01-2026 10:22:49] [ON_REFRESH_CLICK] UI Selections - MEP Categories: 1 [Duct Accessories]
+[02-01-2026 10:22:49] [ON_REFRESH_CLICK] UI Selections - Reference Files: 1 [CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002]
+[02-01-2026 10:22:49] [ON_REFRESH_CLICK] UI Selections - Host Files: 1 [CMO-GCI-MOD-ARC-ZZ-00002-2024]
+[02-01-2026 10:22:49] [ON_REFRESH_CLICK] Creating refresh service...
+[02-01-2026 10:22:49] [ON_REFRESH_CLICK] Calling ExecuteRefresh...
+[02-01-2026 10:22:50] [ON_REFRESH_CLICK] ExecuteRefresh completed
+[02-01-2026 10:22:50] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[02-01-2026 10:22:50] [OK_BUTTON_DEBUG] Checking database for unresolved zones
+[02-01-2026 10:22:50] [OK_BUTTON_DEBUG] Database Filter='Ventilation', Category='Duct Accessories': 1/1 unresolved (NoSleeve=1, ReadyForPlacement=1)
+[02-01-2026 10:22:50] [OK_BUTTON_DEBUG] ✅ OK button enabled: True (unresolved: 1 from database)
+[02-01-2026 10:22:50] RefreshService.ExecuteRefresh() method completed successfully
+[02-01-2026 10:23:30] === ON_REFRESH_CLICK STARTED ===
+[02-01-2026 10:23:30] [SECTION-BOX] PRE-REFRESH: Updated DB Section Box from View: Test Area 1 small
+[02-01-2026 10:23:30] [ON_REFRESH_CLICK] UI Selections - Filters: 1 [Ventilation]
+[02-01-2026 10:23:30] [ON_REFRESH_CLICK] UI Selections - MEP Categories: 1 [Duct Accessories]
+[02-01-2026 10:23:30] [ON_REFRESH_CLICK] UI Selections - Reference Files: 1 [CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002]
+[02-01-2026 10:23:30] [ON_REFRESH_CLICK] UI Selections - Host Files: 1 [CMO-GCI-MOD-ARC-ZZ-00002-2024]
+[02-01-2026 10:23:30] [ON_REFRESH_CLICK] Creating refresh service...
+[02-01-2026 10:23:30] [ON_REFRESH_CLICK] Calling ExecuteRefresh...
+[02-01-2026 10:23:32] [ON_REFRESH_CLICK] ExecuteRefresh completed
+[02-01-2026 10:23:32] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[02-01-2026 10:23:32] [OK_BUTTON_DEBUG] Checking database for unresolved zones
+[02-01-2026 10:23:32] [OK_BUTTON_DEBUG] Database Filter='Ventilation', Category='Duct Accessories': 1/1 unresolved (NoSleeve=1, ReadyForPlacement=1)
+[02-01-2026 10:23:32] [OK_BUTTON_DEBUG] ✅ OK button enabled: True (unresolved: 1 from database)
+[02-01-2026 10:23:32] RefreshService.ExecuteRefresh() method completed successfully
+[02-01-2026 10:27:58] === ON_REFRESH_CLICK STARTED ===
+[02-01-2026 10:27:58] [SECTION-BOX] PRE-REFRESH: Updated DB Section Box from View: Test Area 1 small
+[02-01-2026 10:27:58] [ON_REFRESH_CLICK] UI Selections - Filters: 1 [Ventilation]
+[02-01-2026 10:27:58] [ON_REFRESH_CLICK] UI Selections - MEP Categories: 1 [Duct Accessories]
+[02-01-2026 10:27:58] [ON_REFRESH_CLICK] UI Selections - Reference Files: 1 [CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002]
+[02-01-2026 10:27:58] [ON_REFRESH_CLICK] UI Selections - Host Files: 1 [CMO-GCI-MOD-ARC-ZZ-00002-2024]
+[02-01-2026 10:27:58] [ON_REFRESH_CLICK] Creating refresh service...
+[02-01-2026 10:27:58] [ON_REFRESH_CLICK] Calling ExecuteRefresh...
+[02-01-2026 10:27:59] [ON_REFRESH_CLICK] ExecuteRefresh completed
+[02-01-2026 10:27:59] [OK_BUTTON_DEBUG] About to check OK button enabling logic
+[02-01-2026 10:27:59] [OK_BUTTON_DEBUG] Checking database for unresolved zones
+[02-01-2026 10:27:59] [OK_BUTTON_DEBUG] Database Filter='Ventilation', Category='Duct Accessories': 1/1 unresolved (NoSleeve=1, ReadyForPlacement=1)
+[02-01-2026 10:27:59] [OK_BUTTON_DEBUG] ✅ OK button enabled: True (unresolved: 1 from database)
+[02-01-2026 10:27:59] RefreshService.ExecuteRefresh() method completed successfully

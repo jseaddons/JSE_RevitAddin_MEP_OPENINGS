@@ -149,7 +149,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                 var element = document.GetElement(new ElementId(sleeveId));
                 if (element != null && element is FamilyInstance sleeve)
                 {
-                    bool isSleeve = (sleeve.Category?.Name == "Generic Models" || sleeve.Category?.Name == "Structural Connections") &&
+                    bool isSleeve = (sleeve.Category?.Name == "Generic Models" || 
+                                     sleeve.Category?.Name == "Structural Connections" ||
+                                     sleeve.Category?.Name == "Duct Accessories" ||
+                                     sleeve.Category?.Name == "Pipe Accessories" ||
+                                     sleeve.Category?.Name == "Mechanical Equipment") &&
                                     (sleeve.Symbol?.FamilyName?.Contains("Sleeve", StringComparison.OrdinalIgnoreCase) == true ||
                                      sleeve.Symbol?.FamilyName?.Contains("Opening", StringComparison.OrdinalIgnoreCase) == true);
                     return isSleeve;

@@ -1,105 +1,105 @@
-[19:33:00.433] ========== FILTER UI STATE DEBUG LOG ==========
-[19:33:00.433] Log file location: C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Logs\R2024\filter_ui_state_debug.log
-[19:33:00.433] Log directory exists: True
-[19:33:00.433] ==============================================
-[19:33:00.460] ========== UpdateFilterWithCurrentUIState STARTED ==========
-[19:33:00.460] Filter Name: 'Ventilation'
-[19:33:00.460] Filter is null: False
-[19:33:00.460] Getting SelectedMepCategories...
-[19:33:00.460] SelectedMepCategories Count: 1
-[19:33:00.460] SelectedMepCategories: [Duct Accessories]
-[19:33:00.460] Getting SelectedReferenceFiles...
-[19:33:00.460] SelectedReferenceFiles Count: 1
-[19:33:00.460] Getting SelectedHostFiles...
-[19:33:00.460] SelectedHostFiles Count: 1
-[19:33:00.460] Getting SelectedHostCategories from FilterUiStateProvider...
-[19:33:00.460] FilterUiStateProvider.GetSelectedHostCategories returned: 1 categories
-[19:33:00.460] SelectedHostCategories BEFORE assignment: [Walls]
-[19:33:00.460] ✅ Assigned SelectedHostCategories to filter
-[19:33:00.460] Filter.SelectedHostCategories AFTER assignment: [Walls]
-[19:33:00.460] Filter.SelectedHostCategories Count AFTER assignment: 1
-[19:33:00.460] Horizontal categories: 1 - [Walls]
-[19:33:00.460] Vertical categories: 0 - []
-[19:33:00.460] Getting OpeningSettings from UI...
-[19:33:00.460] ClearanceSettings retrieved: EXISTS
-[19:33:00.460] OpeningSettings is NULL - Creating new OpeningSettings object
-[19:33:00.461] ✅ Assigned ClearanceSettings to filter.OpeningSettings
-[19:33:00.461] ✅ Assigned AdoptToDocument = True to filter.OpeningSettings
-[19:33:00.461] Filter.OpeningSettings after update: EXISTS
-[19:33:00.461] ========== UpdateFilterWithCurrentUIState COMPLETED ==========
-[19:33:00.461] Final Filter.SelectedHostCategories Count: 1
-[19:33:00.461] Final Filter.SelectedHostCategories: [Walls]
-[19:33:00.461] Final Filter.OpeningSettings: EXISTS
-[19:33:00.433] ========== FILTER UI STATE DEBUG LOG ==========
-[19:33:00.433] Log file location: C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Logs\R2024\filter_ui_state_debug.log
-[19:33:00.433] Log directory exists: True
-[19:33:00.433] ==============================================
-[19:33:00.435] ========== SAVE FILTER WITH UI STATE STARTED ==========
-[19:33:00.435] SaveFilterWithUIState called
-[19:33:00.435] Selected Filter Name: 'Ventilation'
-[19:33:00.435] FilterListBox SelectedIndex: 2
-[19:33:00.435] FilterListBox Items Count: 3
-[19:33:00.435] Filter Directory: 'C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_aakashvP9A2H\Filters'
-[19:33:00.435] Filter File Path: 'C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_aakashvP9A2H\Filters\Ventilation.xml'
-[19:33:00.435] Filter File Exists: False
-[19:33:00.435] ========== CURRENT UI STATE (BEFORE SAVE) ==========
-[19:33:00.436] SelectedHostCategories Count: 1
-[19:33:00.437] SelectedHostCategories: [Walls]
-[19:33:00.437] SelectedMepCategories Count: 1
-[19:33:00.437] SelectedMepCategories: [Duct Accessories]
-[19:33:00.438] SelectedReferenceFiles Count: 1
-[19:33:00.439] SelectedHostFiles Count: 1
-[19:33:00.439] ========== END CURRENT UI STATE ==========
-[19:33:00.439] Filter file does NOT exist - Creating new filter from UI state
-[19:33:00.443] ✅ Created new filter from UI state
-[19:33:00.443] New filter HostCats BEFORE update: 1
-[19:33:00.443] New filter OpeningSettings BEFORE update: NULL
-[19:33:00.443] Calling UpdateFilterWithCurrentUIState for NEW filter (file doesn't exist)...
-[19:33:00.464] ✅ UpdateFilterWithCurrentUIState completed for NEW filter
-[19:33:00.464] New filter HostCats AFTER update: 1
-[19:33:00.464] New filter HostCats AFTER update: [Walls]
-[19:33:00.464] New filter OpeningSettings AFTER update: EXISTS
-[19:33:00.464] New filter OpeningSettings.AdoptToDocument: True
-[19:33:00.464] ========== FILTER OBJECT STATE (BEFORE XML SAVE) ==========
-[19:33:00.464] Filter Name: 'Ventilation'
-[19:33:00.464] Filter is null: False
-[19:33:00.464] Directory exists: True
-[19:33:00.464] Filter SelectedHostCategories Count: 1
-[19:33:00.464] Filter SelectedHostCategories: [Walls]
-[19:33:00.464] Filter OpeningSettings: EXISTS
-[19:33:00.464] OpeningSettings SelectedMepType: 'Pipe'
-[19:33:00.464] OpeningSettings OpeningType: 'Rectangular'
-[19:33:00.464] OpeningSettings SleeveParameterPrefix: 'SLEEVE_'
-[19:33:00.464] OpeningSettings ClearanceSettings: EXISTS
-[19:33:00.464] OpeningSettings AdoptToDocument: True
-[19:33:00.464] ========== END FILTER OBJECT STATE ==========
-[19:33:00.464] ========== STEP 1: SAVING TO XML ==========
-[19:33:00.464] Calling SaveFilterToXmlFile...
-[19:33:00.492] ✅ SaveFilterToXmlFile completed
-[19:33:00.493] ⚠️ WARNING: XML file was NOT created!
-[19:33:00.493] ========== END STEP 1: XML SAVE ==========
-[19:33:00.493] ========== STEP 2: SAVING TO DATABASE ==========
-[19:33:00.493] Category: 'Duct Accessories'
-[19:33:00.493] Calling RegisterFilterInDatabase...
-[19:33:00.508] ✅ RegisterFilterInDatabase completed
-[19:33:00.508] ========== STEP 2A: SAVING UI STATE TO DATABASE ==========
-[19:33:00.508] Filter: 'Ventilation'
-[19:33:00.508] Category: 'Duct Accessories'
-[19:33:00.508] HostCategories to save: [Walls]
-[19:33:00.508] HostCategories Count: 1
-[19:33:00.508] OpeningSettings: EXISTS
-[19:33:00.508] Calling UseFilterRepository -> SaveFilterUIState...
-[19:33:00.530] Inside UseFilterRepository callback - calling SaveFilterUIState
-[19:33:00.530] SelectedMepCategoryNames to save: [Duct Accessories]
-[19:33:00.530] SelectedReferenceFiles to save: [CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002]
-[19:33:00.530] SelectedHostFiles to save: [CMO-GCI-MOD-ARC-ZZ-00002-2024]
-[19:33:00.710] ✅ SaveFilterUIState call completed
-[19:33:00.710] ✅ UseFilterRepository completed
-[19:33:00.710] ✅ UI STATE SAVED TO DATABASE SUCCESSFULLY
-[19:33:00.710] ========== END STEP 2A: UI STATE DATABASE SAVE ==========
-[19:33:00.710] ========== END STEP 2: DATABASE SAVE ==========
-[19:33:00.710] ========== STEP 3: UPDATE IN-MEMORY FILTER ==========
-[19:33:00.710] Calling UpdateFilterInMemory...
-[19:33:00.712] ✅ UpdateFilterInMemory completed
-[19:33:00.712] ========== END STEP 3: IN-MEMORY UPDATE ==========
-[19:33:00.712] ========== SAVE FILTER WITH UI STATE COMPLETED ==========
+[10:27:56.951] ========== FILTER UI STATE DEBUG LOG ==========
+[10:27:56.951] Log file location: C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Logs\R2024\filter_ui_state_debug.log
+[10:27:56.951] Log directory exists: True
+[10:27:56.952] ==============================================
+[10:27:56.974] ========== UpdateFilterWithCurrentUIState STARTED ==========
+[10:27:56.974] Filter Name: 'Ventilation'
+[10:27:56.974] Filter is null: False
+[10:27:56.974] Getting SelectedMepCategories...
+[10:27:56.974] SelectedMepCategories Count: 1
+[10:27:56.974] SelectedMepCategories: [Duct Accessories]
+[10:27:56.974] Getting SelectedReferenceFiles...
+[10:27:56.974] SelectedReferenceFiles Count: 1
+[10:27:56.974] Getting SelectedHostFiles...
+[10:27:56.974] SelectedHostFiles Count: 1
+[10:27:56.974] Getting SelectedHostCategories from FilterUiStateProvider...
+[10:27:56.974] FilterUiStateProvider.GetSelectedHostCategories returned: 1 categories
+[10:27:56.974] SelectedHostCategories BEFORE assignment: [Walls]
+[10:27:56.974] ✅ Assigned SelectedHostCategories to filter
+[10:27:56.974] Filter.SelectedHostCategories AFTER assignment: [Walls]
+[10:27:56.974] Filter.SelectedHostCategories Count AFTER assignment: 1
+[10:27:56.974] Horizontal categories: 1 - [Walls]
+[10:27:56.974] Vertical categories: 0 - []
+[10:27:56.974] Getting OpeningSettings from UI...
+[10:27:56.974] ClearanceSettings retrieved: EXISTS
+[10:27:56.974] OpeningSettings is NULL - Creating new OpeningSettings object
+[10:27:56.975] ✅ Assigned ClearanceSettings to filter.OpeningSettings
+[10:27:56.975] ✅ Assigned AdoptToDocument = True to filter.OpeningSettings
+[10:27:56.975] Filter.OpeningSettings after update: EXISTS
+[10:27:56.975] ========== UpdateFilterWithCurrentUIState COMPLETED ==========
+[10:27:56.975] Final Filter.SelectedHostCategories Count: 1
+[10:27:56.975] Final Filter.SelectedHostCategories: [Walls]
+[10:27:56.975] Final Filter.OpeningSettings: EXISTS
+[10:27:56.951] ========== FILTER UI STATE DEBUG LOG ==========
+[10:27:56.951] Log file location: C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Logs\R2024\filter_ui_state_debug.log
+[10:27:56.951] Log directory exists: True
+[10:27:56.952] ==============================================
+[10:27:56.953] ========== SAVE FILTER WITH UI STATE STARTED ==========
+[10:27:56.953] SaveFilterWithUIState called
+[10:27:56.953] Selected Filter Name: 'Ventilation'
+[10:27:56.953] FilterListBox SelectedIndex: 2
+[10:27:56.953] FilterListBox Items Count: 3
+[10:27:56.953] Filter Directory: 'C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_aakashvP9A2H\Filters'
+[10:27:56.953] Filter File Path: 'C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model COMO_aakashvP9A2H\Filters\Ventilation.xml'
+[10:27:56.953] Filter File Exists: False
+[10:27:56.953] ========== CURRENT UI STATE (BEFORE SAVE) ==========
+[10:27:56.954] SelectedHostCategories Count: 1
+[10:27:56.954] SelectedHostCategories: [Walls]
+[10:27:56.954] SelectedMepCategories Count: 1
+[10:27:56.954] SelectedMepCategories: [Duct Accessories]
+[10:27:56.956] SelectedReferenceFiles Count: 1
+[10:27:56.957] SelectedHostFiles Count: 1
+[10:27:56.957] ========== END CURRENT UI STATE ==========
+[10:27:56.957] Filter file does NOT exist - Creating new filter from UI state
+[10:27:56.960] ✅ Created new filter from UI state
+[10:27:56.960] New filter HostCats BEFORE update: 1
+[10:27:56.960] New filter OpeningSettings BEFORE update: NULL
+[10:27:56.960] Calling UpdateFilterWithCurrentUIState for NEW filter (file doesn't exist)...
+[10:27:56.979] ✅ UpdateFilterWithCurrentUIState completed for NEW filter
+[10:27:56.979] New filter HostCats AFTER update: 1
+[10:27:56.979] New filter HostCats AFTER update: [Walls]
+[10:27:56.979] New filter OpeningSettings AFTER update: EXISTS
+[10:27:56.979] New filter OpeningSettings.AdoptToDocument: True
+[10:27:56.979] ========== FILTER OBJECT STATE (BEFORE XML SAVE) ==========
+[10:27:56.979] Filter Name: 'Ventilation'
+[10:27:56.979] Filter is null: False
+[10:27:56.979] Directory exists: True
+[10:27:56.979] Filter SelectedHostCategories Count: 1
+[10:27:56.979] Filter SelectedHostCategories: [Walls]
+[10:27:56.979] Filter OpeningSettings: EXISTS
+[10:27:56.979] OpeningSettings SelectedMepType: 'Pipe'
+[10:27:56.979] OpeningSettings OpeningType: 'Rectangular'
+[10:27:56.979] OpeningSettings SleeveParameterPrefix: 'SLEEVE_'
+[10:27:56.979] OpeningSettings ClearanceSettings: EXISTS
+[10:27:56.979] OpeningSettings AdoptToDocument: True
+[10:27:56.979] ========== END FILTER OBJECT STATE ==========
+[10:27:56.979] ========== STEP 1: SAVING TO XML ==========
+[10:27:56.979] Calling SaveFilterToXmlFile...
+[10:27:57.007] ✅ SaveFilterToXmlFile completed
+[10:27:57.008] ⚠️ WARNING: XML file was NOT created!
+[10:27:57.008] ========== END STEP 1: XML SAVE ==========
+[10:27:57.008] ========== STEP 2: SAVING TO DATABASE ==========
+[10:27:57.008] Category: 'Duct Accessories'
+[10:27:57.008] Calling RegisterFilterInDatabase...
+[10:27:57.019] ✅ RegisterFilterInDatabase completed
+[10:27:57.019] ========== STEP 2A: SAVING UI STATE TO DATABASE ==========
+[10:27:57.019] Filter: 'Ventilation'
+[10:27:57.019] Category: 'Duct Accessories'
+[10:27:57.019] HostCategories to save: [Walls]
+[10:27:57.019] HostCategories Count: 1
+[10:27:57.019] OpeningSettings: EXISTS
+[10:27:57.019] Calling UseFilterRepository -> SaveFilterUIState...
+[10:27:57.045] Inside UseFilterRepository callback - calling SaveFilterUIState
+[10:27:57.045] SelectedMepCategoryNames to save: [Duct Accessories]
+[10:27:57.045] SelectedReferenceFiles to save: [CMO-AFE-DS03-MOD-PTW-ZZ-MEC-GE-0002]
+[10:27:57.045] SelectedHostFiles to save: [CMO-GCI-MOD-ARC-ZZ-00002-2024]
+[10:27:57.230] ✅ SaveFilterUIState call completed
+[10:27:57.230] ✅ UseFilterRepository completed
+[10:27:57.230] ✅ UI STATE SAVED TO DATABASE SUCCESSFULLY
+[10:27:57.230] ========== END STEP 2A: UI STATE DATABASE SAVE ==========
+[10:27:57.230] ========== END STEP 2: DATABASE SAVE ==========
+[10:27:57.230] ========== STEP 3: UPDATE IN-MEMORY FILTER ==========
+[10:27:57.230] Calling UpdateFilterInMemory...
+[10:27:57.233] ✅ UpdateFilterInMemory completed
+[10:27:57.233] ========== END STEP 3: IN-MEMORY UPDATE ==========
+[10:27:57.233] ========== SAVE FILTER WITH UI STATE COMPLETED ==========
