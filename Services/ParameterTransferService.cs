@@ -4275,5 +4275,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return sizeValue;
         }
 
+        /// <summary>
+        /// ✅ RESET PARAMETERS: Clears transferred parameters from specific openings.
+        /// This method is strictly "Session Sensitive" - it only affects the IDs passed by the caller.
+        /// </summary>
+        public int ResetParameters(Document doc, List<ElementId> openingIds)
+        {
+            if (openingIds == null || openingIds.Count == 0) return 0;
+
+            int resetCount = 0;
+            // List of parameters to clear
+            var paramsToClear = new[] 
+            { 
+                "MEP_Entity", "MEP_Type", "MEP_Size", "MEP_System_Type", "Service_Category",
+                "Reference_Level", "Reference_Height", "Reference_Width", "Reference_Diameter",
+                "Angle", "Offset_From_Host_Bottom", "Offset_From_Host_Top"
+            };
+
+            using (var t = new Transaction(doc, "Reset Transferred Parameters"))
+            {
+                t.Start();
+                foreach (var id in openingIds)
+                {
+                    var ele = doc.GetElement(id);
+                    if (ele == null) continue;
+
+                    foreach (var pName in paramsToClear)
+                    {
+                        var param = ele.LookupParameter(pName);
+                        if (param != null && !param.IsReadOnly && param.HasValue)
+                        {
+                            if (param.StorageType == StorageType.String)
+                                param.Set("");
+                            else if (param.StorageType == StorageType.Double)
+                                param.Set(0.0);
+                            else if (param.StorageType == StorageType.Integer)
+                                param.Set(0);
+                        }
+                    }
+                    resetCount++;
+                }
+                t.Commit();
+            }
+            return resetCount;
+        }
+
     }
 }

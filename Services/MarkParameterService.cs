@@ -78,6 +78,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             int processed = 0, errors = 0;
 
+            // ✅ FORCE LOG: Verify entry and DLL version
+            try 
+            {
+                string logPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                var buildTime = System.IO.File.GetLastWriteTime(assembly.Location);
+                File.AppendAllText(logPath, $"\n[MarkParameterService] >>> ENTRY ApplyMarksFromDatabase at {DateTime.Now:HH:mm:ss} <<<\n");
+                File.AppendAllText(logPath, $"[MarkParameterService] DLL Build Time: {buildTime:yyyy-MM-dd HH:mm:ss}\n");
+                File.AppendAllText(logPath, $"[MarkParameterService] DeploymentMode: {DeploymentConfiguration.DeploymentMode}\n");
+            }
+            catch {} // Ignore logging errors
+
+
             try
             {
                 // 1. Get active floor plan level and view extent
@@ -139,31 +152,88 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (zones.Count == 0)
                 {
+                    // ✅ FORCE LOG: Help user debug empty results
+                    string logPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                    File.AppendAllText(logPath, $"[MarkParameterService] WARN: No sleeves found for level '{levelName}' in DB. Category='{category ?? "null"}'\n");
+                    
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Warning($"[MarkParameterService] ApplyMarksFromDatabase: No sleeves found for level '{levelName}'");
                     return (0, 0);
                 }
 
                 // ✅ VIEW EXTENT FILTER: If crop box active, filter zones by placement point
+                // IMPORTANT: Iterate 1698 - CropBox is in View Coordinates, DB sleeves are in World Coordinates.
+                // We MUST transform the CropBox to World Coordinates.
                 if (viewExtent != null)
                 {
-                    double minX = viewExtent.Min.X;
-                    double minY = viewExtent.Min.Y;
-                    double maxX = viewExtent.Max.X;
-                    double maxY = viewExtent.Max.Y;
+                    Transform viewTransform = viewExtent.Transform;
                     
+                    // Transform the 4 corners of the view's bounding box rectangle (z is ignored for 2D check)
+                    XYZ bMin = viewExtent.Min;
+                    XYZ bMax = viewExtent.Max;
+                    
+                    var corners = new List<XYZ>
+                    {
+                        viewTransform.OfPoint(new XYZ(bMin.X, bMin.Y, bMin.Z)),
+                        viewTransform.OfPoint(new XYZ(bMax.X, bMin.Y, bMin.Z)),
+                        viewTransform.OfPoint(new XYZ(bMax.X, bMax.Y, bMin.Z)),
+                        viewTransform.OfPoint(new XYZ(bMin.X, bMax.Y, bMin.Z))
+                    };
+                    
+                    double worldMinX = corners.Min(c => c.X);
+                    double worldMinY = corners.Min(c => c.Y);
+                    double worldMaxX = corners.Max(c => c.X);
+                    double worldMaxY = corners.Max(c => c.Y);
+                    
+                    // Apply tolerance
+                    double tolerance = 0.01; 
+                    worldMinX -= tolerance; worldMinY -= tolerance;
+                    worldMaxX += tolerance; worldMaxY += tolerance;
+
                     int beforeCount = zones.Count;
-                    zones = zones.Where(z => 
-                        z.SleevePlacementPointActiveDocumentX >= minX && z.SleevePlacementPointActiveDocumentX <= maxX &&
-                        z.SleevePlacementPointActiveDocumentY >= minY && z.SleevePlacementPointActiveDocumentY <= maxY
-                    ).ToList();
+                    zones = zones.Where(z => {
+                        // ✅ COORDINATE FALLBACK: Try ActiveDoc -> Original Placement -> Intersection
+                        double pX = z.SleevePlacementPointActiveDocumentX;
+                        double pY = z.SleevePlacementPointActiveDocumentY;
+                        
+                        if (Math.Abs(pX) < 0.001 && Math.Abs(pY) < 0.001)
+                        {
+                            // Fallback 1: Original Placement Point (persisted)
+                            pX = z.SleevePlacementPointX;
+                            pY = z.SleevePlacementPointY;
+                        }
+                        
+                        if (Math.Abs(pX) < 0.001 && Math.Abs(pY) < 0.001)
+                        {
+                            // Fallback 2: Intersection Point (always present from initial clash)
+                            pX = z.IntersectionPoint.X;
+                            pY = z.IntersectionPoint.Y;
+                        }
+                        
+                        return pX >= worldMinX && pX <= worldMaxX &&
+                               pY >= worldMinY && pY <= worldMaxY;
+                    }).ToList();
                     
                     if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[MarkParameterService] ApplyMarksFromDatabase: View extent filter: {beforeCount} → {zones.Count} sleeves");
+                        DebugLogger.Info($"[MarkParameterService] ApplyMarksFromDatabase: Transformed View Extent: " +
+                            $"Min({worldMinX:F1}, {worldMinY:F1}), Max({worldMaxX:F1}, {worldMaxY:F1}). Filtered: {beforeCount} → {zones.Count}");
                 }
 
                 if (zones.Count == 0)
                 {
+                    // ✅ FORCE LOG: View Extent filter eliminated all sleeves
+                    /*
+                    string logPath = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+                    try 
+                    {
+                        var sb = new System.Text.StringBuilder();
+                        sb.AppendLine($"[MarkParameterService] WARN: All sleeves filtered out by View Extent (Active View Only).");
+                        // ... (omitted for brevity)
+                        File.AppendAllText(logPath, sb.ToString());
+                    }
+                    catch {}
+                    */
+
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Warning($"[MarkParameterService] ApplyMarksFromDatabase: No sleeves within view extent");
                     return (0, 0);
@@ -2767,6 +2837,134 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return XYZ.Zero;
         }
 
+        #endregion
+        #region Reset Functionality
+
+        /// <summary>
+        /// ✅ RESET MARKS: Clears "MEP Mark" from sleeves on a given level.
+        /// Supports "Active View Only" filtering using coordinate transformation and fallback.
+        /// </summary>
+        public int ResetMarksForLevel(Document doc, string levelName, BoundingBoxXYZ viewExtent = null)
+        {
+            var repo = new ClashZoneRepository(new SleeveDbContext());
+            var allSleeves = repo.GetSleevesForLevel(levelName, null); // Get all categories
+
+            // Filter by View Extent if provided (Session Sensitive)
+            if (viewExtent != null)
+            {
+                // Transform view crop box to world coordinates
+                Transform viewTransform = viewExtent.Transform;
+                XYZ bMin = viewExtent.Min;
+                XYZ bMax = viewExtent.Max;
+                
+                var corners = new List<XYZ>
+                {
+                    viewTransform.OfPoint(new XYZ(bMin.X, bMin.Y, bMin.Z)),
+                    viewTransform.OfPoint(new XYZ(bMax.X, bMin.Y, bMin.Z)),
+                    viewTransform.OfPoint(new XYZ(bMax.X, bMax.Y, bMin.Z)),
+                    viewTransform.OfPoint(new XYZ(bMin.X, bMax.Y, bMin.Z))
+                };
+                
+                double worldMinX = corners.Min(c => c.X) - 0.01;
+                double worldMinY = corners.Min(c => c.Y) - 0.01;
+                double worldMaxX = corners.Max(c => c.X) + 0.01;
+                double worldMaxY = corners.Max(c => c.Y) + 0.01;
+
+                allSleeves = allSleeves.Where(z => {
+                    // ✅ COORDINATE FALLBACK (Matches ApplyMarks logic)
+                    double pX = z.SleevePlacementPointActiveDocumentX;
+                    double pY = z.SleevePlacementPointActiveDocumentY;
+                    
+                    if (Math.Abs(pX) < 0.001 && Math.Abs(pY) < 0.001)
+                    {
+                        pX = z.SleevePlacementPointX; // Fallback 1
+                        pY = z.SleevePlacementPointY;
+                    }
+                    if (Math.Abs(pX) < 0.001 && Math.Abs(pY) < 0.001)
+                    {
+                        pX = z.IntersectionPoint.X;   // Fallback 2
+                        pY = z.IntersectionPoint.Y;
+                    }
+                    
+                    return pX >= worldMinX && pX <= worldMaxX &&
+                           pY >= worldMinY && pY <= worldMaxY;
+                }).ToList();
+            }
+
+            // Execute Reset in Transaction
+            int resetCount = 0;
+            using (var t = new Transaction(doc, "Reset MEP Marks"))
+            {
+                t.Start();
+                foreach (var zone in allSleeves)
+                {
+                    ElementId id = GetElementIdSafe(zone.SleeveInstanceId);
+                    if (id == ElementId.InvalidElementId) continue;
+
+                    var fi = doc.GetElement(id) as FamilyInstance;
+                    if (fi == null) continue;
+
+                    var param = fi.LookupParameter("MEP Mark");
+                    if (param != null && !param.IsReadOnly)
+                    {
+                        param.Set(""); // Clear mark
+                        resetCount++;
+                    }
+                }
+                t.Commit();
+            }
+
+            return resetCount;
+        }
+
+        /// <summary>
+        /// ✅ RESET SELECTION: Clears "MEP Mark" from currently selected sleeves.
+        /// </summary>
+        public int ResetMarksForSelection(Document doc, ICollection<ElementId> selectedIds)
+        {
+            if (selectedIds == null || selectedIds.Count == 0) return 0;
+
+            int resetCount = 0;
+            using (var t = new Transaction(doc, "Reset Selected Marks"))
+            {
+                t.Start();
+                foreach (var id in selectedIds)
+                {
+                    var ele = doc.GetElement(id);
+                    if (ele == null) continue;
+
+                    var param = ele.LookupParameter("MEP Mark");
+                    if (param != null && !param.IsReadOnly)
+                    {
+                        param.Set("");
+                        resetCount++;
+                    }
+                }
+                t.Commit();
+            }
+            return resetCount;
+        }
+
+        /// <summary>
+        /// ✅ RESET COUNTERS: Resets global numbering counters in database.
+        /// </summary>
+        public void ResetCategoryCounters(string category = null)
+        {
+            var markerRepo = new Data.Repositories.CategoryProcessingMarkerRepository(new SleeveDbContext());
+            
+            if (!string.IsNullOrEmpty(category))
+            {
+                markerRepo.ResetMarker(category);
+            }
+            else
+            {
+                // Reset all standard categories
+                markerRepo.ResetMarker("Ducts");
+                markerRepo.ResetMarker("Pipes");
+                markerRepo.ResetMarker("Cable Trays");
+                markerRepo.ResetMarker("Duct Accessories");
+            }
+        }
         #endregion
     }
 }

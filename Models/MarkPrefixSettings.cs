@@ -52,10 +52,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// ✅ NEW: Individual remark checkboxes for each prefix category
         /// </summary>
         public bool RemarkProjectPrefix { get; set; } = false;
-        public bool RemarkDuctPrefix { get; set; } = false;
-        public bool RemarkPipePrefix { get; set; } = false;
-        public bool RemarkCableTrayPrefix { get; set; } = false;
-        public bool RemarkDamperPrefix { get; set; } = false;
+        public bool RemarkDuctPrefix { get; set; } = true;
+        public bool RemarkPipePrefix { get; set; } = true;
+        public bool RemarkCableTrayPrefix { get; set; } = true;
+        public bool RemarkDamperPrefix { get; set; } = true;
         
         /// <summary>
         /// ✅ BIM 360 OPTIMIZATION: If true, only mark sleeves visible in active view/sheet

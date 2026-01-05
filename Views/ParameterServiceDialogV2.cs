@@ -71,6 +71,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.CheckBox _activeViewOnlyCheckBox = null!;
         private WinForms.TextBox _startNumberTextBox = null!;
 
+        // Reset Buttons (Safety Locked)
+        private WinForms.Button _resetLockButton = null!;
+        private WinForms.Button _resetNumberingButton = null!;
+        private WinForms.Button _resetSelectionButton = null!;
+        private WinForms.Button _resetParametersButton = null!;
+        private bool _isResetUnlocked = false;
+
         public ParameterServiceDialogV2(Document document, UIDocument uiDocument)
         {
             _document = document;
