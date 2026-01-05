@@ -288,11 +288,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         long sleeveIdValue = group.Key;
                         if (!markAssignments.TryGetValue(sleeveIdValue, out string markValue)) continue;
 
-#if REVIT2024_OR_GREATER
-                        var sleeve = doc.GetElement(new ElementId(sleeveIdValue)) as FamilyInstance;
-#else
+                        // ✅ REVIT 2023/2024 COMPATIBILITY: Always use int cast (works for both versions)
                         var sleeve = doc.GetElement(new ElementId((int)sleeveIdValue)) as FamilyInstance;
-#endif
                         if (sleeve == null || !sleeve.IsValidObject)
                         {
                             errors++;
@@ -2846,7 +2843,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public int ResetMarksForLevel(Document doc, string levelName, BoundingBoxXYZ viewExtent = null)
         {
-            var repo = new ClashZoneRepository(new SleeveDbContext(doc));
+            var repo = new ClashZoneRepository(new SleeveDbContext(doc), msg => { });
             var allSleeves = repo.GetSleevesForLevel(levelName, null); // Get all categories
 
             // Filter by View Extent if provided (Session Sensitive)
@@ -2898,7 +2895,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 t.Start();
                 foreach (var zone in allSleeves)
                 {
-                    ElementId id = GetElementIdSafe(zone.SleeveInstanceId);
+#if REVIT2024_OR_GREATER
+                    ElementId id = new ElementId(zone.SleeveInstanceId);
+#else
+                    ElementId id = new ElementId((int)zone.SleeveInstanceId);
+#endif
                     if (id == ElementId.InvalidElementId) continue;
 
                     var fi = doc.GetElement(id) as FamilyInstance;
@@ -2950,7 +2951,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public void ResetCategoryCounters(Document doc, string category = null)
         {
-            var markerRepo = new Data.Repositories.CategoryProcessingMarkerRepository(new SleeveDbContext(doc));
+            using var context = new SleeveDbContext(doc);
+            var markerRepo = new Data.Repositories.CategoryProcessingMarkerRepository(context, msg => { });
             
             if (!string.IsNullOrEmpty(category))
             {
@@ -2966,16 +2968,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
         #endregion
-
-        private ElementId GetElementIdSafe(long id)
-        {
-#if R2024_OR_GREATER
-            return new ElementId(id);
-#else
-            return new ElementId((int)id);
-#endif
-        }
-
     }
 }
 

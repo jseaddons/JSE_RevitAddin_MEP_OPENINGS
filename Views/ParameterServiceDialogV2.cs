@@ -168,8 +168,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _transferParametersButton.Click += OnTransferParametersClick;
             topBar.Controls.Add(_transferParametersButton);
 
+
             // --- ROW 2: Reset Buttons (Below corresponding actions) ---
             int row2Y = 50;
+
+            // --- SAFETY LOCK ICON (Small, next to Reset row) ---
+            _resetLockButton = new WinForms.Button
+            {
+                Text = "🔒",
+                Size = new Size(25, 22),
+                Location = new Point(buttonsStartX - 30, row2Y + 5), // Left of Reset buttons
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                BackColor = Color.LightGreen,
+                ForeColor = Color.Black,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI Emoji", 12F)
+            };
+            _resetLockButton.Click += (s, e) => {
+                _isResetUnlocked = !_isResetUnlocked;
+                bool unlocked = _isResetUnlocked;
+                
+                _resetLockButton.Text = unlocked ? "🔓" : "🔒";
+                _resetLockButton.BackColor = unlocked ? Color.IndianRed : Color.LightGreen;
+
+                _resetNumberingButton.Enabled = unlocked;
+                _resetNumberingButton.BackColor = unlocked ? Color.IndianRed : Color.LightGray;
+                
+                _resetSelectionButton.Enabled = unlocked;
+                _resetSelectionButton.BackColor = unlocked ? Color.IndianRed : Color.LightGray;
+                
+                _resetParametersButton.Enabled = unlocked;
+                _resetParametersButton.BackColor = unlocked ? Color.IndianRed : Color.LightGray;
+            };
+            topBar.Controls.Add(_resetLockButton);
+
 
             // Reset Numbering (Below Apply Marks)
             _resetNumberingButton = new WinForms.Button
@@ -190,7 +222,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // Reset Selection (Below Remark Selected)
             _resetSelectionButton = new WinForms.Button
             {
-                Text = "Reset Selection",
+                Text = "Reset Remarks",
                 Size = new Size(buttonWidth, 32),
                 Location = new Point(buttonsStartX + 1 * (buttonWidth + buttonSpacing), row2Y),
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
@@ -433,7 +465,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _ductPrefixTextBox = new WinForms.TextBox { Location = new Point(90, yPos - 2), Size = new Size(50, 22), Text = "M" };
             _ductPrefixTextBox.GotFocus += (s, e) => { _lastFocusedCategory = "Ducts"; };
             _leftPrefixPanel.Controls.Add(_ductPrefixTextBox);
-            _remarkDuctCheckBox = new WinForms.CheckBox { Text = "Remark", Location = new Point(150, yPos - 2), Size = new Size(70, 22), Checked = false };
+            _remarkDuctCheckBox = new WinForms.CheckBox { Text = "Remark", Location = new Point(150, yPos - 2), Size = new Size(70, 22), Checked = true };
             _leftPrefixPanel.Controls.Add(_remarkDuctCheckBox);
             yPos += 30;
 
@@ -442,7 +474,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _leftPrefixPanel.Controls.Add(pipeLabel);
             _pipePrefixTextBox = new WinForms.TextBox { Location = new Point(90, yPos - 2), Size = new Size(50, 22), Text = "P" };
             _leftPrefixPanel.Controls.Add(_pipePrefixTextBox);
-            _remarkPipeCheckBox = new WinForms.CheckBox { Text = "Remark", Location = new Point(150, yPos - 2), Size = new Size(70, 22), Checked = false };
+            _remarkPipeCheckBox = new WinForms.CheckBox { Text = "Remark", Location = new Point(150, yPos - 2), Size = new Size(70, 22), Checked = true };
             _leftPrefixPanel.Controls.Add(_remarkPipeCheckBox);
             yPos += 30;
 
@@ -451,7 +483,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _leftPrefixPanel.Controls.Add(cableTrayLabel);
             _cableTrayPrefixTextBox = new WinForms.TextBox { Location = new Point(90, yPos - 2), Size = new Size(50, 22), Text = "E" };
             _leftPrefixPanel.Controls.Add(_cableTrayPrefixTextBox);
-            _remarkCableTrayCheckBox = new WinForms.CheckBox { Text = "Remark", Location = new Point(150, yPos - 2), Size = new Size(70, 22), Checked = false };
+            _remarkCableTrayCheckBox = new WinForms.CheckBox { Text = "Remark", Location = new Point(150, yPos - 2), Size = new Size(70, 22), Checked = true };
             _leftPrefixPanel.Controls.Add(_remarkCableTrayCheckBox);
             yPos += 30;
 
@@ -460,7 +492,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _leftPrefixPanel.Controls.Add(damperLabel);
             _damperPrefixTextBox = new WinForms.TextBox { Location = new Point(90, yPos - 2), Size = new Size(50, 22), Text = "DMP" };
             _leftPrefixPanel.Controls.Add(_damperPrefixTextBox);
-            _remarkDamperCheckBox = new WinForms.CheckBox { Text = "Remark", Location = new Point(150, yPos - 2), Size = new Size(70, 22), Checked = false };
+            _remarkDamperCheckBox = new WinForms.CheckBox { Text = "Remark", Location = new Point(150, yPos - 2), Size = new Size(70, 22), Checked = true };
             _leftPrefixPanel.Controls.Add(_remarkDamperCheckBox);
             yPos += 40;
 
@@ -2076,7 +2108,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             // ✅ BIM 360 OPTIMIZATION: Per-sheet numbering using database-driven logic
                             var markService = new Services.MarkParameterService(null, msg => { if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info(msg); });
                             
-                            // Pass 1: Individual Disciplines
+                            // ✅ PARALLEL OPTIMIZATION: Process combined sleeves in parallel with individual categories
+                            System.Threading.Tasks.Task<(int processed, int errors)>? combinedTask = null;
+                            combinedTask = System.Threading.Tasks.Task.Run(() =>
+                            {
+                                using (var context = new Data.SleeveDbContext(_document))
+                                {
+                                    var repo = new Data.Repositories.ClashZoneRepository(context, msg => { });
+                                    var levelName = (_document.ActiveView as ViewPlan)?.GenLevel?.Name ?? "";
+                                    
+                                    // Check if combined sleeves exist in current session (IsCurrentClash=1)
+                                    var combinedCount = repo.GetSleevesForLevel(levelName, "Combined")
+                                        .Count(z => z.IsCurrentClash && z.CombinedClusterSleeveInstanceId > 0);
+                                    
+                                    if (combinedCount > 0)
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            DebugLogger.Info($"[ParameterServiceDialogV2] Found {combinedCount} combined sleeves in session - processing with MEP prefix");
+                                        
+                                        // Process combined sleeves in parallel
+                                        return markService.ApplyMarksFromDatabase(_document, markPrefixes, "Combined");
+                                    }
+                                    
+                                    return (0, 0); // No combined sleeves
+                                }
+                            });
+                            
+                            // Pass 1: Individual Disciplines (runs in parallel with combined task)
                             var disciplineCategories = new[] { "Ducts", "Pipes", "Cable Trays", "Duct Accessories" };
                             foreach (var cat in disciplineCategories)
                             {
@@ -2087,9 +2145,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                                 totalProcessed += processed;
                             }
 
-                            // Pass 2: Combined Sleeves (Pseudo-category "Combined")
-                            // Uses "MEP" as discipline prefix and starts from 001
-                            var (combinedProcessed, combinedErrors) = markService.ApplyMarksFromDatabase(_document, markPrefixes, "Combined");
+                            // Pass 2: Wait for combined sleeves to complete
+                            var (combinedProcessed, combinedErrors) = combinedTask.Result;
                             totalProcessed += combinedProcessed;
                         }
                         else
@@ -2715,7 +2772,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     // But duplicates might occur if other views have 6-100.
                     // Re-read user request: "reset the numbering or delete apply marks"
                     // I will reset counters.
-                    markService.ResetCategoryCounters(_document); 
+                    markService.ResetCategoryCounters(_document); // Reset all category counters
                 }
                 else
                 {
@@ -2724,7 +2781,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     // No, let's keep it simple. Clears marks.
                     // User can manually reset counters by unchecking active view? 
                     // Let's reset counters anyway, assuming they want to "start over".
-                    markService.ResetCategoryCounters(_document);
+                    markService.ResetCategoryCounters(_document); // Reset all category counters
                 }
 
                 WinForms.MessageBox.Show($"Successfully cleared Marks from {clearedCount} sleeves.\nCounters have been reset.", "Reset Complete");

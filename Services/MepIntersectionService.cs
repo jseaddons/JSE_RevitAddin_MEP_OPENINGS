@@ -2250,12 +2250,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 .ToList();
 
             // Cache all damper parameters in a dictionary for downstream use
+            // Note: MepParameterHelper is deprecated but kept for backward compatibility
+            // TODO: Migrate to IElementParameterExtractor pattern when refactoring this code path
+#pragma warning disable CS0618 // Type or member is obsolete
             var damperParameterCache = new Dictionary<ElementId, Helpers.MepParameterHelper.MepParameterSnapshot>();
             foreach (var fi in damperFamilyInstances)
             {
                 damperParameterCache[fi.Id] = Helpers.MepParameterHelper.CaptureParameters(fi);
                 mepElements.Add(fi);
             }
+#pragma warning restore CS0618 // Type or member is obsolete
 
             // The damperParameterCache can now be passed or used downstream for all parameter access
 
