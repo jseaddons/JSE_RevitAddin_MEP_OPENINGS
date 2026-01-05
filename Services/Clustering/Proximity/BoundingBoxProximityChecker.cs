@@ -2,6 +2,7 @@ using System;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Geometry;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
@@ -16,7 +17,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
         /// Check if two sleeves are within proximity tolerance using bounding box distance.
         /// Uses pre-calculated bounding boxes from database.
         /// </summary>
-        public bool CheckProximity(dynamic sleeve1, dynamic sleeve2, double tolerance)
+        public bool CheckProximity(ClusteringSleeveDto sleeve1, ClusteringSleeveDto sleeve2, double tolerance)
         {
             try
             {
@@ -37,11 +38,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                 }
 
                 // ✅ CRASH-SAFE: Validate bounding boxes are enabled
-                if (bbox1 is BoundingBoxXYZ bbox1XYZ && !bbox1XYZ.Enabled)
+                if (!bbox1.Enabled)
                 {
                     return false;
                 }
-                if (bbox2 is BoundingBoxXYZ bbox2XYZ && !bbox2XYZ.Enabled)
+                if (!bbox2.Enabled)
                 {
                     return false;
                 }
@@ -54,7 +55,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                 }
 
                 // ✅ DIAGNOSTIC LOGGING: Log distance for Duct Accessories to verify clustering
-                if (sleeve1.Category?.ToString().IndexOf("Accessories", StringComparison.OrdinalIgnoreCase) >= 0)
+                if (sleeve1.Category?.IndexOf("Accessories", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
                     double distMM = distance.Value * 304.8;
                     double toleranceMM = tolerance * 304.8;
@@ -100,7 +101,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
         /// Calculate minimum distance between two sleeves using bounding box coordinates.
         /// Handles Floor, Wall, and Structural Framing host types with appropriate 2D/3D calculations.
         /// </summary>
-        public double? CalculateDistance(dynamic sleeve1, dynamic sleeve2)
+        public double? CalculateDistance(ClusteringSleeveDto sleeve1, ClusteringSleeveDto sleeve2)
         {
             try
             {

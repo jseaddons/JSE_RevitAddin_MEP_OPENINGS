@@ -2,6 +2,7 @@ using System;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Safety;
 
@@ -21,7 +22,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
 
         public override string GetStrategyName() => "WallRotatedClusteringStrategy";
 
-        public override bool CanHandle(SleeveGroupKey groupKey, System.Collections.Generic.List<dynamic> sleeves)
+        public override bool CanHandle(SleeveGroupKey groupKey, System.Collections.Generic.List<ClusteringSleeveDto> sleeves)
         {
             // ✅ Wall or Structural Framing hosts only
             if (groupKey.hostType != "Wall" && groupKey.hostType != "Structural Framing")
@@ -33,7 +34,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
 
             foreach (var sleeve in sleeves.Take(5)) // Check first 5 as sample
             {
-                var cz = sleeve?.ClashZone as ClashZone;
+                var cz = sleeve?.ClashZone;
                 if (cz != null)
                 {
                     double rotationAngle = cz.MepElementRotationAngle;
@@ -45,7 +46,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
             return false;
         }
 
-        public override bool CheckProximity(dynamic sleeve1, dynamic sleeve2, double tolerance, string orientation, Document document = null)
+        public override bool CheckProximity(ClusteringSleeveDto sleeve1, ClusteringSleeveDto sleeve2, double tolerance, string orientation, Document document = null)
         {
             try
             {
@@ -57,8 +58,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
                     return false;
                 }
 
-                var cz1 = sleeve1.ClashZone as ClashZone;
-                var cz2 = sleeve2.ClashZone as ClashZone;
+                var cz1 = sleeve1.ClashZone;
+                var cz2 = sleeve2.ClashZone;
 
                 if (cz1 == null || cz2 == null)
                     return false;
@@ -108,12 +109,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
             }
         }
 
-        public override double CalculateProximityDistance(dynamic sleeve1, dynamic sleeve2, string orientation)
+        public override double CalculateProximityDistance(ClusteringSleeveDto sleeve1, ClusteringSleeveDto sleeve2, string orientation)
         {
             try
             {
-                var cz1 = sleeve1?.ClashZone as ClashZone;
-                var cz2 = sleeve2?.ClashZone as ClashZone;
+                var cz1 = sleeve1?.ClashZone;
+                var cz2 = sleeve2?.ClashZone;
 
                 if (cz1 == null || cz2 == null)
                     return double.MaxValue;

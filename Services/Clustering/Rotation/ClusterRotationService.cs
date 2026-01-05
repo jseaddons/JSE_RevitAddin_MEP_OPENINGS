@@ -854,30 +854,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 // Corners are saved during individual sleeve placement for all categories, so this works universally
                 
                 // ✅ CRITICAL FIX: Extract SleeveInstanceId BEFORE try block so catch block can access it
-                var sleeveIdsInCluster = new List<int>();
-                foreach (var sleeveData in cluster)
-                {
-                    try
-                    {
-                        int sleeveId;
-                        dynamic dynSleeve = sleeveData;
-                        object sleeveIdObj = dynSleeve.SleeveInstanceId;
-                        if (sleeveIdObj == null) continue;
-                        
-                        if (sleeveIdObj is int id)
-                            sleeveId = id;
-                        else if (sleeveIdObj is long longId)
-                            sleeveId = (int)longId;
-                        else
-                            sleeveId = Convert.ToInt32(sleeveIdObj);
-                        
-                        sleeveIdsInCluster.Add(sleeveId);
-                    }
-                    catch
-                    {
-                        continue;
-                    }
-                }
+                // ✅ CRITICAL FIX: Extract SleeveInstanceId directly from DTO
+                var sleeveIdsInCluster = cluster.Select(s => s.SleeveInstanceId).ToList();
                 
                 try
                 {
@@ -893,10 +871,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     bool hasAnyCorners = false;
                     int sleevesWithCorners = 0;
                     
-                    // Now check corners using the extracted IDs (already extracted before try block)
-                    foreach (int sleeveId in sleeveIdsInCluster)
+                    // Now check corners using the cluster DTOs directly
+                    foreach (var sleeveData in cluster)
                     {
-                        var clashZone = GetCachedClashZone(sleeveId, xmlFilePath);
+                        int sleeveId = sleeveData.SleeveInstanceId;
+                        var clashZone = sleeveData.ClashZone;
                         if (clashZone != null)
                         {
                             double sleeveRotationDeg = clashZone.MepElementRotationAngle * 180.0 / Math.PI;
@@ -968,9 +947,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                         // - This ensures accurate cluster sizing using pre-calculated corner coordinates
                         var allCorners = new List<XYZ>();
                         
-                        foreach (int sleeveId in sleeveIdsInCluster)
+                        foreach (var sleeveData in cluster)
                         {
-                            var cz = GetCachedClashZone(sleeveId, xmlFilePath);
+                            int sleeveId = sleeveData.SleeveInstanceId;
+                            var cz = sleeveData.ClashZone;
                             if (cz != null)
                             {
                                 // ✅ CRITICAL FIX: Explicitly type nullable properties to avoid dynamic dispatch errors
@@ -1154,9 +1134,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                 bool hasMixedOrientations = false;
                                 var orientations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                                 
-                                foreach (int sleeveId in sleeveIdsInCluster)
+                                foreach (var sleeveData in cluster)
                                 {
-                                    var cz = GetCachedClashZone(sleeveId, xmlFilePath);
+                                    int sleeveId = sleeveData.SleeveInstanceId;
+                                    var cz = sleeveData.ClashZone;
                                     if (cz != null)
                                     {
                                         string orientation = cz.MepElementOrientationDirection;
@@ -2321,7 +2302,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         /// <summary>
         /// ✅ PERFORMANCE: Helper method to store rotated bounding box result in cache
         /// </summary>
-        private void StoreInCache(List<dynamic> cluster, double rotationAngle, 
+        private void StoreInCache(List<ClusteringSleeveDto> cluster, double rotationAngle, 
             (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ) result,
             System.Diagnostics.Stopwatch calcStopwatch)
         {
@@ -2359,7 +2340,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         /// Individual sleeves are placed at intersection points, so cluster should be at average of intersection points
         /// This ensures the cluster sleeve is placed correctly relative to the individual intersection points
         /// </summary>
-        private XYZ CalculatePlacementPointFromIntersections(List<dynamic> cluster, string? xmlFilePath)
+        private XYZ CalculatePlacementPointFromIntersections(List<ClusteringSleeveDto> cluster, string? xmlFilePath)
         {
             if (cluster == null || cluster.Count == 0)
                 return XYZ.Zero;

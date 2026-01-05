@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
 {
@@ -29,13 +30,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
         /// <summary>
         /// Calculate cluster bounding box for a list of sleeves.
         /// </summary>
-        /// <param name="cluster">List of sleeves in the cluster (dynamic objects with ClashZone)</param>
+        /// <param name="cluster">List of sleeves in the cluster</param>
         /// <param name="actualSleeves">List of actual Revit FamilyInstance sleeves</param>
         /// <param name="rotationAngle">Rotation angle in radians (0 for axis-aligned)</param>
         /// <param name="xmlFilePath">Optional XML file path for ClashZone lookup</param>
         /// <returns>BoundingBoxResult with width, height, depth, midpoint, and rotated coordinates</returns>
         BoundingBoxResult Calculate(
-            List<dynamic> cluster,
+            List<ClusteringSleeveDto> cluster,
             List<FamilyInstance> actualSleeves,
             double rotationAngle,
             string xmlFilePath = null);

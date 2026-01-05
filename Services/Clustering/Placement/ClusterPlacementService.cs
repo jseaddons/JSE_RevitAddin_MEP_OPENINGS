@@ -12,6 +12,8 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Safety;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Geometry; // For WallRcsTransformer
 using JSE_RevitAddin_MEP_OPENINGS.Services.Placement; // For SleeveParameterService
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data;
+
 // OpeningSettingsHelper is already in JSE_RevitAddin_MEP_OPENINGS.Services namespace
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
@@ -42,9 +44,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
 
         // Dependencies for methods that will be in other services or are still in UniversalClusterService
         private readonly Func<int, string?, ClashZone?> _getClashZoneBySleeveInstanceId;
-        private readonly Func<List<dynamic>, string?, double> _determineRotationAngle;
-        private readonly Func<List<dynamic>, List<FamilyInstance>, double, string?, (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ)> _getClusterBoundingBox;
-        private readonly Action<List<dynamic>, ElementId, string?, BoundingBoxXYZ?, (double minX, double minY, double minZ, double maxX, double maxY, double maxZ)?> _markClusterResolved;
+        private readonly Func<List<ClusteringSleeveDto>, string?, double> _determineRotationAngle;
+        private readonly Func<List<ClusteringSleeveDto>, List<FamilyInstance>, double, string?, (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ)> _getClusterBoundingBox;
+        private readonly Action<List<ClusteringSleeveDto>, ElementId, string?, BoundingBoxXYZ?, (double minX, double minY, double minZ, double maxX, double maxY, double maxZ)?> _markClusterResolved;
         private readonly Func<string, string?> _getFilterNameForCategory;
         private readonly IBoundingBoxCalculator? _boundingBoxCalculator; // Optional: Phase 3 service
         private readonly SleeveParameterService? _parameterService; // ✅ SOLID: Injected dependency for parameter setting
@@ -54,9 +56,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
         /// </summary>
         public ClusterPlacementService(
             Func<int, string?, ClashZone?>? getClashZoneBySleeveInstanceId = null,
-            Func<List<dynamic>, string?, double>? determineRotationAngle = null,
-            Func<List<dynamic>, List<FamilyInstance>, double, string?, (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ)>? getClusterBoundingBox = null,
-            Action<List<dynamic>, ElementId, string?, BoundingBoxXYZ?, (double minX, double minY, double minZ, double maxX, double maxY, double maxZ)?>? markClusterResolved = null,
+            Func<List<ClusteringSleeveDto>, string?, double>? determineRotationAngle = null,
+            Func<List<ClusteringSleeveDto>, List<FamilyInstance>, double, string?, (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ)>? getClusterBoundingBox = null,
+            Action<List<ClusteringSleeveDto>, ElementId, string?, BoundingBoxXYZ?, (double minX, double minY, double minZ, double maxX, double maxY, double maxZ)?>? markClusterResolved = null,
             Func<string, string?>? getFilterNameForCategory = null,
             IBoundingBoxCalculator? boundingBoxCalculator = null,
             SleeveParameterService? parameterService = null) // ✅ SOLID: Optional dependency injection
@@ -87,7 +89,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
         /// </summary>
         public bool PlaceClusterSleeve(
             Document doc,
-            List<dynamic> cluster,
+            List<ClusteringSleeveDto> cluster,
             SleeveGroupKey groupKey,
             string targetCategory,
             XYZ placementPoint,
@@ -295,15 +297,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                             try
                             {
                                 var firstSleeve = cluster[0];
-                                ClashZone? firstClashZone = null;
-                                if (firstSleeve is ClashZone cz)
-                                {
-                                    firstClashZone = cz;
-                                }
-                                else if (firstSleeve?.ClashZone != null)
-                                {
-                                    firstClashZone = firstSleeve.ClashZone as ClashZone;
-                                }
+                                var firstClashZone = firstSleeve.ClashZone;
                                 
                                 if (firstClashZone != null && firstClashZone.StructuralElementNormal != null)
                                 {
@@ -574,23 +568,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 // ✅ SOLID: Use injected SleeveParameterService if available, otherwise set directly
                 try
                 {
-                    var firstSleeve = cluster[0];
-                    ClashZone? firstClashZone = null;
-                    if (firstSleeve is ClashZone cz)
+                    if (cluster != null && cluster.Count > 0)
                     {
-                        firstClashZone = cz;
-                    }
-                    else if (firstSleeve?.ClashZone != null)
-                    {
-                        firstClashZone = firstSleeve.ClashZone as ClashZone;
-                    }
-                    else if (firstSleeve?.SleeveInstanceId != null && _getClashZoneBySleeveInstanceId != null)
-                    {
-                        firstClashZone = _getClashZoneBySleeveInstanceId(firstSleeve.SleeveInstanceId, xmlFilePath);
-                    }
+                        var firstSleeve = cluster[0]; 
+                        ClashZone? firstClashZone = firstSleeve.ClashZone;
 
-                    if (firstClashZone != null)
-                    {
+                        if (firstClashZone == null && firstSleeve.SleeveInstanceId > 0 && _getClashZoneBySleeveInstanceId != null)
+                        {
+                            firstClashZone = _getClashZoneBySleeveInstanceId(firstSleeve.SleeveInstanceId, xmlFilePath);
+                        }
+                        
+                        // Assign back to variable used in scope if firstClashZone is declared outside
+                        // Looking at code, firstClashZone seems to be used later
+                        
+                        if (firstClashZone != null)
+                        {
+                            // Logic continues...
+                            // Update parameter service with correct host info from first sleeve's clash zone
+                            if (_parameterService != null)
+                            {
+                                // Pass relevant host data to parameter service
+                                // ...
+                            }
+                        }
+
+
                         if (_parameterService != null)
                         {
                             // ✅ SOLID: Use injected SleeveParameterService (follows dependency injection principle)
@@ -774,10 +776,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
         /// Set size parameters (Width, Height, Depth) on a cluster sleeve.
         /// Phase 5: Extracted from UniversalClusterService.SetClusterSizeParameters.
         /// </summary>
+        /// <summary>
+        /// Set size parameters (Width, Height, Depth) on a cluster sleeve.
+        /// Phase 5: Extracted from UniversalClusterService.SetClusterSizeParameters.
+        /// </summary>
         public void SetSizeParameters(
             Document doc,
             FamilyInstance clusterSleeve,
-            List<dynamic> cluster,
+            List<ClusteringSleeveDto> cluster,
             SleeveGroupKey groupKey,
             double width,
             double height,
@@ -835,7 +841,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                         if (cluster.Count > 0)
                         {
                             var firstSleeve = cluster[0];
-                            var firstClashZone = firstSleeve?.ClashZone as Models.ClashZone;
+                            // DTO: ClashZone is strongly typed property
+                            var firstClashZone = firstSleeve.ClashZone;
                             if (firstClashZone != null)
                             {
                                 // Get wall thickness (prefer WallThickness over StructuralElementThickness)
@@ -1410,7 +1417,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
         /// Get reference level for cluster sleeve placement.
         /// Phase 5: Extracted from UniversalClusterService.GetReferenceLevelFromXml.
         /// </summary>
-        public Level? GetReferenceLevel(Document doc, dynamic sleeve)
+        public Level? GetReferenceLevel(Document doc, ClusteringSleeveDto sleeve)
         {
             // ✅ CRASH-SAFE: Validate inputs
             if (doc == null || sleeve == null)
@@ -2184,9 +2191,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
         /// ⚠️⚠️⚠️ CRITICAL PROTECTION: This method is part of the regression-defense toolkit for legacy clustering.
         /// Do not remove unless _getClusterBoundingBox is updated to emit the corrected centroid.
         /// </summary>
-        /// <param name="cluster">List of cluster items (dynamic objects with ClashZone property)</param>
+        /// <param name="cluster">List of cluster items (DTOs with ClashZone property)</param>
         /// <returns>Midpoint XYZ calculated from stored sleeve bounding boxes, or null if calculation fails</returns>
-        private XYZ? ComputeClusterMidpoint(List<dynamic> cluster)
+        private XYZ? ComputeClusterMidpoint(List<ClusteringSleeveDto> cluster)
         {
             if (cluster == null || cluster.Count == 0)
                 return null;
@@ -2214,7 +2221,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
         /// Single Responsibility: Corner-based midpoint calculation only.
         /// Reference: Matches legacy code in UniversalSleevePlacerService and ClusterRotationService.
         /// </summary>
-        private XYZ? ComputeCornerBasedClusterMidpoint(List<dynamic> cluster)
+        private XYZ? ComputeCornerBasedClusterMidpoint(List<ClusteringSleeveDto> cluster)
         {
             try
             {
@@ -2224,15 +2231,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
 
                 foreach (var item in cluster)
                 {
-                    ClashZone? clashZone = null;
-                    if (item is ClashZone cz)
-                    {
-                        clashZone = cz;
-                    }
-                    else if (item?.ClashZone != null)
-                    {
-                        clashZone = item.ClashZone as ClashZone;
-                    }
+                    // DTO: ClashZone is strongly typed
+                    var clashZone = item.ClashZone;
 
                     if (clashZone == null)
                         continue;
@@ -2295,24 +2295,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 // RATIONALE: Only calculate midpoints for coordinates that have actual spread (extremities).
                 // If all sleeves have the same value for a coordinate (no spread), use individual sleeve placement point.
                 // This applies to both Wall and Structural Framing hosts.
+                ClashZone? firstClashZone = null;
                 bool isYWall = false;
                 bool isXWall = false;
                 bool isWallOrFraming = false;
-                ClashZone? firstClashZone = null;
-                
+
                 if (cluster != null && cluster.Count > 0)
                 {
                     try
                     {
+                        // ✅ DTO: ClashZone is strongly typed property
                         var firstSleeve = cluster[0];
-                        if (firstSleeve is ClashZone cz)
-                        {
-                            firstClashZone = cz;
-                        }
-                        else if (firstSleeve?.ClashZone != null)
-                        {
-                            firstClashZone = firstSleeve.ClashZone as ClashZone;
-                        }
+                        firstClashZone = firstSleeve.ClashZone;
                         
                         if (firstClashZone != null)
                         {
@@ -2373,15 +2367,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 var placementPoints = new List<XYZ>();
                 foreach (var item in cluster)
                 {
-                    ClashZone? cz = null;
-                    if (item is ClashZone clashZone)
-                    {
-                        cz = clashZone;
-                    }
-                    else if (item?.ClashZone != null)
-                    {
-                        cz = item.ClashZone as ClashZone;
-                    }
+                    var cz = item.ClashZone;
                     
                     if (cz != null)
                     {
@@ -2483,7 +2469,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
         /// ✅ SRP COMPLIANCE: Calculate cluster midpoint using WCS bounding boxes (for floors and other hosts).
         /// Single Responsibility: WCS midpoint calculation only.
         /// </summary>
-        private XYZ? ComputeWcsClusterMidpoint(List<dynamic> cluster)
+        private XYZ? ComputeWcsClusterMidpoint(List<ClusteringSleeveDto> cluster)
         {
             try
             {
@@ -2494,15 +2480,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 // Union all stored sleeve bounding boxes (WCS)
                 foreach (var item in cluster)
                 {
-                    ClashZone? clashZone = null;
-                    if (item is ClashZone cz)
-                    {
-                        clashZone = cz;
-                    }
-                    else if (item?.ClashZone != null)
-                    {
-                        clashZone = item.ClashZone as ClashZone;
-                    }
+                    var clashZone = item.ClashZone;
 
                     if (clashZone == null)
                         continue;

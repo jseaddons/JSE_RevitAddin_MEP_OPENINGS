@@ -2,6 +2,7 @@ using System;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
 {
@@ -16,7 +17,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
         /// Check if two round sleeves are within proximity tolerance using edge-to-edge distance.
         /// Uses SleeveDiameter from database (ClashZone).
         /// </summary>
-        public bool CheckProximity(dynamic sleeve1, dynamic sleeve2, double tolerance)
+        public bool CheckProximity(ClusteringSleeveDto sleeve1, ClusteringSleeveDto sleeve2, double tolerance)
         {
             try
             {
@@ -49,7 +50,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
         /// Calculate edge-to-edge distance between two round sleeves.
         /// Returns center-to-center distance minus the sum of radii.
         /// </summary>
-        public double? CalculateDistance(dynamic sleeve1, dynamic sleeve2)
+        public double? CalculateDistance(ClusteringSleeveDto sleeve1, ClusteringSleeveDto sleeve2)
         {
             try
             {
@@ -69,7 +70,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                 }
 
                 // ✅ DATABASE-ONLY: Get sleeve radii from ClashZone (SleeveDiameter)
-                // Fix CS8133: Explicitly cast dynamic result to tuple type
                 (double radius1, double radius2) radiiResult = GetSleeveRadiiFromSleeves(sleeve1, sleeve2);
                 double radius1 = radiiResult.radius1;
                 double radius2 = radiiResult.radius2;
@@ -126,12 +126,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                 double edgeToEdgeDistance = centerToCenterDistance - (radius1 + radius2);
 
                 // ✅ DIAGNOSTIC LOGGING: Log distance for pipes/ducts to verify clustering
-                string category = (sleeve1 as ClashZone)?.MepElementCategory;
-                if (string.IsNullOrEmpty(category))
-                {
-                    try { category = sleeve1.Category?.ToString(); } catch { }
-                }
-
+                string category = sleeve1.Category;
+                
                 if (!string.IsNullOrEmpty(category) && 
                    (category.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0 ||
                     category.IndexOf("Duct", StringComparison.OrdinalIgnoreCase) >= 0))
@@ -157,7 +153,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
         /// ✅ DATABASE-ONLY: Helper method to get placement point from dynamic sleeve object.
         /// Uses ClashZone data from database (SleevePlacementPointActiveDocumentX/Y/Z).
         /// </summary>
-        private XYZ GetPlacementPointFromSleeve(dynamic sleeve)
+        private XYZ GetPlacementPointFromSleeve(ClusteringSleeveDto sleeve)
         {
             try
             {
@@ -167,7 +163,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                     return null;
                 }
 
-                var cz = sleeve.ClashZone as ClashZone;
+                var cz = sleeve.ClashZone;
                 if (cz == null)
                 {
                     return null;
@@ -222,7 +218,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
         /// ✅ DATABASE-ONLY: Get sleeve radii from ClashZone (SleeveDiameter).
         /// NOTE: Rectangular sleeves should use bounding box logic, not this method.
         /// </summary>
-        private (double radius1, double radius2) GetSleeveRadiiFromSleeves(dynamic sleeve1, dynamic sleeve2)
+        private (double radius1, double radius2) GetSleeveRadiiFromSleeves(ClusteringSleeveDto sleeve1, ClusteringSleeveDto sleeve2)
         {
             double radius1 = 0;
             double radius2 = 0;
@@ -235,8 +231,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                     return (0, 0);
                 }
 
-                var cz1 = sleeve1.ClashZone as ClashZone;
-                var cz2 = sleeve2.ClashZone as ClashZone;
+                var cz1 = sleeve1.ClashZone;
+                var cz2 = sleeve2.ClashZone;
 
                 if (cz1 == null || cz2 == null)
                 {

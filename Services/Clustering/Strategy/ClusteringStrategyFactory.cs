@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Safety;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
@@ -21,7 +22,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
         /// Get appropriate clustering strategy for the given group key and sleeves.
         /// Decision logic: Floor (Circular/Rectangular) -> Wall/Framing (Rotated/Axis-Aligned).
         /// </summary>
-        public IClusteringStrategy GetStrategy(SleeveGroupKey groupKey, List<dynamic> sleeves)
+        public IClusteringStrategy GetStrategy(SleeveGroupKey groupKey, List<ClusteringSleeveDto> sleeves)
         {
             try
             {
@@ -107,13 +108,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
         /// <summary>
         /// Check if any sleeve in the list is circular (round pipe/duct).
         /// </summary>
-        private bool IsCircular(List<dynamic> sleeves)
+        private bool IsCircular(List<ClusteringSleeveDto> sleeves)
         {
             try
             {
                 foreach (var sleeve in sleeves.Take(10)) // Check first 10 as sample
                 {
-                    var cz = sleeve?.ClashZone as ClashZone;
+                    var cz = sleeve?.ClashZone;
                     
                     // Check if it's a round pipe/duct by category and shape
                     if (cz != null)
@@ -140,13 +141,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
         /// <summary>
         /// Check if any sleeve in the list is rotated (non-axis-aligned).
         /// </summary>
-        private bool HasRotated(List<dynamic> sleeves)
+        private bool HasRotated(List<ClusteringSleeveDto> sleeves)
         {
             try
             {
                 foreach (var sleeve in sleeves.Take(10)) // Check first 10 as sample
                 {
-                    var cz = sleeve?.ClashZone as ClashZone;
+                    var cz = sleeve?.ClashZone;
                     if (cz != null)
                     {
                         double rotationAngle = cz.MepElementRotationAngle;

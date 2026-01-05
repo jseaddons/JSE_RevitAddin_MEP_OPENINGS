@@ -4,6 +4,7 @@ using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Safety;
 
@@ -23,7 +24,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
 
         public override string GetStrategyName() => "FloorCircularClusteringStrategy";
 
-        public override bool CanHandle(SleeveGroupKey groupKey, System.Collections.Generic.List<dynamic> sleeves)
+        public override bool CanHandle(SleeveGroupKey groupKey, System.Collections.Generic.List<ClusteringSleeveDto> sleeves)
         {
             // ✅ Floor hosts only
             if (groupKey.hostType != "Floor")
@@ -43,7 +44,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
             return false;
         }
 
-        public override bool CheckProximity(dynamic sleeve1, dynamic sleeve2, double tolerance, string orientation, Document document = null)
+        public override bool CheckProximity(ClusteringSleeveDto sleeve1, ClusteringSleeveDto sleeve2, double tolerance, string orientation, Document document = null)
         {
             try
             {
@@ -55,8 +56,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
                     return false;
                 }
 
-                var cz1 = sleeve1.ClashZone as ClashZone;
-                var cz2 = sleeve2.ClashZone as ClashZone;
+                var cz1 = sleeve1.ClashZone;
+                var cz2 = sleeve2.ClashZone;
 
                 if (cz1 == null || cz2 == null || cz1.SleeveDiameter <= 0 || cz2.SleeveDiameter <= 0)
                 {
@@ -78,8 +79,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
                 }
 
                 // ✅ Calculate edge-to-edge distance (2D X-Y plane, ignore Z)
-                double dx = placement2.Value.X - placement1.Value.X;
-                double dy = placement2.Value.Y - placement1.Value.Y;
+                double dx = placement2.X - placement1.X;
+                double dy = placement2.Y - placement1.Y;
                 double centerToCenterDistance = Math.Sqrt(dx * dx + dy * dy);
 
                 double radius1 = cz1.SleeveDiameter / 2.0;
@@ -102,12 +103,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
             }
         }
 
-        public override double CalculateProximityDistance(dynamic sleeve1, dynamic sleeve2, string orientation)
+        public override double CalculateProximityDistance(ClusteringSleeveDto sleeve1, ClusteringSleeveDto sleeve2, string orientation)
         {
             try
             {
-                var cz1 = sleeve1?.ClashZone as ClashZone;
-                var cz2 = sleeve2?.ClashZone as ClashZone;
+                var cz1 = sleeve1?.ClashZone;
+                var cz2 = sleeve2?.ClashZone;
 
                 if (cz1 == null || cz2 == null || cz1.SleeveDiameter <= 0 || cz2.SleeveDiameter <= 0)
                     return double.MaxValue;
@@ -119,8 +120,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
                     return double.MaxValue;
 
                 // 2D X-Y distance (ignore Z)
-                double dx = placement2.Value.X - placement1.Value.X;
-                double dy = placement2.Value.Y - placement1.Value.Y;
+                double dx = placement2.X - placement1.X;
+                double dy = placement2.Y - placement1.Y;
                 double centerToCenterDistance = Math.Sqrt(dx * dx + dy * dy);
 
                 double radius1 = cz1.SleeveDiameter / 2.0;

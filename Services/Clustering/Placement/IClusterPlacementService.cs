@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
 {
@@ -15,7 +16,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
         /// Place a cluster sleeve in the document.
         /// </summary>
         /// <param name="doc">Revit document</param>
-        /// <param name="cluster">List of sleeves in the cluster (dynamic type)</param>
+        /// <param name="cluster">List of sleeves in the cluster (DTOs)</param>
         /// <param name="groupKey">Group key (host type, system type, orientation)</param>
         /// <param name="targetCategory">Target MEP category</param>
         /// <param name="placementPoint">Placement point in world coordinates</param>
@@ -26,27 +27,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
         /// <param name="xmlFilePath">Optional XML file path for data lookup</param>
         /// <param name="placedClusterSleeve">Output: The placed cluster sleeve instance</param>
         /// <param name="capturedClusterSleeveId">Output: The captured cluster sleeve ID</param>
-        /// <returns>True if placement succeeded, false otherwise</returns>
-        /// <summary>
-        /// Place a cluster sleeve in the document.
-        /// </summary>
-        /// <param name="doc">Revit document</param>
-        /// <param name="cluster">List of sleeves in the cluster (dynamic type)</param>
-        /// <param name="groupKey">Group key (host type, system type, orientation)</param>
-        /// <param name="targetCategory">Target MEP category</param>
-        /// <param name="placementPoint">Placement point in world coordinates</param>
-        /// <param name="width">Cluster width in internal units</param>
-        /// <param name="height">Cluster height in internal units</param>
-        /// <param name="depth">Cluster depth in internal units</param>
-        /// <param name="rotationAngle">Rotation angle in radians</param>
-        /// <param name="xmlFilePath">Optional XML file path for data lookup</param>
-        /// <param name="placedClusterSleeve">Output: The placed cluster sleeve instance</param>
-        /// <param name="capturedClusterSleeveId">Output: The captured cluster sleeve ID</param>
+        /// <param name="actualPlacementPoint">Output: Actual placement point used</param>
         /// <param name="deferredParameters">Optional dictionary for batch parameter updates</param>
         /// <returns>True if placement succeeded, false otherwise</returns>
         bool PlaceClusterSleeve(
             Document doc,
-            List<dynamic> cluster,
+            List<ClusteringSleeveDto> cluster,
             SleeveGroupKey groupKey,
             string targetCategory,
             XYZ placementPoint,
@@ -75,7 +61,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
         void SetSizeParameters(
             Document doc,
             FamilyInstance clusterSleeve,
-            List<dynamic> cluster,
+            List<ClusteringSleeveDto> cluster,
             SleeveGroupKey groupKey,
             double width,
             double height,
@@ -100,9 +86,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
         /// Get reference level for cluster sleeve placement.
         /// </summary>
         /// <param name="doc">Revit document</param>
-        /// <param name="sleeve">Reference sleeve from cluster (dynamic type)</param>
+        /// <param name="sleeve">Reference sleeve from cluster (DTO)</param>
         /// <returns>Reference level, or null if not found</returns>
-        Level? GetReferenceLevel(Document doc, dynamic sleeve);
+        Level? GetReferenceLevel(Document doc, ClusteringSleeveDto sleeve);
 
         /// <summary>
         /// Load a universal family into the document if not already present.

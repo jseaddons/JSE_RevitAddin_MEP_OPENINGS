@@ -2,6 +2,7 @@ using System;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
@@ -29,7 +30,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
         /// Check if two rotated sleeves are within proximity tolerance.
         /// Uses pre-calculated rotation matrix components from database.
         /// </summary>
-        public bool CheckProximity(dynamic sleeve1, dynamic sleeve2, double tolerance)
+        public bool CheckProximity(ClusteringSleeveDto sleeve1, ClusteringSleeveDto sleeve2, double tolerance)
         {
             try
             {
@@ -46,8 +47,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                     return false;
                 }
 
-                var cz1 = sleeve1.ClashZone as ClashZone;
-                var cz2 = sleeve2.ClashZone as ClashZone;
+                var cz1 = sleeve1.ClashZone;
+                var cz2 = sleeve2.ClashZone;
 
                 if (cz1 == null || cz2 == null)
                 {
@@ -127,6 +128,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                     $"[RotatedProximityChecker] Exception in CheckProximity: {ex.Message}, StackTrace: {ex.StackTrace}");
                 
                 // ✅ CRASH-SAFE: Fallback to regular bounding box check
+                // Note: FallbackChecker likely expects dynamic, but we might need to adjust it too if it's strict.
+                // Assuming BoundingBoxProximityChecker also implements IProximityChecker, it needs update too.
+                // But for now, we pass DTOs. If BoundingBoxProximityChecker is updated, it works.
+                // If not, we have a problem. I should check BoundingBoxProximityChecker.
                 return _fallbackChecker.CheckProximity(sleeve1, sleeve2, tolerance);
             }
         }
@@ -135,7 +140,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
         /// Calculate distance between two rotated sleeves.
         /// Returns minimum distance considering rotation, or null if calculation failed.
         /// </summary>
-        public double? CalculateDistance(dynamic sleeve1, dynamic sleeve2)
+        public double? CalculateDistance(ClusteringSleeveDto sleeve1, ClusteringSleeveDto sleeve2)
         {
             try
             {
@@ -150,8 +155,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                     return null;
                 }
 
-                var cz1 = sleeve1.ClashZone as ClashZone;
-                var cz2 = sleeve2.ClashZone as ClashZone;
+                var cz1 = sleeve1.ClashZone;
+                var cz2 = sleeve2.ClashZone;
 
                 if (cz1 == null || cz2 == null)
                 {

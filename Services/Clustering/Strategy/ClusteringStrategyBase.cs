@@ -4,6 +4,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Safety;
 
@@ -19,15 +20,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
         {
         }
 
-        public abstract bool CanHandle(SleeveGroupKey groupKey, List<dynamic> sleeves);
+        public abstract bool CanHandle(SleeveGroupKey groupKey, List<ClusteringSleeveDto> sleeves);
         public abstract string GetStrategyName();
-        public abstract bool CheckProximity(dynamic sleeve1, dynamic sleeve2, double tolerance, string orientation, Document document = null);
-        public abstract double CalculateProximityDistance(dynamic sleeve1, dynamic sleeve2, string orientation);
+        public abstract bool CheckProximity(ClusteringSleeveDto sleeve1, ClusteringSleeveDto sleeve2, double tolerance, string orientation, Document document = null);
+        public abstract double CalculateProximityDistance(ClusteringSleeveDto sleeve1, ClusteringSleeveDto sleeve2, string orientation);
 
         /// <summary>
         /// Default FormClusters implementation using iterative expansion (flood-fill).
         /// </summary>
-        public virtual List<List<dynamic>> FormClusters(List<dynamic> sleeves, double tolerance, string orientation, Document document = null)
+        public virtual List<List<ClusteringSleeveDto>> FormClusters(List<ClusteringSleeveDto> sleeves, double tolerance, string orientation, Document document = null)
         {
             try
             {
@@ -36,10 +37,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
                 {
                     SafeFileLogger.SafeAppendText("strategy_errors.log",
                         $"[{GetStrategyName()}] Invalid sleeves input - returning empty clusters");
-                    return new List<List<dynamic>>();
+                    return new List<List<ClusteringSleeveDto>>();
                 }
 
-                var clusters = new List<List<dynamic>>();
+                var clusters = new List<List<ClusteringSleeveDto>>();
                 var processed = new HashSet<int>();
 
                 foreach (var sleeve in sleeves)
@@ -47,7 +48,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
                     if (processed.Contains(sleeve.SleeveInstanceId))
                         continue;
 
-                    var cluster = new List<dynamic> { sleeve };
+                    var cluster = new List<ClusteringSleeveDto> { sleeve };
                     processed.Add(sleeve.SleeveInstanceId);
 
                     // ✅ Iterative expansion to find all connected sleeves
@@ -92,7 +93,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
             {
                 SafeFileLogger.SafeAppendText("strategy_errors.log",
                     $"[{GetStrategyName()}] Exception in FormClusters: {ex.Message}, StackTrace: {ex.StackTrace}");
-                return new List<List<dynamic>>();
+                return new List<List<ClusteringSleeveDto>>();
             }
         }
 
@@ -100,7 +101,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
         /// Check if two sleeves should be clustered (pre-filtering, e.g., cross-wall prevention).
         /// Override in subclasses for host-specific validation.
         /// </summary>
-        protected virtual bool ShouldCluster(dynamic sleeve1, dynamic sleeve2, Document document)
+        protected virtual bool ShouldCluster(ClusteringSleeveDto sleeve1, ClusteringSleeveDto sleeve2, Document document)
         {
             // Default: allow clustering (no special restrictions)
             return true;
@@ -109,14 +110,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
         /// <summary>
         /// Get placement point from sleeve using ClashZone data.
         /// </summary>
-        protected XYZ? GetPlacementPointFromSleeve(dynamic sleeve)
+        protected XYZ? GetPlacementPointFromSleeve(ClusteringSleeveDto sleeve)
         {
             try
             {
                 if (sleeve?.ClashZone == null)
                     return null;
 
-                var cz = sleeve.ClashZone as ClashZone;
+                var cz = sleeve.ClashZone;
                 if (cz == null)
                     return null;
 
@@ -166,7 +167,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
         /// <summary>
         /// Get sleeve radii from ClashZone data (only for round pipes/ducts).
         /// </summary>
-        protected (double radius1, double radius2) GetSleeveRadii(dynamic sleeve1, dynamic sleeve2)
+        protected (double radius1, double radius2) GetSleeveRadii(ClusteringSleeveDto sleeve1, ClusteringSleeveDto sleeve2)
         {
             double radius1 = 0;
             double radius2 = 0;
@@ -175,7 +176,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
             {
                 if (sleeve1?.ClashZone != null)
                 {
-                    var cz1 = sleeve1.ClashZone as ClashZone;
+                    var cz1 = sleeve1.ClashZone;
                     if (cz1 != null && cz1.SleeveDiameter > 0)
                     {
                         radius1 = cz1.SleeveDiameter / 2.0;
@@ -184,7 +185,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
 
                 if (sleeve2?.ClashZone != null)
                 {
-                    var cz2 = sleeve2.ClashZone as ClashZone;
+                    var cz2 = sleeve2.ClashZone;
                     if (cz2 != null && cz2.SleeveDiameter > 0)
                     {
                         radius2 = cz2.SleeveDiameter / 2.0;
@@ -200,11 +201,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
         /// Check if sleeve is circular (round pipe/duct).
         /// Uses ClashZone category, DuctShape, MepElementSizeData.Shape, and SleeveDiameter.
         /// </summary>
-        protected bool IsCircular(dynamic sleeve)
+        protected bool IsCircular(ClusteringSleeveDto sleeve)
         {
             try
             {
-                var cz = sleeve?.ClashZone as ClashZone;
+                var cz = sleeve?.ClashZone;
                 if (cz == null)
                     return false;
 

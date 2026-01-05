@@ -1,6 +1,7 @@
 using System;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data; // For ClusteringSleeveDto
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
 {
@@ -17,15 +18,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
             _helper = new SleeveCornerProximityHelper();
         }
 
-        public bool CheckProximity(dynamic sleeve1, dynamic sleeve2, double tolerance)
+        public bool CheckProximity(ClusteringSleeveDto sleeve1, ClusteringSleeveDto sleeve2, double tolerance)
         {
             try
             {
                 if (sleeve1?.ClashZone == null || sleeve2?.ClashZone == null)
                     return false;
 
-                ClashZone cz1 = sleeve1.ClashZone as ClashZone;
-                ClashZone cz2 = sleeve2.ClashZone as ClashZone;
+                ClashZone cz1 = sleeve1.ClashZone;
+                ClashZone cz2 = sleeve2.ClashZone;
 
                 if (cz1 == null || cz2 == null)
                     return false;
@@ -53,15 +54,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
             }
         }
 
-        public double? CalculateDistance(dynamic sleeve1, dynamic sleeve2)
+        public double? CalculateDistance(ClusteringSleeveDto sleeve1, ClusteringSleeveDto sleeve2)
         {
             try
             {
                 if (sleeve1?.ClashZone == null || sleeve2?.ClashZone == null)
                     return null;
 
-                ClashZone cz1 = sleeve1.ClashZone as ClashZone;
-                ClashZone cz2 = sleeve2.ClashZone as ClashZone;
+                ClashZone cz1 = sleeve1.ClashZone;
+                ClashZone cz2 = sleeve2.ClashZone;
 
                 if (cz1 == null || cz2 == null)
                     return null;

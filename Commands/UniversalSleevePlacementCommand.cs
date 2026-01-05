@@ -13,6 +13,8 @@ using System;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Refactored;
 using JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 {
@@ -343,9 +345,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 flagManager, 
                 isReplayPath,
                 _filterName,
-                null, 
+                null, // sizingService
+                null, // fileNameNormalizer
+                null, // sectionBoxChecker
+                null, // crashSafeExecutor
+                null, // planner
                 isForceDetectionMode,
-                null,
+                null, // dbOptimizer
                 _externalPlanningMap);
             
             var (placed, skipped, errors) = newPlacerService.PlaceAllSleevesInTransaction(filteredClashZones);

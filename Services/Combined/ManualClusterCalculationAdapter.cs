@@ -109,10 +109,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                  JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Warning("[ManualClusterCalculationAdapter] No Corners in DB. Using Fallback Calculator.");
                  
                  // Need rotation service for fallback
-                 var clusterData = new List<dynamic>();
-                 foreach(var s in sleeves) clusterData.Add(new { SleeveInstanceId = s.Id.IntegerValue, ClashZone = clashZones.FirstOrDefault(c => c.SleeveInstanceId == s.Id.IntegerValue) });
+                 var clusterData = new List<JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data.ClusteringSleeveDto>();
+                 foreach(var s in sleeves) 
+                 {
+                     var cz = clashZones.FirstOrDefault(c => c.SleeveInstanceId == s.Id.IntegerValue);
+                     clusterData.Add(new JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data.ClusteringSleeveDto 
+                     { 
+                         SleeveInstanceId = s.Id.IntegerValue, 
+                         ClashZone = cz 
+                     });
+                 }
                  
                  double fbRot = _rotationService.DetermineRotationAngle(clusterData);
+                 
+                 
+                 // Adapter: BoundingBoxCalculator accepts List<ClusteringSleeveDto>
                  var bbox = _bboxCalculator.Calculate(clusterData, sleeves.OfType<FamilyInstance>().ToList(), fbRot);
                  
                  return new ManualJoinResult

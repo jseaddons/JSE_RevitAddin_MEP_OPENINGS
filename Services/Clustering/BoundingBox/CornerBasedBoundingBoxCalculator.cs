@@ -5,6 +5,7 @@ using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Geometry;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
 {
@@ -25,8 +26,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
         /// <param name="getClashZoneBySleeveInstanceId">Function to retrieve ClashZone by sleeve instance ID</param>
         /// <param name="xmlFilePath">Optional XML file path for ClashZone lookup</param>
         /// <returns>Tuple of (width, height, minX, minY, maxX, maxY, origin) or null if calculation failed</returns>
+        /// <summary>
+        /// Calculate bounding box using corner-based watertight algorithm.
+        /// For each sleeve: Calculate 4 corners in world space, transform to rotated coordinate system, find min/max extents.
+        /// </summary>
+        /// <param name="cluster">List of sleeves in the cluster</param>
+        /// <param name="rotationAngle">Cluster's intended rotated axis angle (NOT average of sleeve angles)</param>
+        /// <param name="origin">Reference point for coordinate transformation (first sleeve center)</param>
+        /// <param name="getClashZoneBySleeveInstanceId">Function to retrieve ClashZone by sleeve instance ID</param>
+        /// <param name="xmlFilePath">Optional XML file path for ClashZone lookup</param>
+        /// <returns>Tuple of (width, height, minX, minY, maxX, maxY, origin) or null if calculation failed</returns>
         public static (double width, double height, double minX, double minY, double maxX, double maxY, XYZ origin)? CalculateFromCorners(
-            List<dynamic> cluster,
+            List<ClusteringSleeveDto> cluster,
             double rotationAngle,
             out XYZ origin,
             Func<int, string, dynamic> getClashZoneBySleeveInstanceId,
@@ -48,38 +59,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
                 // ✅ OPTIMIZATION: Use pre-calculated corners from database (dump once use many times)
                 var sleeveDataList = new List<(ClashZone cz, XYZ center, double width, double height, double sleeveRotation, double? cosSleeve, double? sinSleeve, XYZ[] preCalculatedCorners)>();
 
-                foreach (var sleeveData in cluster)
+                foreach (var sleeveDto in cluster)
                 {
-                    // ✅ FIX: Explicitly extract SleeveInstanceId from dynamic to avoid dynamic dispatch errors
-                    // Access the property once and store in a local variable
-                    int sleeveInstanceId;
-                    try
-                    {
-                        // Try to get SleeveInstanceId from dynamic object
-                        dynamic dynSleeve = sleeveData;
-                        object sleeveIdObj = dynSleeve.SleeveInstanceId;
-                        if (sleeveIdObj == null) continue;
-                        
-                        // Convert to int
-                        if (sleeveIdObj is int id)
-                            sleeveInstanceId = id;
-                        else if (sleeveIdObj is long longId)
-                            sleeveInstanceId = (int)longId;
-                        else
-                            sleeveInstanceId = Convert.ToInt32(sleeveIdObj);
-                    }
-                    catch
-                    {
-                        continue; // Skip if we can't get the ID
-                    }
+                    int sleeveInstanceId = sleeveDto.SleeveInstanceId;
                     
-                    // ✅ FIX: Explicitly type to avoid dynamic dispatch errors
-                    // Get the clash zone and immediately cast to ClashZone to avoid dynamic dispatch
-                    object clashZoneObj = getClashZoneBySleeveInstanceId(sleeveInstanceId, xmlFilePath);
-                    if (clashZoneObj == null) continue;
+                    // Priority: Use DTO ClashZone first, then lookup via delegate if missing
+                    var cz = sleeveDto.ClashZone;
+                    
+                    if (cz == null)
+                    {
+                        // Fallback to delegate lookup if DTO doesn't have it (legacy/mixed mode)
+                        object clashZoneObj = getClashZoneBySleeveInstanceId(sleeveInstanceId, xmlFilePath);
+                        if (clashZoneObj != null)
+                        {
+                            cz = clashZoneObj as ClashZone;
+                        }
+                    }
 
-                    // ✅ CRITICAL: Cast to ClashZone explicitly to avoid any dynamic dispatch
-                    ClashZone cz = clashZoneObj as ClashZone;
                     if (cz == null) continue;
 
                     // ✅ Get sleeve center from Active document coordinates (where sleeve is actually placed)
@@ -92,6 +88,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
                     // Get sleeve dimensions
                     double sleeveWidth = cz.SleeveWidth > 0 ? cz.SleeveWidth : 0;
                     double sleeveHeight = cz.SleeveHeight > 0 ? cz.SleeveHeight : 0;
+
+                    // Get sleeve dimensions - CRITICAL FIX for pipes/ducts where Width/Height might be 0 but Diameter is set
+                    if (sleeveWidth <= 0 && cz.SleeveDiameter > 0) sleeveWidth = cz.SleeveDiameter;
+                    if (sleeveHeight <= 0 && cz.SleeveDiameter > 0) sleeveHeight = cz.SleeveDiameter;
 
                     // Get sleeve rotation angle
                     double sleeveRotation = cz.MepElementRotationAngle;

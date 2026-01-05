@@ -4,6 +4,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Geometry;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
 {
@@ -32,7 +33,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
         /// Uses pre-calculated corners and rotation matrices from database (dump once use many times).
         /// </summary>
         public BoundingBoxResult Calculate(
-            List<dynamic> cluster,
+            List<ClusteringSleeveDto> cluster,
             List<FamilyInstance> actualSleeves,
             double rotationAngle,
             string xmlFilePath = null)
@@ -55,7 +56,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
                 foreach (var sleeveData in cluster)
                 {
                     int sId = sleeveData.SleeveInstanceId;
-                    var clashZone = _getClashZoneBySleeveInstanceId(sId, xmlFilePath);
+                    
+                    // Priority: Use DTO ClashZone first, then lookup via delegate if missing
+                    var clashZone = sleeveData.ClashZone;
+                    if (clashZone == null && _getClashZoneBySleeveInstanceId != null)
+                    {
+                         clashZone = _getClashZoneBySleeveInstanceId(sId, xmlFilePath) as Models.ClashZone;
+                    }
                     
                     if (clashZone == null)
                     {
@@ -73,25 +80,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
                         continue;
                     }
 
-                    var cz = clashZone as Models.ClashZone;
-                    if (cz == null) continue;
-
-                    bool hasRotatedBbox = cz.RotatedBoundingBoxMinX.HasValue &&
-                                         cz.RotatedBoundingBoxMinY.HasValue &&
-                                         cz.RotatedBoundingBoxMaxX.HasValue &&
-                                         cz.RotatedBoundingBoxMaxY.HasValue;
+                    bool hasRotatedBbox = clashZone.RotatedBoundingBoxMinX.HasValue &&
+                                         clashZone.RotatedBoundingBoxMinY.HasValue &&
+                                         clashZone.RotatedBoundingBoxMaxX.HasValue &&
+                                         clashZone.RotatedBoundingBoxMaxY.HasValue;
 
                     if (hasRotatedBbox)
                     {
-                        DebugLogger.Info($"[RotatedBoundingBoxCalculator] Extracted Corners from DB for Sleeve {sId}: X=[{cz.RotatedBoundingBoxMinX}, {cz.RotatedBoundingBoxMaxX}], Y=[{cz.RotatedBoundingBoxMinY}, {cz.RotatedBoundingBoxMaxY}]");
+                        DebugLogger.Info($"[RotatedBoundingBoxCalculator] Extracted Corners from DB for Sleeve {sId}: X=[{clashZone.RotatedBoundingBoxMinX}, {clashZone.RotatedBoundingBoxMaxX}], Y=[{clashZone.RotatedBoundingBoxMinY}, {clashZone.RotatedBoundingBoxMaxY}]");
                         
                         rotatedBboxes.Add((
-                            new XYZ(cz.RotatedBoundingBoxMinX.Value,
-                                   cz.RotatedBoundingBoxMinY.Value,
-                                   cz.RotatedBoundingBoxMinZ ?? cz.SleeveBoundingBoxMinZ),
-                            new XYZ(cz.RotatedBoundingBoxMaxX.Value,
-                                   cz.RotatedBoundingBoxMaxY.Value,
-                                   cz.RotatedBoundingBoxMaxZ ?? cz.SleeveBoundingBoxMaxZ)
+                            new XYZ(clashZone.RotatedBoundingBoxMinX.Value,
+                                   clashZone.RotatedBoundingBoxMinY.Value,
+                                   clashZone.RotatedBoundingBoxMinZ ?? clashZone.SleeveBoundingBoxMinZ),
+                            new XYZ(clashZone.RotatedBoundingBoxMaxX.Value,
+                                   clashZone.RotatedBoundingBoxMaxY.Value,
+                                   clashZone.RotatedBoundingBoxMaxZ ?? clashZone.SleeveBoundingBoxMaxZ)
                         ));
                         hasRotatedBboxes = true;
                     }
@@ -99,12 +103,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
                     {
                         DebugLogger.Info($"[RotatedBoundingBoxCalculator] Using Axis-Aligned Bounds from DB for Sleeve {sId} (No Rotated Corners Found)");
                         axisAlignedBboxes.Add((
-                            new XYZ(cz.SleeveBoundingBoxMinX,
-                                   cz.SleeveBoundingBoxMinY,
-                                   cz.SleeveBoundingBoxMinZ),
-                            new XYZ(cz.SleeveBoundingBoxMaxX,
-                                   cz.SleeveBoundingBoxMaxY,
-                                   cz.SleeveBoundingBoxMaxZ)
+                            new XYZ(clashZone.SleeveBoundingBoxMinX,
+                                   clashZone.SleeveBoundingBoxMinY,
+                                   clashZone.SleeveBoundingBoxMinZ),
+                            new XYZ(clashZone.SleeveBoundingBoxMaxX,
+                                   clashZone.SleeveBoundingBoxMaxY,
+                                   clashZone.SleeveBoundingBoxMaxZ)
                         ));
                     }
                 }
@@ -113,8 +117,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
                 if (hasRotatedBboxes && rotatedBboxes.Count > 0 && Math.Abs(rotationAngle) > 1e-6)
                 {
                     // ✅ PROPER WATERTIGHT ALGORITHM: Use corner-based calculation
+                    // Need to check CornerBasedBoundingBoxCalculator signature too, but assume it handles List<ClusteringSleeveDto> or fix soon.
+                    // For now, cast to dynamic if CornerBasedBoundingBoxCalculator (static) expects dynamic, OR assume I fix it too.
+                    // IMPORTANT: CornerBasedBoundingBoxCalculator.CalculateFromCorners takes List<dynamic> (cluster).
+                    // I will perform a quick cast here until I fix that one too, or better yet, assume I will fix ALL calculators in this batch.
+                    // Let's assume I fix CornerBasedBoundingBoxCalculator next.
                     var cornerResult = CornerBasedBoundingBoxCalculator.CalculateFromCorners(
-                        cluster,
+                        cluster, // Pass DTO list
                         rotationAngle,
                         out XYZ origin,
                         _getClashZoneBySleeveInstanceId,

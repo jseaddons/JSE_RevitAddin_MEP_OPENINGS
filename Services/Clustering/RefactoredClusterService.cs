@@ -601,7 +601,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         var clusters = groupEntry.Value;
 
                         // ✅ STEP 13: Select clustering strategy (Phase 4: Strategy Factory)
-                        var strategy = _strategyFactory.GetStrategy(groupKey, clusters.FirstOrDefault() ?? new List<dynamic>());
+                        var strategy = _strategyFactory.GetStrategy(groupKey, clusters.FirstOrDefault() ?? new List<ClusteringSleeveDto>());
 
                         // Process each cluster
                         SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 PROCESSING: Group {groupKey.hostType}/{groupKey.systemType}/{groupKey.orientation} has {clusters.Count} clusters\n");

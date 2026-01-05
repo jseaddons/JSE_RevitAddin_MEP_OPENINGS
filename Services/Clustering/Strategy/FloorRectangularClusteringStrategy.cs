@@ -2,6 +2,7 @@ using System;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Geometry;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Safety;
@@ -22,13 +23,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
 
         public override string GetStrategyName() => "FloorRectangularClusteringStrategy";
 
-        public override bool CanHandle(SleeveGroupKey groupKey, System.Collections.Generic.List<dynamic> sleeves)
+        public override bool CanHandle(SleeveGroupKey groupKey, System.Collections.Generic.List<ClusteringSleeveDto> sleeves)
         {
             // ✅ Floor hosts only
             return groupKey.hostType == "Floor";
         }
 
-        public override bool CheckProximity(dynamic sleeve1, dynamic sleeve2, double tolerance, string orientation, Document document = null)
+        public override bool CheckProximity(ClusteringSleeveDto sleeve1, ClusteringSleeveDto sleeve2, double tolerance, string orientation, Document document = null)
         {
             try
             {
@@ -41,7 +42,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
                 }
 
                 // ✅ DECISION: Delegate to factory to ensure corner-based logic is used for rectangular sleeves
-                var cz1 = sleeve1.ClashZone as ClashZone;
+                var cz1 = sleeve1.ClashZone;
                 double angle1 = cz1?.MepElementRotationAngle ?? 0.0;
                 bool isRotated = !IsStraightAxisAlignedAngle(angle1);
 
@@ -56,7 +57,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Strategy
             }
         }
 
-        public override double CalculateProximityDistance(dynamic sleeve1, dynamic sleeve2, string orientation)
+        public override double CalculateProximityDistance(ClusteringSleeveDto sleeve1, ClusteringSleeveDto sleeve2, string orientation)
         {
             try
             {

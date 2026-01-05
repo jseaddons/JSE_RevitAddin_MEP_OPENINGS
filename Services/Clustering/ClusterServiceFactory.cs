@@ -308,22 +308,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             // Note: These are placeholders - RefactoredClusterService should provide these via its own methods
             Func<int, string?, ClashZone?> getClashZoneBySleeveInstanceId = (sleeveId, xmlPath) =>
             {
-                // Use dataService cache
-                // TODO: Implement proper lookup from dataService cache
-                return null;
+                 // Use dataService cache
+                 return dataService.GetClashZoneFromCache(sleeveId);
             };
 
-            Func<List<dynamic>, string?, double> determineRotationAngle = (cluster, xmlPath) =>
+            Func<List<ClusteringSleeveDto>, string?, double> determineRotationAngle = (cluster, xmlPath) =>
             {
                 return rotationService.DetermineRotationAngle(cluster, xmlPath);
             };
 
-            Func<List<dynamic>, List<FamilyInstance>, double, string?, (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ)> getClusterBoundingBox = (cluster, actualSleeves, rotationAngle, xmlPath) =>
+            Func<List<ClusteringSleeveDto>, List<FamilyInstance>, double, string?, (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ)> getClusterBoundingBox = (cluster, actualSleeves, rotationAngle, xmlPath) =>
             {
                 return rotationService.CalculateRotatedBoundingBox(cluster, actualSleeves, rotationAngle, xmlPath);
             };
 
-            Action<List<dynamic>, ElementId, string?, BoundingBoxXYZ?, (double minX, double minY, double minZ, double maxX, double maxY, double maxZ)?> markClusterResolved = (cluster, clusterSleeveId, xmlPath, bbox, rotatedBbox) =>
+            Action<List<ClusteringSleeveDto>, ElementId, string?, BoundingBoxXYZ?, (double minX, double minY, double minZ, double maxX, double maxY, double maxZ)?> markClusterResolved = (cluster, clusterSleeveId, xmlPath, bbox, rotatedBbox) =>
             {
                 // ✅ FLAG FIX: Update flags in database using ClashZoneRepository
                 if (cluster == null || cluster.Count == 0 || clusterSleeveId == ElementId.InvalidElementId) return;
@@ -335,9 +334,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         var repository = new ClashZoneRepository(dbContext);
                         foreach (var sleeve in cluster)
                         {
-                            // Use dynamic property access to get ClashZone
-                            // The dynamic object is created in RefactoredClusterService.PrepareSleeveData and has a ClashZone property
-                            var clashZone = sleeve.ClashZone as ClashZone;
+                            // Using typed DTO
+                            var clashZone = sleeve.ClashZone;
                             
                             if (clashZone != null)
                             {

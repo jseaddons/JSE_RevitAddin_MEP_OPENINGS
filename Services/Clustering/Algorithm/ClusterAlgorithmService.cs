@@ -35,7 +35,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
 
             if (enableParallel)
             {
-                Parallel.ForEach(sleeveGroups, processGroup);
+                System.Threading.Tasks.Parallel.ForEach(sleeveGroups, processGroup);
             }
             else
             {

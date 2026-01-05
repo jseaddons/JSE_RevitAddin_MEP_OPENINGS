@@ -4,6 +4,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
 {
@@ -14,14 +15,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
     public class AxisAlignedBoundingBoxCalculator : IBoundingBoxCalculator
     {
         private readonly Func<int, string, dynamic> _getClashZoneBySleeveInstanceId;
-        private readonly Func<List<dynamic>, string, double> _determineDominantRotationAngle;
+        private readonly Func<List<ClusteringSleeveDto>, string, double> _determineDominantRotationAngle;
 
         /// <summary>
         /// Constructor with dependencies for ClashZone lookup and rotation angle determination.
         /// </summary>
         public AxisAlignedBoundingBoxCalculator(
             Func<int, string, dynamic> getClashZoneBySleeveInstanceId,
-            Func<List<dynamic>, string, double> determineDominantRotationAngle)
+            Func<List<ClusteringSleeveDto>, string, double> determineDominantRotationAngle)
         {
             _getClashZoneBySleeveInstanceId = getClashZoneBySleeveInstanceId ?? throw new ArgumentNullException(nameof(getClashZoneBySleeveInstanceId));
             _determineDominantRotationAngle = determineDominantRotationAngle ?? throw new ArgumentNullException(nameof(determineDominantRotationAngle));
@@ -32,7 +33,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
         /// Uses pre-calculated bounding boxes from database.
         /// </summary>
         public BoundingBoxResult Calculate(
-            List<dynamic> cluster,
+            List<ClusteringSleeveDto> cluster,
             List<FamilyInstance> actualSleeves,
             double rotationAngle,
             string xmlFilePath = null)
@@ -54,7 +55,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
                 }
 
                 // Get all bounding boxes from cluster data
-                var boundingBoxes = cluster.Select(s => s?.BoundingBox).Where(bbox => bbox != null).ToList();
+                // Accessing BoundingBox directly from DTO (ClashZone properties) may require reconstruction if not already on DTO.
+                // DTO has ClashZone. We can get BoundingBox from ClashZone properties: MinX, MinY, MinZ, MaxX, MaxY, MaxZ.
+                var boundingBoxes = new List<BoundingBoxXYZ>();
+                
+                foreach (var item in cluster)
+                {
+                    var cz = item.ClashZone;
+                    if (cz != null)
+                    {
+                        var bbox = new BoundingBoxXYZ();
+                        bbox.Min = new XYZ(cz.SleeveBoundingBoxMinX, cz.SleeveBoundingBoxMinY, cz.SleeveBoundingBoxMinZ);
+                        bbox.Max = new XYZ(cz.SleeveBoundingBoxMaxX, cz.SleeveBoundingBoxMaxY, cz.SleeveBoundingBoxMaxZ);
+                        boundingBoxes.Add(bbox);
+                    }
+                }
 
                 if (boundingBoxes.Count == 0)
                 {

@@ -1,4 +1,7 @@
+using System.Collections.Generic;
+using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data;
+using JSE_RevitAddin_MEP_OPENINGS.Models;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.PreCalculation
 {
