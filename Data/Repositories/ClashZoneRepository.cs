@@ -8814,6 +8814,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         }
 
         /// <summary>
+        /// ✅ GET ALL SLEEVES: Returns all placed sleeves in the project.
+        /// </summary>
+        public List<ClashZone> GetAllSleeves()
+        {
+            var result = new List<ClashZone>();
+            
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = @"SELECT * FROM ClashZones 
+                                        WHERE SleeveInstanceId > 0
+                                        ORDER BY MepCategory, ClashZoneId";
+                    
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            var zone = MapClashZone(reader);
+                            if (zone != null) result.Add(zone);
+                        }
+                    }
+                }
+                _logger($"[SQLite] GetAllSleeves: Retrieved {result.Count} total sleeves");
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ❌ Error in GetAllSleeves: {ex.Message}");
+            }
+            return result;
+        }
+
+        /// <summary>
         /// ✅ SIMPLIFIED MARKS: Get placed sleeves for a specific level (by MepElementLevelName)
         /// Used for per-sheet mark numbering - returns sleeves on the specified floor level
         /// </summary>

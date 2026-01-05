@@ -2846,7 +2846,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public int ResetMarksForLevel(Document doc, string levelName, BoundingBoxXYZ viewExtent = null)
         {
-            var repo = new ClashZoneRepository(new SleeveDbContext());
+            var repo = new ClashZoneRepository(new SleeveDbContext(doc));
             var allSleeves = repo.GetSleevesForLevel(levelName, null); // Get all categories
 
             // Filter by View Extent if provided (Session Sensitive)
@@ -2948,9 +2948,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// ✅ RESET COUNTERS: Resets global numbering counters in database.
         /// </summary>
-        public void ResetCategoryCounters(string category = null)
+        public void ResetCategoryCounters(Document doc, string category = null)
         {
-            var markerRepo = new Data.Repositories.CategoryProcessingMarkerRepository(new SleeveDbContext());
+            var markerRepo = new Data.Repositories.CategoryProcessingMarkerRepository(new SleeveDbContext(doc));
             
             if (!string.IsNullOrEmpty(category))
             {
@@ -2966,6 +2966,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
         #endregion
+
+        private ElementId GetElementIdSafe(long id)
+        {
+#if R2024_OR_GREATER
+            return new ElementId(id);
+#else
+            return new ElementId((int)id);
+#endif
+        }
+
     }
 }
 
