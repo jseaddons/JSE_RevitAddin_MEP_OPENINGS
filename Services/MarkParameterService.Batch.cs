@@ -97,54 +97,64 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             stopwatchRead.Stop();
 
-            // 2. DATA ENRICHMENT (DB Calls - can be parallelized or bulk loaded)
-            // We need ClashZone info to confirm Category and get System Type
-            // Getting System Type from DB is faster than opening many elements if we have the index
-            
-            // Load Snapshots or ClashZones? ClashZones is better for Category check.
-            // Let's use the DB Context efficiently.
+            // 2. DATA ENRICHMENT (DB Calls - Optimized Bulk Load)
             stopwatchEnrich.Start();
             using (var dbContext = new SleeveDbContext(doc, msg => { }))
             {
-                // Pre-fetch ClashZones for these sleeves?
-                // Or just loop and query (SQLite is fast, single thread might be ok, but let's try to be smart)
-                // For now, let's just do sequential DB lookup (it's fast on local SQLite) but separate from Revit Transaction
-                
                 var repo = new ClashZoneRepository(dbContext);
                 
-                // We'll perform the category filtering and prefix resolution here in "Phase 1.5"
-                var filteredIdentities = new List<MarkSleeveIdentity>();
+                // Get all sleeve IDs first
+                var sleeveIds = identities
+                    .Where(id => !id.IsCombinedSleeve)
+                    .Select(id => id.SleeveInstanceId)
+                    .Distinct()
+                    .ToList();
                 
-                // This part involves Logic + DB, so it's "Calculate"
-                foreach (var id in identities)
-                {
-                    ClashZone zone = null;
+                // BULK LOOKUP: Get all ClashZones in one query
+                // Returns map of SleeveInstanceId -> ClashZone
+                // Also need to handle MEP Element ID fallback if needed, but primary key is usually SleeveInstanceId
+                var zones = repo.GetClashZonesBySleeveIds(sleeveIds);
+                
+                // Create lookup dictionary: Handle multiple matches (should be unique per sleeve)
+                // If a sleeve has multiple zones (rare/error), take the first one
+                var zoneMap = zones
+                    .Where(z => z.SleeveInstanceId > 0)
+                    .GroupBy(z => z.SleeveInstanceId)
+                    .ToDictionary(g => g.Key, g => g.First());
 
-                    // ✅ Combined Sleeves: Always include, no category check needed
+                // Parallel Enrichment (Filter & Prefix Data)
+                var filteredBag = new System.Collections.Concurrent.ConcurrentBag<MarkSleeveIdentity>();
+                
+                // Use Parallel.ForEach for in-memory matching and filtering
+                System.Threading.Tasks.Parallel.ForEach(identities, id => 
+                {
+                    // ✅ Combined Sleeves: Always include
                     if (id.IsCombinedSleeve)
                     {
-                        // Combined sleeves always match - they get MEP prefix later
-                        filteredIdentities.Add(id);
-                        continue;
+                        filteredBag.Add(id);
+                        return;
                     }
                     
-                    // Non-combined: DB Lookup for category matching
-                    zone = repo.GetClashZoneBySleeveId(id.SleeveInstanceId); 
-                    if (zone == null && id.MepElementId > 0)
+                    ClashZone zone = null;
+                    if (zoneMap.TryGetValue(id.SleeveInstanceId, out var foundZone))
                     {
-                        zone = repo.GetClashZoneByMepElementId((int)id.MepElementId);
+                        zone = foundZone;
                     }
-
+                    // Fallback to single ID lookup only if missing from bulk (should be rare/never)
+                    // We skip the fallback here for performance - if it wasn't returned by GetClashZonesBySleeveIds, 
+                    // it likely doesn't exist or isn't a clash zone sleeve.
+                    
                     if (zone != null && zone.MepElementCategory == category)
                     {
-                        // Match!
-                        // Resolve system type from Zone params if available
-                        id.SystemType = GetClashParameterValue(zone, "System Type", "MEP System Type", "System Classification");
-                        id.ServiceType = GetClashParameterValue(zone, "Service Type", "System Abbreviation", "MEP System Type");
-                        filteredIdentities.Add(id);
+                         // Match!
+                         // Resolve system type from Zone params if available
+                         id.SystemType = GetClashParameterValue(zone, "System Type", "MEP System Type", "System Classification");
+                         id.ServiceType = GetClashParameterValue(zone, "Service Type", "System Abbreviation", "MEP System Type");
+                         filteredBag.Add(id);
                     }
-                }
-                identities = filteredIdentities;
+                });
+                
+                identities = filteredBag.ToList();
             }
             stopwatchEnrich.Stop();
 

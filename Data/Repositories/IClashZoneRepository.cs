@@ -139,6 +139,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Retrieve ClashZone objects associated with the given Revit Sleeve Instance IDs.
         /// This checks both individual SleeveInstanceId and ClusterSleeveInstanceId.
         /// </summary>
+        ClashZone GetClashZoneByMepElementId(int mepElementId);
         List<ClashZone> GetClashZonesBySleeveIds(IEnumerable<int> sleeveInstanceIds);
 
         /// <summary>
@@ -225,5 +226,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// ✅ DEBUG: Get flag statistics for all zones in DB
         /// </summary>
         (int Total, int IsCurrentClashSet, int ReadyForPlacementSet, int IsResolvedSet) GetFlagStatistics();
+
+        /// <summary>
+        /// ✅ SIMPLIFIED MARKS: Get placed sleeves for a specific level (by MepElementLevelName)
+        /// Used for per-sheet mark numbering - returns sleeves on the specified floor level
+        /// </summary>
+        /// <param name="levelName">The level name to filter by (e.g., "Level 1")</param>
+        /// <param name="category">Optional category filter (e.g., "Ducts", "Pipes"). If null, returns all categories.</param>
+        /// <returns>List of ClashZones with SleeveInstanceId > 0 on the specified level</returns>
+        List<ClashZone> GetSleevesForLevel(string levelName, string? category = null);
     }
 }

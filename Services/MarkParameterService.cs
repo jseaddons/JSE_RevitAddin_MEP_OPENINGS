@@ -33,6 +33,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private Dictionary<string, HashSet<int>>? _existingMarkNumbersCache;
         private Document? _existingMarkNumbersCacheDocument;
         
+        // Logger delegate
+        private readonly Action<string> _logger;
+        
+        /// <summary>
+        /// Constructor with optional document and logger
+        /// </summary>
+        public MarkParameterService(Document doc = null, Action<string> logger = null)
+        {
+            _cachedDocument = doc;
+            _logger = logger ?? ((msg) => { });
+        }
+        
         /// <summary>
         /// Apply MEPMARK to cluster sleeves for a specific category
         /// </summary>
@@ -49,6 +61,207 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             // Call the internal implementation
             return ApplyMepMarkToClustersInternal(doc, category, projectPrefix, disciplinePrefix, remarkAll, numberFormat, markPrefixes);
+        }
+
+        /// <summary>
+        /// ✅ SIMPLIFIED: Apply marks from database (per-sheet numbering)
+        /// Gets sleeves from DB by level, assigns fresh sequential numbers, batch writes to Revit
+        /// </summary>
+        /// <param name="doc">Revit document</param>
+        /// <param name="settings">Prefix and numbering settings</param>
+        /// <param name="category">Optional category filter (e.g., "Ducts"). If null, processes all categories.</param>
+        /// <returns>Tuple of (processedCount, errorCount)</returns>
+        public (int processedCount, int errorCount) ApplyMarksFromDatabase(
+            Document doc,
+            MarkPrefixSettings settings,
+            string? category = null)
+        {
+            int processed = 0, errors = 0;
+
+            try
+            {
+                // 1. Get active floor plan level and view extent
+                var activeView = doc.ActiveView;
+                if (!(activeView is ViewPlan plan))
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning("[MarkParameterService] ApplyMarksFromDatabase: Active view must be a floor plan");
+                    throw new InvalidOperationException("Active view must be a floor plan");
+                }
+
+                var level = plan.GenLevel;
+                if (level == null)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning("[MarkParameterService] ApplyMarksFromDatabase: Floor plan must have an associated level");
+                    throw new InvalidOperationException("Floor plan must have an associated level");
+                }
+
+                string levelName = level.Name;
+                
+                // Get settings
+                int startNumber = settings.StartNumber;
+                string numberFormat = settings.NumberFormat;
+                string projectPrefix = settings.ProjectPrefix;
+                
+                bool isCombinedPass = category != null && category.Equals("Combined", StringComparison.OrdinalIgnoreCase);
+                if (isCombinedPass)
+                {
+                    startNumber = 1; // Combined always starts from 1
+                }
+                
+                // ✅ VIEW EXTENT: Get view bounds for per-sheet filtering
+                // CropBox returns effective bounds from crop region OR scope box (whichever defines the view extent)
+                // This allows multiple sheets on the same level to have independent numbering
+                BoundingBoxXYZ? viewExtent = null;
+                if (plan.CropBoxActive && plan.CropBox != null)
+                {
+                    viewExtent = plan.CropBox;
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[MarkParameterService] ApplyMarksFromDatabase: Using view extent (crop box/scope box) - " +
+                            $"Min({viewExtent.Min.X:F1}, {viewExtent.Min.Y:F1}), Max({viewExtent.Max.X:F1}, {viewExtent.Max.Y:F1})");
+                    }
+                }
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[MarkParameterService] ApplyMarksFromDatabase: Level='{levelName}', Category='{category ?? "ALL"}', Start={startNumber}, HasCropBox={viewExtent != null}");
+
+                // 2. Query DB for sleeves on this level
+                using var context = new SleeveDbContext(doc);
+                var repo = new ClashZoneRepository(context, msg =>
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info(msg);
+                });
+
+                var zones = repo.GetSleevesForLevel(levelName, category);
+                
+                if (zones.Count == 0)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[MarkParameterService] ApplyMarksFromDatabase: No sleeves found for level '{levelName}'");
+                    return (0, 0);
+                }
+
+                // ✅ VIEW EXTENT FILTER: If crop box active, filter zones by placement point
+                if (viewExtent != null)
+                {
+                    double minX = viewExtent.Min.X;
+                    double minY = viewExtent.Min.Y;
+                    double maxX = viewExtent.Max.X;
+                    double maxY = viewExtent.Max.Y;
+                    
+                    int beforeCount = zones.Count;
+                    zones = zones.Where(z => 
+                        z.SleevePlacementPointActiveDocumentX >= minX && z.SleevePlacementPointActiveDocumentX <= maxX &&
+                        z.SleevePlacementPointActiveDocumentY >= minY && z.SleevePlacementPointActiveDocumentY <= maxY
+                    ).ToList();
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[MarkParameterService] ApplyMarksFromDatabase: View extent filter: {beforeCount} → {zones.Count} sleeves");
+                }
+
+                if (zones.Count == 0)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[MarkParameterService] ApplyMarksFromDatabase: No sleeves within view extent");
+                    return (0, 0);
+                }
+
+                // 3. Batch write marks in single transaction
+                int currentNumber = startNumber;
+                // isCombinedPass is already defined in outer scope
+                
+                // ✅ OPTIMIZATION: Group by actual element ID to avoid double-marking (Combined/Cluster have multiple zones)
+                // We use a hierarchy for the "active" sleeve ID: Combined > Cluster > Individual
+                var elementGroups = zones.GroupBy(z => {
+                    if (z.CombinedClusterSleeveInstanceId > 0) return z.CombinedClusterSleeveInstanceId;
+                    if (z.ClusterSleeveInstanceId > 0) return z.ClusterSleeveInstanceId;
+                    return z.SleeveInstanceId;
+                }).Where(g => g.Key > 0).ToList();
+
+                // 3. Parallel Calculation Phase: Resolve prefixes and format strings
+                // This is CPU-bound and doesn't use Revit API, so it's safe to parallelize
+                var markAssignments = new System.Collections.Concurrent.ConcurrentDictionary<long, string>();
+                System.Threading.Tasks.Parallel.ForEach(elementGroups, (group, state, index) =>
+                {
+                    long sleeveIdValue = group.Key;
+                    int localNumber = startNumber + (int)index;
+
+                    string numStr = localNumber.ToString().PadLeft(numberFormat.Length, '0');
+                    
+                    string effectiveDiscipline = "";
+                    if (isCombinedPass)
+                    {
+                        effectiveDiscipline = "MEP";
+                    }
+                    else
+                    {
+                        var firstZone = group.First();
+                        string sysType = firstZone.GetParameterValue("System Type") ?? firstZone.GetParameterValue("MEP System Type") ?? "";
+                        string svcType = firstZone.GetParameterValue("Service Type") ?? "";
+                        effectiveDiscipline = settings.GetPrefixForElement(firstZone.MepElementCategory, sysType, svcType);
+                    }
+                    
+                    string markValue = $"{projectPrefix}{effectiveDiscipline}{numStr}";
+                    markAssignments.TryAdd(sleeveIdValue, markValue);
+                });
+
+                // 4. Write Phase: Single-threaded transaction to push data to Revit
+                using (var trans = new Transaction(doc, "Apply Marks"))
+                {
+                    trans.Start();
+                    
+                    foreach (var group in elementGroups)
+                    {
+                        long sleeveIdValue = group.Key;
+                        if (!markAssignments.TryGetValue(sleeveIdValue, out string markValue)) continue;
+
+#if REVIT2024_OR_GREATER
+                        var sleeve = doc.GetElement(new ElementId(sleeveIdValue)) as FamilyInstance;
+#else
+                        var sleeve = doc.GetElement(new ElementId((int)sleeveIdValue)) as FamilyInstance;
+#endif
+                        if (sleeve == null || !sleeve.IsValidObject)
+                        {
+                            errors++;
+                            continue;
+                        }
+
+                        try
+                        {
+                            var markParam = sleeve.LookupParameter("MEP Mark") ?? sleeve.LookupParameter("Mark");
+                            if (markParam != null && !markParam.IsReadOnly && markParam.StorageType == StorageType.String)
+                            {
+                                markParam.Set(markValue);
+                                processed++;
+                            }
+                            else
+                            {
+                                errors++;
+                            }
+                        }
+                        catch
+                        {
+                            errors++;
+                        }
+                    }
+
+                    trans.Commit();
+                }
+
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[MarkParameterService] ApplyMarksFromDatabase: Processed {processed} elements from {zones.Count} zones, Errors {errors}");
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[MarkParameterService] ApplyMarksFromDatabase: {ex.Message}");
+                throw;
+            }
+
+            return (processed, errors);
         }
         
         /// <summary>
@@ -135,9 +348,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 // ✅ DEPLOYMENT MODE: Skip file writes
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    File.AppendAllText(mepmarkLogPath, $"\n===== MEPMARK DEBUG SESSION STARTED {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n");
+                File.AppendAllText(mepmarkLogPath, $"\n===== MEPMARK DEBUG SESSION STARTED {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n");
+                    File.AppendAllText(mepmarkLogPath, $"🔨 BUILD TIME: {buildTime:yyyy-MM-dd HH:mm:ss} (DLL: {Path.GetFileName(assembly.Location)})\n");
                 }
-                File.AppendAllText(mepmarkLogPath, $"🔨 BUILD TIME: {buildTime:yyyy-MM-dd HH:mm:ss} (DLL: {Path.GetFileName(assembly.Location)})\n");
                                 // ✅ DEPLOYMENT MODE: Skip file writes
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
@@ -331,7 +544,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         else if (!remarkAll && !string.IsNullOrEmpty(existingMark))
                         {
                             // Skip - already marked and remark=false
-                            File.AppendAllText(mepmarkLogPath, $"SKIP sleeve {sleeve.Id}: already has mark '{existingMark}' (remark=false)\n");
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                File.AppendAllText(mepmarkLogPath, $"SKIP sleeve {sleeve.Id}: already has mark '{existingMark}' (remark=false)\n");
+                            }
                             continue; // Skip - already marked
                         }
                         else
@@ -757,10 +973,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                clashZone.ClusterSleeveInstanceId > 0 && 
                                                sleeve.Id.IntegerValue == clashZone.ClusterSleeveInstanceId);
                         
-                        File.AppendAllText(mepmarkLogPath, 
-                            $"[INDIVIDUAL-DEBUG] Sleeve {sleeve.Id}: MEP_ID={mepElementId}, " +
-                            $"Category_match={clashZone.MepElementCategory == category} (XML='{clashZone.MepElementCategory}' vs Requested='{category}'), " +
-                            $"isClusterSleeve={isClusterSleeve} (IsClusterResolved={clashZone.IsClusterResolved}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}, SleeveId={sleeve.Id.IntegerValue})\n");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            File.AppendAllText(mepmarkLogPath, 
+                                $"[INDIVIDUAL-DEBUG] Sleeve {sleeve.Id}: MEP_ID={mepElementId}, " +
+                                $"Category_match={clashZone.MepElementCategory == category} (XML='{clashZone.MepElementCategory}' vs Requested='{category}'), " +
+                                $"isClusterSleeve={isClusterSleeve} (IsClusterResolved={clashZone.IsClusterResolved}, ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId}, SleeveId={sleeve.Id.IntegerValue})\n");
+                        }
                         
                         if (!isClusterSleeve)
                         {
@@ -856,7 +1075,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 })
                 .ToList();
 
-            File.AppendAllText(mepmarkLogPath, $"Found {allClusterSleeves.Count} total opening sleeves (after family name filter)\n");
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                File.AppendAllText(mepmarkLogPath, $"Found {allClusterSleeves.Count} total opening sleeves (after family name filter)\n");
+            }
 
             // ✅ CRITICAL FIX: Find cluster sleeves by ClusterInstanceId instead of MEP_ElementId
             // Cluster sleeves don't have a single MEP_ElementId, so we query clash zones by ClusterInstanceId

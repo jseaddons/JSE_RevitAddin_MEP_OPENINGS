@@ -1206,6 +1206,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
             
             return Math.Sqrt(dx * dx + dy * dy + dz * dz);
         }
+
+        /// <summary>
+        /// Gets a parameter value from the captured MEP or Host parameter snapshots
+        /// </summary>
+        public string? GetParameterValue(string key)
+        {
+            var mepMatch = MepParameterValues?.FirstOrDefault(kv => string.Equals(kv.Key, key, StringComparison.OrdinalIgnoreCase));
+            if (mepMatch != null) return mepMatch.Value;
+
+            var hostMatch = HostParameterValues?.FirstOrDefault(kv => string.Equals(kv.Key, key, StringComparison.OrdinalIgnoreCase));
+            if (hostMatch != null) return hostMatch.Value;
+
+            return null;
+        }
     }
 
     /// <summary>

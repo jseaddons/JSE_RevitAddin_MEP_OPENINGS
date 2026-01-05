@@ -182,6 +182,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         private static void WriteDiagnosticLogInternal(string operation, string message, string path, bool success)
         {
+            // ✅ PERFORMANCE: Completely skip diagnostic logging in production mode
+            // This prevents thousands of tiny disk operations on the main thread
+            if (DeploymentConfiguration.DeploymentMode) return;
+
             string diagnosticLogPath = null;
             Exception lastException = null;
             
@@ -255,6 +259,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         private static void WriteDiagnosticLog(string fileName, string message, string logPath, bool success)
         {
+            // ✅ PERFORMANCE: Completely skip diagnostic logging in production mode
+            if (DeploymentConfiguration.DeploymentMode) return;
+            
             string diagnosticLogPath = null;
             Exception lastException = null;
             
@@ -329,22 +336,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ DEPLOYMENT MODE: Disable ALL logging in deployment mode
             if (DeploymentConfiguration.DeploymentMode)
             {
-                // ✅ FIX: Even in deployment mode, write to diagnostic log to track that logging was skipped
-                string logPath = "unknown";
-                try
-                {
-                    if (_logDirectoryInitialized && !string.IsNullOrEmpty(_logDirectory))
-                    {
-                        logPath = Path.Combine(_logDirectory, fileName);
-                    }
-                    else
-                    {
-                        string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                        logPath = Path.Combine(appData, "JSE_MEP_Openings", "Logs", fileName);
-                    }
-                }
-                catch { }
-                WriteDiagnosticLog(fileName, message, logPath, false); // Log skipped attempt
                 return; // Skip all file writes in deployment mode
             }
             

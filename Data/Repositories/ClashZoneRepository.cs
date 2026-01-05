@@ -853,7 +853,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             MepRotationAngleRad REAL,
                             MepRotationAngleDeg REAL,
                             MepOrientationDirection TEXT,
-                            StructuralThickness REAL
+                            StructuralThickness REAL,
+                            ElevationFromLevel REAL
                         )";
                     cmd.ExecuteNonQuery();
                     cmd.CommandText = "DELETE FROM BulkUpdateZones";
@@ -870,8 +871,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                     // 3. Insert update data into Temp Table
                     cmd.CommandText = @"
-                        INSERT INTO BulkUpdateZones (ClashZoneId, IsResolvedFlag, IsClusterResolvedFlag, IsCombinedResolved, SleeveInstanceId, ClusterInstanceId, MepParameterValuesJson, HostParameterValuesJson, WallCenterlinePointX, WallCenterlinePointY, WallCenterlinePointZ, MepOrientationX, MepOrientationY, MepOrientationZ, MepRotationAngleRad, MepRotationAngleDeg, MepOrientationDirection, StructuralThickness) 
-                        VALUES (@ClashZoneId, @IsResolvedFlag, @IsClusterResolvedFlag, @IsCombinedResolved, @SleeveInstanceId, @ClusterInstanceId, @MepParameterValuesJson, @HostParameterValuesJson, @WallCenterlinePointX, @WallCenterlinePointY, @WallCenterlinePointZ, @MepOrientationX, @MepOrientationY, @MepOrientationZ, @MepRotationAngleRad, @MepRotationAngleDeg, @MepOrientationDirection, @StructuralThickness)";
+                        INSERT INTO BulkUpdateZones (ClashZoneId, IsResolvedFlag, IsClusterResolvedFlag, IsCombinedResolved, SleeveInstanceId, ClusterInstanceId, MepParameterValuesJson, HostParameterValuesJson, WallCenterlinePointX, WallCenterlinePointY, WallCenterlinePointZ, MepOrientationX, MepOrientationY, MepOrientationZ, MepRotationAngleRad, MepRotationAngleDeg, MepOrientationDirection, StructuralThickness, ElevationFromLevel) 
+                        VALUES (@ClashZoneId, @IsResolvedFlag, @IsClusterResolvedFlag, @IsCombinedResolved, @SleeveInstanceId, @ClusterInstanceId, @MepParameterValuesJson, @HostParameterValuesJson, @WallCenterlinePointX, @WallCenterlinePointY, @WallCenterlinePointZ, @MepOrientationX, @MepOrientationY, @MepOrientationZ, @MepRotationAngleRad, @MepRotationAngleDeg, @MepOrientationDirection, @StructuralThickness, @ElevationFromLevel)";
 
                     var pId = cmd.Parameters.Add("@ClashZoneId", System.Data.DbType.Int32);
                     var pRes = cmd.Parameters.Add("@IsResolvedFlag", System.Data.DbType.Int32);
@@ -891,6 +892,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     var pRotDeg = cmd.Parameters.Add("@MepRotationAngleDeg", System.Data.DbType.Double);
                     var pDir = cmd.Parameters.Add("@MepOrientationDirection", System.Data.DbType.String);
                     var pStructThick = cmd.Parameters.Add("@StructuralThickness", System.Data.DbType.Double);
+                    var pElevFromLevel = cmd.Parameters.Add("@ElevationFromLevel", System.Data.DbType.Double);
 
                     foreach (var zone in validZones)
                     {
@@ -915,6 +917,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         pRotDeg.Value = zone.MepElementRotationAngle * 180.0 / Math.PI; // Convert to degrees
                         pDir.Value = zone.MepElementOrientationDirection ?? string.Empty;
                         pStructThick.Value = zone.StructuralElementThickness; // ✅ CRITICAL FIX: Ensure thickness is updated
+                        pElevFromLevel.Value = zone.ElevationFromLevel; // ✅ CRITICAL FIX: Persist MEP element's Elevation from Level during refresh
                         cmd.ExecuteNonQuery();
                     }
 
@@ -939,6 +942,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             MepRotationAngleDeg = (SELECT MepRotationAngleDeg FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
                             MepOrientationDirection = (SELECT MepOrientationDirection FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
                             StructuralThickness = (SELECT StructuralThickness FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
+                            ElevationFromLevel = (SELECT ElevationFromLevel FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
                             UpdatedAt = CURRENT_TIMESTAMP
                         WHERE ClashZoneId IN (SELECT ClashZoneId FROM BulkUpdateZones)";
                     cmd.ExecuteNonQuery();
@@ -1796,7 +1800,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         MepWidth, MepHeight,
                         MepElementOuterDiameter, MepElementNominalDiameter,
                         MepElementTypeName, MepElementFamilyName, MepElementSizeParameterValue,
-                        MepElementLevelName, MepElementLevelElevation,
+                        MepElementLevelName, MepElementLevelElevation, ElevationFromLevel,
                         StructuralThickness, WallThickness, FramingThickness,
                         IsInsulated, InsulationThickness,
                         HasMepConnector, DamperConnectorSide,
@@ -1825,7 +1829,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                         sql.Append($"(@G{j}, @C{j}, @M{j}, @H{j}, @IX{j}, @IY{j}, @IZ{j}, @WX{j}, @WY{j}, @WZ{j}, " +
                                    $"@CAT{j}, @ST{j}, @MW{j}, @MH{j}, @OD{j}, @ND{j}, @TN{j}, @FN{j}, @SP{j}, " +
-                                   $"@LN{j}, @LE{j}, @STH{j}, @WTH{j}, @FTH{j}, @INS{j}, @INSTH{j}, @CONN{j}, @CONNSIDE{j}, " +
+                                   $"@LN{j}, @LE{j}, @EFL{j}, @STH{j}, @WTH{j}, @FTH{j}, @INS{j}, @INSTH{j}, @CONN{j}, @CONNSIDE{j}, " +
                                    $"@SDK{j}, @HDK{j}, @UID{j}, @HO{j}, @MOD{j}, @MOX{j}, @MOY{j}, @MOZ{j}, " +
                                    $"@MRAR{j}, @MRAD{j}, @MAXR{j}, @MAXD{j}, @MAYR{j}, @MAYD{j}, " +
                                    $"@MPJ{j}, @HPJ{j}, @MSA{j}, @MFS{j}, @ISD{j}, 1, 1, @T{j})");
@@ -1852,6 +1856,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         cmd.Parameters.AddWithValue($"@SP{j}", zone.MepElementSizeParameterValue ?? string.Empty);
                         cmd.Parameters.AddWithValue($"@LN{j}", zone.MepElementLevelName ?? string.Empty);
                         cmd.Parameters.AddWithValue($"@LE{j}", zone.MepElementLevelElevation);
+                        cmd.Parameters.AddWithValue($"@EFL{j}", zone.ElevationFromLevel); // ✅ CRITICAL FIX: Persist MEP element's Elevation from Level during refresh
                         // ✅ STRUCTURAL THICKNESS FIX: Use actual thickness (required for cluster depth calculation on floors)
                         cmd.Parameters.AddWithValue($"@STH{j}", zone.StructuralElementThickness); 
                         cmd.Parameters.AddWithValue($"@WTH{j}", zone.WallThickness);
@@ -6251,17 +6256,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
             clashZone.SleeveInstanceId = GetInt(reader, "SleeveInstanceId", -1);
             clashZone.ClusterSleeveInstanceId = GetInt(reader, "ClusterInstanceId", -1);
+            clashZone.CombinedClusterSleeveInstanceId = GetInt(reader, "CombinedClusterSleeveInstanceId", -1);
             clashZone.AfterClusterSleevePlacedSleeveInstanceId = GetInt(reader, "AfterClusterSleeveId", -1);
 
             clashZone.SleeveWidth = GetDouble(reader, "SleeveWidth");
             clashZone.SleeveHeight = GetDouble(reader, "SleeveHeight");
             clashZone.SleeveDiameter = GetDouble(reader, "SleeveDiameter");
 
-            // ✅ DIRECT LOGGING: Always log sleeve dimensions being loaded for duct accessories
+            /* ✅ PERFORMANCE: Removed high-frequency logging from MapClashZone
             if (string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
             {
                 SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [DB-LOAD-SLEEVE] Zone {clashZone.Id}: SleeveWidth={clashZone.SleeveWidth:F6}ft ({clashZone.SleeveWidth * 304.8:F1}mm), SleeveHeight={clashZone.SleeveHeight:F6}ft ({clashZone.SleeveHeight * 304.8:F1}mm), SleeveDiameter={clashZone.SleeveDiameter:F6}ft ({clashZone.SleeveDiameter * 304.8:F1}mm)\n");
             }
+            */
 
             clashZone.IntersectionPoint = new XYZ(
                 GetDouble(reader, "IntersectionX"),
@@ -6338,6 +6345,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             // ✅ REFERENCE LEVEL: Load MEP element Reference Level (used for Schedule Level and Bottom of Opening calculation)
             clashZone.MepElementLevelName = GetNullableString(reader, "MepElementLevelName") ?? string.Empty;
             clashZone.MepElementLevelElevation = GetDouble(reader, "MepElementLevelElevation", 0.0);
+            clashZone.ElevationFromLevel = GetDouble(reader, "ElevationFromLevel", 0.0);
 
             // ✅ DIAGNOSTIC: Log level elevation loading for debugging (especially for dampers)
             if (!DeploymentConfiguration.DeploymentMode && !string.IsNullOrWhiteSpace(clashZone.MepElementLevelName))
@@ -6466,12 +6474,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             // ✅ SIZE PARAMETER VALUE: Load Size parameter value as string for snapshot table and parameter transfer
             clashZone.MepElementSizeParameterValue = GetNullableString(reader, "MepElementSizeParameterValue") ?? string.Empty;
 
-            // ✅ DIRECT LOGGING: Always log MEP dimensions being loaded for duct accessories
+            /* ✅ PERFORMANCE: Removed high-frequency logging from MapClashZone
             if (string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
             {
                 _logger($"[DB-LOAD-DEBUG] Zone {clashZone.Id}: Loaded MepWidth={clashZone.MepElementWidth:F6}ft ({clashZone.MepElementWidth * 304.8:F1}mm), MepHeight={clashZone.MepElementHeight:F6}ft ({clashZone.MepElementHeight * 304.8:F1}mm)");
                 SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [DB-LOAD-MEP] Zone {clashZone.Id}: MepWidth={clashZone.MepElementWidth:F6}ft ({clashZone.MepElementWidth * 304.8:F1}mm), MepHeight={clashZone.MepElementHeight:F6}ft ({clashZone.MepElementHeight * 304.8:F1}mm)\n");
             }
+            */
 
             clashZone.SleeveFamilyName = GetNullableString(reader, "SleeveFamilyName") ?? string.Empty;
             clashZone.SourceDocKey = GetNullableString(reader, "SourceDocKey") ?? string.Empty;
@@ -8463,6 +8472,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 Corner4Y = reader.IsDBNull(reader.GetOrdinal("Corner4Y")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("Corner4Y")),
                 Corner4Z = reader.IsDBNull(reader.GetOrdinal("Corner4Z")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("Corner4Z")),
                 RotationAngleDeg = reader.IsDBNull(reader.GetOrdinal("RotationAngleDeg")) ? (double?)null : reader.GetDouble(reader.GetOrdinal("RotationAngleDeg")),
+                ElevationFromLevel = reader.IsDBNull(reader.GetOrdinal("ElevationFromLevel")) ? 0.0 : reader.GetDouble(reader.GetOrdinal("ElevationFromLevel")),
 
                 // Map Host Info
                 HostType = reader.IsDBNull(reader.GetOrdinal("HostType")) ? string.Empty : reader.GetString(reader.GetOrdinal("HostType")),
@@ -8692,7 +8702,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             using (var cmd = _context.Connection.CreateCommand())
             {
                 cmd.CommandText = sql;
-                cmd.Parameters.AddWithValue("@guid", clashZoneGuid.ToString().ToUpperInvariant());
+                cmd.Parameters.AddWithValue("@guid", clashZoneGuid.ToString());
 
                 using (var reader = cmd.ExecuteReader())
                 {
@@ -8704,6 +8714,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             }
             return null;
         }
+
+
+
+
 
 
 
@@ -8797,6 +8811,81 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 _logger($"[SQLite] ❌ Error in ResetResolvedFlagsInSectionBox: {ex.Message}");
                 return 0;
             }
+        }
+
+        /// <summary>
+        /// ✅ SIMPLIFIED MARKS: Get placed sleeves for a specific level (by MepElementLevelName)
+        /// Used for per-sheet mark numbering - returns sleeves on the specified floor level
+        /// </summary>
+        public List<ClashZone> GetSleevesForLevel(string levelName, string? category = null)
+        {
+            var result = new List<ClashZone>();
+            if (string.IsNullOrWhiteSpace(levelName))
+            {
+                _logger("[SQLite] GetSleevesForLevel: levelName is null or empty");
+                return result;
+            }
+
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    // Build SQL - filter by level and optionally by category
+                    // ✅ COMBINED HANDLING:
+                    // If category is "Combined", only return zones part of a combined sleeve
+                    // If category is specific (e.g. Ducts), exclude zones part of a combined sleeve
+                    var sql = @"SELECT * FROM ClashZones 
+                                WHERE MepElementLevelName = @LevelName 
+                                AND SleeveInstanceId > 0";
+                    
+                    bool isCombinedQuery = category != null && category.Equals("Combined", StringComparison.OrdinalIgnoreCase);
+
+                    if (isCombinedQuery)
+                    {
+                        sql += " AND CombinedClusterSleeveInstanceId > 0";
+                    }
+                    else if (!string.IsNullOrWhiteSpace(category))
+                    {
+                        sql += " AND MepCategory = @Category AND (CombinedClusterSleeveInstanceId IS NULL OR CombinedClusterSleeveInstanceId <= 0)";
+                    }
+                    else
+                    {
+                        // Default: All individual/cluster sleeves, exclude combined
+                        sql += " AND (CombinedClusterSleeveInstanceId IS NULL OR CombinedClusterSleeveInstanceId <= 0)";
+                    }
+                    
+                    sql += " ORDER BY MepCategory, ClashZoneId";
+                    
+                    cmd.CommandText = sql;
+                    cmd.Parameters.AddWithValue("@LevelName", levelName);
+                    
+                    if (!isCombinedQuery && !string.IsNullOrWhiteSpace(category))
+                    {
+                        cmd.Parameters.AddWithValue("@Category", category);
+                    }
+
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            var zone = MapClashZone(reader);
+                            if (zone != null)
+                            {
+                                result.Add(zone);
+                            }
+                        }
+                    }
+                }
+
+                _logger($"[SQLite] GetSleevesForLevel: Found {result.Count} sleeves for level '{levelName}'" + 
+                       (category != null ? $" category '{category}'" : ""));
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ❌ Error in GetSleevesForLevel: {ex.Message}");
+            }
+
+            return result;
         }
     }
 }

@@ -5550,6 +5550,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             existingZone.RequiredClearance = CalculateRequiredClearance(existingZone.MepElementSize);
             existingZone.MepElementGeometryHash = CalculateElementGeometryHash(mepElement);
             existingZone.StructuralElementGeometryHash = CalculateElementGeometryHash(structuralElement);
+
+            // ✅ ENRICHMENT UPDATE: Update level and elevation info for existing zones (Refresh Phase)
+            // This ensures the database column 'ElevationFromLevel' is populated even for old zones
+            try
+            {
+                var (levelName, levelElevation, capturedElevationFromLevel) = GetMepElementLevelInfo(mepElement);
+                existingZone.MepElementLevelName = levelName;
+                existingZone.MepElementLevelElevation = levelElevation;
+                existingZone.ElevationFromLevel = capturedElevationFromLevel;
+                
+                var (mepWidth, mepHeight) = GetMepElementDimensions(mepElement, mepParamDict);
+                var ductShape = GetDuctShape(mepElement);
+                double pipeNominalDiameter = 0;
+                if (mepElement is Pipe pipeElement)
+                {
+                    var nomDiamParam = pipeElement.get_Parameter(BuiltInParameter.RBS_PIPE_DIAMETER_PARAM);
+                    if (nomDiamParam != null) pipeNominalDiameter = nomDiamParam.AsDouble();
+                }
+
+                existingZone.MepElementFormattedSize = GetMepElementSizeString(mepElement, mepWidth, mepHeight, ductShape, pipeNominalDiameter);
+                existingZone.MepElementSizeParameterValue = GetMepElementSizeParameterValue(mepElement);
+                existingZone.MepElementSystemAbbreviation = GetMepSystemAbbreviation(mepElement);
+            }
+            catch (Exception ex)
+            {
+                _log($"[WARNING] Failed to update enrichment data for zone {existingZone.Id}: {ex.Message}");
+            }
             
             // ✅ STAGE 1 (REFRESH): Capture MEP and Host parameters using ParameterSnapshotService
             // This ensures existing ClashZones also get parameter snapshots updated during refresh

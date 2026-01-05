@@ -63,6 +63,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// </summary>
         public bool ActiveViewOnly { get; set; } = false;
 
+        /// <summary>
+        /// ✅ NEW: Starting number for sequential numbering (default: 1)
+        /// </summary>
+        public int StartNumber { get; set; } = 1;
+
+
         
         /// <summary>
         /// ✅ NEW: System Type overrides for Ducts (System Type → Prefix mapping)

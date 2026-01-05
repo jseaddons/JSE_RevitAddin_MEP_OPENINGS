@@ -69,6 +69,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.Button _transferParametersButton = null!;
         private WinForms.Button _closeButton = null!;
         private WinForms.CheckBox _activeViewOnlyCheckBox = null!;
+        private WinForms.TextBox _startNumberTextBox = null!;
 
         public ParameterServiceDialogV2(Document document, UIDocument uiDocument)
         {
@@ -305,6 +306,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             _numberFormatLockButton.Click += (s, e) => ToggleLock(_numberFormatLockButton, _numberFormatCombo);
             _leftPrefixPanel.Controls.Add(_numberFormatLockButton);
+            yPos += 35;
+
+            // Start Number
+            var startNumberLabel = new WinForms.Label
+            {
+                Text = "Start Number:",
+                Location = new Point(10, yPos),
+                Size = new Size(100, 20)
+            };
+            _leftPrefixPanel.Controls.Add(startNumberLabel);
+
+            _startNumberTextBox = new WinForms.TextBox
+            {
+                Location = new Point(120, yPos - 2),
+                Size = new Size(120, 22),
+                Text = "1" // Default to 1
+            };
+            _leftPrefixPanel.Controls.Add(_startNumberTextBox);
             yPos += 35;
 
             // Section Title
@@ -1902,6 +1921,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     var cableTrayPrefix = _cableTrayPrefixTextBox.Text.Trim();
                     var damperPrefix = _damperPrefixTextBox.Text.Trim();
                     
+                    int startNum = 1;
+                    int.TryParse(_startNumberTextBox.Text, out startNum);
+
                     var markPrefixes = new Models.MarkPrefixSettings
                     {
                         ProjectPrefix = projectPrefix,
@@ -1911,7 +1933,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         DamperPrefix = damperPrefix,
                         NumberFormat = numberFormat,
                         // ✅ OPTIMIZATION: Pass Active View Only flag to service
-                        ActiveViewOnly = _activeViewOnlyCheckBox.Checked
+                        ActiveViewOnly = _activeViewOnlyCheckBox.Checked,
+                        StartNumber = startNum
                     };
 
                     // Sync remark checkboxes so MarkParameterCommand honours the user's selection
@@ -1946,32 +1969,57 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         if (!string.IsNullOrWhiteSpace(systemType))
                         {
                             markPrefixes.DuctSystemTypeOverrides[systemType] = prefix ?? string.Empty;
+                            markPrefixes.PipeSystemTypeOverrides[systemType] = prefix ?? string.Empty;
+                            markPrefixes.DuctAccessoriesSystemTypeOverrides[systemType] = prefix ?? string.Empty;
                         }
                     }
                     
                     // Debug: Log the prefix values being used
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Apply Marks - Project: '{projectPrefix}', Duct: '{ductPrefix}', Pipe: '{pipePrefix}', CableTray: '{cableTrayPrefix}', Damper: '{damperPrefix}', Format: '{numberFormat}'\n");
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Apply Marks - Project: '{projectPrefix}', Duct: '{ductPrefix}', Pipe: '{pipePrefix}', CableTray: '{cableTrayPrefix}', Damper: '{damperPrefix}', Format: '{numberFormat}', Start: {startNum}\n");
                     
                     // ✅ PERFORMANCE MONITORING: Track Apply Marks performance
                     int totalProcessed = 0;
                     using (var perfMonitor = new ParameterOperationPerformanceMonitor("Apply Marks"))
                     {
-                    // Apply Marks: Mark ALL sleeves regardless of checkbox state
-                    // remarkAll=false means skip sleeves that already have marks
-                    var cmd = new MarkParameterCommand("ALL", projectPrefix, "", false, markPrefixes);
-                    cmd.Execute(_uiDocument.Application);
+                        if (markPrefixes.ActiveViewOnly && _document != null)
+                        {
+                            // ✅ BIM 360 OPTIMIZATION: Per-sheet numbering using database-driven logic
+                            var markService = new Services.MarkParameterService(null, msg => { if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info(msg); });
+                            
+                            // Pass 1: Individual Disciplines
+                            var disciplineCategories = new[] { "Ducts", "Pipes", "Cable Trays", "Duct Accessories" };
+                            foreach (var cat in disciplineCategories)
+                            {
+                                // Only process categories that have their remark checkbox enabled
+                                if (!markPrefixes.GetRemarkFlag(cat)) continue;
+
+                                var (processed, errors) = markService.ApplyMarksFromDatabase(_document, markPrefixes, cat);
+                                totalProcessed += processed;
+                            }
+
+                            // Pass 2: Combined Sleeves (Pseudo-category "Combined")
+                            // Uses "MEP" as discipline prefix and starts from 001
+                            var (combinedProcessed, combinedErrors) = markService.ApplyMarksFromDatabase(_document, markPrefixes, "Combined");
+                            totalProcessed += combinedProcessed;
+                        }
+                        else
+                        {
+                            // Legacy logic: Mark ALL sleeves regardless of checkbox state (using old command)
+                            var cmd = new MarkParameterCommand("ALL", projectPrefix, "", false, markPrefixes);
+                            cmd.Execute(_uiDocument.Application);
+
+                            // Get total sleeves count for performance monitoring
+                            totalProcessed = new FilteredElementCollector(_document)
+                                .OfClass(typeof(FamilyInstance))
+                                .Cast<FamilyInstance>()
+                                .Where(fi => {
+                                    var famName = fi.Symbol?.Family?.Name ?? string.Empty;
+                                    return famName.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0
+                                        || famName.IndexOf("OpeningOnSlab", StringComparison.OrdinalIgnoreCase) >= 0;
+                                })
+                                .Count();
+                        }
                         
-                        // Get total sleeves count for performance monitoring
-                        var allSleeves = new FilteredElementCollector(_document)
-                            .OfClass(typeof(FamilyInstance))
-                            .Cast<FamilyInstance>()
-                            .Where(fi => {
-                                var famName = fi.Symbol?.Family?.Name ?? string.Empty;
-                                return famName.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0
-                                    || famName.IndexOf("OpeningOnSlab", StringComparison.OrdinalIgnoreCase) >= 0;
-                            })
-                            .Count();
-                        totalProcessed = allSleeves;
                         perfMonitor.SetItemCount(totalProcessed);
                     }
                     

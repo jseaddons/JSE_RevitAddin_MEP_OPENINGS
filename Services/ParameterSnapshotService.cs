@@ -27,7 +27,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             "MEP System Name", "MEP System Abbreviation", "MEP System Type", "MEP System Classification",
             "MEP Size",
             "Width", "Height", "Diameter", "Size",
-            "Level", "Offset",
+            "Level", "Offset", "Elevation from Level",
             "Insulation Thickness",
             
             // Host essentials  
@@ -55,6 +55,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             "Reference Level",
             "Schedule of Level",
             "Schedule Level", // alias for schedule of level
+            "Elevation from Level", // ✅ CRITICAL: Required for BOO calculation
             "Size",           // ✅ CRITICAL: Size must always be captured for MEP elements
             "Service Type",    // ✅ CRITICAL: For Cable Trays
             "Fire Rating"     // ✅ CRITICAL: User requested for Host Walls
@@ -63,7 +64,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private static readonly ISet<string> _commonMepKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "Size","Diameter","Nominal Diameter","Outside Diameter","Width","Height",
-            "Reference Level","Level","Schedule Level","Schedule of Level","Reference Level Elevation",
+            "Reference Level","Level","Schedule Level","Schedule of Level","Reference Level Elevation","Elevation from Level",
             "System Type","System Name","System Classification","Service Type","System Abbreviation",
             "MEP System Type","MEP System Name","MEP System Abbreviation","MEP Size"
         };
@@ -350,6 +351,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         var testValue = ConvertParameterToStringLegacy(element, p);
                         DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Schedule of Level fallback found, value = '{testValue}'\n");
+                    }
+                }
+                
+                // ✅ CRITICAL FIX: Special fallback for "Elevation from Level" parameter
+                // This is the MEP element's offset from its Reference Level - required for Bottom of Opening calculation
+                if (p == null && key.Equals("Elevation from Level", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Try built-in parameter first (most reliable)
+                    p = element.get_Parameter(BuiltInParameter.INSTANCE_ELEVATION_PARAM);
+                    
+                    // Try common parameter name variations
+                    if (p == null)
+                    {
+                        p = element.LookupParameter("Elevation from Level") ??
+                            element.LookupParameter("Offset") ??
+                            element.LookupParameter("Middle Elevation");
+                    }
+                    
+                    if (!DeploymentConfiguration.DeploymentMode && p != null && OptimizationFlags.UseDiagnosticMode)
+                    {
+                        var testValue = ConvertParameterToStringLegacy(element, p);
+                        DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] Element {element.Id} ({element.Category?.Name}): Elevation from Level fallback found, value = '{testValue}'\n");
                     }
                 }
                 
