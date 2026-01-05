@@ -386,11 +386,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
         {
             try
             {
-                // Note: In FlagManagerService, _repository is injected, but we might want to use a fresh context/repo 
-                // for thread safety or independent transaction if called from orchestrator.
-                // However, referencing the existing `_repository` is preferred if it supports what we need.
-                // But `_repository` is scoped to the context passed in constructor.
-                // The legacy code created a NEW context. 
                 // Let's try to use `_repository` first. If `GetClashZonesByCategory` works, great.
                 
                 var persistedZones = _repository.GetClashZonesByCategory(category);

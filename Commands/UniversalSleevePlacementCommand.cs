@@ -43,6 +43,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
         private readonly IUiStateProvider? _uiStateProvider;
         private readonly IFileNameNormalizer? _fileNameNormalizer;
         private readonly ISectionBoxChecker? _sectionBoxChecker;
+        private readonly Dictionary<Guid, SleevePlacementPlanningDto>? _externalPlanningMap;
         
         // ✅ PERFORMANCE: Properties to expose placement counts
         public int PlacedCount { get; private set; }
@@ -62,7 +63,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             IDocumentValidator? documentValidator = null,
             IUiStateProvider? uiStateProvider = null,
             IFileNameNormalizer? fileNameNormalizer = null,
-            ISectionBoxChecker? sectionBoxChecker = null)
+            ISectionBoxChecker? sectionBoxChecker = null,
+            Dictionary<Guid, SleevePlacementPlanningDto>? externalPlanningMap = null)
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _clashZones = clashZones ?? throw new ArgumentNullException(nameof(clashZones));
@@ -94,6 +96,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
             
             // ✅ NEW: Store clearance settings for direct UI access
             _clearanceSettings = clearanceSettings ?? new Dictionary<string, double>();
+            _externalPlanningMap = externalPlanningMap;
             
             DebugLogger.Info($"{_logPrefix} Constructor: Received {_clearanceSettings.Count} clearance settings from UI");
             foreach (var kvp in _clearanceSettings)
@@ -205,8 +208,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 if (_clashZones == null || _clashZones.Count == 0)
                 {
                     DebugLogger.Warning($"{_logPrefix} ⚠️ No clash zones available for placement. Ensure Refresh completed successfully and data was saved.");
-                    TaskDialog.Show("No Clash Zones",
-                        "No clash zones were found for this category. Please run Refresh before placing sleeves.");
                     return;
                 }
                 
@@ -221,354 +222,139 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     return;
                 }
 
-                // ---- 2. VALIDATION: Family validation removed per user request ----
-                // Old families no longer needed - using universal opening families only
-                
-                // ---- 3. SINGLE TRANSACTION: All sleeve placement ----
-                // NO MEP element collection needed - all data is in ClashZone from refresh!
-                DebugLogger.Info($"{_logPrefix} Starting placement for {_clashZones.Count} clash zones (zero linked file access)");
-                
-                // ✅ CRITICAL DEBUG: Log zone count BEFORE filtering
-                var debugLogPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
-                try 
-                { 
-                    // ✅ DEPLOYMENT MODE: Skip file writes
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 BEFORE FILTERING: {_clashZones.Count} zones loaded\n");
-                        if (_clashZones.Count > 0)
-                        {
-                            var first = _clashZones.First();
-                            File.AppendAllText(debugLogPath, $"[{DateTime.Now:HH:mm:ss}] Sample: ID={first.Id}, Category='{first.MepElementCategory}', HostType='{first.StructuralElementType}', SourceDoc='{first.SourceDocKey}', HostDoc='{first.StructuralElementDocumentTitle}'\n");
-                        }
-                    }
-                } 
-                catch { }
-                using (var t = new Transaction(_doc, $"Place {_category} Sleeves"))
+                // ---- 3. PLACEMENT LOGIC ----
+                // Check if we already have an active transaction (from Orchestrator)
+                if (_doc.IsModifiable)
                 {
-                    if (t.Start() == TransactionStatus.Started)
+                    DebugLogger.Info($"{_logPrefix} Document is already modifiable - executing within existing transaction");
+                    PerformPlacement();
+                }
+                else
+                {
+                    using (var t = new Transaction(_doc, $"Place {_category} Sleeves"))
                     {
-                        // Set failure handler to auto-resolve warnings
-                        var options = t.GetFailureHandlingOptions();
-                        options.SetFailuresPreprocessor(new UniversalWarningSwallower());
-                        t.SetFailureHandlingOptions(options);
-                        DebugLogger.Info($"{_logPrefix} Transaction started with UniversalWarningSwallower enabled");
-                        
-                    // ✅ RESPECT MASTER SWITCH: Do NOT override MasterSwitch.DiagnosticLogging setting
-                    // MasterSwitch.DiagnosticLogging is set in Application.cs and should be respected
-                    // Removed hardcoded overrides: OptimizationFlags.UseDiagnosticMode = true; DeploymentConfiguration.DeploymentMode = false;
-                    // Now respects: MasterSwitch.DiagnosticLogging = false → DeploymentMode = true (minimal logging)
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"{_logPrefix} ✅ Diagnostic Mode: UseDiagnosticMode={OptimizationFlags.UseDiagnosticMode}, DeploymentMode={DeploymentConfiguration.DeploymentMode}");
-                    }
-
-                    // Place all sleeves in single transaction (zero linked file access!)
-                        // 🛡️ ARCHITECTURE FIX: Apply comprehensive filtering before placement
-                        // This ensures sleeves are only placed for:
-                        // 1. Correct MEP category (Pipes, Ducts, etc.)
-                        // 2. Selected host types (Floors vs Walls)
-                        // 3. Selected reference linked files
-                        // 4. Selected host linked files
-                        // 5. Within active 3D section box
-                    // ✅ SOLID REFACTORING: FilterClashZonesByAllCriteria is still inline (200+ lines)
-                    // TODO: Extract to IClashZoneFilterService when UseRefactoredCommandServices is enabled
-                    // For now, using inline method for backward compatibility
-                    var filteredClashZones = FilterClashZonesByAllCriteria(_clashZones);
-
-                    // ✅ REFACTORED: Apply strict hierarchical filtering as per user request
-                    // Logic: IsCurrentClash -> IsCombinedResolved -> IsClusterResolved -> IsResolved
-                    // "if combined resolved is true skip... if clusterresolved is true skip... if resolved is true skip... else process"
-                    if (OptimizationFlags.UseRefactoredClashZoneFlagServices)
-                    {
-                        if (!DeploymentConfiguration.DeploymentMode)
+                        if (t.Start() == TransactionStatus.Started)
                         {
-                            DebugLogger.Info($"{_logPrefix} 🔍 Applying STRICT filtering (Refactored Logic): IsCurrentClash -> IsCombined -> IsCluster -> IsResolved");
-                        }
-                        
-                        // Keep only zones that pass the strict gauntlet
-                        filteredClashZones = filteredClashZones?.Where(cz => 
-                        {
-                            // 1. Must be a current clash
-                            if (!cz.IsCurrentClash) return false;
+                            var options = t.GetFailureHandlingOptions();
+                            options.SetFailuresPreprocessor(new UniversalWarningSwallower());
+                            t.SetFailureHandlingOptions(options);
                             
-                            // 2. Must NOT be resolved (hierarchy)
-                            if (cz.IsCombinedResolved) return false;
-                            if (cz.IsClusterResolved) return false;
-                            if (cz.IsResolved) return false;
+                            PerformPlacement();
                             
-                            return true;
-                        }).ToList();
-                    }
-
-                    // ✅ CRITICAL FIX: Check if there are any eligible (unresolved) clash zones BEFORE starting transaction
-                    int total = filteredClashZones?.Count ?? 0;
-                    // Note: With strict filtering, isRes and isCluster will likely be 0 in this list
-                    int isRes = filteredClashZones?.Count(cz => cz.IsResolved) ?? 0;
-                    int isCluster = filteredClashZones?.Count(cz => cz.IsClusterResolved) ?? 0;
-                    int eligible = filteredClashZones?.Count(cz => !cz.IsResolved && !cz.IsClusterResolved) ?? 0;
-                    
-                    // Log eligibility vs flags before calling placement
-                    try
-                    {
-                        var eligLog = new System.Text.StringBuilder();
-                        eligLog.AppendLine($"[{DateTime.Now}] [PLACEMENT-ELIGIBILITY] Total={total}, IsResolved={isRes}, IsClusterResolved={isCluster}, Eligible={eligible}");
-                        foreach (var cz in filteredClashZones.Take(50))
-                        {
-                            eligLog.AppendLine($"  CZ {cz.Id} Flags: IsResolved={cz.IsResolved}, IsClusterResolved={cz.IsClusterResolved}, SleeveId={cz.SleeveInstanceId}, ClusterSleeveId={cz.ClusterSleeveInstanceId}");
-                        }
-                        string eligLogPath = SafeFileLogger.GetLogFilePath("placement_eligibility.log");
-                        System.IO.File.AppendAllText(eligLogPath, eligLog.ToString());
-                    }
-                    catch { }
-                    
-                    // ✅ CRITICAL FIX: Show message and return early if no eligible zones
-                    if (eligible == 0)
-                    {
-                        string message;
-                        if (total == 0)
-                        {
-                            message = $"No clash zones found for {_category}.\nPlease run Refresh before placing sleeves.";
-                        }
-                        else if (isRes > 0 || isCluster > 0)
-                        {
-                            message = $"No new clash zones found for placing {_category} sleeves.\nAll {total} clash zone(s) are already resolved (sleeves already placed).";
-                        }
-                        else
-                        {
-                            message = $"No eligible clash zones found for {_category}.\nAll clash zones were filtered out (check section box, file selections, or host type filters).";
-                        }
-                        
-                        DebugLogger.Info($"{_logPrefix} ⚠️ {message}");
-                        TaskDialog.Show("No Sleeves to Place", message);
-                        t.RollBack();
-                        return;
-                    }
-                        
-                        // Log how many zones are about to be processed for placement
-                        try 
-                        { 
-                            string runLogPath = SafeFileLogger.GetLogFilePath("placement_run.log");
-                            System.IO.File.AppendAllText(runLogPath, $"[{DateTime.Now}] CALL PlaceAllSleevesInTransaction: filtered={filteredClashZones?.Count ?? 0}\n"); 
-                        } 
-                        catch { }
-
-                        // ✅ PATH DETERMINATION: Determine placement path (PATH 1 vs PATH 2/3)
-                        SleevePlacementPath placementPath;
-                        if (OptimizationFlags.UseRefactoredCommandServices && _pathDeterminer != null)
-                        {
-                            // Convert clearance settings for path determiner
-                            Dictionary<string, double>? clearanceDict = null;
-                            if (_conditions?.ClearanceSettings != null)
+                            var status = t.Commit();
+                            if (status == TransactionStatus.Committed)
                             {
-                                clearanceDict = new Dictionary<string, double>();
-                                var cs = _conditions.ClearanceSettings;
-                                if (cs.RectangularNormal > 0) clearanceDict["RectangularNormal"] = cs.RectangularNormal;
-                                if (cs.RectangularInsulated > 0) clearanceDict["RectangularInsulated"] = cs.RectangularInsulated;
-                                if (cs.RoundNormal > 0) clearanceDict["RoundNormal"] = cs.RoundNormal;
-                                if (cs.RoundInsulated > 0) clearanceDict["RoundInsulated"] = cs.RoundInsulated;
-                                if (cs.PipesNormal > 0) clearanceDict["PipesNormal"] = cs.PipesNormal;
-                                if (cs.PipesInsulated > 0) clearanceDict["PipesInsulated"] = cs.PipesInsulated;
-                                if (cs.CableTrayTop > 0) clearanceDict["CableTrayTop"] = cs.CableTrayTop;
-                                if (cs.CableTrayOther > 0) clearanceDict["CableTrayOther"] = cs.CableTrayOther;
-                            }
-                            placementPath = _pathDeterminer.DeterminePath(_doc, _filterName, _category, _logPrefix, clearanceDict);
-                        }
-                        else
-                        {
-                            placementPath = DeterminePlacementPath();
-                        }
-                        bool isReplayPath = placementPath == Services.SleevePlacementPath.Replay;
-                        
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            DebugLogger.Info($"{_logPrefix} [PLACEMENT-PATH] Determined path: {placementPath}, isReplayPath={isReplayPath}");
-                        }
-                        
-                        int placed = 0, skipped = 0, errors = 0;
-
-                        // ✅ REFACTORED: Always use NewSleevePlacerService (SOLID-compliant refactored service)
-                        // ✅ LEGACY REMOVED: UniversalSleevePlacerService dependency has been removed
-                        // ✅ DIAGNOSTIC: Log that we're using the NEW service (always log)
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [COMMAND] ✅ USING NEW SERVICE: NewSleevePlacerService (SRP-compliant)\n");
-                        
-                        // ✅ NEW: Use refactored NewSleevePlacerService (SOLID principles)
-                        // ✅ WIRED: Use refactored command services when flag enabled
-                        var sleeveRepository = new Services.Repositories.SleeveRepository();
-                        var zoneFilterService = new ZoneFilterService();
-                        
-                        // ✅ SOLID REFACTORED: Inject refactored services if flag enabled
-                        IConditionsLoader? conditionsLoader = null;
-                        IFileNameNormalizer? fileNameNormalizer = null;
-                        ISectionBoxChecker? sectionBoxChecker = null;
-                        
-                        if (OptimizationFlags.UseRefactoredCommandServices)
-                        {
-                            conditionsLoader = new Services.Refactored.ConditionsLoaderService(_doc);
-                            // Reload conditions using refactored service
-                            _conditions = conditionsLoader.LoadConditions(_filterName, _category);
-                            
-                            // ✅ WIRED: Create refactored services for NewSleevePlacerService
-                            fileNameNormalizer = new Services.Refactored.FileNameNormalizerService();
-                            sectionBoxChecker = new Services.Refactored.SectionBoxCheckerService();
-                        }
-                        
-                        // ✅ CRASH-SAFE: Create crash-safe executor if enabled
-                        CrashSafeExecutor? crashSafeExecutor = null;
-                        if (OptimizationFlags.UseCrashSafeExecution)
-                        {
-                            crashSafeExecutor = new CrashSafeExecutor();
-                        }
-                        
-                        // ✅ FIX: Create FlagManager using Factory (supporting both refactored and legacy)
-                        Services.Interfaces.Refactor.IFlagManager flagManager = null;
-                        JSE_RevitAddin_MEP_OPENINGS.Data.SleeveDbContext dbContext = null;
-
-                        try
-                        {
-                            /* DISABLED: Refactored flag manager not fully implemented
-                            if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[UniversalSleevePlacementCommand] 🔄 Creating Refactored FlagManagerService...");
-                            
-                            dbContext = new JSE_RevitAddin_MEP_OPENINGS.Data.SleeveDbContext(_doc);
-                            var repository = new ClashZoneRepository(dbContext);
-                            var sleeveCollector = new RevitSleeveCollector();
-                            
-                            // Wire up refactored services
-                            var (fm, _, _) = Services.FlagManagement.FlagManagerFactory.CreateRefactored(_doc, repository, sleeveCollector);
-                            flagManager = fm;
-                            */
-                            
-                            // Always use legacy adapter since refactored services are not complete
-                            if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[UniversalSleevePlacementCommand] ℹ️ Using Legacy FlagManagerAdapter (refactored disabled)");
-                            
-                            flagManager = Services.FlagManagement.FlagManagerFactory.CreateAdapter(_doc);
-                        }
-                        catch (Exception flagEx)
-                        {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                DebugLogger.Warning($"[UniversalSleevePlacementCommand] ⚠️ Failed to create FlagManager: {flagEx.Message}. Flags will not be updated.");
-                            }
-                            // Fallback to minimal adapter if possible or null (Service handles null?)
-                            // NewSleevePlacerService might expect non-null. 
-                            // Creating simple adapter as fallback.
-                            flagManager = Services.FlagManagement.FlagManagerFactory.CreateAdapter(_doc);
-                        }
-                        
-                        // ✅ FORCE DETECTION: Get flag from user settings
-                        var profileService = Services.ApplicationProfileService.Instance;
-                        var settings = profileService.GetCurrentSettings();
-                        bool isForceDetectionMode = settings.ForceDetectionMode;
-                        
-                        if (isForceDetectionMode && !DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("placement_debug.log", 
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [COMMAND] ⚠️ FORCE DETECTION MODE ACTIVE: Will ignore saved data and recalculate all points\n");
-                        }
-                        
-                        var newPlacerService = new JSE_RevitAddin_MEP_OPENINGS.Services.NewSleevePlacerService(
-                            _doc,
-                            _conditions,
-                            _strategy,
-                            _clearanceSettings,
-                            sleeveRepository,
-                            zoneFilterService,
-                            null, // familyManager (not yet implemented)
-                            flagManager, // ✅ WIRED: Pass the correctly created flag manager
-                            isReplayPath,
-                            _filterName,
-                            null, // sizingService (will use default)
-                            fileNameNormalizer,
-                            sectionBoxChecker,
-                            crashSafeExecutor,
-                            null, // planner
-                            isForceDetectionMode);
-                        
-                        try 
-                        {
-                            (placed, skipped, errors) = newPlacerService.PlaceAllSleevesInTransaction(filteredClashZones);
-                        }
-                        finally
-                        {
-                            // Dispose context after placement is done
-                            dbContext?.Dispose();
-                        }
-                        
-                        // ✅ DIAGNOSTIC: Log results from new service
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [COMMAND] ✅ NEW SERVICE RESULT: Placed={placed}, Skipped={skipped}, Errors={errors}\n");
-                        
-                        // ✅ CRITICAL: Set properties so orchestrator can access counts
-                        PlacedCount = placed;
-                        SkippedCount = skipped;
-                        ErrorCount = errors;
-                        
-                        // ✅ NOTE: Parameter flushing is handled internally by NewSleevePlacerService
-                        // No external flush needed - SleeveParameterService.FlushDeferredParameters() is called automatically
-                        // Commit and check status
-                        var status = t.Commit();
-                        if (status == TransactionStatus.Committed)
-                        {
-                            DebugLogger.Info($"{_logPrefix} ✓ Transaction committed successfully - Placed: {placed}, Skipped: {skipped}");
-                            
-                            // Show success feedback
-                            string message;
-                            if (placed > 0)
-                            {
-                                message = $"✓ Successfully placed {placed} {_category} sleeve(s)\n✗ Skipped {skipped} (already resolved)";
-                            }
-                            else if (errors > 0)
-                            {
-                                message = $"No {_category} sleeves placed\n✗ {errors} error(s) occurred (see sleeve_placement_errors.log)";
-                            }
-                            else if (skipped > 0)
-                            {
-                                message = $"No {_category} sleeves placed\n✗ All {skipped} were already resolved";
+                                DebugLogger.Info($"{_logPrefix} ✓ Transaction committed - Placed: {PlacedCount}, Skipped: {SkippedCount}");
                             }
                             else
                             {
-                                // No zones placed, no errors, no skips - means all zones were filtered out before placement
-                                message = $"No {_category} sleeves placed\n✗ All clash zones were filtered out (already have sleeves or invalid)\nCheck logs for details";
+                                DebugLogger.Error($"{_logPrefix} Transaction failed to commit: {status}");
                             }
-                            
-                            MessageBox.Show(message, $"{_category} Sleeve Placement Complete", 
-                                MessageBoxButtons.OK, 
-                                MessageBoxIcon.Information);
                         }
-                        else
-                        {
-                            DebugLogger.Error($"{_logPrefix} Transaction failed to commit: {status}");
-                            DebugLogger.Error($"{_logPrefix} This might be due to duplicate suppression or existing sleeves");
-                            
-                            MessageBox.Show($"Failed to place {_category} sleeves.\nStatus: {status}\nCheck log for details.", 
-                                "Placement Failed", 
-                                MessageBoxButtons.OK, 
-                                MessageBoxIcon.Warning);
-                        }
-                    }
-                    else
-                    {
-                        DebugLogger.Error($"{_logPrefix} Failed to start transaction");
-                        MessageBox.Show($"Failed to start transaction for {_category} sleeves.", 
-                            "Transaction Error", 
-                            MessageBoxButtons.OK, 
-                            MessageBoxIcon.Error);
                     }
                 }
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"{_logPrefix} Exception: {ex.Message}");
+                DebugLogger.Error($"{_logPrefix} Exception in Execute: {ex.Message}");
                 DebugLogger.Error($"{_logPrefix} Stack trace: {ex.StackTrace}");
-                
-                MessageBox.Show($"Error placing {_category} sleeves:\n\n{ex.Message}", 
-                    "Sleeve Placement Error", 
-                    MessageBoxButtons.OK, 
-                    MessageBoxIcon.Error);
             }
+        }
+
+        /// <summary>
+        /// Logic for sleeve placement, extracted to support both internal and external transactions.
+        /// </summary>
+        private void PerformPlacement()
+        {
+            // ✅ RESPECT MASTER SWITCH
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Info($"{_logPrefix} ✅ Diagnostic Mode: UseDiagnosticMode={OptimizationFlags.UseDiagnosticMode}, DeploymentMode={DeploymentConfiguration.DeploymentMode}");
+            }
+
+            var filteredClashZones = FilterClashZonesByAllCriteria(_clashZones);
+
+            // ✅ REFACTORED: Apply strict hierarchical filtering
+            if (OptimizationFlags.UseRefactoredClashZoneFlagServices)
+            {
+                filteredClashZones = filteredClashZones?.Where(cz => 
+                {
+                    if (!cz.IsCurrentClash) return false;
+                    if (cz.IsCombinedResolved) return false;
+                    if (cz.IsClusterResolved) return false;
+                    if (cz.IsResolved) return false;
+                    return true;
+                }).ToList();
+            }
+
+            int total = filteredClashZones?.Count ?? 0;
+            int eligible = filteredClashZones?.Count(cz => !cz.IsResolved && !cz.IsClusterResolved) ?? 0;
+            
+            if (eligible == 0)
+            {
+                DebugLogger.Info($"{_logPrefix} ⚠️ No eligible clash zones found for placement (Total={total}, Eligible=0)");
+                return;
+            }
+
+            // ✅ PATH DETERMINATION
+            SleevePlacementPath placementPath;
+            if (OptimizationFlags.UseRefactoredCommandServices && _pathDeterminer != null)
+            {
+                Dictionary<string, double>? clearanceDict = null;
+                if (_conditions?.ClearanceSettings != null)
+                {
+                    clearanceDict = new Dictionary<string, double>();
+                    var cs = _conditions.ClearanceSettings;
+                    if (cs.RectangularNormal > 0) clearanceDict["RectangularNormal"] = cs.RectangularNormal;
+                    if (cs.RectangularInsulated > 0) clearanceDict["RectangularInsulated"] = cs.RectangularInsulated;
+                    if (cs.RoundNormal > 0) clearanceDict["RoundNormal"] = cs.RoundNormal;
+                    if (cs.RoundInsulated > 0) clearanceDict["RoundInsulated"] = cs.RoundInsulated;
+                    if (cs.PipesNormal > 0) clearanceDict["PipesNormal"] = cs.PipesNormal;
+                    if (cs.PipesInsulated > 0) clearanceDict["PipesInsulated"] = cs.PipesInsulated;
+                    if (cs.CableTrayTop > 0) clearanceDict["CableTrayTop"] = cs.CableTrayTop;
+                    if (cs.CableTrayOther > 0) clearanceDict["CableTrayOther"] = cs.CableTrayOther;
+                }
+                placementPath = _pathDeterminer.DeterminePath(_doc, _filterName, _category, _logPrefix, clearanceDict);
+            }
+            else
+            {
+                placementPath = DeterminePlacementPath();
+            }
+            bool isReplayPath = placementPath == SleevePlacementPath.Replay;
+            
+            // ✅ EXECUTE PLACEMENT
+            var sleeveRepository = new Services.Repositories.SleeveRepository();
+            var zoneFilterService = new ZoneFilterService();
+            
+            IFlagManager flagManager = FlagManagerFactory.CreateAdapter(_doc);
+            
+            var profileService = ApplicationProfileService.Instance;
+            var settings = profileService.GetCurrentSettings();
+            bool isForceDetectionMode = settings.ForceDetectionMode;
+            
+            var newPlacerService = new NewSleevePlacerService(
+                _doc,
+                _conditions,
+                _strategy,
+                _clearanceSettings,
+                sleeveRepository,
+                zoneFilterService,
+                null, 
+                flagManager, 
+                isReplayPath,
+                _filterName,
+                null, 
+                isForceDetectionMode,
+                null,
+                _externalPlanningMap);
+            
+            var (placed, skipped, errors) = newPlacerService.PlaceAllSleevesInTransaction(filteredClashZones);
+            
+            PlacedCount = placed;
+            SkippedCount = skipped;
+            ErrorCount = errors;
+            
+            DebugLogger.Info($"{_logPrefix} Placement complete - Placed: {placed}, Skipped: {skipped}, Errors: {errors}");
         }
         
         private ISleevePlacementStrategy CreateStrategy(string category)

@@ -1,5 +1,7 @@
 using System;
 
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data;
+
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
 {
     /// <summary>
@@ -18,8 +20,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
         /// <param name="isRotated">Whether sleeves are rotated (non-axis-aligned)</param>
         /// <returns>Appropriate proximity checker instance</returns>
         public static IProximityChecker CreateChecker(
-            dynamic sleeve1,
-            dynamic sleeve2,
+            ClusteringSleeveDto sleeve1,
+            ClusteringSleeveDto sleeve2,
             double rotationAngle = 0.0,
             bool isRotated = false)
         {

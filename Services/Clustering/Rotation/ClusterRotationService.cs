@@ -7,6 +7,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Geometry;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
 {
@@ -61,7 +62,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         ///    MEP orientation is meaningless for circular elements, so always use straight axis (0°)
         ///    This applies to both floors and walls - circular elements don't need rotation alignment
         /// </summary>
-        public double DetermineRotationAngle(List<dynamic> cluster, string? xmlFilePath = null)
+        public double DetermineRotationAngle(List<ClusteringSleeveDto> cluster, string? xmlFilePath = null)
         {
             try
             {
@@ -135,7 +136,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     if (sleeveData?.ClashZone == null)
                         continue;
 
-                    firstClashZone = sleeveData.ClashZone as ClashZone;
+                    firstClashZone = sleeveData.ClashZone;
                     if (firstClashZone != null)
                         break;
                 }
@@ -336,7 +337,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         /// This is a simplified version - full implementation should be migrated from UniversalClusterService
         /// </summary>
         public (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ)
-        CalculateRotatedBoundingBox(List<dynamic> cluster, List<FamilyInstance>? actualSleeves, double rotationAngle, string? xmlFilePath = null)
+        CalculateRotatedBoundingBox(List<ClusteringSleeveDto> cluster, List<FamilyInstance>? actualSleeves, double rotationAngle, string? xmlFilePath = null)
         {
             // ✅ PERFORMANCE: Track calculation time (initialize at start for all code paths)
             var calcStopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -400,7 +401,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 SafeFileLogger.SafeAppendText("cluster_sizing.log",
                     $"[{DateTime.Now:HH:mm:ss}] ⚠️ Failed to calculate placement point from intersections, falling back to first sleeve intersection point\n");
                 // Fallback: Use first sleeve's intersection point
-                var firstCz = GetCachedClashZone(cluster[0].SleeveInstanceId, xmlFilePath);
+                var firstCz = cluster[0].ClashZone;
                 if (firstCz != null)
                 {
                     placementPoint = new XYZ(firstCz.IntersectionPointX, firstCz.IntersectionPointY, firstCz.IntersectionPointZ);
@@ -439,7 +440,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 try
                 {
                     int sleeveId = sleeveData.SleeveInstanceId;
-                    var cz = GetCachedClashZone(sleeveId, xmlFilePath);
+                    var cz = sleeveData.ClashZone;
                     if (cz != null)
                     {
                         // Check for pipes (all pipes are circular)
@@ -484,7 +485,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     try
                     {
                         int sleeveId = sleeveData.SleeveInstanceId;
-                        var cz = GetCachedClashZone(sleeveId, xmlFilePath);
+                        var cz = sleeveData.ClashZone;
                         if (cz != null)
                         {
                             // Use sleeve bounding box (which includes clearance)
@@ -575,7 +576,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     try
                     {
                         int sleeveId = sleeveData.SleeveInstanceId;
-                        var cz = GetCachedClashZone(sleeveId, xmlFilePath);
+                        var cz = sleeveData.ClashZone;
                         if (cz != null)
                         {
                             // Use SleeveDiameter if available (this is the actual calculated diameter)
@@ -606,7 +607,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     try
                     {
                         int sleeveId = sleeveData.SleeveInstanceId;
-                        var cz = GetCachedClashZone(sleeveId, xmlFilePath);
+                        var cz = sleeveData.ClashZone;
                         if (cz != null)
                         {
                             string wDir = cz.WallDirectionType ?? "";
@@ -735,7 +736,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     int firstSleeveInstanceId = firstSleeveData.SleeveInstanceId;
                     if (firstSleeveInstanceId > 0)
                     {
-                        var firstCz = GetCachedClashZone(firstSleeveInstanceId, xmlFilePath);
+                        var firstCz = firstSleeveData.ClashZone;
                         if (firstCz != null)
                         {
                             bool isWallHost = string.Equals(firstCz.StructuralElementType, "Wall", StringComparison.OrdinalIgnoreCase) ||
@@ -793,8 +794,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     continue;
                 }
                 
-                // ✅ PERFORMANCE: Use cached ClashZone lookup
-                var clashZone = GetCachedClashZone(sleeveInstanceId, xmlFilePath);
+                // ✅ PERFORMANCE: Use cached ClashZone from DTO
+                var clashZone = sleeveData.ClashZone;
                 if (clashZone == null)
                 if (clashZone == null)
                 {

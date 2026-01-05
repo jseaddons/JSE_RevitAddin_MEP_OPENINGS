@@ -1835,7 +1835,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     using (var transaction = new Transaction(_document, "Transfer Parameters to Sleeves"))
                     {
                         transaction.Start();
-                        result = transferService.ExecuteTransferConfigurationInTransaction(_document, openings, config, _uiDocument);
+                        result = transferService.ExecuteBatchTransferInTransaction(_document, openings, config);
                         transaction.Commit();
                     }
                     
@@ -2105,49 +2105,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     {
                         if (markPrefixes.ActiveViewOnly && _document != null)
                         {
-                            // ✅ BIM 360 OPTIMIZATION: Per-sheet numbering using database-driven logic
-                            var markService = new Services.MarkParameterService(null, msg => { if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info(msg); });
-                            
-                            // ✅ PARALLEL OPTIMIZATION: Process combined sleeves in parallel with individual categories
-                            System.Threading.Tasks.Task<(int processed, int errors)>? combinedTask = null;
-                            combinedTask = System.Threading.Tasks.Task.Run(() =>
+                            // ✅ BIM 360 OPTIMIZATION: Process all categories (including Combined) in ONE transaction
+                            // This reduces cloud sync overhead and ensures thread safety by staying on the main thread
+                            using (var tx = new Transaction(_document, "Apply All Marks"))
                             {
-                                using (var context = new Data.SleeveDbContext(_document))
+                                tx.Start();
+                                
+                                var markService = new Services.MarkParameterService(null, msg => { if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info(msg); });
+                                var categoriesToProcess = new List<string> { "Combined", "Ducts", "Pipes", "Cable Trays", "Duct Accessories" };
+                                
+                                foreach (var cat in categoriesToProcess)
                                 {
-                                    var repo = new Data.Repositories.ClashZoneRepository(context, msg => { });
-                                    var levelName = (_document.ActiveView as ViewPlan)?.GenLevel?.Name ?? "";
-                                    
-                                    // Check if combined sleeves exist in current session (IsCurrentClash=1)
-                                    var combinedCount = repo.GetSleevesForLevel(levelName, "Combined")
-                                        .Count(z => z.IsCurrentClash && z.CombinedClusterSleeveInstanceId > 0);
-                                    
-                                    if (combinedCount > 0)
-                                    {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[ParameterServiceDialogV2] Found {combinedCount} combined sleeves in session - processing with MEP prefix");
-                                        
-                                        // Process combined sleeves in parallel
-                                        return markService.ApplyMarksFromDatabase(_document, markPrefixes, "Combined");
-                                    }
-                                    
-                                    return (0, 0); // No combined sleeves
-                                }
-                            });
-                            
-                            // Pass 1: Individual Disciplines (runs in parallel with combined task)
-                            var disciplineCategories = new[] { "Ducts", "Pipes", "Cable Trays", "Duct Accessories" };
-                            foreach (var cat in disciplineCategories)
-                            {
-                                // Only process categories that have their remark checkbox enabled
-                                if (!markPrefixes.GetRemarkFlag(cat)) continue;
+                                    // For Combined sleeves, we process if they exist at the current level
+                                    // For other disciplines, we check the user's remark flag selection
+                                    if (cat != "Combined" && !markPrefixes.GetRemarkFlag(cat)) continue;
 
-                                var (processed, errors) = markService.ApplyMarksFromDatabase(_document, markPrefixes, cat);
-                                totalProcessed += processed;
+                                    var (processed, errors) = markService.ApplyMarksFromDatabase(_document, markPrefixes, cat);
+                                    totalProcessed += processed;
+                                }
+                                
+                                tx.Commit();
                             }
 
-                            // Pass 2: Wait for combined sleeves to complete
-                            var (combinedProcessed, combinedErrors) = combinedTask.Result;
-                            totalProcessed += combinedProcessed;
                         }
                         else
                         {
@@ -2452,55 +2431,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     // ✅ CRITICAL FIX: Use markPrefixes.GetRemarkFlag() instead of hardcoded true
                     // This ensures that each category's checkbox state is respected
                     
-                    // If Project Prefix remark is checked, re-mark ALL categories with new project prefix
-                    if (remarkProject)
-                    {
-                        // When Project Prefix is checked, process ALL categories
-                        // GetRemarkFlag() will return true for all categories when RemarkProjectPrefix is true
-                        var cmd = new MarkParameterCommand("ALL", projectPrefix, "", false, markPrefixes);
-                        cmd.Execute(_uiDocument.Application);
-                        categoriesProcessed.Add("All Categories (Project Prefix)");
-                        totalProcessed++;
-                    }
-                    else
-                    {
-                        // Process individual discipline categories if their checkboxes are checked
-                        // Only process if Project Prefix is NOT checked (to avoid double-processing)
-                        // Project prefix is managed independently; pass the current value and let MarkParameterService decide
-                        // whether to preserve or override based on RemarkProjectPrefix setting.
-                        string effectiveProjectPrefix = projectPrefix;
-                        
-                        if (markPrefixes.RemarkDuctPrefix)
-                        {
-                            // remarkAll=false because GetRemarkFlag() will return true for Ducts if RemarkDuctPrefix is true
-                            var cmd = new MarkParameterCommand("Ducts", effectiveProjectPrefix, ductPrefix, false, markPrefixes);
-                            cmd.Execute(_uiDocument.Application);
-                            totalProcessed++;
-                            categoriesProcessed.Add(hasDuctSystemOverrideRemark && !remarkDuct ? "Ducts (System Type Overrides)" : "Ducts");
-                        }
-                        if (markPrefixes.RemarkPipePrefix)
-                        {
-                            var cmd = new MarkParameterCommand("Pipes", effectiveProjectPrefix, pipePrefix, false, markPrefixes);
-                            cmd.Execute(_uiDocument.Application);
-                            totalProcessed++;
-                            categoriesProcessed.Add(hasPipeSystemOverrideRemark && !remarkPipe ? "Pipes (System Type Overrides)" : "Pipes");
-                        }
-                        if (markPrefixes.RemarkCableTrayPrefix)
-                        {
-                            // ✅ CRITICAL FIX: Process Cable Trays if remark checkbox is checked OR if there are Service Type overrides
-                            var cmd = new MarkParameterCommand("Cable Trays", effectiveProjectPrefix, cableTrayPrefix, false, markPrefixes);
-                            cmd.Execute(_uiDocument.Application);
-                            totalProcessed++;
-                            categoriesProcessed.Add(hasCableTrayServiceOverrideRemark && !remarkCableTray ? "Cable Trays (Service Type Overrides)" : "Cable Trays");
-                        }
-                        if (markPrefixes.RemarkDamperPrefix)
-                        {
-                            var cmd = new MarkParameterCommand("Duct Accessories", effectiveProjectPrefix, damperPrefix, false, markPrefixes);
-                            cmd.Execute(_uiDocument.Application);
-                            totalProcessed++;
-                            categoriesProcessed.Add(hasDuctAccessoriesSystemOverrideRemark && !remarkDamper ? "Duct Accessories (System Type Overrides)" : "Duct Accessories");
-                        }
-                    }
+                    // ✅ BIM 360 OPTIMIZATION: Process all selected categories in ONE command execution
+                    // This uses a single Revit transaction and parallel processing for maximum speed
+                    var cmd = new MarkParameterCommand("ALL", projectPrefix, "", false, markPrefixes);
+                    cmd.Execute(_uiDocument.Application);
+                    
+                    // Log which categories were processed for the summary dialog
+                    if (markPrefixes.RemarkProjectPrefix) categoriesProcessed.Add("Project Prefix (All)");
+                    if (markPrefixes.RemarkDuctPrefix) categoriesProcessed.Add("Ducts");
+                    if (markPrefixes.RemarkPipePrefix) categoriesProcessed.Add("Pipes");
+                    if (markPrefixes.RemarkCableTrayPrefix) categoriesProcessed.Add("Cable Trays");
+                    if (markPrefixes.RemarkDamperPrefix) categoriesProcessed.Add("Dampers");
+                    totalProcessed = categoriesProcessed.Count;
+
                     
                         // Get total sleeves count for performance monitoring
                         var allSleeves = new FilteredElementCollector(_document)

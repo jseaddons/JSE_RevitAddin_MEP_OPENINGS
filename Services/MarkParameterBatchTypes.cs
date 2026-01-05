@@ -28,5 +28,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         // For Calculation Result
         public string CalculatedMark { get; set; }
+        public string CalculatedPrefix { get; set; }
     }
 }

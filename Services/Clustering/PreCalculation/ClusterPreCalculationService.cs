@@ -8,6 +8,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.PreCalculation
 {
@@ -57,7 +58,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.PreCalculation
         /// Pre-calculate rotation angles and bounding boxes for all clusters in parallel.
         /// </summary>
         public Dictionary<int, ClusterCalculationResult> PreCalculateAllClusters(
-            Dictionary<SleeveGroupKey, List<List<dynamic>>> clustersByGroup,
+            Dictionary<SleeveGroupKey, List<List<ClusteringSleeveDto>>> clustersByGroup,
             Document doc,
             string? xmlFilePath = null,
             Dictionary<int, ClashZone>? preloadedClashZones = null)
@@ -66,7 +67,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.PreCalculation
             int clusterIndex = 0;
 
             // ✅ PERFORMANCE: Flatten all clusters into a single list for parallel processing
-            var allClusters = new List<(int index, SleeveGroupKey groupKey, List<dynamic> cluster)>();
+            var allClusters = new List<(int index, SleeveGroupKey groupKey, List<ClusteringSleeveDto> cluster)>();
             foreach (var groupEntry in clustersByGroup)
             {
                 foreach (var cluster in groupEntry.Value)
@@ -201,7 +202,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.PreCalculation
         /// This is called in parallel for each cluster.
         /// </summary>
         private ClusterCalculationResult PreCalculateSingleCluster(
-            List<dynamic> cluster,
+            List<ClusteringSleeveDto> cluster,
             SleeveGroupKey groupKey,
             Document doc,
             string? xmlFilePath)

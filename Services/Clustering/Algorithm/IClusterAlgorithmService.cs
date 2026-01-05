@@ -2,6 +2,8 @@ using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data;
+
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
 {
     /// <summary>
@@ -14,8 +16,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
         /// Form clusters for already grouped sleeves (grouping done externally by host/system/orientation).
         /// Preserves multi-threading (parallel over groups). Returns dictionary keyed by group with cluster lists.
         /// </summary>
-        Dictionary<SleeveGroupKey, List<List<dynamic>>> FormClusters(
-            IEnumerable<IGrouping<SleeveGroupKey, dynamic>> sleeveGroups,
+        Dictionary<SleeveGroupKey, List<List<ClusteringSleeveDto>>> FormClusters(
+            IEnumerable<IGrouping<SleeveGroupKey, ClusteringSleeveDto>> sleeveGroups,
             double toleranceDist,
             Document doc,
             bool enableParallel);

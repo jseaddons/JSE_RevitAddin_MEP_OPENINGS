@@ -7,6 +7,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
@@ -433,7 +434,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 double toleranceDist = GetToleranceFromSettings(targetCategory);
 
                 // ✅ PERFORMANCE: Track sleeve data preparation
-                List<dynamic> rawSleeves;
+                List<ClusteringSleeveDto> rawSleeves;
                 using (var prepareTracker = performanceMonitor.TrackOperation("Prepare Sleeve Data"))
                 {
                     // ✅ STEP 7: Prepare sleeve data (create dynamic objects with ClashZone references)
@@ -443,7 +444,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 }
 
                 // ✅ PERFORMANCE: Track grouping
-                IGrouping<SleeveGroupKey, dynamic>[] sleeveGroups;
+                IGrouping<SleeveGroupKey, ClusteringSleeveDto>[] sleeveGroups;
                 using (var groupTracker = performanceMonitor.TrackOperation("Group Sleeves by Host/System/Orientation"))
                 {
                     // ✅ STEP 8: Group sleeves by host type, system type, and orientation
@@ -459,7 +460,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 _timeoutService.StartTimer();
 
                 // ✅ PERFORMANCE: Track cluster formation
-                Dictionary<SleeveGroupKey, List<List<dynamic>>> clustersByGroup;
+                Dictionary<SleeveGroupKey, List<List<ClusteringSleeveDto>>> clustersByGroup;
                 using (var formTracker = performanceMonitor.TrackOperation("Form Clusters"))
                 {
                     // ✅ STEP 10: Form clusters using algorithm service (Phase 8: Algorithm Service)
@@ -1287,11 +1288,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         }
 
         /// <summary>
-        /// Prepare sleeve data from clash zones (create dynamic objects with ClashZone references).
+        /// Prepare sleeve data from clash zones (create DTO objects with ClashZone references).
         /// </summary>
-        private List<dynamic> PrepareSleeveData(List<ClashZone> filteredClashZones, List<ClashZone> allClashZones)
+        private List<ClusteringSleeveDto> PrepareSleeveData(List<ClashZone> filteredClashZones, List<ClashZone> allClashZones)
         {
-            var rawSleeves = new List<dynamic>();
+            var rawSleeves = new List<ClusteringSleeveDto>();
             
             foreach (var cz in filteredClashZones)
             {
@@ -1306,7 +1307,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     
                     if (bbox == null) continue; // Skip sleeves without valid bounding boxes
                     
-                    dynamic sleeveData = new
+                    var dto = new ClusteringSleeveDto
                     {
                         SleeveInstanceId = cz.SleeveInstanceId,
                         Category = cz.MepElementCategory,
@@ -1316,10 +1317,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         ClashZone = cz,
                         // ✅ FIX: Populate properties expected by ProximityCheckerFactory
                         SystemType = cz.MepElementCategory, 
-                        IsCircular = !string.IsNullOrEmpty(cz.DuctShape) && (cz.DuctShape.IndexOf("Round", StringComparison.OrdinalIgnoreCase) >= 0 || cz.DuctShape.IndexOf("Circular", StringComparison.OrdinalIgnoreCase) >= 0) || (cz.MepElementCategory != null && cz.MepElementCategory.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0)
+                        IsCircular = !string.IsNullOrEmpty(cz.DuctShape) && (cz.DuctShape.IndexOf("Round", StringComparison.OrdinalIgnoreCase) >= 0 || cz.DuctShape.IndexOf("Circular", StringComparison.OrdinalIgnoreCase) >= 0) || (cz.MepElementCategory != null && cz.MepElementCategory.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0),
+                        LocationPoint = (bbox.Min + bbox.Max) / 2.0, // Approximate location
+                        RotationAngle = cz.MepElementRotationAngle,
+                        IsRotated = Math.Abs(cz.MepElementRotationAngle) > 1e-6
                     };
                     
-                    rawSleeves.Add(sleeveData);
+                    // Populate cached dimensions
+                    if (bbox != null)
+                    {
+                        dto.Width = bbox.Max.X - bbox.Min.X;
+                        dto.Height = bbox.Max.Y - bbox.Min.Y;
+                    }
+                    
+                    rawSleeves.Add(dto);
                 }
                 catch (Exception ex)
                 {
@@ -1340,7 +1351,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         /// </summary>
         private (bool success, int placedCount, int deletedCount, FamilyInstance? placedClusterSleeve, int? capturedClusterSleeveId) PlaceClusterForGroup(
             Document doc,
-            List<dynamic> cluster,
+            List<ClusteringSleeveDto> cluster,
             SleeveGroupKey groupKey,
             string targetCategory,
             string? xmlFilePath,

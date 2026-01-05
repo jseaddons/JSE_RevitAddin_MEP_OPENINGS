@@ -47,89 +47,94 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 var doc = app.ActiveUIDocument.Document;
                 var uiDoc = app.ActiveUIDocument;
 
-                // ✅ FIX: Handle "ALL" category by processing each category individually
+                // ✅ FIX: Handle "ALL" category with HIGH PERFORMANCE parallel preparation
                 if (_targetCategory.Equals("ALL", StringComparison.OrdinalIgnoreCase))
                 {
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Processing ALL categories individually\n");
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Processing ALL categories with parallel enrichment and single-transaction write\n");
 
-                    // Get all available categories from XML files
                     var availableCategories = GetAllAvailableCategories(doc);
-                    
-                    // ✅ DEBUG: Log available categories
-                    if (!DeploymentConfiguration.DeploymentMode)
+                    var markService = new MarkParameterService();
+                    var categoryAssignments = new System.Collections.Concurrent.ConcurrentDictionary<string, List<MarkSleeveIdentity>>();
+                    var sleevesByCat = new Dictionary<string, List<FamilyInstance>>();
+
+                    // 1. READ PHASE (Sequential - Main Thread)
+                    // Collect all sleeves for all categories first to avoid Revit API threading issues
+                    foreach (var category in availableCategories)
                     {
-                        string orchestratorLogPath = SafeFileLogger.GetLogFilePath("orchestrator_debug.log");
-                        System.IO.File.AppendAllText(orchestratorLogPath,
-                        $"[{DateTime.Now:HH:mm:ss}] Found {availableCategories.Count} categories: {string.Join(", ", availableCategories)}\n");
+                        // ✅ PERFORMANCE: Skip categories that are not enabled for re-marking/marking
+                        var remarkFlag = _markPrefixes?.GetRemarkFlag(category) ?? _remarkAll;
+                        if (!remarkFlag) 
+                        {
+                            DebugLogger.Info($"[MarkParameterCommand] Skipping inactive category: {category}");
+                            continue;
+                        }
+
+                        using var readContext = new SleeveDbContext(doc);
+                        sleevesByCat[category] = markService.GetAllSleevesForCategory(doc, category, readContext, _markPrefixes);
+                        DebugLogger.Info($"[MarkParameterCommand] Read {sleevesByCat[category].Count} sleeves for {category}");
                     }
 
-                    // ✅ BIM 360 OPTIMIZATION: Use SINGLE transaction for ALL categories
-                    // This reduces cloud sync overhead from N syncs to 1 sync (25-50x faster on BIM 360)
-                    using (var tx = new Transaction(doc, "Mark All Categories"))
+                    // 2. ENRICH & CALCULATE PHASE (Parallel - Background Threads)
+                    var activeCategories = sleevesByCat.Keys.ToList();
+                    var prepTasks = activeCategories.Select(category => System.Threading.Tasks.Task.Run(() => 
+                    {
+                        try 
+                        {
+                            var disciplinePrefix = _markPrefixes?.GetDisciplinePrefix(category) ?? GetDisciplinePrefixForCategory(category);
+                            var remarkFlag = _markPrefixes?.GetRemarkFlag(category) ?? _remarkAll;
+                            var numberFormat = _markPrefixes?.NumberFormat ?? "000";
+
+                            var assignments = markService.PrepareMepMarkAssignments_WithSleeves(
+                                doc, category, sleevesByCat[category], _projectPrefix, disciplinePrefix, remarkFlag, numberFormat, _markPrefixes);
+                            
+                            categoryAssignments.TryAdd(category, assignments);
+                        }
+                        catch (Exception ex)
+                        {
+                            DebugLogger.Error($"[MarkParameterCommand] Error preparing category {category}: {ex.Message}");
+                        }
+                    })).ToArray();
+
+                    System.Threading.Tasks.Task.WaitAll(prepTasks);
+
+                    // 3. WRITE PHASE (Sequential - Single Transaction)
+                    using (var tx = new Transaction(doc, "Mark Active Categories"))
                     {
                         tx.Start();
                         
                         int totalProcessed = 0;
                         int totalErrors = 0;
 
-                        // ✅ CRITICAL FIX: Process each category OUTSIDE the deployment mode check
-                        // Process each category with its specific discipline prefix from UI
-                        foreach (var category in availableCategories)
+                        foreach (var category in activeCategories)
                         {
-                            var disciplinePrefix = _markPrefixes?.GetDisciplinePrefix(category) ?? GetDisciplinePrefixForCategory(category);
-                            // ✅ FIX: Get remark flag per category from MarkPrefixSettings
-                            var remarkFlag = _markPrefixes?.GetRemarkFlag(category) ?? _remarkAll;
-                            
-                            // ✅ DEBUG: Log remark flag details
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Processing category: {category}, discipline: {disciplinePrefix}, remark: {remarkFlag}");
-                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}]   RemarkAll={_markPrefixes?.RemarkAll ?? false}, RemarkProjectPrefix={_markPrefixes?.RemarkProjectPrefix ?? false}");
-                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}]   RemarkDuctPrefix={_markPrefixes?.RemarkDuctPrefix ?? false}, RemarkPipePrefix={_markPrefixes?.RemarkPipePrefix ?? false}");
-                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}]   RemarkCableTrayPrefix={_markPrefixes?.RemarkCableTrayPrefix ?? false}, RemarkDamperPrefix={_markPrefixes?.RemarkDamperPrefix ?? false}\n");
-                            }
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Processing category: {category}, discipline: {disciplinePrefix}, remark: {remarkFlag}\n");
+                            if (!categoryAssignments.TryGetValue(category, out var assignments)) continue;
 
-                            var markService = new MarkParameterService();
-                            var numberFormat = _markPrefixes?.NumberFormat ?? "000";
-                            // ✅ OPTIMIZED: Use Batch Transfer (Read-Calculate-Write)
-                            // ApplyMepMarkToClustersBatch detects doc.IsModifiable and reuses the existing transaction for "All Categories".
-                            var (processedCount, errorCount) = markService.ApplyMepMarkToClustersBatch(
-                                doc, category, _projectPrefix, disciplinePrefix, remarkFlag, numberFormat, _markPrefixes);
-
+                            var (processedCount, errorCount) = markService.ApplyMarkAssignments(doc, category, assignments);
                             totalProcessed += processedCount;
                             totalErrors += errorCount;
 
-                            DebugLogger.Info($"[MarkParameterCommand] ✓ MEPMARK complete for {category}: {processedCount} clusters processed, {errorCount} errors");
+                            // Update DB Markers
+                            var disciplinePrefix = _markPrefixes?.GetDisciplinePrefix(category) ?? GetDisciplinePrefixForCategory(category);
+                            markService.UpdateCategoryMarkerFromAssignments(doc, category, assignments, disciplinePrefix, _markPrefixes);
+                            
                             DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Category {category}: {processedCount} processed, {errorCount} errors\n");
                         }
                         
-                        // ✅ COMBINED SLEEVES: Separate optimized flow (NO category check, NO GetClashZoneByCategory)
+                        // ✅ COMBINED SLEEVES: Separate optimized flow
                         {
-                            var combinedMarkService = new MarkParameterService();
-                            var combinedSleeves = combinedMarkService.GetAllCombinedSleeves(doc);
-                            
+                            var combinedSleeves = markService.GetAllCombinedSleeves(doc);
                             if (combinedSleeves.Count > 0)
                             {
                                 var numberFormat = _markPrefixes?.NumberFormat ?? "000";
-                                int startNumber = 1; // Combined sleeves start from 1
-                                bool remarkAll = _markPrefixes?.RemarkAll ?? _remarkAll;
-                                
-                                // Calculate marks (MEP prefix hardcoded)
-                                var markAssignments = combinedMarkService.CalculateCombinedSleeveMarks(
-                                    doc, combinedSleeves, _projectPrefix, numberFormat, startNumber, remarkAll);
-                                
-                                // Apply marks (uses existing transaction)
-                                var (combinedSuccess, combinedFailed) = combinedMarkService.ApplyCombinedSleeveMarksBatch(
-                                    doc, markAssignments);
-                                
+                                int startNumber = 1;
+                                bool remarkCombined = _markPrefixes?.RemarkAll ?? _remarkAll;
+                                var markAssignments = markService.CalculateCombinedSleeveMarks(doc, combinedSleeves, _projectPrefix, numberFormat, startNumber, remarkCombined);
+                                var (combinedSuccess, combinedFailed) = markService.ApplyCombinedSleeveMarksBatch(doc, markAssignments);
                                 DebugLogger.Info($"[MarkParameterCommand] ✓ Combined Sleeves: {combinedSuccess} marked, {combinedFailed} failed");
                             }
                         }
                         
-                        // ✅ BIM 360 OPTIMIZATION: Single commit for all categories
-                        tx.Commit(); // Cloud sync happens ONCE for all categories
-                        
+                        tx.Commit();
                         DebugLogger.Info($"[MarkParameterCommand] ✅ ALL CATEGORIES COMPLETE: {totalProcessed} total processed, {totalErrors} total errors");
                     }
                 }

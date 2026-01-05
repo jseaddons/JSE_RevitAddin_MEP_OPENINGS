@@ -1,6 +1,4 @@
-using System.Collections.Generic;
-using Autodesk.Revit.DB;
-using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.PreCalculation
 {
@@ -32,7 +30,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.PreCalculation
         /// <param name="preloadedClashZones">Optional dictionary of pre-loaded ClashZones by SleeveInstanceId (avoids individual database lookups)</param>
         /// <returns>Dictionary mapping cluster index to pre-calculated results</returns>
         Dictionary<int, ClusterCalculationResult> PreCalculateAllClusters(
-            Dictionary<SleeveGroupKey, List<List<dynamic>>> clustersByGroup,
+            Dictionary<SleeveGroupKey, List<List<ClusteringSleeveDto>>> clustersByGroup,
             Document doc,
             string? xmlFilePath = null,
             Dictionary<int, ClashZone>? preloadedClashZones = null);
@@ -54,7 +52,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.PreCalculation
         public List<FamilyInstance> ActualSleeves { get; set; } = new List<FamilyInstance>();
         
         /// <summary>Original cluster data (for placement service)</summary>
-        public List<dynamic> Cluster { get; set; } = new List<dynamic>();
+        public List<ClusteringSleeveDto> Cluster { get; set; } = new List<ClusteringSleeveDto>();
         
         /// <summary>Group key for this cluster</summary>
         public SleeveGroupKey? GroupKey { get; set; }

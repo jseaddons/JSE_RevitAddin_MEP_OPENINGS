@@ -157,221 +157,228 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 identities = filteredBag.ToList();
             }
             stopwatchEnrich.Stop();
-
             if (identities.Count == 0) return (0, 0);
 
-
-            // 3. CALCULATE PHASE (Parallel / Sequential Sort)
+            // 3. CALCULATE PHASE (Moved to PrepareMepMarkAssignments)
             stopwatchCalc.Start();
-            // Sorting determines numbering order. Must be sequential or parallel-sort.
-            // Sort keys: Level -> Y (descending) -> X (ascending) usually
+            var sortedIdentities = PrepareMepMarkAssignments(doc, category, projectPrefix, disciplinePrefix, remarkAll, numberFormat, markPrefixes);
+            stopwatchCalc.Stop();
+
+            // 4. WRITE PHASE
+            stopwatchWrite.Start();
+            var (processed, errors) = ApplyMarkAssignments(doc, category, sortedIdentities);
+            stopwatchWrite.Stop();
+
+            // Update Marker (DB)
+            UpdateCategoryMarkerFromAssignments(doc, category, sortedIdentities, disciplinePrefix, markPrefixes);
+            
+            stopwatchTotal.Stop();
+            LogBatchPerformance(category, stopwatchTotal, stopwatchRead, stopwatchEnrich, stopwatchCalc, stopwatchWrite, processed);
+
+            return (processed, errors);
+        }
+
+        /// <summary>
+        /// ✅ NEW: Prepares mark assignments for a category without writing to Revit.
+        /// This is safe to run in parallel across categories (Read phase must be on main thread).
+        /// </summary>
+        public List<MarkSleeveIdentity> PrepareMepMarkAssignments(
+            Document doc, 
+            string category, 
+            string projectPrefix, 
+            string disciplinePrefix, 
+            bool remarkAll = false, 
+            string numberFormat = "000", 
+            MarkPrefixSettings? markPrefixes = null)
+        {
+            // 1. READ PHASE (Main Thread required)
+            List<FamilyInstance> allSleeves;
+            using (var initContext = new SleeveDbContext(doc))
+            {
+                allSleeves = GetAllSleevesForCategory(doc, category, initContext, markPrefixes); 
+            }
+            
+            return PrepareMepMarkAssignments_WithSleeves(doc, category, allSleeves, projectPrefix, disciplinePrefix, remarkAll, numberFormat, markPrefixes);
+        }
+
+        /// <summary>
+        /// ✅ NEW: Internal preparation logic that can run on any thread once sleeves are collected.
+        /// </summary>
+        public List<MarkSleeveIdentity> PrepareMepMarkAssignments_WithSleeves(
+            Document doc,
+            string category,
+            List<FamilyInstance> allSleeves,
+            string projectPrefix, 
+            string disciplinePrefix, 
+            bool remarkAll = false, 
+            string numberFormat = "000", 
+            MarkPrefixSettings? markPrefixes = null)
+        {
+            if (allSleeves == null || allSleeves.Count == 0) return new List<MarkSleeveIdentity>();
+
+            var identities = new List<MarkSleeveIdentity>(allSleeves.Count);
+            foreach (var sleeve in allSleeves)
+            {
+                // Note: Accessing basic properties like Id, Symbol.Family.Name, LevelId is usually safe 
+                // but LookupParameter might be slightly riskier. However, for read-only it's generally fine.
+                var id = new MarkSleeveIdentity
+                {
+                    SleeveId = sleeve.Id,
+                    SleeveInstanceId = sleeve.Id.IntegerValue,
+                    FamilyName = sleeve.Symbol?.Family?.Name ?? "",
+                    ExistingMark = sleeve.LookupParameter("MEP Mark")?.AsString() ?? sleeve.LookupParameter("Mark")?.AsString(),
+                    LocationPoint = (sleeve.Location as LocationPoint)?.Point ?? XYZ.Zero,
+                    LevelName = doc.GetElement(sleeve.LevelId)?.Name ?? "Unknown"
+                };
+                
+                var mepIdParam = sleeve.LookupParameter("MEP_ElementId");
+                if (mepIdParam != null) id.MepElementId = mepIdParam.AsInteger();
+
+                var catParam = sleeve.LookupParameter("MEP_Category");
+                if (catParam != null) id.MepCategory = catParam.AsString();
+                
+                var combinedIdParam = sleeve.LookupParameter("Combined Sleeve Instance ID");
+                if (combinedIdParam != null && combinedIdParam.AsInteger() > 0) id.IsCombinedSleeve = true;
+                else if (!string.IsNullOrEmpty(id.MepCategory) && 
+                         (id.MepCategory.Contains("Multi", StringComparison.OrdinalIgnoreCase) || 
+                          id.MepCategory.Contains("Combined", StringComparison.OrdinalIgnoreCase)))
+                {
+                    id.IsCombinedSleeve = true;
+                }
+
+                identities.Add(id);
+            }
+
+            // 2. DATA ENRICHMENT (Parallel DB Calls)
+            using (var dbContext = new SleeveDbContext(doc, msg => { }))
+            {
+                var repo = new ClashZoneRepository(dbContext);
+                var sleeveIds = identities.Where(id => !id.IsCombinedSleeve).Select(id => id.SleeveInstanceId).Distinct().ToList();
+                var zoneMap = repo.GetClashZonesBySleeveIds(sleeveIds)
+                    .Where(z => z.SleeveInstanceId > 0)
+                    .GroupBy(z => z.SleeveInstanceId)
+                    .ToDictionary(g => g.Key, g => g.First());
+
+                var filteredBag = new System.Collections.Concurrent.ConcurrentBag<MarkSleeveIdentity>();
+                System.Threading.Tasks.Parallel.ForEach(identities, id => 
+                {
+                    if (id.IsCombinedSleeve) { filteredBag.Add(id); return; }
+                    
+                    if (zoneMap.TryGetValue(id.SleeveInstanceId, out var zone) && zone.MepElementCategory == category)
+                    {
+                         id.SystemType = GetClashParameterValue(zone, "System Type", "MEP System Type", "System Classification");
+                         id.ServiceType = GetClashParameterValue(zone, "Service Type", "System Abbreviation", "MEP System Type");
+                         filteredBag.Add(id);
+                    }
+                });
+                identities = filteredBag.ToList();
+            }
+
+            if (identities.Count == 0) return identities;
+
+            // 3. CALCULATE PHASE
             var sortedIdentities = identities.OrderBy(x => x.LevelName)
                                              .ThenByDescending(x => x.LocationPoint.Y)
                                              .ThenBy(x => x.LocationPoint.X)
                                              .ToList();
 
-            // Determine Start Index
-            // Need max existing mark from DB/Project
-            int startIndex = 1;
-            // Existing logic: GetMaxExistingMarkNumberForCategory(doc, category, candidatePrefixes);
-            // This requires scanning ALL potential prefixes.
-            
-            // ... (Simplified: assume we can reuse existing logic or just recalculate local max if we rely on "dumb once")
-            // But we need GLOBAL max to avoid collision. 
-            // Reuse `GetMaxExistingMarkNumberForCategory` (it reads DB/Project parameters).
-            // We can run this in Read phase. Let's assume passed in or calculated.
-            
             var candidatePrefixes = GetCandidateDisciplinePrefixes(category, disciplinePrefix, markPrefixes);
             int categoryMaxNumber = GetMaxExistingMarkNumberForCategory(doc, category, candidatePrefixes);
+            int startCount = GetCategoryMarkerCount(doc, category);
+            int nextNumber = Math.Max(categoryMaxNumber, startCount) + 1;
             
-            // Marker Repo
-            // using var markerContext = new SleeveDbContext(doc);
-            // var markerRepo = new CategoryProcessingMarkerRepository(markerContext);
-            // int markerLastCount = markerRepo.GetMarker(category).lastCount;
-            // categoryMaxNumber = Math.Max(categoryMaxNumber, markerLastCount);
-            
-            int nextNumber = categoryMaxNumber + 1;
-            var usedNumbers = new HashSet<int>();
-            if (remarkAll)
-            {
-                usedNumbers = GetExistingMarkNumbers(doc, category, candidatePrefixes);
-            }
+            var usedNumbers = remarkAll ? GetExistingMarkNumbers(doc, category, candidatePrefixes) : new HashSet<int>();
 
-            // Assign Numbers Loop
+            // ✅ TASK DIVISION: Parallel prefix resolution
+            System.Threading.Tasks.Parallel.ForEach(sortedIdentities, id => {
+                if (id.IsCombinedSleeve) id.CalculatedPrefix = "MEP";
+                else {
+                    var pfx = markPrefixes != null ? ResolveDisciplinePrefixFromStrings(category, disciplinePrefix, markPrefixes, id.SystemType, id.ServiceType) : disciplinePrefix;
+                    id.CalculatedPrefix = string.IsNullOrEmpty(pfx) ? disciplinePrefix : pfx;
+                }
+            });
+
+            // Sequential Numbering (Must be sequential to avoid collisions/gaps)
             foreach (var id in sortedIdentities)
             {
-                // ✅ Combined Sleeves: Force MEP prefix (user requirement)
-                string elementPrefix;
-                if (id.IsCombinedSleeve)
-                {
-                    elementPrefix = "MEP";
-                }
-                else
-                {
-                    // Resolve Prefix (Logic) for non-combined sleeves
-                    elementPrefix = disciplinePrefix;
-                    if (markPrefixes != null)
-                    {
-                         // Call the real logic helper from the main partial class
-                         elementPrefix = ResolveDisciplinePrefixFromStrings(category, disciplinePrefix, markPrefixes, id.SystemType, id.ServiceType);
-                    }
-                    
-                    // Ensure default if null
-                    if (string.IsNullOrEmpty(elementPrefix)) elementPrefix = disciplinePrefix;
-                }
+                if (!remarkAll && !string.IsNullOrEmpty(id.ExistingMark)) continue;
 
-                // Calculate Number
                 int numberToUse = nextNumber;
-                
-                // Existing Mark Logic (Remark/Keep)
-                bool keepExisting = false;
-                if (!remarkAll && !string.IsNullOrEmpty(id.ExistingMark))
+                if (remarkAll && !string.IsNullOrEmpty(id.ExistingMark))
                 {
-                    keepExisting = true;
+                    int? extracted = ExtractNumberFromMark(id.ExistingMark, candidatePrefixes);
+                    if (extracted.HasValue) { numberToUse = extracted.Value; usedNumbers.Add(numberToUse); }
+                    else { while(usedNumbers.Contains(nextNumber)) nextNumber++; numberToUse = nextNumber++; usedNumbers.Add(numberToUse); }
                 }
+                else { while(usedNumbers.Contains(nextNumber)) nextNumber++; numberToUse = nextNumber++; usedNumbers.Add(numberToUse); }
                 
-                if (!keepExisting)
-                {
-                    // Assign new
-                     if (remarkAll && !string.IsNullOrEmpty(id.ExistingMark))
-                     {
-                         // Try extract
-                         int? extracted = ExtractNumberFromMark(id.ExistingMark, candidatePrefixes);
-                         if (extracted.HasValue)
-                         {
-                             numberToUse = extracted.Value;
-                             usedNumbers.Add(numberToUse);
-                         }
-                         else
-                         {
-                             // Find next unused
-                             while(usedNumbers.Contains(nextNumber)) nextNumber++;
-                             numberToUse = nextNumber++;
-                             usedNumbers.Add(numberToUse);
-                         }
-                     }
-                     else
-                     {
-                         // New
-                         while(usedNumbers.Contains(nextNumber)) nextNumber++;
-                         numberToUse = nextNumber++;
-                         usedNumbers.Add(numberToUse);
-                     }
-                     
-                     // Generate String
-                     string projectPfx = projectPrefix; // or extract
-                     // (Logic for extracting project prefix omitted for brevity, verify against requirement)
-                     
-                     string numStr = numberToUse.ToString(numberFormat);
-                     id.CalculatedMark = $"{projectPfx}{elementPrefix}{numStr}";
-                }
+                id.CalculatedMark = $"{projectPrefix}{id.CalculatedPrefix}{numberToUse.ToString(numberFormat)}";
             }
-            stopwatchCalc.Stop();
 
-            // 4. WRITE PHASE (Main Thread Transaction)
-            // 4. WRITE PHASE (Main Thread)
-            // If we are already in a transaction, use it. But we can't tell easily unless we pass a param.
-            // Current "One Transaction for All" strategy requires us to NOT start a transaction if one is active, OR
-            // simply perform the SET actions and let the caller Commit.
-            // HOWEVER: SetMarkParameter modifies the model. It MUST be in a transaction.
-            
-            // To support "Mark All Categories" in ONE transaction, this method should probably NOT control the transaction.
-            // But for "Single Category", it might need one.
-            // Let's check `doc.IsModifiable`.
-            
-            stopwatchWrite.Start();
+            return sortedIdentities;
+        }
+
+        private int GetCategoryMarkerCount(Document doc, string category)
+        {
+            try {
+                using var markerContext = new SleeveDbContext(doc);
+                var markerRepo = new CategoryProcessingMarkerRepository(markerContext, null);
+                return markerRepo.GetMarker(category).lastCount;
+            } catch { return 0; }
+        }
+
+        public void UpdateCategoryMarkerFromAssignments(Document doc, string category, List<MarkSleeveIdentity> assignments, string disciplinePrefix, MarkPrefixSettings? markPrefixes)
+        {
+            try {
+                int maxAssignedNumber = 0;
+                var candidatePrefixes = GetCandidateDisciplinePrefixes(category, disciplinePrefix, markPrefixes);
+                foreach (var id in assignments)
+                {
+                    if (!string.IsNullOrEmpty(id.CalculatedMark))
+                    {
+                        int? num = ExtractNumberFromMark(id.CalculatedMark, candidatePrefixes);
+                        if (num.HasValue && num.Value > maxAssignedNumber) maxAssignedNumber = num.Value;
+                    }
+                }
+                if (maxAssignedNumber <= 0) return;
+                using var markerContext = new SleeveDbContext(doc);
+                var markerRepo = new CategoryProcessingMarkerRepository(markerContext, null);
+                var info = markerRepo.GetMarker(category);
+                if (maxAssignedNumber > info.lastCount) markerRepo.UpdateMarker(category, maxAssignedNumber);
+            } catch {}
+        }
+
+        public (int processed, int errors) ApplyMarkAssignments(Document doc, string category, List<MarkSleeveIdentity> assignments)
+        {
+            int processed = 0, errors = 0;
             bool localTransaction = !doc.IsModifiable;
             Transaction t = null;
-            
-            try 
-            {
-                if (localTransaction)
-                {
-                    t = new Transaction(doc, "Apply MEP Marks (Batch " + category + ")");
-                    t.Start();
-                    
+            try {
+                if (localTransaction) { 
+                    t = new Transaction(doc, "Apply MEP Marks (" + category + ")"); 
+                    t.Start(); 
                     var opts = t.GetFailureHandlingOptions();
                     opts.SetFailuresPreprocessor(new JSE_RevitAddin_MEP_OPENINGS.Models.ParameterTransferWarningSwallower());
                     t.SetFailureHandlingOptions(opts);
                 }
-
-                foreach (var id in sortedIdentities)
-                {
+                foreach (var id in assignments) {
                     if (string.IsNullOrEmpty(id.CalculatedMark)) continue;
-                    
-                    try
-                    {
+                    try {
                         var el = doc.GetElement(id.SleeveId);
-                        if (el == null) continue;
-                        
-                        SetMarkParameter(el, id.CalculatedMark);
-                        processedCount++;
-                    }
-                    catch (Exception ex)
-                    {
-                        errorCount++;
-                    }
+                        if (el != null) { SetMarkParameter(el, id.CalculatedMark); processed++; }
+                    } catch { errors++; }
                 }
-                
-                if (localTransaction)
-                {
-                    t.Commit();
-                }
-            }
-            finally
-            {
-                if (t != null) t.Dispose();
-            }
-            stopwatchWrite.Stop();
-
-            // Update Marker (DB) - Incremental
-            try 
-            {
-                using (var markerContext = new SleeveDbContext(doc))
-                {
-                    var markerRepository = new CategoryProcessingMarkerRepository(markerContext, null);
-                    // Use nextNumber - 1 as the last used number
-                    // But we actually need the max of (existing max, new assigned max).
-                    // In batch, nextNumber kept incrementing.
-                    int lastUsed = nextNumber - 1; 
-                    if (lastUsed > 0)
-                    {
-                        var info = markerRepository.GetMarker(category);
-                        if (lastUsed > info.lastCount)
-                            markerRepository.UpdateMarker(category, lastUsed);
-                    }
-                }
-            }
-            catch {}
-            
-            stopwatchTotal.Stop();
-            
-            // LOG PERFORMANCE
-            if (!DeploymentConfiguration.DeploymentMode)
-            {
-                var msg = $"PERFORMANCE [{category}]: Total={stopwatchTotal.ElapsedMilliseconds}ms | " +
-                          $"Read={stopwatchRead.ElapsedMilliseconds}ms | " +
-                          $"Enrich={stopwatchEnrich.ElapsedMilliseconds}ms | " +
-                          $"Calc={stopwatchCalc.ElapsedMilliseconds}ms | " +
-                          $"Write={stopwatchWrite.ElapsedMilliseconds}ms ({(processedCount > 0 ? (stopwatchWrite.ElapsedMilliseconds / processedCount) : 0)} ms/item)\n";
-                File.AppendAllText(mepmarkLogPath, msg);
-            }
-
-            return (processedCount, errorCount);
+                if (localTransaction) t.Commit();
+            } finally { if (t != null) t.Dispose(); }
+            return (processed, errors);
         }
 
-        // Helper helper
-        private string ResolveDisciplinePrefixForElement_Batch(string category, string defaultPrefix, MarkPrefixSettings settings, string systemType)
+        private void LogBatchPerformance(string cat, System.Diagnostics.Stopwatch total, System.Diagnostics.Stopwatch r, System.Diagnostics.Stopwatch e, System.Diagnostics.Stopwatch c, System.Diagnostics.Stopwatch w, int count)
         {
-             // We only passed SystemType here in the simplified loop, but the full method needs ServiceType too.
-             // For batch, we ideally extract both. 
-             // Assuming systemType contains relevant info or serviceType is empty for now.
-             // OR better: Update the batch loop to extract ServiceType too (MarkSleeveIdentity has it).
-             
-             // Since this is a placeholder method called inside the loop, and we are modifying the loop:
-             // We should call ResolveDisciplinePrefixFromStrings directly in the loop.
-             // But to satisfy this method signature:
-             return ResolveDisciplinePrefixFromStrings(category, defaultPrefix, settings, systemType, null); // ServiceType assumed null/irrelevant if not passed
+            if (DeploymentConfiguration.DeploymentMode) return;
+            string log = SafeFileLogger.GetLogFilePath("mepmark_debug.log");
+            var msg = $"PERFORMANCE [{cat}]: Total={total.ElapsedMilliseconds}ms | R={r.ElapsedMilliseconds}ms | E={e.ElapsedMilliseconds}ms | C={c.ElapsedMilliseconds}ms | W={w.ElapsedMilliseconds}ms ({count} items)\n";
+            File.AppendAllText(log, msg);
         }
     }
 }

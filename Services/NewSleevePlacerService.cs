@@ -97,6 +97,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         // ? FORCE DETECTION MODE: Flag to force recalculation of placement points
         private readonly bool _isForceDetectionMode;
 
+        // ? CROSS-FILTER OPTIMIZATION: Cached planning results across categories
+        private readonly Dictionary<Guid, SleevePlacementPlanningDto>? _externalPlanningMap;
+
         public NewSleevePlacerService(
             Document doc,
             OpeningConditions conditions,
@@ -118,7 +121,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             ISleevePlacementPlanner? planner = null,
             // ? FORCE DETECTION MODE
             bool isForceDetectionMode = false,
-            DatabaseWriteOptimizer? dbOptimizer = null)
+            DatabaseWriteOptimizer? dbOptimizer = null,
+            Dictionary<Guid, SleevePlacementPlanningDto>? externalPlanningMap = null)
         {
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _conditions = conditions ?? new OpeningConditions();
@@ -150,6 +154,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _isReplayPath = isReplayPath;
             _filterName = filterName;
             _isForceDetectionMode = isForceDetectionMode;
+            _externalPlanningMap = externalPlanningMap;
             
             // ? OOP METHOD: Initialize sizing service (create if not provided - Dependency Injection)
             _sizingService = sizingService ?? new InsulationAwareSizingService();
@@ -355,10 +360,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Safety flag: DeploymentConfiguration.EnableParallelPlanning controls this feature
             // When enabled: Pre-computes dimensions, clearance, rotation, and risk classification in parallel
             // Benefits: Early skip detection, risk-based reordering, parallel computation, better diagnostics
-            Dictionary<Guid, SleevePlacementPlanningDto>? planningMap = null;
+            Dictionary<Guid, SleevePlacementPlanningDto>? planningMap = _externalPlanningMap;
             SleevePlacementPlanningResult? planningResult = null;
             
-            if (DeploymentConfiguration.EnableParallelPlanning && _planner != null && filteredZones.Count > 0)
+            if (planningMap != null)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[NewSleevePlacer] ?? PARALLEL PLANNING: Using external planning map for {filteredZones.Count} zones");
+                }
+                
+                // Track skipped zones from external map
+                var skipGuids = planningMap.Values
+                    .Where(dto => dto.ShouldSkip)
+                    .Select(dto => dto.ClashZoneId)
+                    .ToHashSet();
+                
+                // Update filtered zones to exclude skipped ones (if they are in the map)
+                filteredZones = filteredZones
+                    .Where(cz => !skipGuids.Contains(cz.Id))
+                    .ToList();
+                    
+                // Reorder by risk
+                filteredZones = filteredZones
+                    .OrderBy(cz => planningMap.ContainsKey(cz.Id) 
+                        ? (int)planningMap[cz.Id].ClearanceRisk 
+                        : int.MaxValue)
+                    .ThenByDescending(cz => planningMap.ContainsKey(cz.Id) 
+                        ? planningMap[cz.Id].RawMepSizeFt 
+                        : 0)
+                    .ToList();
+            }
+            else if (DeploymentConfiguration.EnableParallelPlanning && _planner != null && filteredZones.Count > 0)
             {
                 using (var planningTracker = _performanceMonitor?.TrackOperation("Parallel Sleeve Placement Planning"))
                 {

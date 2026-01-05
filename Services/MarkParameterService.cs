@@ -279,9 +279,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 });
 
                 // 4. Write Phase: Single-threaded transaction to push data to Revit
-                using (var trans = new Transaction(doc, "Apply Marks"))
+                bool localTransaction = !doc.IsModifiable;
+                Transaction trans = null;
+                
+                try
                 {
-                    trans.Start();
+                    if (localTransaction)
+                    {
+                        trans = new Transaction(doc, "Apply Marks (" + category + ")");
+                        trans.Start();
+                    }
                     
                     foreach (var group in elementGroups)
                     {
@@ -315,8 +322,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                     }
 
-                    trans.Commit();
+                    if (localTransaction)
+                    {
+                        trans.Commit();
+                    }
                 }
+                finally
+                {
+                    if (trans != null) trans.Dispose();
+                }
+
 
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[MarkParameterService] ApplyMarksFromDatabase: Processed {processed} elements from {zones.Count} zones, Errors {errors}");
@@ -832,7 +847,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// ✅ BIM 360 OPTIMIZATION: Optionally filter by active view for per-sheet numbering
         /// ✅ RESOURCE FIX: Uses shared context
         /// </summary>
-        private List<FamilyInstance> GetAllSleevesForCategory(Document doc, string category, SleeveDbContext sharedContext, MarkPrefixSettings? markPrefixes = null)
+        public List<FamilyInstance> GetAllSleevesForCategory(Document doc, string category, SleeveDbContext sharedContext, MarkPrefixSettings? markPrefixes = null)
         {
             // ✅ BIM 360 OPTIMIZATION: Use active view collector if ActiveViewOnly is enabled
             FilteredElementCollector collector;

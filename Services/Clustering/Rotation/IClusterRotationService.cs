@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data;
+
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
 {
     /// <summary>
@@ -14,10 +16,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         /// <summary>
         /// Determine the dominant rotation angle for a cluster of sleeves
         /// </summary>
-        /// <param name="cluster">List of sleeve data (dynamic objects with ClashZone property)</param>
+        /// <param name="cluster">List of sleeve data (DTO objects with ClashZone property)</param>
         /// <param name="xmlFilePath">Optional XML file path for data access</param>
         /// <returns>Rotation angle in radians (0 for axis-aligned clusters)</returns>
-        double DetermineRotationAngle(List<dynamic> cluster, string? xmlFilePath = null);
+        double DetermineRotationAngle(List<ClusteringSleeveDto> cluster, string? xmlFilePath = null);
 
         /// <summary>
         /// Calculate cluster bounding box using rotated coordinates from ClashZone data
@@ -28,7 +30,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         /// <param name="xmlFilePath">Optional XML file path for data access</param>
         /// <returns>Tuple containing width, height, depth, midpoint, and optional rotated bbox coordinates</returns>
         (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ) 
-        CalculateRotatedBoundingBox(List<dynamic> cluster, List<FamilyInstance>? actualSleeves, double rotationAngle, string? xmlFilePath = null);
+        CalculateRotatedBoundingBox(List<ClusteringSleeveDto> cluster, List<FamilyInstance>? actualSleeves, double rotationAngle, string? xmlFilePath = null);
 
         /// <summary>
         /// Get rotation data for a specific cluster sleeve

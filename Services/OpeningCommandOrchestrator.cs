@@ -250,10 +250,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
 
-                foreach (var filter in orderedFilters)
+                using (var t = new Transaction(_document, $"Place {discipline} Openings"))
                 {
-                    var commandSequence = GetCommandSequence(filter);
-                    ExecuteCommandSequence(commandSequence, filter, showProgress);
+                    if (t.Start() == TransactionStatus.Started)
+                    {
+                        var options = t.GetFailureHandlingOptions();
+                        options.SetFailuresPreprocessor(new WarningSwallower());
+                        t.SetFailureHandlingOptions(options);
+
+                        // ? DISCIPLINE-LEVEL CROSS-FILTER OPTIMIZATION:
+                        // Pre-calculate planning data for ALL filters in this discipline in ONE parallel pass.
+                        // Benefits: Better thread utilization, early skip detection across all categories, and single log point.
+                        Dictionary<Guid, SleevePlacementPlanningDto>? disciplinePlanningMap = null;
+                        if (DeploymentConfiguration.EnableParallelPlanning)
+                        {
+                            disciplinePlanningMap = PerformDisciplineLevelPlanning(discipline, orderedFilters);
+                        }
+
+                        foreach (var filter in orderedFilters)
+                        {
+                            var commandSequence = GetCommandSequence(filter);
+                            ExecuteCommandSequence(commandSequence, filter, showProgress, disciplinePlanningMap);
+                        }
+
+                        var status = t.Commit();
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[OpeningCommandOrchestrator] Batch transaction for {discipline} committed: {status}");
+                        }
+                    }
+                    else
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Error($"[OpeningCommandOrchestrator] Failed to start batch transaction for {discipline}");
+                        }
+                    }
                 }
 
                 // Force garbage collection after each discipline
@@ -278,6 +310,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
+        /// Perform parallel planning for all filters in a discipline at once.
+        /// This pre-calculates dimensions, risk, and skip rules across categories to optimize performance.
+        /// </summary>
+        private Dictionary<Guid, SleevePlacementPlanningDto> PerformDisciplineLevelPlanning(string discipline, List<OpeningFilter> filters)
+        {
+            var allZones = new List<ClashZone>();
+            foreach (var filter in filters)
+            {
+                var zones = LoadClashZonesForFilter(filter);
+                if (zones != null) allZones.AddRange(zones);
+            }
+
+            if (allZones.Count == 0)
+                return new Dictionary<Guid, SleevePlacementPlanningDto>();
+
+            try
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[OpeningCommandOrchestrator] 🚀 BATCH PLANNING: Starting parallel planning for discipline '{discipline}' with {allZones.Count} zones across {filters.Count} filters");
+                }
+
+                // Use ParallelSleevePlacementPlanner (pure computation, thread-safe)
+                // ✅ Pass _uiClearances for consistent results with sequential placer
+                // Conditions are loaded per filter inside the command, so we pass null here (planner uses defaults)
+                var planner = new JSE_RevitAddin_MEP_OPENINGS.Services.Placement.ParallelSleevePlacementPlanner(null, _uiClearances);
+                var result = planner.Plan(allZones);
+
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[OpeningCommandOrchestrator] ✅ BATCH PLANNING COMPLETE: Processed {result.TotalCount} zones in {result.PlanningDurationMs}ms (Skipped: {result.SkippedCount}, High Risk: {result.HighRiskCount}, Critical: {result.CriticalRiskCount})");
+                }
+
+                return result.Items.ToDictionary(item => item.ClashZoneId, item => item);
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Error($"[OpeningCommandOrchestrator] ❌ BATCH PLANNING FAILED: {ex.Message}");
+                }
+                return new Dictionary<Guid, SleevePlacementPlanningDto>();
+            }
+        }
+
+        /// <summary>
         /// Get command sequence for a filter using NEW Universal Architecture
         /// </summary>
         private List<IExternalCommand> GetCommandSequence(OpeningFilter filter)
@@ -297,7 +375,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// <summary>
         /// Execute a sequence of commands
         /// </summary>
-        private void ExecuteCommandSequence(List<IExternalCommand> commands, OpeningFilter filter, bool showProgress)
+        private void ExecuteCommandSequence(List<IExternalCommand> commands, OpeningFilter filter, bool showProgress, Dictionary<Guid, SleevePlacementPlanningDto>? externalPlanningMap = null)
         {
             // ✅ PERFORMANCE MONITORING: Initialize placement performance monitor
             string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
@@ -321,7 +399,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ PERFORMANCE: Track individual sleeve placement
                 using (var individualTracker = performanceMonitor.TrackOperation("Individual Sleeve Placement"))
                 {
-                    var individualResult = ExecuteUniversalSleevePlacement(filter, showProgress);
+                    var individualResult = ExecuteUniversalSleevePlacement(filter, showProgress, externalPlanningMap);
                     totalIndividualSleeves = individualResult.placedCount;
                     
                     // ✅ FIX: Set item count BEFORE tracker disposes (must be inside using block)
@@ -793,6 +871,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     // Use UniversalClusterService directly (service-based architecture)
                     
+                    if (_document.IsModifiable)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[ORCHESTRATOR] Document is already modifiable - executing clustering within existing transaction");
+                        }
+                        
+                        RefactoredClusterService? clusterService = ClusterServiceFactory.CreateWithAllServices(_document);
+                        var clusterResult = clusterService.ClusterSleeves(
+                            _document, 
+                            categoryString, 
+                            _uiDocument, 
+                            xmlFilePath, 
+                            filter.Name, 
+                            placedClusterSleeves, 
+                            isPath1Replay, 
+                            comboId, 
+                            filterId, 
+                            _uiClearances,
+                            isPath3Validated: isPath3Validated,
+                            isPath3Invalidated: isPath3Invalidated,
+                            isPath3New: isPath3New);
+                        placedCount = clusterResult.placedCount;
+                        deletedCount = clusterResult.deletedCount;
+                        
+                        return Autodesk.Revit.UI.Result.Succeeded;
+                    }
+
                     using (var tx = new Transaction(_document, $"Cluster {categoryString} Openings"))
                     {
                         // ✅ BEST PRACTICE: Check transaction start status (per TRANSACTION_REFACTORING_SUMMARY.md)
@@ -1202,11 +1308,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 DebugLogger.Info($"[OpeningCommandOrchestrator] ✅ About to run cleanup with {placedClusterSleeves.Count} cluster sleeves in protection set: {string.Join(", ", placedClusterSleeves.Select(c => c.Id.IntegerValue))}");
                             }
                             
-                            using (var cleanupTx = new Transaction(_document, $"Cleanup sleeves within clusters"))
+                            if (_document.IsModifiable)
                             {
-                                cleanupTx.Start();
                                 // Cleanup handled by RefactoredClusterService internally - no additional cleanup needed
-                                cleanupTx.Commit();
+                            }
+                            else
+                            {
+                                using (var cleanupTx = new Transaction(_document, $"Cleanup sleeves within clusters"))
+                                {
+                                    cleanupTx.Start();
+                                    // Cleanup handled by RefactoredClusterService internally - no additional cleanup needed
+                                    cleanupTx.Commit();
+                                }
                             }
                         }
                     }
@@ -1368,7 +1481,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Execute UniversalSleevePlacementCommand
         /// ⚠️ CRITICAL: Wrapped with timeout protection (5-minute limit per category)
         /// </summary>
-        private (int placedCount, int skippedCount, int errorCount) ExecuteUniversalSleevePlacement(OpeningFilter filter, bool showProgress)
+        private (int placedCount, int skippedCount, int errorCount) ExecuteUniversalSleevePlacement(OpeningFilter filter, bool showProgress, Dictionary<Guid, SleevePlacementPlanningDto>? externalPlanningMap = null)
         {
             // Declare variables outside lambda for use after timeout execution
             string xmlFilePath = GetXmlFilePathForFilter(filter);
@@ -1650,7 +1763,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] About to create UniversalSleevePlacementCommand for category: {categoryString}, filter: {combinedFilterName}\n");
                     }
                     
-                    universalCommand = new UniversalSleevePlacementCommand(_document, clashZones, categoryString, combinedFilterName, _uiClearances);
+                    
+                    universalCommand = new UniversalSleevePlacementCommand(_document, clashZones, categoryString, combinedFilterName, _uiClearances, 
+                        null, null, null, null, null, null, null, externalPlanningMap);
                     try {
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
