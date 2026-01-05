@@ -496,14 +496,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             
             */
-            return new List<ClashZone>(); // Always return empty - XML obsolete
         }
         /// <summary>
         /// ✅ OBSOLETE: XML is no longer used - all data is saved to database only
         /// This method is kept for backward compatibility but should not be called
         /// </summary>
         [Obsolete("XML is obsolete - all data is saved to database only. This method does nothing.")]
-        public void SaveClashZonesToXml(List<ClashZone> clashZones, string xmlFilePath = null)
+        public void SaveClashZonesToXml(List<ClashZone> clashZones, string? xmlFilePath = null)
         {
             // ✅ XML OBSOLETE: Do nothing - all data is saved to database only
             if (!DeploymentConfiguration.DeploymentMode)

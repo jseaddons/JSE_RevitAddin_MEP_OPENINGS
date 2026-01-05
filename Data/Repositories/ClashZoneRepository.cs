@@ -32,7 +32,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         private readonly ClusterSleeveRepository _clusterRepo;
         private readonly SleeveSnapshotRepository _snapshotRepo;
 
-        public ClashZoneRepository(SleeveDbContext context, Action<string> logger = null, PerformanceMonitor performanceMonitor = null)
+        public ClashZoneRepository(SleeveDbContext context, Action<string>? logger = null, PerformanceMonitor? performanceMonitor = null)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _logger = logger ?? (msg => { });
@@ -4386,7 +4386,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     bool keepEmpty = false;
                     if (!string.IsNullOrEmpty(key))
                     {
-                        if (key.Equals("System Type", StringComparison.OrdinalIgnoreCase) ||
+                        if (string.Equals(key, "System Type", StringComparison.OrdinalIgnoreCase) ||
                             key.Equals("Service Type", StringComparison.OrdinalIgnoreCase) ||
                             key.Equals("System Name", StringComparison.OrdinalIgnoreCase) ||
                             key.Equals("System Abbreviation", StringComparison.OrdinalIgnoreCase) ||
@@ -5100,9 +5100,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// This method no longer performs spatial or category filtering itself.
         /// </summary>
         public int SetReadyForPlacementForUnresolvedZonesInSectionBox(
-            List<string> ignoredData1 = null,
-            List<string> ignoredData2 = null,
-            BoundingBoxXYZ ignoredData3 = null)
+            List<string>? ignoredData1 = null,
+            List<string>? ignoredData2 = null,
+            BoundingBoxXYZ? ignoredData3 = null)
         {
             // ✅ SIMPLIFIED: Pure SQL update based on IsCurrentClashFlag.
             // Logic moved to SessionContextService to adhere to SOLID / User Request.
@@ -6363,13 +6363,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             {
                 try
                 {
-                    var mepDict = JsonSerializer.Deserialize<Dictionary<string, string>>(mepParamsJson);
+                    var mepDict = JsonSerializer.Deserialize<Dictionary<string, string>>(mepParamsJson!);
                     clashZone.MepParameterValues = mepDict
                         .Select(kv => new SerializableKeyValue { Key = kv.Key, Value = kv.Value })
                         .ToList();
 
                     // ✅ CRITICAL DIAGNOSTIC: Log parameter loading for debugging
-                    if (!DeploymentConfiguration.DeploymentMode && string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
+                    if (mepDict != null && !DeploymentConfiguration.DeploymentMode && string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase))
                     {
                         var sampleKeys = mepDict.Keys.Take(5).ToList();
                         var sampleStr = string.Join(", ", sampleKeys);
@@ -6538,7 +6538,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             return clashZone;
         }
 
-        private static string GetNullableString(SQLiteDataReader reader, string column)
+        private static string? GetNullableString(SQLiteDataReader reader, string column)
         {
             var ordinal = reader.GetOrdinal(column);
             return reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
@@ -7052,7 +7052,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             catch (Exception ex)
             {
                 _logger($"[SQLite] ❌ Error updating corners for ClusterSleeve {clusterInstanceId}: {ex.Message}");
-                DatabaseOperationLogger.LogOperation("UPDATE", "ClusterSleeves", null, 0, $"❌ Error: {ex.Message}");
+                DatabaseOperationLogger.LogOperation("UPDATE", "ClusterSleeves", new Dictionary<string, object>(), 0, $"❌ Error: {ex.Message}");
             }
         }
 
@@ -8423,7 +8423,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             return results;
         }
 
-        private ClusterSleeve MapClusterSleeve(ClusterSleeveData data)
+        private ClusterSleeve? MapClusterSleeve(ClusterSleeveData data)
         {
             if (data == null) return null;
 
@@ -8635,7 +8635,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         }
 
         // ✅ NEW HELPER: Get single zone by sleeve ID
-        public ClashZone GetClashZoneBySleeveId(int sleeveInstanceId)
+        public ClashZone? GetClashZoneBySleeveId(int sleeveInstanceId)
         {
             if (sleeveInstanceId <= 0) return null;
 
@@ -8661,7 +8661,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         }
 
         // ✅ NEW HELPER: Get single zone by MEP Element ID
-        public ClashZone GetClashZoneByMepElementId(int mepElementId)
+        public ClashZone? GetClashZoneByMepElementId(int mepElementId)
         {
             if (mepElementId <= 0) return null;
 
@@ -8688,7 +8688,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
 
         // ✅ NEW HELPER: Get single zone by ClashZoneGuid
-        public ClashZone GetClashZoneByGuid(Guid clashZoneGuid)
+        public ClashZone? GetClashZoneByGuid(Guid clashZoneGuid)
         {
             if (clashZoneGuid == Guid.Empty) return null;
 

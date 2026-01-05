@@ -69,12 +69,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             if (_clashZoneStorage?.ClashZones == null)
             {
-                _log("No clash zones to clean up");
+                _log?.Invoke("No clash zones to clean up");
                 return 0;
             }
 
             var originalCount = _clashZoneStorage.ClashZones.Count;
-            _log($"Starting cleanup of {originalCount} clash zones");
+            _log?.Invoke($"Starting cleanup of {originalCount} clash zones");
 
             // Step 1: Remove invalid clash zones (null elements)
             var validClashZones = new List<ClashZone>();
@@ -94,13 +94,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     else
                     {
                         invalidCount++;
-                        _log($"Removing invalid clash zone {clashZone.Id} - MEP: {mepElement != null}, Structural: {structuralElement != null}");
+                        _log?.Invoke($"Removing invalid clash zone {clashZone.Id} - MEP: {mepElement != null}, Structural: {structuralElement != null}");
                     }
                 }
                 catch (Exception ex)
                 {
                     invalidCount++;
-                    _log($"Removing invalid clash zone {clashZone.Id} due to error: {ex.Message}");
+                    _log?.Invoke($"Removing invalid clash zone {clashZone.Id} due to error: {ex.Message}");
                 }
             }
 
@@ -120,7 +120,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 else
                 {
                     duplicateCount++;
-                    _log($"Removing duplicate clash zone {clashZone.Id} - MEP: {clashZone.MepElementId}, Structural: {clashZone.StructuralElementId}");
+                    _log?.Invoke($"Removing duplicate clash zone {clashZone.Id} - MEP: {clashZone.MepElementId}, Structural: {clashZone.StructuralElementId}");
                 }
             }
 
@@ -131,7 +131,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var finalCount = _clashZoneStorage.ClashZones.Count;
             var totalRemoved = originalCount - finalCount;
             
-            _log($"Cleanup complete: {originalCount} → {finalCount} clash zones (removed {totalRemoved}: {invalidCount} invalid + {duplicateCount} duplicates)");
+            _log?.Invoke($"Cleanup complete: {originalCount} → {finalCount} clash zones (removed {totalRemoved}: {invalidCount} invalid + {duplicateCount} duplicates)");
             
             return totalRemoved;
         }
@@ -147,11 +147,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             if (_clashZoneStorage?.ClashZones == null)
             {
-                _log("No clash zones to filter");
+                _log?.Invoke("No clash zones to filter");
                 return new List<ClashZone>();
             }
 
-            _log($"Returning all {_clashZoneStorage.ClashZones.Count} clash zones (filtering already done in IntersectionDetectionService)");
+            _log?.Invoke($"Returning all {_clashZoneStorage.ClashZones.Count} clash zones (filtering already done in IntersectionDetectionService)");
             
             // ✅ SIMPLIFIED: Return all clash zones since filtering is already done in IntersectionDetectionService
             // The 5-step filtering (Section Box, Reference File, MEP Categories, Host File, Host Categories)
@@ -191,12 +191,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 _log?.Invoke($"[SECTION-BOX] Failed to update section box: {ex.Message}");
             }
 
-            _log($"[METHOD3] DEBUG: DetectNewClashZones called with {currentIntersections?.Count ?? 0} intersections");
+            _log?.Invoke($"[METHOD3] DEBUG: DetectNewClashZones called with {currentIntersections?.Count ?? 0} intersections");
             
             // ✅ PERFORMANCE OPTIMIZATION: Streamlined fast-path for validated intersections
             // Force check flag and log execution path
             bool useStreamlined = OptimizationFlags.UseStreamlinedClashZoneCreation;
-            _log($"[PERFORMANCE] Clash Zone Creation Strategy: UseStreamlinedClashZoneCreation = {useStreamlined}");
+            _log?.Invoke($"[PERFORMANCE] Clash Zone Creation Strategy: UseStreamlinedClashZoneCreation = {useStreamlined}");
             
             // ✅ CRITICAL FIX: Reset IsCurrentClash flag for all checking categories
             // This ensures that any existing clash zones not found in this run will remain IsCurrentClash=false
@@ -209,19 +209,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                    if (zonesForCategory != null && zonesForCategory.Count > 0)
                    {
                        _flagManager.SetFlaggedClashZones(zonesForCategory, "IsCurrentClash", false);
-                       _log($"[FLAGS] Reset IsCurrentClash=false for {zonesForCategory.Count} zones in category '{category}'");
+                       _log?.Invoke($"[FLAGS] Reset IsCurrentClash=false for {zonesForCategory.Count} zones in category '{category}'");
                    }
                }
             }
 
             if (useStreamlined)
             {
-                _log($"[PERFORMANCE] Executing Streamlined Clash Zone Creation (Fast Path)...");
+                _log?.Invoke($"[PERFORMANCE] Executing Streamlined Clash Zone Creation (Fast Path)...");
                 return DetectNewClashZonesStreamlined(currentIntersections, document, clearanceSettings, selectedCategories);
             }
             else
             {
-                _log($"[PERFORMANCE] Executing LEGACY Clash Zone Creation (Slow Path)...");
+                _log?.Invoke($"[PERFORMANCE] Executing LEGACY Clash Zone Creation (Slow Path)...");
             }
             
             // ⚠️ CRITICAL: Check memory/timeout before starting heavy processing
@@ -230,17 +230,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 try
                 {
                     _memoryManager.CheckLimits();
-                    _log($"[MEMORY-MGR] Initial check passed: {_memoryManager.GetStatus()}");
+                    _log?.Invoke($"[MEMORY-MGR] Initial check passed: {_memoryManager.GetStatus()}");
                 }
                 catch (TimeoutException ex)
                 {
-                    _log($"[MEMORY-MGR] ⏱ TIMEOUT before processing: {ex.Message}");
+                    _log?.Invoke($"[MEMORY-MGR] ⏱ TIMEOUT before processing: {ex.Message}");
                     SafeFileLogger.SafeAppendText("clash_zone_timeouts.log", $"Timeout before DetectNewClashZones processing: {ex.Message}");
                     throw; // Re-throw to let caller handle gracefully
                 }
                 catch (OutOfMemoryException ex)
                 {
-                    _log($"[MEMORY-MGR] 💾 MEMORY LIMIT before processing: {ex.Message}");
+                    _log?.Invoke($"[MEMORY-MGR] 💾 MEMORY LIMIT before processing: {ex.Message}");
                     SafeFileLogger.SafeAppendText("clash_zone_memory.log", $"Memory limit before DetectNewClashZones processing: {ex.Message}");
                     throw; // Re-throw to let caller handle gracefully
                 }
@@ -259,13 +259,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             catch { }
             if (_clashZoneStorage == null)
             {
-                _log("ERROR: ClashZoneStorage is null in DetectNewClashZones");
+                _log?.Invoke("ERROR: ClashZoneStorage is null in DetectNewClashZones");
                 return new List<ClashZone>();
             }
             
             if (_clashZoneStorage.ClashZones == null)
             {
-                _log("ERROR: ClashZones collection is null in DetectNewClashZones");
+                _log?.Invoke("ERROR: ClashZones collection is null in DetectNewClashZones");
                 return new List<ClashZone>();
             }
             
@@ -279,24 +279,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             try
             {
-                _log($"[DEBUG] Starting duct-damper optimization with {currentIntersections.Count} intersections");
+                _log?.Invoke($"[DEBUG] Starting duct-damper optimization with {currentIntersections.Count} intersections");
                 enhancedIntersections = AutoDetectMissingDampers(document, currentIntersections);
-                _log($"[FOOLPROOF] Enhanced intersections: {enhancedIntersections.Count} (Original: {currentIntersections.Count})");
+                _log?.Invoke($"[FOOLPROOF] Enhanced intersections: {enhancedIntersections.Count} (Original: {currentIntersections.Count})");
                 
                 // OPTIMIZATION: Pre-calculate damper locations from XML + enhanced intersections (Calculate Once, Use Many Times)
                 damperLocations = PreCalculateDamperLocationsFromXmlAndCurrent(document, enhancedIntersections);
-                _log($"[OPTIMIZATION] Pre-calculated {damperLocations.Count} damper locations from XML + enhanced intersections");
+                _log?.Invoke($"[OPTIMIZATION] Pre-calculated {damperLocations.Count} damper locations from XML + enhanced intersections");
             }
             catch (Exception ex)
             {
-                _log($"[ERROR] Failed in foolproof/optimization methods: {ex.Message}");
+                _log?.Invoke($"[ERROR] Failed in foolproof/optimization methods: {ex.Message}");
                 // Fallback to original intersections
                 enhancedIntersections = currentIntersections;
                 damperLocations = new List<(ElementId damperId, BoundingBoxXYZ bbox, ElementId wallId)>();
             }
             
-            _log($"Detecting new clash zones for document: {documentPath}");
-            _log($"Current intersections count: {currentIntersections.Count}");
+            _log?.Invoke($"Detecting new clash zones for document: {documentPath}");
+            _log?.Invoke($"Current intersections count: {currentIntersections.Count}");
             
             // ✅ DEBUG: Initialize counters BEFORE priority sorting (must be accessible for summary logging)
             int ductWallBeforePriority = 0;
@@ -310,14 +310,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 return (mepCat == "Ducts" || mepCat == "Duct Curves" || mepCat == "Duct Accessories") 
                     && (structType == "Walls" || structType == "Wall");
             }).Count();
-            _log($"[DEBUG-COUNT] BEFORE PRIORITY SORT: {ductWallBeforePriority} Duct-Wall intersections");
+            _log?.Invoke($"[DEBUG-COUNT] BEFORE PRIORITY SORT: {ductWallBeforePriority} Duct-Wall intersections");
             
             // FOOLPROOF METHOD: Always process dampers first, then ducts (category-based priority)
             List<(Element, Element, BoundingBoxXYZ, XYZ)> prioritizedIntersections;
             try
             {
                 prioritizedIntersections = PrioritizeIntersectionsByCategory(enhancedIntersections);
-                _log($"[PRIORITY] Processed {prioritizedIntersections.Count} intersections in priority order");
+                _log?.Invoke($"[PRIORITY] Processed {prioritizedIntersections.Count} intersections in priority order");
                 
                 // ✅ DEBUG: Log Duct-Wall count AFTER priority sorting
                 ductWallAfterPriority = prioritizedIntersections.Where(i => 
@@ -327,11 +327,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return (mepCat == "Ducts" || mepCat == "Duct Curves" || mepCat == "Duct Accessories") 
                         && (structType == "Walls" || structType == "Wall");
                 }).Count();
-                _log($"[DEBUG-COUNT] AFTER PRIORITY SORT: {ductWallAfterPriority} Duct-Wall intersections");
+                _log?.Invoke($"[DEBUG-COUNT] AFTER PRIORITY SORT: {ductWallAfterPriority} Duct-Wall intersections");
             }
             catch (Exception ex)
             {
-                _log($"[ERROR] Failed in priority method: {ex.Message}");
+                _log?.Invoke($"[ERROR] Failed in priority method: {ex.Message}");
                 prioritizedIntersections = enhancedIntersections;
                 // If priority sort failed, after count equals before count
                 ductWallAfterPriority = ductWallBeforePriority;
@@ -355,12 +355,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         sleeveSpatialIndexesByCategory[category] = (spatialIndex, sleeveIds, categorySleeves);
                         if (!DeploymentConfiguration.DeploymentMode)
-                            _log($"[OPTIMIZED-SLEEVE-LOOKUP] Category '{category}': {categorySleeves.Count} sleeves found → Using OPTIMIZED path");
+                            _log?.Invoke($"[OPTIMIZED-SLEEVE-LOOKUP] Category '{category}': {categorySleeves.Count} sleeves found → Using OPTIMIZED path");
                     }
                     else
                     {
                         if (!DeploymentConfiguration.DeploymentMode)
-                            _log($"[OPTIMIZED-SLEEVE-LOOKUP] Category '{category}': No sleeves found → Using FALLBACK path");
+                            _log?.Invoke($"[OPTIMIZED-SLEEVE-LOOKUP] Category '{category}': No sleeves found → Using FALLBACK path");
                     }
                 }
             }
@@ -381,12 +381,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         sleeveSpatialIndexesByCategory[category] = (spatialIndex, sleeveIds, categorySleeves);
                         if (!DeploymentConfiguration.DeploymentMode)
-                            _log($"[OPTIMIZED-SLEEVE-LOOKUP] Category '{category}': {categorySleeves.Count} sleeves found → Using OPTIMIZED path");
+                            _log?.Invoke($"[OPTIMIZED-SLEEVE-LOOKUP] Category '{category}': {categorySleeves.Count} sleeves found → Using OPTIMIZED path");
                     }
                     else
                     {
                         if (!DeploymentConfiguration.DeploymentMode)
-                            _log($"[OPTIMIZED-SLEEVE-LOOKUP] Category '{category}': No sleeves found → Using FALLBACK path");
+                            _log?.Invoke($"[OPTIMIZED-SLEEVE-LOOKUP] Category '{category}': No sleeves found → Using FALLBACK path");
                     }
                 }
             }
@@ -396,14 +396,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 var (mepElement, structuralElement, boundingBox, intersectionPoint) = prioritizedIntersections[i];
                 var mepCategory = GetElementCategoryName(mepElement);
-                _log($"[DEBUG] Processing intersection {i + 1}/{prioritizedIntersections.Count}: MEP={mepElement.Id} ({mepCategory}) <-> Structural={structuralElement.Id}");
+                _log?.Invoke($"[DEBUG] Processing intersection {i + 1}/{prioritizedIntersections.Count}: MEP={mepElement.Id} ({mepCategory}) <-> Structural={structuralElement.Id}");
             }
             
             // ✅ OPTIMIZATION: Build O(1) Lookup Cache for existing clash zones
             // This prevents O(N) allocation + search for every single intersection
             BuildClashZoneLookup();
             
-            _log($"Existing clash zones count: {_clashZoneStorage.ClashZones.Count}");
+            _log?.Invoke($"Existing clash zones count: {_clashZoneStorage.ClashZones.Count}");
             
             // ✅ DEBUG: Initialize counters for tracking Duct-Wall clash zones through filters
             int ductWallAfterValidation = 0;
@@ -489,21 +489,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     try
                     {
                         _memoryManager.CheckLimits();
-                        _log($"[MEMORY-MGR] Check passed at intersection {processedCount}/{prioritizedIntersections.Count} - {_memoryManager.GetStatus()}");
+                        _log?.Invoke($"[MEMORY-MGR] Check passed at intersection {processedCount}/{prioritizedIntersections.Count} - {_memoryManager.GetStatus()}");
                     }
                     catch (TimeoutException ex)
                     {
-                        _log($"[MEMORY-MGR] ⏱ TIMEOUT at intersection {processedCount}/{prioritizedIntersections.Count}: {ex.Message}");
+                        _log?.Invoke($"[MEMORY-MGR] ⏱ TIMEOUT at intersection {processedCount}/{prioritizedIntersections.Count}: {ex.Message}");
                         SafeFileLogger.SafeAppendText("clash_zone_timeouts.log", 
                             $"Timeout during DetectNewClashZones: Processed {processedCount}/{prioritizedIntersections.Count} intersections. {ex.Message}");
                         
                         // Return partial results instead of crashing
-                        _log($"[MEMORY-MGR] Returning {newClashZones.Count} clash zones processed before timeout");
+                        _log?.Invoke($"[MEMORY-MGR] Returning {newClashZones.Count} clash zones processed before timeout");
                         return newClashZones;
                     }
                     catch (OutOfMemoryException ex)
                     {
-                        _log($"[MEMORY-MGR] 💾 MEMORY LIMIT at intersection {processedCount}/{prioritizedIntersections.Count}: {ex.Message}");
+                        _log?.Invoke($"[MEMORY-MGR] 💾 MEMORY LIMIT at intersection {processedCount}/{prioritizedIntersections.Count}: {ex.Message}");
                         SafeFileLogger.SafeAppendText("clash_zone_memory.log", 
                             $"Memory limit during DetectNewClashZones: Processed {processedCount}/{prioritizedIntersections.Count} intersections. {ex.Message}");
                         
@@ -514,12 +514,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             
                             // Check again after cleanup
                             _memoryManager.CheckLimits();
-                            _log($"[MEMORY-MGR] Memory cleanup succeeded, continuing...");
+                            _log?.Invoke($"[MEMORY-MGR] Memory cleanup succeeded, continuing...");
                         }
                         catch
                         {
                             // If cleanup didn't help, return partial results
-                            _log($"[MEMORY-MGR] Memory cleanup failed, returning {newClashZones.Count} clash zones processed");
+                            _log?.Invoke($"[MEMORY-MGR] Memory cleanup failed, returning {newClashZones.Count} clash zones processed");
                             return newClashZones;
                         }
                     }
@@ -539,12 +539,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // CRITICAL FIX: Validate elements before creating clash zones
                 if (mepElement == null || structuralElement == null)
                 {
-                    _log($"[OPTIMIZATION] ❌ SKIP VALIDATION: Invalid elements - MEP={mepElement?.Id}, Structural={structuralElement?.Id}");
+                    _log?.Invoke($"[OPTIMIZATION] ❌ SKIP VALIDATION: Invalid elements - MEP={mepElement?.Id}, Structural={structuralElement?.Id}");
                     if (isDuctWall) ductWallSkippedInvalid++;
                     continue;
                 }
                 
-                _log($"[OPTIMIZATION] ✅ PASS VALIDATION: MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                _log?.Invoke($"[OPTIMIZATION] ✅ PASS VALIDATION: MEP={mepElement.Id}, Structural={structuralElement.Id}");
                 if (isDuctWall) ductWallAfterValidation++;
 
                 // Method 3 is now implemented in IntersectionDetectionService.cs
@@ -565,14 +565,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Only skip if we can PROVE the element was deleted (check for negative/invalid IDs)
                     if (mepElement.Id.IntegerValue <= 0)
                     {
-                        _log($"SKIP: Invalid MEP element ID - MEP={mepElement.Id}");
+                        _log?.Invoke($"SKIP: Invalid MEP element ID - MEP={mepElement.Id}");
                         if (isDuctWall) ductWallSkippedInvalid++;
                         continue;
                     }
                     
                     if (structuralElement.Id.IntegerValue <= 0)
                     {
-                        _log($"SKIP: Invalid structural element ID - Structural={structuralElement.Id}");
+                        _log?.Invoke($"SKIP: Invalid structural element ID - Structural={structuralElement.Id}");
                         if (isDuctWall) ductWallSkippedInvalid++;
                         continue;
                     }
@@ -581,7 +581,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // GetElement returns null for linked elements, but they're still valid for clash zone creation
                     if (mepElementCheck == null || structuralElementCheck == null)
                     {
-                        _log($"INFO: Processing linked element(s) - MEP={mepElement.Id} (found={mepElementCheck != null}), Structural={structuralElement.Id} (found={structuralElementCheck != null})");
+                        _log?.Invoke($"INFO: Processing linked element(s) - MEP={mepElement.Id} (found={mepElementCheck != null}), Structural={structuralElement.Id} (found={structuralElementCheck != null})");
                         // Continue processing - linked elements are valid
                     }
                 }
@@ -589,42 +589,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     // ✅ OPTIMIZATION SAFETY: Log error but DON'T skip unless we're certain
                     // Errors in validation shouldn't prevent clash zone creation
-                    _log($"WARN: Error validating elements - MEP={mepElement.Id}, Structural={structuralElement.Id}, Error={ex.Message} - Continuing anyway");
+                    _log?.Invoke($"WARN: Error validating elements - MEP={mepElement.Id}, Structural={structuralElement.Id}, Error={ex.Message} - Continuing anyway");
                     // Continue processing - assume elements are valid if validation fails
                 }
 
                 // DIAGNOSTIC: Log detailed geometry information only when enabled
                 if (OptimizationFlags.UseDiagnosticMode)
                 {
-                    _log($"=== GEOMETRY ANALYSIS ===");
-                    _log($"MEP Element: {mepElement.Name} (ID: {mepElement.Id})");
-                    _log($"Structural Element: {structuralElement.Name} (ID: {structuralElement.Id})");
+                    _log?.Invoke($"=== GEOMETRY ANALYSIS ===");
+                    _log?.Invoke($"MEP Element: {mepElement.Name} (ID: {mepElement.Id})");
+                    _log?.Invoke($"Structural Element: {structuralElement.Name} (ID: {structuralElement.Id})");
                 }
                 
                 // Get MEP element bounding box
                 var mepBBox = mepElement.get_BoundingBox(null);
                 if (mepBBox != null)
                 {
-                    _log($"MEP BBox: Min({mepBBox.Min.X:F3}, {mepBBox.Min.Y:F3}, {mepBBox.Min.Z:F3}) Max({mepBBox.Max.X:F3}, {mepBBox.Max.Y:F3}, {mepBBox.Max.Z:F3})");
-                    _log($"MEP Size: X={mepBBox.Max.X - mepBBox.Min.X:F3}, Y={mepBBox.Max.Y - mepBBox.Min.Y:F3}, Z={mepBBox.Max.Z - mepBBox.Min.Z:F3}");
+                    _log?.Invoke($"MEP BBox: Min({mepBBox.Min.X:F3}, {mepBBox.Min.Y:F3}, {mepBBox.Min.Z:F3}) Max({mepBBox.Max.X:F3}, {mepBBox.Max.Y:F3}, {mepBBox.Max.Z:F3})");
+                    _log?.Invoke($"MEP Size: X={mepBBox.Max.X - mepBBox.Min.X:F3}, Y={mepBBox.Max.Y - mepBBox.Min.Y:F3}, Z={mepBBox.Max.Z - mepBBox.Min.Z:F3}");
                 }
                 
                 // Get structural element bounding box
                 var structBBox = structuralElement.get_BoundingBox(null);
                 if (structBBox != null)
                 {
-                    _log($"Structural BBox: Min({structBBox.Min.X:F3}, {structBBox.Min.Y:F3}, {structBBox.Min.Z:F3}) Max({structBBox.Max.X:F3}, {structBBox.Max.Y:F3}, {structBBox.Max.Z:F3})");
-                    _log($"Structural Size: X={structBBox.Max.X - structBBox.Min.X:F3}, Y={structBBox.Max.Y - structBBox.Min.Y:F3}, Z={structBBox.Max.Z - structBBox.Min.Z:F3}");
+                    _log?.Invoke($"Structural BBox: Min({structBBox.Min.X:F3}, {structBBox.Min.Y:F3}, {structBBox.Min.Z:F3}) Max({structBBox.Max.X:F3}, {structBBox.Max.Y:F3}, {structBBox.Max.Z:F3})");
+                    _log?.Invoke($"Structural Size: X={structBBox.Max.X - structBBox.Min.X:F3}, Y={structBBox.Max.Y - structBBox.Min.Y:F3}, Z={structBBox.Max.Z - structBBox.Min.Z:F3}");
                 }
                 
                 // Log intersection details
-                _log($"Intersection Point: ({intersectionPoint.X:F3}, {intersectionPoint.Y:F3}, {intersectionPoint.Z:F3})");
+                _log?.Invoke($"Intersection Point: ({intersectionPoint.X:F3}, {intersectionPoint.Y:F3}, {intersectionPoint.Z:F3})");
                 if (boundingBox != null)
                 {
-                    _log($"Intersection BBox: Min({boundingBox.Min.X:F3}, {boundingBox.Min.Y:F3}, {boundingBox.Min.Z:F3}) Max({boundingBox.Max.X:F3}, {boundingBox.Max.Y:F3}, {boundingBox.Max.Z:F3})");
-                    _log($"Intersection Size: X={boundingBox.Max.X - boundingBox.Min.X:F3}, Y={boundingBox.Max.Y - boundingBox.Min.Y:F3}, Z={boundingBox.Max.Z - boundingBox.Min.Z:F3}");
+                    _log?.Invoke($"Intersection BBox: Min({boundingBox.Min.X:F3}, {boundingBox.Min.Y:F3}, {boundingBox.Min.Z:F3}) Max({boundingBox.Max.X:F3}, {boundingBox.Max.Y:F3}, {boundingBox.Max.Z:F3})");
+                    _log?.Invoke($"Intersection Size: X={boundingBox.Max.X - boundingBox.Min.X:F3}, Y={boundingBox.Max.Y - boundingBox.Min.Y:F3}, Z={boundingBox.Max.Z - boundingBox.Min.Z:F3}");
                 }
-                _log($"=== END GEOMETRY ANALYSIS ===");
+                _log?.Invoke($"=== END GEOMETRY ANALYSIS ===");
 
                 // ✅ DUCT-DAMPER FLAG TRACKING: Track if we detected damper for this duct (to set flag on new clash zone)
                 // Declared BEFORE duct-damper check so it's accessible throughout the method
@@ -638,7 +638,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     try
                     {
                         var mepCat = GetElementCategoryName(mepElement);
-                        _log($"[DUCT-DAMPER] Checking element {mepElement.Id} with category '{mepCat}' against {damperLocations.Count} damper locations");
+                        _log?.Invoke($"[DUCT-DAMPER] Checking element {mepElement.Id} with category '{mepCat}' against {damperLocations.Count} damper locations");
                         
                         if (string.Equals(mepCat, "Ducts", StringComparison.OrdinalIgnoreCase))
                         {
@@ -646,7 +646,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var existingDuctClashZone = FindExistingClashZone(mepElement.Id, structuralElement.Id, intersectionPoint);
                             if (existingDuctClashZone != null && existingDuctClashZone.HasDamperNearby)
                             {
-                                _log($"[OPTIMIZATION] ❌ SKIP DAMPER CHECK (FLAG): Duct {mepElement.Id} - HasDamperNearby flag is true from previous run, skipping duct");
+                                _log?.Invoke($"[OPTIMIZATION] ❌ SKIP DAMPER CHECK (FLAG): Duct {mepElement.Id} - HasDamperNearby flag is true from previous run, skipping duct");
                                 if (isDuctWall) ductWallSkippedDamper++;
                                 continue;
                             }
@@ -656,19 +656,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             
                             if (isNearDamper)
                             {
-                                _log($"[OPTIMIZATION] ❌ SKIP DAMPER CHECK (DETECTED): Duct {mepElement.Id} - damper present on same wall ({structuralElement.Id}) at intersection point, prioritizing damper sleeve");
+                                _log?.Invoke($"[OPTIMIZATION] ❌ SKIP DAMPER CHECK (DETECTED): Duct {mepElement.Id} - damper present on same wall ({structuralElement.Id}) at intersection point, prioritizing damper sleeve");
                                 
                                 // ✅ CRITICAL: Set flag on existing clash zone if found
                                 if (existingDuctClashZone != null)
                                 {
                                     existingDuctClashZone.HasDamperNearby = true;
-                                    _log($"[DUCT-DAMPER] ✓ Set HasDamperNearby=true on existing clash zone {existingDuctClashZone.Id}");
+                                    _log?.Invoke($"[DUCT-DAMPER] ✓ Set HasDamperNearby=true on existing clash zone {existingDuctClashZone.Id}");
                                 }
                                 else
                                 {
                                     // ✅ Track that this duct has damper nearby - will set flag if new clash zone is created
                                     ductHasDamperNearby = true;
-                                    _log($"[DUCT-DAMPER] ✓ Duct {mepElement.Id} has damper nearby - will set flag on new clash zone if created");
+                                    _log?.Invoke($"[DUCT-DAMPER] ✓ Duct {mepElement.Id} has damper nearby - will set flag on new clash zone if created");
                                 }
                                 
                                 if (isDuctWall) ductWallSkippedDamper++;
@@ -680,10 +680,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 if (existingDuctClashZone != null && existingDuctClashZone.HasDamperNearby)
                                 {
                                     existingDuctClashZone.HasDamperNearby = false;
-                                    _log($"[DUCT-DAMPER] ✓ Cleared HasDamperNearby flag - damper no longer nearby for clash zone {existingDuctClashZone.Id}");
+                                    _log?.Invoke($"[DUCT-DAMPER] ✓ Cleared HasDamperNearby flag - damper no longer nearby for clash zone {existingDuctClashZone.Id}");
                                 }
                                 
-                                _log($"[OPTIMIZATION] ✅ PASS DAMPER CHECK: Duct {mepElement.Id} - no damper nearby on wall {structuralElement.Id}, proceeding with sleeve placement");
+                                _log?.Invoke($"[OPTIMIZATION] ✅ PASS DAMPER CHECK: Duct {mepElement.Id} - no damper nearby on wall {structuralElement.Id}, proceeding with sleeve placement");
                                 if (isDuctWall) ductWallAfterDamperCheck++;
                             }
                         }
@@ -695,13 +695,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     catch (Exception ex)
                     {
-                        _log($"Error in duct-damper priority filter: {ex.Message}");
+                        _log?.Invoke($"Error in duct-damper priority filter: {ex.Message}");
                     }
                 }
                 else
                 {
                     // ✅ FALLBACK: When flag is disabled, skip damper check and treat all elements as passed
-                    _log($"[INFO] Damper filter disabled (UseSOLIDCompliantDamperFilter=false) - skipping damper check for element {mepElement.Id}");
+                    _log?.Invoke($"[INFO] Damper filter disabled (UseSOLIDCompliantDamperFilter=false) - skipping damper check for element {mepElement.Id}");
                     if (isDuctWall) ductWallAfterDamperCheck++;
                 }
                 // Penetration adequacy filter: skip shallow/grazing intersections
@@ -717,11 +717,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var (mepW, mepH) = GetMepElementDimensions(mepElement);
                         var mepCat = GetElementCategoryName(mepElement);
 
-                        _log($"[DEBUG] Penetration calculation for {mepCat}: MEP={mepElement.Id}, Structural={structuralElement.Id}");
-                        _log($"[DEBUG]   MEP Direction: ({mepDir.X:F3}, {mepDir.Y:F3}, {mepDir.Z:F3})");
-                        _log($"[DEBUG]   Host Normal: ({hostNormal.X:F3}, {hostNormal.Y:F3}, {hostNormal.Z:F3})");
-                        _log($"[DEBUG]   Host Thickness: {hostThickness:F3}");
-                        _log($"[DEBUG]   MEP Dimensions: W={mepW:F3}, H={mepH:F3}");
+                        _log?.Invoke($"[DEBUG] Penetration calculation for {mepCat}: MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                        _log?.Invoke($"[DEBUG]   MEP Direction: ({mepDir.X:F3}, {mepDir.Y:F3}, {mepDir.Z:F3})");
+                        _log?.Invoke($"[DEBUG]   Host Normal: ({hostNormal.X:F3}, {hostNormal.Y:F3}, {hostNormal.Z:F3})");
+                        _log?.Invoke($"[DEBUG]   Host Thickness: {hostThickness:F3}");
+                        _log?.Invoke($"[DEBUG]   MEP Dimensions: W={mepW:F3}, H={mepH:F3}");
 
                         double crossSize = 0.0;
                         if (string.Equals(mepCat, "Pipes", StringComparison.OrdinalIgnoreCase))
@@ -748,10 +748,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var nNorm = new XYZ(hostNormal.X / nLen, hostNormal.Y / nLen, hostNormal.Z / nLen);
                             dot = Math.Abs(dNorm.X * nNorm.X + dNorm.Y * nNorm.Y + dNorm.Z * nNorm.Z);
                             
-                            _log($"[DEBUG]   Normalized MEP Dir: ({dNorm.X:F3}, {dNorm.Y:F3}, {dNorm.Z:F3})");
-                            _log($"[DEBUG]   Normalized Host Normal: ({nNorm.X:F3}, {nNorm.Y:F3}, {nNorm.Z:F3})");
-                            _log($"[DEBUG]   Dot Product: {dot:F3}");
-                            _log($"[DEBUG]   Cross Size: {crossSize:F3}");
+                            _log?.Invoke($"[DEBUG]   Normalized MEP Dir: ({dNorm.X:F3}, {dNorm.Y:F3}, {dNorm.Z:F3})");
+                            _log?.Invoke($"[DEBUG]   Normalized Host Normal: ({nNorm.X:F3}, {nNorm.Y:F3}, {nNorm.Z:F3})");
+                            _log?.Invoke($"[DEBUG]   Dot Product: {dot:F3}");
+                            _log?.Invoke($"[DEBUG]   Cross Size: {crossSize:F3}");
                             
                             // ✅ CRITICAL FIX: Detect perpendicular penetrations (duct running parallel to wall face)
                             // When dot < 0.1, the MEP element is nearly perpendicular to wall normal (parallel to wall face)
@@ -763,8 +763,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 // For perpendicular penetrations, check if cross-section is significant relative to wall thickness
                                 // If crossSize >= 10% of wall thickness, it's a valid penetration
                                 penetrationRatio = crossSize / hostThickness;
-                                _log($"[DEBUG]   PERPENDICULAR PENETRATION detected (dot={dot:F3} < {PerpendicularThreshold})");
-                                _log($"[DEBUG]   Using cross-section/thickness ratio: {penetrationRatio:F3}");
+                                _log?.Invoke($"[DEBUG]   PERPENDICULAR PENETRATION detected (dot={dot:F3} < {PerpendicularThreshold})");
+                                _log?.Invoke($"[DEBUG]   Using cross-section/thickness ratio: {penetrationRatio:F3}");
                             }
                             else
                             {
@@ -777,7 +777,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         const double MinPenetrationRatio = 0.01;
                         const double MinPerpendicularRatio = 0.10; // For perpendicular penetrations
                         
-                        _log($"[DEBUG] Penetration check: ratio={penetrationRatio:F3}, threshold={MinPenetrationRatio:F2}, hostThickness={hostThickness:F3}, crossSize={crossSize:F3}, perpendicular={isPerpendicularPenetration}");
+                        _log?.Invoke($"[DEBUG] Penetration check: ratio={penetrationRatio:F3}, threshold={MinPenetrationRatio:F2}, hostThickness={hostThickness:F3}, crossSize={crossSize:F3}, perpendicular={isPerpendicularPenetration}");
                         
                         bool shouldSkip = false;
                         if (isPerpendicularPenetration)
@@ -786,8 +786,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             shouldSkip = penetrationRatio < MinPerpendicularRatio;
                             if (shouldSkip)
                             {
-                                _log($"[OPTIMIZATION] ❌ SKIP PENETRATION: Insufficient perpendicular penetration (crossSize/thickness={penetrationRatio:F3} < {MinPerpendicularRatio:F2}) for {hostTypeName}. MEP={mepElement.Id}, Structural={structuralElement.Id}");
-                                _log($"[OPTIMIZATION]   Details: crossSize={crossSize:F3}ft, hostThickness={hostThickness:F3}ft, ratio={penetrationRatio:F3}");
+                                _log?.Invoke($"[OPTIMIZATION] ❌ SKIP PENETRATION: Insufficient perpendicular penetration (crossSize/thickness={penetrationRatio:F3} < {MinPerpendicularRatio:F2}) for {hostTypeName}. MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                                _log?.Invoke($"[OPTIMIZATION]   Details: crossSize={crossSize:F3}ft, hostThickness={hostThickness:F3}ft, ratio={penetrationRatio:F3}");
                             }
                         }
                         else
@@ -796,8 +796,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             shouldSkip = penetrationRatio < MinPenetrationRatio;
                             if (shouldSkip)
                             {
-                                _log($"[OPTIMIZATION] ❌ SKIP PENETRATION: Insufficient penetration (ratio={penetrationRatio:F3} < {MinPenetrationRatio:F2}) for {hostTypeName}. MEP={mepElement.Id}, Structural={structuralElement.Id}");
-                                _log($"[OPTIMIZATION]   Details: hostThickness={hostThickness:F3}ft, crossSize={crossSize:F3}ft, dot={dot:F3}, ratio={penetrationRatio:F3}");
+                                _log?.Invoke($"[OPTIMIZATION] ❌ SKIP PENETRATION: Insufficient penetration (ratio={penetrationRatio:F3} < {MinPenetrationRatio:F2}) for {hostTypeName}. MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                                _log?.Invoke($"[OPTIMIZATION]   Details: hostThickness={hostThickness:F3}ft, crossSize={crossSize:F3}ft, dot={dot:F3}, ratio={penetrationRatio:F3}");
                             }
                         }
                         
@@ -810,22 +810,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // Log pass message with correct threshold
                         if (isPerpendicularPenetration)
                         {
-                            _log($"[OPTIMIZATION] ✅ PASS PENETRATION (perpendicular): ratio={penetrationRatio:F3} >= {MinPerpendicularRatio:F2}");
+                            _log?.Invoke($"[OPTIMIZATION] ✅ PASS PENETRATION (perpendicular): ratio={penetrationRatio:F3} >= {MinPerpendicularRatio:F2}");
                         }
                         else
                         {
-                            _log($"[OPTIMIZATION] ✅ PASS PENETRATION: ratio={penetrationRatio:F3} >= {MinPenetrationRatio:F2}");
+                            _log?.Invoke($"[OPTIMIZATION] ✅ PASS PENETRATION: ratio={penetrationRatio:F3} >= {MinPenetrationRatio:F2}");
                         }
                         if (isDuctWall) ductWallAfterPenetration++;
                     }
                     else if (hostTypeName == "Structural Framing")
                     {
-                        _log("[PENETRATION] Bypassing penetration filter for Structural Framing (using legacy behavior)");
+                        _log?.Invoke("[PENETRATION] Bypassing penetration filter for Structural Framing (using legacy behavior)");
                     }
                 }
                 catch (Exception ex)
                 {
-                    _log($"WARN: Penetration filter failed ({ex.Message}) – proceeding without filter.");
+                    _log?.Invoke($"WARN: Penetration filter failed ({ex.Message}) – proceeding without filter.");
                 }
 
                 // Check if this clash zone already exists
@@ -833,12 +833,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (existingClashZone == null)
                 {
-                    _log($"[OPTIMIZATION] ✅ PASS EXISTING CHECK: No existing clash zone found for MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                    _log?.Invoke($"[OPTIMIZATION] ✅ PASS EXISTING CHECK: No existing clash zone found for MEP={mepElement.Id}, Structural={structuralElement.Id}");
                     if (isDuctWall) ductWallAfterExistingCheck++;
                 }
                 else
                 {
-                    _log($"[OPTIMIZATION] ❌ SKIP EXISTING CHECK: Clash zone already exists for MEP={mepElement.Id}, Structural={structuralElement.Id} (Existing ID: {existingClashZone.Id})");
+                    _log?.Invoke($"[OPTIMIZATION] ❌ SKIP EXISTING CHECK: Clash zone already exists for MEP={mepElement.Id}, Structural={structuralElement.Id} (Existing ID: {existingClashZone.Id})");
                     if (isDuctWall) ductWallSkippedExisting++;
                 }
 
@@ -850,7 +850,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (invalidClashZone != null)
                     {
                         // Replace invalid clash zone with valid one
-                        _log($"Replacing invalid clash zone {invalidClashZone.Id} with valid ElementIds");
+                        _log?.Invoke($"Replacing invalid clash zone {invalidClashZone.Id} with valid ElementIds");
                         _clashZoneStorage.ClashZones.Remove(invalidClashZone);
                         
                         // ✅ OOP PATTERN: Pass spatial index if available for optimized path
@@ -924,7 +924,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (ductHasDamperNearby)
                         {
                             newClashZone.HasDamperNearby = true;
-                            _log($"[DUCT-DAMPER] ✓ Set HasDamperNearby=true on REPLACED clash zone {newClashZone.Id} for duct {mepElement.Id}");
+                            _log?.Invoke($"[DUCT-DAMPER] ✓ Set HasDamperNearby=true on REPLACED clash zone {newClashZone.Id} for duct {mepElement.Id}");
                         }
                         
                         newClashZone.IsCurrentClash = true; // ✅ DEBUG: Mark as current refresh clash
@@ -932,7 +932,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         newClashZone.ClearRevitApiObjects();
                         newClashZones.Add(newClashZone);
                         _clashZoneStorage.ClashZones.Add(newClashZone);
-                        _log($"Replaced invalid clash zone: MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                        _log?.Invoke($"Replaced invalid clash zone: MEP={mepElement.Id}, Structural={structuralElement.Id}");
                         if (isDuctWall) ductWallClashZonesCreated++;
                         
                         // ✅ MEMORY PROFILING: Track memory AFTER clash zone is added (correct timing)
@@ -944,14 +944,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     else
                 {
                     // Create new clash zone
-                    _log($"[DEBUG] About to create clash zone: MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                    _log?.Invoke($"[DEBUG] About to create clash zone: MEP={mepElement.Id}, Structural={structuralElement.Id}");
                     try
                     {
                         // ✅ CRITICAL DEBUG: Log intersection point BEFORE creating ClashZone
                         bool isZeroPoint = Math.Abs(intersectionPoint.X) < 1e-9 && Math.Abs(intersectionPoint.Y) < 1e-9 && Math.Abs(intersectionPoint.Z) < 1e-9;
                         if (isZeroPoint)
                         {
-                            _log($"[⚠️ ZERO POINT WARNING] Creating ClashZone with ZERO intersection point: MEP={mepElement.Id}, Structural={structuralElement.Id}, Point=({intersectionPoint.X},{intersectionPoint.Y},{intersectionPoint.Z})");
+                            _log?.Invoke($"[⚠️ ZERO POINT WARNING] Creating ClashZone with ZERO intersection point: MEP={mepElement.Id}, Structural={structuralElement.Id}, Point=({intersectionPoint.X},{intersectionPoint.Y},{intersectionPoint.Z})");
                             try 
                             { 
                                 // ✅ DEPLOYMENT MODE: Skip file writes
@@ -981,14 +981,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (ductHasDamperNearby)
                         {
                             newClashZone.HasDamperNearby = true;
-                            _log($"[DUCT-DAMPER] ✓ Set HasDamperNearby=true on NEW clash zone {newClashZone.Id} for duct {mepElement.Id}");
+                            _log?.Invoke($"[DUCT-DAMPER] ✓ Set HasDamperNearby=true on NEW clash zone {newClashZone.Id} for duct {mepElement.Id}");
                         }
                         
                         // ✅ CRITICAL DEBUG: Verify coordinates AFTER creation
                         bool xmlIsZero = Math.Abs(newClashZone.IntersectionPointX) < 1e-9 && Math.Abs(newClashZone.IntersectionPointY) < 1e-9 && Math.Abs(newClashZone.IntersectionPointZ) < 1e-9;
                         if (xmlIsZero)
                         {
-                            _log($"[⚠️ XML ZERO WARNING] ClashZone created with ZERO XML coordinates: ID={newClashZone.Id}, MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                            _log?.Invoke($"[⚠️ XML ZERO WARNING] ClashZone created with ZERO XML coordinates: ID={newClashZone.Id}, MEP={mepElement.Id}, Structural={structuralElement.Id}");
                             try 
                             { 
                                 // ✅ DEPLOYMENT MODE: Skip file writes
@@ -1016,11 +1016,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // 
                         // For NEW clash zones (not in Filter XML), they start with flags=false (correct)
                         // For EXISTING clash zones (loaded from Filter XML), flags are synced by GUID (correct)
-                        _log($"[GLOBAL-XML] New clash zone created: ClashZone {newClashZone.Id} for MEP={mepElement.Id}, Structural={structuralElement.Id}, Intersection=({intersectionPoint.X:F3},{intersectionPoint.Y:F3},{intersectionPoint.Z:F3}) - flags will be synced from Global XML if exists");
+                        _log?.Invoke($"[GLOBAL-XML] New clash zone created: ClashZone {newClashZone.Id} for MEP={mepElement.Id}, Structural={structuralElement.Id}, Intersection=({intersectionPoint.X:F3},{intersectionPoint.Y:F3},{intersectionPoint.Z:F3}) - flags will be synced from Global XML if exists");
                         
                         newClashZones.Add(newClashZone);
                         _clashZoneStorage.ClashZones.Add(newClashZone);
-                        _log($"New clash zone detected: MEP={mepElement.Id}, Structural={structuralElement.Id}");
+                        _log?.Invoke($"New clash zone detected: MEP={mepElement.Id}, Structural={structuralElement.Id}");
                         if (isDuctWall) ductWallClashZonesCreated++;
                         
                         // ✅ MEMORY PROFILING: Track memory AFTER clash zone is added (correct timing)
@@ -1031,7 +1031,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     catch (Exception ex)
                     {
-                        _log($"[ERROR] Failed to create clash zone: MEP={mepElement.Id}, Structural={structuralElement.Id}, Error={ex.Message}");
+                        _log?.Invoke($"[ERROR] Failed to create clash zone: MEP={mepElement.Id}, Structural={structuralElement.Id}, Error={ex.Message}");
                     }
                     }
                 }
@@ -1039,7 +1039,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     // Only update existing clash zone if it's NOT resolved
                     UpdateExistingClashZone(existingClashZone, mepElement, structuralElement, intersectionPoint, boundingBox, document);
-                    _log($"Updated existing unresolved clash zone: {existingClashZone.Id}");
+                    _log?.Invoke($"Updated existing unresolved clash zone: {existingClashZone.Id}");
                 }
                 else
                 {
@@ -1074,7 +1074,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // If sleeve doesn't exist, reset flag and allow zone to be updated
                     if (!sleeveActuallyExists)
                     {
-                        _log($"[CRITICAL-FIX] Zone {existingClashZone.Id} marked as IsResolved=true but sleeve doesn't exist (SleeveId={existingClashZone.SleeveInstanceId}, ClusterId={existingClashZone.ClusterSleeveInstanceId}) - resetting flag and allowing update");
+                        _log?.Invoke($"[CRITICAL-FIX] Zone {existingClashZone.Id} marked as IsResolved=true but sleeve doesn't exist (SleeveId={existingClashZone.SleeveInstanceId}, ClusterId={existingClashZone.ClusterSleeveInstanceId}) - resetting flag and allowing update");
                         existingClashZone.IsResolved = false;
                         existingClashZone.IsClusterResolved = false;
                         if (existingClashZone.SleeveInstanceId > 0 && !sleeveActuallyExists)
@@ -1083,7 +1083,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             existingClashZone.ClusterSleeveInstanceId = 0;
                         // Now allow update (fall through to UpdateExistingClashZone)
                         UpdateExistingClashZone(existingClashZone, mepElement, structuralElement, intersectionPoint, boundingBox, document);
-                        _log($"Updated existing clash zone after resetting invalid resolved flag: {existingClashZone.Id}");
+                        _log?.Invoke($"Updated existing clash zone after resetting invalid resolved flag: {existingClashZone.Id}");
                         continue; // Skip the rest of the resolved zone handling
                     }
                     
@@ -1102,11 +1102,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             {
                                 var (orientation, widthDirection) = Helpers.MepElementOrientationHelper.GetDuctWidthOrientation(duct);
                                 existingClashZone.MepElementOrientationDirection = orientation == "X-ORIENTED" ? "X" : "Y";
-                                _log($"✅ UPDATED MepElementOrientationDirection for resolved clash zone {existingClashZone.Id}: '{existingClashZone.MepElementOrientationDirection}' ({orientation})");
+                                _log?.Invoke($"✅ UPDATED MepElementOrientationDirection for resolved clash zone {existingClashZone.Id}: '{existingClashZone.MepElementOrientationDirection}' ({orientation})");
                             }
                             catch (Exception ex)
                             {
-                                _log($"Error updating MepElementOrientationDirection for resolved clash zone {existingClashZone.Id}: {ex.Message}");
+                                _log?.Invoke($"Error updating MepElementOrientationDirection for resolved clash zone {existingClashZone.Id}: {ex.Message}");
                                 // Fallback: use X if we can't determine
                                 existingClashZone.MepElementOrientationDirection = "X";
                             }
@@ -1119,11 +1119,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 existingClashZone.StructuralElementType, 
                                 mepDir,
                                 mepElement); // Pass element for vertical element rotation calculation
-                            _log($"✅ UPDATED MepElementRotationAngle for resolved clash zone {existingClashZone.Id}: {existingClashZone.MepElementRotationAngle * 180 / Math.PI:F1}°");
+                            _log?.Invoke($"✅ UPDATED MepElementRotationAngle for resolved clash zone {existingClashZone.Id}: {existingClashZone.MepElementRotationAngle * 180 / Math.PI:F1}°");
                         }
                         
                         existingClashZone.LastUpdated = DateTime.Now;
-                        _log($"✅ UPDATED MepElementOrientation for resolved clash zone {existingClashZone.Id}: ({mepDir.X:F3}, {mepDir.Y:F3}, {mepDir.Z:F3})");
+                        _log?.Invoke($"✅ UPDATED MepElementOrientation for resolved clash zone {existingClashZone.Id}: ({mepDir.X:F3}, {mepDir.Y:F3}, {mepDir.Z:F3})");
                     }
                     else if (existingClashZone.MepElementRotationAngle == 0.0 && 
                              (existingClashZone.StructuralElementType == "Floor" || existingClashZone.StructuralElementType == "Floors"))
@@ -1135,11 +1135,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             existingClashZone.StructuralElementType, 
                             existingClashZone.MepElementOrientation,
                             mepElement); // Pass element if available for vertical element rotation
-                        _log($"✅ UPDATED MepElementRotationAngle for existing clash zone {existingClashZone.Id}: {existingClashZone.MepElementRotationAngle * 180 / Math.PI:F1}°");
+                        _log?.Invoke($"✅ UPDATED MepElementRotationAngle for existing clash zone {existingClashZone.Id}: {existingClashZone.MepElementRotationAngle * 180 / Math.PI:F1}°");
                     }
                     
                     // Preserve resolved clash zones during refresh - keep them in the list
-                    _log($"Preserved resolved clash zone: {existingClashZone.Id} (IsResolved={existingClashZone.IsResolved})");
+                    _log?.Invoke($"Preserved resolved clash zone: {existingClashZone.Id} (IsResolved={existingClashZone.IsResolved})");
                 }
             }
             
@@ -1171,11 +1171,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     if (resetCount > 0)
                     {
-                        _log($"[FLAG-MANAGER] Reset flags for {resetCount} deleted sleeves using unified FlagManager method");
+                        _log?.Invoke($"[FLAG-MANAGER] Reset flags for {resetCount} deleted sleeves using unified FlagManager method");
                     }
                     else
                     {
-                        _log($"[FLAG-MANAGER] No flags reset - all sleeves exist");
+                        _log?.Invoke($"[FLAG-MANAGER] No flags reset - all sleeves exist");
                     }
                 }
             }
@@ -1204,25 +1204,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _clashZoneStorage.DocumentPath = documentPath;
             _clashZoneStorage.DocumentHash = documentHash;
             
-            _log($"Clash zone detection complete. New zones: {newClashZones.Count}");
+            _log?.Invoke($"Clash zone detection complete. New zones: {newClashZones.Count}");
             // ✅ DEBUG: Log final summary of Duct-Wall clash zones through optimization pipeline
-            _log($"[DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════");
-            _log($"[DEBUG-COUNT] DUCT-WALL CLASH ZONES OPTIMIZATION PIPELINE SUMMARY");
-            _log($"[DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════");
-            _log($"[DEBUG-COUNT] STEP 1 - BEFORE OPTIMIZATION (Priority Sort): {ductWallBeforePriority} Duct-Wall intersections");
-            _log($"[DEBUG-COUNT] STEP 2 - AFTER PRIORITY SORT: {ductWallAfterPriority} Duct-Wall intersections (changed: {ductWallAfterPriority - ductWallBeforePriority:+0;-0;=0})");
-            _log($"[DEBUG-COUNT] STEP 3 - AFTER VALIDATION: {ductWallAfterValidation} Duct-Wall intersections (✅ passed, ❌ skipped: {ductWallSkippedInvalid})");
-            _log($"[DEBUG-COUNT] STEP 4 - AFTER DAMPER CHECK: {ductWallAfterDamperCheck} Duct-Wall intersections (✅ passed, ❌ skipped: {ductWallSkippedDamper})");
-            _log($"[DEBUG-COUNT] STEP 5 - AFTER PENETRATION FILTER: {ductWallAfterPenetration} Duct-Wall intersections (✅ passed, ❌ skipped: {ductWallSkippedPenetration})");
-            _log($"[DEBUG-COUNT] STEP 6 - AFTER EXISTING CHECK: {ductWallAfterExistingCheck} Duct-Wall intersections (✅ passed, ❌ skipped: {ductWallSkippedExisting})");
-            _log($"[DEBUG-COUNT] STEP 7 - FINAL CLASH ZONES CREATED: {ductWallClashZonesCreated} Duct-Wall clash zones");
-            _log($"[DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════");
-            _log($"[DEBUG-COUNT] VERIFICATION: {ductWallAfterExistingCheck} should equal {ductWallClashZonesCreated} (after existing check = final created)");
+            _log?.Invoke($"[DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════");
+            _log?.Invoke($"[DEBUG-COUNT] DUCT-WALL CLASH ZONES OPTIMIZATION PIPELINE SUMMARY");
+            _log?.Invoke($"[DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════");
+            _log?.Invoke($"[DEBUG-COUNT] STEP 1 - BEFORE OPTIMIZATION (Priority Sort): {ductWallBeforePriority} Duct-Wall intersections");
+            _log?.Invoke($"[DEBUG-COUNT] STEP 2 - AFTER PRIORITY SORT: {ductWallAfterPriority} Duct-Wall intersections (changed: {ductWallAfterPriority - ductWallBeforePriority:+0;-0;=0})");
+            _log?.Invoke($"[DEBUG-COUNT] STEP 3 - AFTER VALIDATION: {ductWallAfterValidation} Duct-Wall intersections (✅ passed, ❌ skipped: {ductWallSkippedInvalid})");
+            _log?.Invoke($"[DEBUG-COUNT] STEP 4 - AFTER DAMPER CHECK: {ductWallAfterDamperCheck} Duct-Wall intersections (✅ passed, ❌ skipped: {ductWallSkippedDamper})");
+            _log?.Invoke($"[DEBUG-COUNT] STEP 5 - AFTER PENETRATION FILTER: {ductWallAfterPenetration} Duct-Wall intersections (✅ passed, ❌ skipped: {ductWallSkippedPenetration})");
+            _log?.Invoke($"[DEBUG-COUNT] STEP 6 - AFTER EXISTING CHECK: {ductWallAfterExistingCheck} Duct-Wall intersections (✅ passed, ❌ skipped: {ductWallSkippedExisting})");
+            _log?.Invoke($"[DEBUG-COUNT] STEP 7 - FINAL CLASH ZONES CREATED: {ductWallClashZonesCreated} Duct-Wall clash zones");
+            _log?.Invoke($"[DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════");
+            _log?.Invoke($"[DEBUG-COUNT] VERIFICATION: {ductWallAfterExistingCheck} should equal {ductWallClashZonesCreated} (after existing check = final created)");
             var totalSkipped = ductWallSkippedInvalid + ductWallSkippedDamper + ductWallSkippedPenetration + ductWallSkippedExisting;
             var totalProcessed = ductWallAfterValidation + totalSkipped;
-            _log($"[DEBUG-COUNT] VERIFICATION: Total processed ({totalProcessed}) = Passed ({ductWallAfterValidation}) + Skipped ({totalSkipped})");
-            _log($"[DEBUG-COUNT] ═══ TOTAL FILTERED OUT: {ductWallBeforePriority - ductWallClashZonesCreated} Duct-Wall intersections ═══");
-            _log($"[DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════");
+            _log?.Invoke($"[DEBUG-COUNT] VERIFICATION: Total processed ({totalProcessed}) = Passed ({ductWallAfterValidation}) + Skipped ({totalSkipped})");
+            _log?.Invoke($"[DEBUG-COUNT] ═══ TOTAL FILTERED OUT: {ductWallBeforePriority - ductWallClashZonesCreated} Duct-Wall intersections ═══");
+            _log?.Invoke($"[DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════");
             
             // ✅ REUSE: refreshLogName already declared earlier in the method
             SafeFileLogger.SafeAppendText(refreshLogName, $"[{DateTime.Now}] [DEBUG-COUNT] ════════════════════════════════════════════════════════════════════════════");
@@ -1277,7 +1277,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // We use a sample of intersections to build the whitelist (e.g., first 5)
                 var sample = currentIntersections.Take(5).Select(i => (i.Item1, i.Item2));
                 preCachedWhitelist = parameterSnapshotService.BuildWhitelist(_clashZoneStorage, sample);
-                _log($"[STREAMLINED] Pre-cached parameter whitelist with {preCachedWhitelist.Count} keys");
+                _log?.Invoke($"[STREAMLINED] Pre-cached parameter whitelist with {preCachedWhitelist.Count} keys");
             }
 
             // ✅ PHASE 1 OPTIMIZATION: Bulk pre-fetch deterministic GUIDs from database
@@ -1286,7 +1286,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 var targets = currentIntersections.Select(i => (i.Item1.Id.IntegerValue, i.Item2.Id.IntegerValue, i.Item4.X, i.Item4.Y, i.Item4.Z)).ToList();
                 preFetchedGuids = _guidManager.BatchFetchGuidsDatabaseFirst(targets);
-                _log($"[STREAMLINED] Pre-fetched {preFetchedGuids.Count} GUIDs from database");
+                _log?.Invoke($"[STREAMLINED] Pre-fetched {preFetchedGuids.Count} GUIDs from database");
             }
 
             // ✅ PHASE 3 OPTIMIZATION: O(1) zone lookup map
@@ -1301,7 +1301,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 .Select(id => id.IntegerValue)
                 .ToHashSet();
             swSleeve.Stop();
-            _log($"[STREAMLINED] Collected {existingSleeveIds.Count} potential sleeve candidates in {swSleeve.ElapsedMilliseconds}ms");
+            _log?.Invoke($"[STREAMLINED] Collected {existingSleeveIds.Count} potential sleeve candidates in {swSleeve.ElapsedMilliseconds}ms");
 
             // ✅ PHASE 3 OPTIMIZATION: Pre-index "Opening" instances for O(1) proximity check
             // This replaces the O(N^2) CheckForExistingSleeve calls
@@ -1327,7 +1327,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
             swIndex.Stop();
-            _log($"[STREAMLINED] Pre-indexed {openingLocationMap.Count} openings for O(1) existence checks in {swIndex.ElapsedMilliseconds}ms");
+            _log?.Invoke($"[STREAMLINED] Pre-indexed {openingLocationMap.Count} openings for O(1) existence checks in {swIndex.ElapsedMilliseconds}ms");
             var openingPointKeys = openingLocationMap.Keys.ToHashSet();
 
             // ✅ PHASE 2 OPTIMIZATION: Bulk parameter capture (Ducts/Pipes/Cable Trays)
@@ -1341,7 +1341,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 mepParamsCache = ParameterSnapshotService.CaptureBatchParams(mepElementsUnique);
                 hostParamsCache = ParameterSnapshotService.CaptureBatchParams(hostElementsUnique);
                 
-                _log($"[STREAMLINED] Batch captured parameters for {mepParamsCache.Count} MEP elements and {hostParamsCache.Count} host elements");
+                _log?.Invoke($"[STREAMLINED] Batch captured parameters for {mepParamsCache.Count} MEP elements and {hostParamsCache.Count} host elements");
             }
             
             // ✅ PHASE 2.5 OPTIMIZATION: Bulk orientation pre-calculation (NEW!)
@@ -1368,14 +1368,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     catch (Exception ex)
                     {
-                        _log($"[ORIENTATION-CACHE] Error calculating orientation for {mep.Id}: {ex.Message}");
+                        _log?.Invoke($"[ORIENTATION-CACHE] Error calculating orientation for {mep.Id}: {ex.Message}");
                         // Use default if calculation fails
                         orientationCache[mep.Id.IntegerValue] = XYZ.BasisX;
                     }
                 }
                 
                 swOrient.Stop();
-                _log($"[STREAMLINED] Pre-calculated {orientationCache.Count} orientations in {swOrient.ElapsedMilliseconds}ms");
+                _log?.Invoke($"[STREAMLINED] Pre-calculated {orientationCache.Count} orientations in {swOrient.ElapsedMilliseconds}ms");
             }
             
             foreach (var (mepElement, structuralElement, boundingBox, intersectionPoint) in currentIntersections)
@@ -1484,7 +1484,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     catch (Exception ex)
                     {
-                        _log($"[STREAMLINED] Error creating clash zone: MEP={mepElement.Id}, Structural={structuralElement.Id}, Error={ex.Message}");
+                        _log?.Invoke($"[STREAMLINED] Error creating clash zone: MEP={mepElement.Id}, Structural={structuralElement.Id}, Error={ex.Message}");
                     }
                 }
                 else 
@@ -1507,7 +1507,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // If sleeve doesn't exist, reset flag and allow zone to be updated
                         if (!sleeveActuallyExists)
                         {
-                            _log($"[CRITICAL-FIX-STREAMLINED] Zone {existingClashZone.Id} marked as IsResolved=true but sleeve doesn't exist - resetting and updating");
+                            _log?.Invoke($"[CRITICAL-FIX-STREAMLINED] Zone {existingClashZone.Id} marked as IsResolved=true but sleeve doesn't exist - resetting and updating");
                             existingClashZone.IsResolved = false;
                             existingClashZone.IsClusterResolved = false;
                             if (existingClashZone.SleeveInstanceId > 0) existingClashZone.SleeveInstanceId = 0;
@@ -1529,7 +1529,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _clashZoneStorage.DocumentHash = documentHash;
             
             sw.Stop();
-            _log($"[STREAMLINED] Completed: Total={allProcessedZones.Count} (New={newCount}, Updated={updatedCount}) in {sw.ElapsedMilliseconds}ms");
+            _log?.Invoke($"[STREAMLINED] Completed: Total={allProcessedZones.Count} (New={newCount}, Updated={updatedCount}) in {sw.ElapsedMilliseconds}ms");
             
             return allProcessedZones;
         }
@@ -1545,7 +1545,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // If document hash changed, all clash zones need recalculation
             if (_clashZoneStorage.DocumentHash != documentHash)
             {
-                _log($"Document hash changed, all clash zones need recalculation");
+                _log?.Invoke($"Document hash changed, all clash zones need recalculation");
                 return _clashZoneStorage.ClashZones.ToList();
             }
             
@@ -1559,7 +1559,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
             
-            _log($"Found {needsRecalculation.Count} clash zones needing recalculation");
+            _log?.Invoke($"Found {needsRecalculation.Count} clash zones needing recalculation");
             return needsRecalculation;
         }
         
@@ -1582,7 +1582,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 clashZone.IsResolved = true;
                 clashZone.ResolvedSleeveId = sleeveId;
                 clashZone.LastUpdated = DateTime.Now;
-                _log($"Marked clash zone {clashZoneId} as resolved with individual sleeve {sleeveId}");
+                _log?.Invoke($"Marked clash zone {clashZoneId} as resolved with individual sleeve {sleeveId}");
             }
         }
         
@@ -1597,7 +1597,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 clashZone.IsClusterResolved = true;
                 clashZone.ClusterSleeveId = clusterSleeveId;
                 clashZone.LastUpdated = DateTime.Now;
-                _log($"Marked clash zone {clashZoneId} as cluster resolved with cluster sleeve {clusterSleeveId}");
+                _log?.Invoke($"Marked clash zone {clashZoneId} as cluster resolved with cluster sleeve {clusterSleeveId}");
             }
         }
         
@@ -1619,7 +1619,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             _clashZoneStorage.ClashZones.Clear();
             _clashZoneStorage.LastUpdated = DateTime.Now;
-            _log("Cleared all clash zones");
+            _log?.Invoke("Cleared all clash zones");
         }
         
         /// <summary>
@@ -1647,11 +1647,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (resetCount > 0)
             {
                 _clashZoneStorage.LastUpdated = DateTime.Now;
-                _log($"Reset resolved flags for {resetCount} clash zones to allow re-placement");
+                _log?.Invoke($"Reset resolved flags for {resetCount} clash zones to allow re-placement");
             }
             else
             {
-                _log("No resolved clash zones found to reset");
+                _log?.Invoke("No resolved clash zones found to reset");
             }
         }
         
@@ -1662,13 +1662,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             if (_clashZoneStorage == null)
             {
-                _log("ERROR: ClashZoneStorage is null in GetClashZoneStatistics");
+                _log?.Invoke("ERROR: ClashZoneStorage is null in GetClashZoneStatistics");
                 return (0, 0, 0, 0);
             }
             
             if (_clashZoneStorage.ClashZones == null)
             {
-                _log("ERROR: ClashZones collection is null in GetClashZoneStatistics");
+                _log?.Invoke("ERROR: ClashZones collection is null in GetClashZoneStatistics");
                 return (0, 0, 0, 0);
             }
             
@@ -1701,7 +1701,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // First check if ElementId is valid (not null)
                 if (clashZone.MepElementId == null || clashZone.MepElementId == ElementId.InvalidElementId)
                 {
-                    _log($"Clash zone {clashZone.Id} has invalid MEP ElementId - REMOVING invalid clash zone");
+                    _log?.Invoke($"Clash zone {clashZone.Id} has invalid MEP ElementId - REMOVING invalid clash zone");
                     return false;
                 }
                 
@@ -1728,7 +1728,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     mepElement = linkDoc.GetElement(clashZone.MepElementId);
                                     if (mepElement != null)
                                     {
-                                        _log($"Found MEP element {clashZone.MepElementId?.IntegerValue ?? -1} in linked document {linkDoc.Title}");
+                                        _log?.Invoke($"Found MEP element {clashZone.MepElementId?.IntegerValue ?? -1} in linked document {linkDoc.Title}");
                                         break;
                                     }
                                 }
@@ -1743,7 +1743,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 catch (Exception ex)
                 {
-                    _log($"Error getting MEP element {clashZone.MepElementId?.IntegerValue ?? -1} for clash zone {clashZone.Id}: {ex.Message} - REMOVING invalid clash zone");
+                    _log?.Invoke($"Error getting MEP element {clashZone.MepElementId?.IntegerValue ?? -1} for clash zone {clashZone.Id}: {ex.Message} - REMOVING invalid clash zone");
                     return false; // Remove invalid clash zone
                 }
                 
@@ -1752,21 +1752,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     bool isFromSelectedFile = IsElementFromSelectedFile(mepElement, selectedReferenceFiles);
                     if (!isFromSelectedFile)
                     {
-                        _log($"Clash zone {clashZone.Id} MEP element not from selected files - skipping");
+                        _log?.Invoke($"Clash zone {clashZone.Id} MEP element not from selected files - skipping");
                         return false;
                     }
                 }
                 else
                 {
                     // MEP element temporarily unavailable - remove invalid clash zone
-                    _log($"Clash zone {clashZone.Id} MEP element temporarily unavailable - REMOVING invalid clash zone");
+                    _log?.Invoke($"Clash zone {clashZone.Id} MEP element temporarily unavailable - REMOVING invalid clash zone");
                     return false;
                 }
 
                 // STEP 2: Check if clash zone is already resolved (sleeve placed)
                 if (clashZone.IsResolved)
                 {
-                    _log($"Clash zone {clashZone.Id} already resolved (sleeve placed) - skipping");
+                    _log?.Invoke($"Clash zone {clashZone.Id} already resolved (sleeve placed) - skipping");
                     return false;
                 }
 
@@ -1774,7 +1774,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 bool isVisibleInSectionBox = IsClashZoneVisibleInCurrentSectionBox(clashZone, document);
                 if (!isVisibleInSectionBox)
                 {
-                    _log($"Clash zone {clashZone.Id} not visible in current 3D section box - skipping");
+                    _log?.Invoke($"Clash zone {clashZone.Id} not visible in current 3D section box - skipping");
                     return false;
                 }
 
@@ -1782,16 +1782,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 bool hostTypeMatches = DoesHostTypeMatchCurrentSelection(clashZone);
                 if (!hostTypeMatches)
                 {
-                    _log($"Clash zone {clashZone.Id} host type '{clashZone.StructuralElementType}' doesn't match current UI selection - skipping");
+                    _log?.Invoke($"Clash zone {clashZone.Id} host type '{clashZone.StructuralElementType}' doesn't match current UI selection - skipping");
                     return false;
                 }
 
-                _log($"Clash zone {clashZone.Id} matches current selection (from selected file + not resolved + visible in section box + host type matches)");
+                _log?.Invoke($"Clash zone {clashZone.Id} matches current selection (from selected file + not resolved + visible in section box + host type matches)");
                 return true;
             }
             catch (Exception ex)
             {
-                _log($"Error checking clash zone {clashZone.Id} against current selection: {ex.Message} - REMOVING invalid clash zone");
+                _log?.Invoke($"Error checking clash zone {clashZone.Id} against current selection: {ex.Message} - REMOVING invalid clash zone");
                 return false; // Remove clash zone on error - it's invalid
             }
         }
@@ -1817,13 +1817,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                    selectedHostCategories.Contains(clashZone.StructuralElementType + "s") ||
                                    selectedHostCategories.Any(t => t.TrimEnd('s').Equals(clashZone.StructuralElementType, StringComparison.OrdinalIgnoreCase));
                 
-                _log($"[HOST_TYPE_FILTER] ClashZone {clashZone.Id}: StructuralElementType='{clashZone.StructuralElementType}', SelectedHostTypes=[{string.Join(", ", selectedHostCategories)}], Match={hostTypeMatch}");
+                _log?.Invoke($"[HOST_TYPE_FILTER] ClashZone {clashZone.Id}: StructuralElementType='{clashZone.StructuralElementType}', SelectedHostTypes=[{string.Join(", ", selectedHostCategories)}], Match={hostTypeMatch}");
                 
                 return hostTypeMatch;
             }
             catch (Exception ex)
             {
-                _log($"[HOST_TYPE_FILTER] Error checking host type for clash zone {clashZone.Id}: {ex.Message}");
+                _log?.Invoke($"[HOST_TYPE_FILTER] Error checking host type for clash zone {clashZone.Id}: {ex.Message}");
                 return true; // Default to allowing on error (backward compatibility)
             }
         }
@@ -1863,22 +1863,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     if (_sectionBoxService == null || _dbConnection == null)
                     {
-                        _log($"SectionBoxService or DB connection not available - clash zone {clashZone.Id} considered visible (cache flag enabled, fallback)");
+                        _log?.Invoke($"SectionBoxService or DB connection not available - clash zone {clashZone.Id} considered visible (cache flag enabled, fallback)");
                         return true;
                     }
                     var sectionBox = _sectionBoxService.GetSectionBoxBounds(_dbConnection);
                     if (sectionBox == null)
                     {
-                        _log($"No cached section box in DB - clash zone {clashZone.Id} considered visible (cache flag enabled, fallback)");
+                        _log?.Invoke($"No cached section box in DB - clash zone {clashZone.Id} considered visible (cache flag enabled, fallback)");
                         return true;
                     }
                     bool isVisible = intersectionPoint.X >= sectionBox.Min.X && intersectionPoint.X <= sectionBox.Max.X &&
                                      intersectionPoint.Y >= sectionBox.Min.Y && intersectionPoint.Y <= sectionBox.Max.Y &&
                                      intersectionPoint.Z >= sectionBox.Min.Z && intersectionPoint.Z <= sectionBox.Max.Z;
                     if (isVisible)
-                        _log($"Clash zone {clashZone.Id} is visible in cached section box at ({intersectionPoint.X:F2}, {intersectionPoint.Y:F2}, {intersectionPoint.Z:F2})");
+                        _log?.Invoke($"Clash zone {clashZone.Id} is visible in cached section box at ({intersectionPoint.X:F2}, {intersectionPoint.Y:F2}, {intersectionPoint.Z:F2})");
                     else
-                        _log($"Clash zone {clashZone.Id} is outside cached section box at ({intersectionPoint.X:F2}, {intersectionPoint.Y:F2}, {intersectionPoint.Z:F2})");
+                        _log?.Invoke($"Clash zone {clashZone.Id} is outside cached section box at ({intersectionPoint.X:F2}, {intersectionPoint.Y:F2}, {intersectionPoint.Z:F2})");
                     return isVisible;
                 }
                 else
@@ -1886,28 +1886,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Rollback: Use live section box from Revit API
                     if (!(document.ActiveView is View3D view3D) || !view3D.IsSectionBoxActive)
                     {
-                        _log($"No active 3D section box - clash zone {clashZone.Id} considered visible (legacy mode)");
+                        _log?.Invoke($"No active 3D section box - clash zone {clashZone.Id} considered visible (legacy mode)");
                         return true;
                     }
                     var sectionBox = Helpers.SectionBoxHelper.GetSectionBoxBounds(view3D);
                     if (sectionBox == null)
                     {
-                        _log($"Could not get section box bounds - clash zone {clashZone.Id} considered visible (legacy mode)");
+                        _log?.Invoke($"Could not get section box bounds - clash zone {clashZone.Id} considered visible (legacy mode)");
                         return true;
                     }
                     bool isVisible = intersectionPoint.X >= sectionBox.Min.X && intersectionPoint.X <= sectionBox.Max.X &&
                                      intersectionPoint.Y >= sectionBox.Min.Y && intersectionPoint.Y <= sectionBox.Max.Y &&
                                      intersectionPoint.Z >= sectionBox.Min.Z && intersectionPoint.Z <= sectionBox.Max.Z;
                     if (isVisible)
-                        _log($"Clash zone {clashZone.Id} is visible in section box at ({intersectionPoint.X:F2}, {intersectionPoint.Y:F2}, {intersectionPoint.Z:F2}) (legacy mode)");
+                        _log?.Invoke($"Clash zone {clashZone.Id} is visible in section box at ({intersectionPoint.X:F2}, {intersectionPoint.Y:F2}, {intersectionPoint.Z:F2}) (legacy mode)");
                     else
-                        _log($"Clash zone {clashZone.Id} is outside section box at ({intersectionPoint.X:F2}, {intersectionPoint.Y:F2}, {intersectionPoint.Z:F2}) (legacy mode)");
+                        _log?.Invoke($"Clash zone {clashZone.Id} is outside section box at ({intersectionPoint.X:F2}, {intersectionPoint.Y:F2}, {intersectionPoint.Z:F2}) (legacy mode)");
                     return isVisible;
                 }
             }
             catch (Exception ex)
             {
-                _log($"Error checking clash zone {clashZone.Id} section box visibility: {ex.Message} - considering visible");
+                _log?.Invoke($"Error checking clash zone {clashZone.Id} section box visibility: {ex.Message} - considering visible");
                 return true;
             }
         }
@@ -1937,7 +1937,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         bool isFromSelectedFile = selectedReferenceFiles.Any(file => file.Contains(linkName) || linkName.Contains(file));
                         if (isFromSelectedFile)
                         {
-                            _log($"Element {element.Id} is from selected linked file: {linkName}");
+                            _log?.Invoke($"Element {element.Id} is from selected linked file: {linkName}");
                             return true;
                         }
                     }
@@ -1953,16 +1953,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (isFromSelectedHostFile)
                 {
-                    _log($"Element {element.Id} is from selected host file: {elementDocTitle}");
+                    _log?.Invoke($"Element {element.Id} is from selected host file: {elementDocTitle}");
                     return true;
                 }
 
-                _log($"Element {element.Id} is NOT from any selected file. Document: {elementDocTitle}");
+                _log?.Invoke($"Element {element.Id} is NOT from any selected file. Document: {elementDocTitle}");
                 return false;
             }
             catch (Exception ex)
             {
-                _log($"Error checking if element {element.Id} is from selected file: {ex.Message}");
+                _log?.Invoke($"Error checking if element {element.Id} is from selected file: {ex.Message}");
                 return true; // Default to true if we can't determine
             }
         }
@@ -2060,12 +2060,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
                 
-                _log($"Found MEP element {closestMepElement?.Id} at distance {closestDistance:F2}ft from intersection point");
+                _log?.Invoke($"Found MEP element {closestMepElement?.Id} at distance {closestDistance:F2}ft from intersection point");
                 return closestMepElement;
             }
             catch (Exception ex)
             {
-                _log($"Error finding MEP element for intersection: {ex.Message}");
+                _log?.Invoke($"Error finding MEP element for intersection: {ex.Message}");
                 return null;
             }
         }
@@ -2097,7 +2097,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             
             if (OptimizationFlags.UseDiagnosticMode)
-                _log($"[ClashZoneCache] Built lookup index with {_clashZoneLookup.Count} unique pairs from {_clashZoneStorage.ClashZones.Count} zones.");
+                _log?.Invoke($"[ClashZoneCache] Built lookup index with {_clashZoneLookup.Count} unique pairs from {_clashZoneStorage.ClashZones.Count} zones.");
         }
 
         private ClashZone? FindExistingClashZone(ElementId mepElementId, ElementId structuralElementId, XYZ intersectionPoint)
@@ -2109,7 +2109,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (mepIdValue <= 0 || structuralIdValue <= 0)
             {
                 if(OptimizationFlags.UseDiagnosticMode) 
-                    _log($"[FindExistingClashZone] ❌ Invalid IDs - MEP={mepIdValue}, Structural={structuralIdValue}");
+                    _log?.Invoke($"[FindExistingClashZone] ❌ Invalid IDs - MEP={mepIdValue}, Structural={structuralIdValue}");
                 return null;
             }
 
@@ -2127,7 +2127,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (OptimizationFlags.UseDiagnosticMode)
                 {
                    // Too verbose for production
-                   // _log($"[FindExistingClashZone] No existing zone found for MEP={mepIdValue}, Structural={structuralIdValue}");
+                   // _log?.Invoke($"[FindExistingClashZone] No existing zone found for MEP={mepIdValue}, Structural={structuralIdValue}");
                 }
                 return null;
             }
@@ -2145,7 +2145,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (existingByRevitGuid != null)
                 {
                     if (OptimizationFlags.UseDiagnosticMode)
-                        _log($"[FindExistingClashZone] ✅ FOUND VIA REVIT SLEEVE: ClashZone {existingByRevitGuid.Id} (read GUID from placed sleeve)");
+                        _log?.Invoke($"[FindExistingClashZone] ✅ FOUND VIA REVIT SLEEVE: ClashZone {existingByRevitGuid.Id} (read GUID from placed sleeve)");
                     return existingByRevitGuid;
                 }
                 
@@ -2154,7 +2154,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (existingByPoint != null)
                 {
                     if (OptimizationFlags.UseDiagnosticMode)
-                        _log($"[FindExistingClashZone] ✅ FOUND VIA XML POINT MATCH: ClashZone {existingByPoint.Id}");
+                        _log?.Invoke($"[FindExistingClashZone] ✅ FOUND VIA XML POINT MATCH: ClashZone {existingByPoint.Id}");
                     return existingByPoint;
                 }
             }
@@ -2168,7 +2168,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (legacyMatch != null)
             {
                 if (OptimizationFlags.UseDiagnosticMode)
-                    _log($"[FindExistingClashZone] ✅ FOUND (LEGACY): ClashZone {legacyMatch.Id}");
+                    _log?.Invoke($"[FindExistingClashZone] ✅ FOUND (LEGACY): ClashZone {legacyMatch.Id}");
             }
             
             return legacyMatch;
@@ -2232,13 +2232,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         .Where(cz => selectedCategories.Contains(cz.MepElementCategory, StringComparer.OrdinalIgnoreCase))
                         .ToList();
                     
-                    _log($"[ResetResolvedFlag] Filtering to {clashZonesToCheck.Count} clash zones from selected categories: {string.Join(", ", selectedCategories)}");
+                    _log?.Invoke($"[ResetResolvedFlag] Filtering to {clashZonesToCheck.Count} clash zones from selected categories: {string.Join(", ", selectedCategories)}");
                 }
                 else
                 {
                     // ⚠️ CRITICAL FIX: If no categories specified, DO NOT process any clash zones
                     // This prevents accidental reset of IsResolved flags during dialog initialization
-                    _log($"[ResetResolvedFlag] No category filter specified - SKIPPING reset to prevent accidental sleeve deletion");
+                    _log?.Invoke($"[ResetResolvedFlag] No category filter specified - SKIPPING reset to prevent accidental sleeve deletion");
                     return;
                 }
                 
@@ -2305,7 +2305,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             {
                                 if (CheckForDamperAtDuctEnd(document, mepElement, structuralElement, clashZone.IntersectionPoint))
                                 {
-                                    _log($"[ResetResolvedFlag] [METHOD3] SKIP: Duct clash zone {clashZone.Id} - Damper found at duct end, keeping flags=true");
+                                    _log?.Invoke($"[ResetResolvedFlag] [METHOD3] SKIP: Duct clash zone {clashZone.Id} - Damper found at duct end, keeping flags=true");
                                     continue; // Don't reset this clash zone - damper exists
                                 }
                             }
@@ -2314,7 +2314,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // Validate placement point exists
                         if (clashZone.SleevePlacementPoint == null)
                         {
-                            _log($"[ResetResolvedFlag] WARNING: ClashZone {clashZone.Id} has null SleevePlacementPoint - skipping");
+                            _log?.Invoke($"[ResetResolvedFlag] WARNING: ClashZone {clashZone.Id} has null SleevePlacementPoint - skipping");
                             continue;
                         }
                         
@@ -2325,12 +2325,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (needsClusterCheck)
                         {
                             // ✅ STEP 1: Cluster flag is TRUE - check cluster sleeve existence in Revit
-                            _log($"[ResetResolvedFlag] ClashZone {clashZone.Id} has IsClusterResolved=true - checking cluster sleeve existence in Revit");
+                            _log?.Invoke($"[ResetResolvedFlag] ClashZone {clashZone.Id} has IsClusterResolved=true - checking cluster sleeve existence in Revit");
                             
                             // ✅ CRITICAL: If Global XML says cluster resolved, trust it (don't reset based on Revit check alone)
                             if (globalSaysClusterResolved)
                             {
-                                _log($"[ResetResolvedFlag] ✅ SKIP RESET: ClashZone {clashZone.Id} - Global XML says IsClusterResolved=true, trusting Global XML (sleeve may be in linked file)");
+                                _log?.Invoke($"[ResetResolvedFlag] ✅ SKIP RESET: ClashZone {clashZone.Id} - Global XML says IsClusterResolved=true, trusting Global XML (sleeve may be in linked file)");
                                 continue; // Don't reset - Global XML is authoritative
                         }
                         
@@ -2342,18 +2342,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var clusterSleeve = document.GetElement(clusterSleeveId);
                             clusterSleeveExists = clusterSleeve != null;
                             
-                                _log($"[ResetResolvedFlag] Checking cluster sleeve by ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId} for clash zone {clashZone.Id} ({clashZone.MepElementCategory}): exists={clusterSleeveExists}");
+                                _log?.Invoke($"[ResetResolvedFlag] Checking cluster sleeve by ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId} for clash zone {clashZone.Id} ({clashZone.MepElementCategory}): exists={clusterSleeveExists}");
                                 
                                 if (clusterSleeveExists)
                                 {
                                     // ✅ Cluster sleeve found in Revit - skip reset
-                                    _log($"[ResetResolvedFlag] ✅ SKIP RESET: Cluster sleeve found in Revit (ID: {clashZone.ClusterSleeveInstanceId}) - keeping IsClusterResolved=true, skipping individual check");
+                                    _log?.Invoke($"[ResetResolvedFlag] ✅ SKIP RESET: Cluster sleeve found in Revit (ID: {clashZone.ClusterSleeveInstanceId}) - keeping IsClusterResolved=true, skipping individual check");
                                     continue; // Cluster exists - don't reset, don't check individual
                                 }
                                 else
                                 {
                                     // ❌ Cluster sleeve NOT found in Revit - reset ALL flags
-                                    _log($"[ResetResolvedFlag] ❌ Cluster sleeve NOT found in Revit (ID: {clashZone.ClusterSleeveInstanceId}) - resetting ALL flags");
+                                    _log?.Invoke($"[ResetResolvedFlag] ❌ Cluster sleeve NOT found in Revit (ID: {clashZone.ClusterSleeveInstanceId}) - resetting ALL flags");
                                 }
                             }
                             else
@@ -2361,7 +2361,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 // ❌ BUG CASE: IsClusterResolved=true but ClusterSleeveInstanceId invalid
                                 // Inconsistent state - cluster sleeve is missing
                                 clusterSleeveExists = false;
-                                _log($"[ResetResolvedFlag] ❌ Cluster flag is true but ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId} (invalid) - resetting ALL flags");
+                                _log?.Invoke($"[ResetResolvedFlag] ❌ Cluster flag is true but ClusterSleeveInstanceId={clashZone.ClusterSleeveInstanceId} (invalid) - resetting ALL flags");
                             }
                             
                             // ✅ STEP 3: Reset ALL flags because cluster sleeve is missing
@@ -2385,19 +2385,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 
                                 clashZone.LastUpdated = DateTime.Now;
                                 resetCount++;
-                                _log($"[ResetResolvedFlag] ✓ Reset ALL flags to FALSE for clash zone {clashZone.Id} ({clashZone.MepElementCategory}) - cluster sleeve deleted/invalid");
+                                _log?.Invoke($"[ResetResolvedFlag] ✓ Reset ALL flags to FALSE for clash zone {clashZone.Id} ({clashZone.MepElementCategory}) - cluster sleeve deleted/invalid");
                                 continue; // Done with this clash zone - don't check individual
                             }
                         }
                         else if (needsIndividualCheck)
                         {
                             // ✅ STEP 1: Individual flag is TRUE (cluster flag was false) - check individual sleeve existence in Revit
-                            _log($"[ResetResolvedFlag] ClashZone {clashZone.Id} has IsResolved=true (cluster flag is false) - checking individual sleeve existence in Revit");
+                            _log?.Invoke($"[ResetResolvedFlag] ClashZone {clashZone.Id} has IsResolved=true (cluster flag is false) - checking individual sleeve existence in Revit");
                             
                             // ✅ CRITICAL: If Global XML says individual resolved, trust it (don't reset based on Revit check alone)
                             if (globalSaysResolved)
                             {
-                                _log($"[ResetResolvedFlag] ✅ SKIP RESET: ClashZone {clashZone.Id} - Global XML says IsResolved=true, trusting Global XML (sleeve may be in linked file)");
+                                _log?.Invoke($"[ResetResolvedFlag] ✅ SKIP RESET: ClashZone {clashZone.Id} - Global XML says IsResolved=true, trusting Global XML (sleeve may be in linked file)");
                                 continue; // Don't reset - Global XML is authoritative
                             }
                             
@@ -2408,36 +2408,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 var individualSleeve = document.GetElement(individualSleeveId);
                                 bool individualSleeveExists = individualSleeve != null;
                                 
-                                _log($"[ResetResolvedFlag] Checking individual sleeve by SleeveInstanceId={clashZone.SleeveInstanceId} for clash zone {clashZone.Id} ({clashZone.MepElementCategory}): exists={individualSleeveExists}");
+                                _log?.Invoke($"[ResetResolvedFlag] Checking individual sleeve by SleeveInstanceId={clashZone.SleeveInstanceId} for clash zone {clashZone.Id} ({clashZone.MepElementCategory}): exists={individualSleeveExists}");
                                 
                                 if (individualSleeveExists)
                                 {
                                     // ✅ Individual sleeve found in Revit - skip reset
-                                    _log($"[ResetResolvedFlag] ✅ SKIP RESET: Individual sleeve found in Revit (ID: {clashZone.SleeveInstanceId}) - keeping IsResolved=true");
+                                    _log?.Invoke($"[ResetResolvedFlag] ✅ SKIP RESET: Individual sleeve found in Revit (ID: {clashZone.SleeveInstanceId}) - keeping IsResolved=true");
                                     continue; // Sleeve exists - don't reset
                             }
                             else
                             {
                                     // ❌ Individual sleeve NOT found in Revit - reset flag
-                                    _log($"[ResetResolvedFlag] ❌ Individual sleeve NOT found in Revit (ID: {clashZone.SleeveInstanceId}) - resetting individual flag");
+                                    _log?.Invoke($"[ResetResolvedFlag] ❌ Individual sleeve NOT found in Revit (ID: {clashZone.SleeveInstanceId}) - resetting individual flag");
                                     clashZone.IsResolved = false;
                                     clashZone.SleeveInstanceId = -1;
                                     clashZone.SleeveFamilyName = string.Empty;
                                     clashZone.LastUpdated = DateTime.Now;
                                     resetCount++;
-                                    _log($"[ResetResolvedFlag] ✓ Reset individual flags to FALSE for clash zone {clashZone.Id} ({clashZone.MepElementCategory}) - sleeve NOT found in Revit");
+                                    _log?.Invoke($"[ResetResolvedFlag] ✓ Reset individual flags to FALSE for clash zone {clashZone.Id} ({clashZone.MepElementCategory}) - sleeve NOT found in Revit");
                                 }
                             }
                             else
                             {
                                 // ❌ SleeveInstanceId is invalid (<=0) but flag is true - reset flag
-                                _log($"[ResetResolvedFlag] ❌ Individual flag is true but SleeveInstanceId={clashZone.SleeveInstanceId} (invalid) - resetting individual flag");
+                                _log?.Invoke($"[ResetResolvedFlag] ❌ Individual flag is true but SleeveInstanceId={clashZone.SleeveInstanceId} (invalid) - resetting individual flag");
                                 clashZone.IsResolved = false;
                                 clashZone.SleeveInstanceId = -1;
                                 clashZone.SleeveFamilyName = string.Empty;
                                 clashZone.LastUpdated = DateTime.Now;
                                 resetCount++;
-                                _log($"[ResetResolvedFlag] ✓ Reset individual flags to FALSE for clash zone {clashZone.Id} ({clashZone.MepElementCategory}) - invalid SleeveInstanceId");
+                                _log?.Invoke($"[ResetResolvedFlag] ✓ Reset individual flags to FALSE for clash zone {clashZone.Id} ({clashZone.MepElementCategory}) - invalid SleeveInstanceId");
                             }
                         }
                     }
@@ -2445,7 +2445,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (resetCount > 0)
                 {
-                    _log($"[ResetResolvedFlag] Reset resolved flags (individual and/or cluster) for {resetCount} clash zones where sleeves were deleted (from selected categories only)");
+                    _log?.Invoke($"[ResetResolvedFlag] Reset resolved flags (individual and/or cluster) for {resetCount} clash zones where sleeves were deleted (from selected categories only)");
                     
                     // ⚠️ CRITICAL: Log flag states AFTER reset operation completion
                     if (resetCount > 0)
@@ -2466,7 +2466,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                _log($"[ResetResolvedFlag] Error resetting IsResolved flags: {ex.Message}");
+                _log?.Invoke($"[ResetResolvedFlag] Error resetting IsResolved flags: {ex.Message}");
             }
         }
 
@@ -2496,7 +2496,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (removalCount > 0)
                     {
                         var removedIds = group.Where(c => c.Id != best.Id).Select(c => c.Id).ToList();
-                        _log($"[DEDUPLICATION] Found {group.Count()} zones for MEP={best.MepElementId}, Host={best.StructuralElementId}. Keeping ID={best.Id} (Current={best.IsCurrentClash}). Removing IDs: {string.Join(",", removedIds)}");
+                        _log?.Invoke($"[DEDUPLICATION] Found {group.Count()} zones for MEP={best.MepElementId}, Host={best.StructuralElementId}. Keeping ID={best.Id} (Current={best.IsCurrentClash}). Removing IDs: {string.Join(",", removedIds)}");
                     }
                     
                     return best;
@@ -2509,7 +2509,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var removedCount = originalCount - _clashZoneStorage.ClashZones.Count;
             if (removedCount > 0)
             {
-                _log($"DEDUPLICATION: Removed {removedCount} duplicate clash zones. Kept {_clashZoneStorage.ClashZones.Count} unique clash zones.");
+                _log?.Invoke($"DEDUPLICATION: Removed {removedCount} duplicate clash zones. Kept {_clashZoneStorage.ClashZones.Count} unique clash zones.");
                 
                 // Force DB cleanup log
                 if (!DeploymentConfiguration.DeploymentMode)
@@ -2543,7 +2543,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // ✅ LINKED WALL: Use IntersectionPoint directly - already at centerline
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                _log($"[ClashZoneService] ✅ LINKED WALL: Using IntersectionPoint directly for {mepCategory}, wall {structuralElement.Id}");
+                                _log?.Invoke($"[ClashZoneService] ✅ LINKED WALL: Using IntersectionPoint directly for {mepCategory}, wall {structuralElement.Id}");
                             }
                             return intersectionPoint;
                         }
@@ -2556,7 +2556,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            _log($"[ClashZoneService] ✅ Calculated Wall Centerline Point: ({wallCenterlinePoint.X:F3}, {wallCenterlinePoint.Y:F3}, {wallCenterlinePoint.Z:F3}) for {mepCategory}, wall {structuralElement.Id}");
+                            _log?.Invoke($"[ClashZoneService] ✅ Calculated Wall Centerline Point: ({wallCenterlinePoint.X:F3}, {wallCenterlinePoint.Y:F3}, {wallCenterlinePoint.Z:F3}) for {mepCategory}, wall {structuralElement.Id}");
                         }
                         return wallCenterlinePoint;
                     }
@@ -2570,7 +2570,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            _log($"[ClashZoneService] ✅ Calculated Framing Centerline Point: ({wallCenterlinePoint.X:F3}, {wallCenterlinePoint.Y:F3}, {wallCenterlinePoint.Z:F3}) for {mepCategory}, framing {structuralElement.Id}");
+                            _log?.Invoke($"[ClashZoneService] ✅ Calculated Framing Centerline Point: ({wallCenterlinePoint.X:F3}, {wallCenterlinePoint.Y:F3}, {wallCenterlinePoint.Z:F3}) for {mepCategory}, framing {structuralElement.Id}");
                         }
                         return wallCenterlinePoint;
                     }
@@ -2580,7 +2580,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    _log($"[ClashZoneService] ⚠️ Error calculating wall centerline point: {ex.Message}, will use intersection point as fallback");
+                    _log?.Invoke($"[ClashZoneService] ⚠️ Error calculating wall centerline point: {ex.Message}, will use intersection point as fallback");
                 }
             }
             
@@ -2601,7 +2601,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             if (mepParamsCache != null) mepParamsCache.TryGetValue(mepElement.Id.IntegerValue, out mepParamDict);
             if (hostParamsCache != null) hostParamsCache.TryGetValue(structuralElement.Id.IntegerValue, out hostParamDict);
-            if (swOp != null) { swOp.Stop(); _log($"[PROFILER] Cache lookup: {swOp.ElapsedMilliseconds}ms"); }
+            if (swOp != null) { swOp.Stop(); _log?.Invoke($"[PROFILER] Cache lookup: {swOp.ElapsedMilliseconds}ms"); }
 
             // IMPORTANT: The intersection point is already at the wall center (mid-plane)
             // The MepIntersectionService finds intersections with wall faces and CreateBoundingBox()
@@ -2611,17 +2611,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // DEBUG: Log placement point calculation
             if (OptimizationFlags.UseDiagnosticMode)
             {
-                _log($"[DEBUG] Placement Point Calculation for {structuralElement.Id}:");
-                _log($"[DEBUG]   Intersection Point: {intersectionPoint} (already at wall center - using as placement point)");
+                _log?.Invoke($"[DEBUG] Placement Point Calculation for {structuralElement.Id}:");
+                _log?.Invoke($"[DEBUG]   Intersection Point: {intersectionPoint} (already at wall center - using as placement point)");
             }
             
             // Get structural element type
             if (swOp != null) swOp.Restart();
             var structuralElementType = GetStructuralElementType(structuralElement, hostParamDict);
-            if (swOp != null) { swOp.Stop(); _log($"[PROFILER] GetStructuralElementType: {swOp.ElapsedMilliseconds}ms"); }
+            if (swOp != null) { swOp.Stop(); _log?.Invoke($"[PROFILER] GetStructuralElementType: {swOp.ElapsedMilliseconds}ms"); }
             
             if (OptimizationFlags.UseDiagnosticMode)
-                _log($"[DEBUG] StructuralElementType for {structuralElement.Id}: '{structuralElementType}' (Element: {structuralElement.GetType().Name})");
+                _log?.Invoke($"[DEBUG] StructuralElementType for {structuralElement.Id}: '{structuralElementType}' (Element: {structuralElement.GetType().Name})");
             
             // Get document info
             var mepElementDoc = mepElement?.Document;
@@ -2636,7 +2636,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Get MEP dimensions
             if (swOp != null) swOp.Restart();
             var (mepWidth, mepHeight) = GetMepElementDimensions(mepElement, mepParamDict);
-            if (swOp != null) { swOp.Stop(); _log($"[PROFILER] GetMepElementDimensions: {swOp.ElapsedMilliseconds}ms"); }
+            if (swOp != null) { swOp.Stop(); _log?.Invoke($"[PROFILER] GetMepElementDimensions: {swOp.ElapsedMilliseconds}ms"); }
             
             // Get MEP orientation (with cache)
             if (swOp != null) swOp.Restart();
@@ -2645,15 +2645,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 mepOrientation = cachedOrientation;
                 if (OptimizationFlags.UseDiagnosticMode)
-                    _log($"[ORIENTATION-CACHE] Using cached orientation for {mepElement.Id}");
+                    _log?.Invoke($"[ORIENTATION-CACHE] Using cached orientation for {mepElement.Id}");
             }
             else
             {
                 mepOrientation = GetMepElementOrientation(mepElement);
                 if (OptimizationFlags.UseDiagnosticMode && orientationCache != null)
-                    _log($"[ORIENTATION-CACHE] Cache miss for {mepElement.Id}, calculated on-demand");
+                    _log?.Invoke($"[ORIENTATION-CACHE] Cache miss for {mepElement.Id}, calculated on-demand");
             }
-            if (swOp != null) { swOp.Stop(); _log($"[PROFILER] GetMepElementOrientation (or cache): {swOp.ElapsedMilliseconds}ms"); }
+            if (swOp != null) { swOp.Stop(); _log?.Invoke($"[PROFILER] GetMepElementOrientation (or cache): {swOp.ElapsedMilliseconds}ms"); }
             
             if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
             {
@@ -2664,14 +2664,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (swOp != null) swOp.Restart();
             var wallDirection = WallDirectionService.GetWallDirection(structuralElement);
             var wallDirectionType = WallDirectionService.GetWallDirectionType(structuralElement, wallDirection);
-            if (swOp != null) { swOp.Stop(); _log($"[PROFILER] WallDirectionService: {swOp.ElapsedMilliseconds}ms"); }
+            if (swOp != null) { swOp.Stop(); _log?.Invoke($"[PROFILER] WallDirectionService: {swOp.ElapsedMilliseconds}ms"); }
 
             // Get category and dimensions
             if (swOp != null) swOp.Restart();
             var mepCategoryForClearance = GetElementCategoryName(mepElement, mepParamDict);
             double finalWidth = mepWidth;
             double finalHeight = mepHeight;
-            if (swOp != null) { swOp.Stop(); _log($"[PROFILER] GetElementCategoryName: {swOp.ElapsedMilliseconds}ms"); }
+            if (swOp != null) { swOp.Stop(); _log?.Invoke($"[PROFILER] GetElementCategoryName: {swOp.ElapsedMilliseconds}ms"); }
             
             if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[CLASH_DEBUG] Element {mepElement.Id}: Raw dimensions {mepWidth:F3}x{mepHeight:F3} (clearance will be handled by CONDITIONS service during placement)");
@@ -2679,12 +2679,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Get pipe opening type
             if (swOp != null) swOp.Restart();
             var pipeOpeningType = GetPipeOpeningType(mepElement);
-            if (swOp != null) { swOp.Stop(); _log($"[PROFILER] GetPipeOpeningType: {swOp.ElapsedMilliseconds}ms"); }
+            if (swOp != null) { swOp.Stop(); _log?.Invoke($"[PROFILER] GetPipeOpeningType: {swOp.ElapsedMilliseconds}ms"); }
             
             // Get level info
             if (swOp != null) swOp.Restart();
             var (levelName, levelElevation, capturedElevationFromLevel) = GetMepElementLevelInfo(mepElement);
-            if (swOp != null) { swOp.Stop(); _log($"[PROFILER] GetMepElementLevelInfo: {swOp.ElapsedMilliseconds}ms"); }
+            if (swOp != null) { swOp.Stop(); _log?.Invoke($"[PROFILER] GetMepElementLevelInfo: {swOp.ElapsedMilliseconds}ms"); }
             
             // ✅ OOP PATTERN: Two paths - optimized if spatial index provided, fallback if not
             bool hasExistingSleeve = false;
@@ -2699,7 +2699,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 existingSleeveId = sleeveId;
                 
                 if (found && OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
-                    _log($"[OPTIMIZED-SLEEVE-LOOKUP] ✓ Found existing sleeve {sleeveId} at placement point using spatial index");
+                    _log?.Invoke($"[OPTIMIZED-SLEEVE-LOOKUP] ✓ Found existing sleeve {sleeveId} at placement point using spatial index");
             }
             else if (openingPointKeys != null && openingPointKeys.Count > 0)
             {
@@ -2708,7 +2708,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                  hasExistingSleeve = openingPointKeys.Contains(pointKey);
                  
                  if (hasExistingSleeve && OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
-                    _log($"[STREAMLINED-SLEEVE-LOOKUP] ✓ Found existing sleeve at {pointKey} using pre-indexed map");
+                    _log?.Invoke($"[STREAMLINED-SLEEVE-LOOKUP] ✓ Found existing sleeve at {pointKey} using pre-indexed map");
             }
             else
             {
@@ -2716,7 +2716,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 hasExistingSleeve = CheckForExistingSleeve(intersectionPoint, document);
                 
                 if (hasExistingSleeve && OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
-                    _log($"[LEGACY-SLEEVE-LOOKUP] ✓ Found existing sleeve at placement point using legacy scan");
+                    _log?.Invoke($"[LEGACY-SLEEVE-LOOKUP] ✓ Found existing sleeve at placement point using legacy scan");
             }
             
             // Old granular timing removed - replaced by EnableDetailedClashZoneProfiler
@@ -2913,7 +2913,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     if (fix != null)
                     {
-                        _log($"[FIXUP] IntersectionPoint was 0,0,0 → using center {fix} (bbox/meppbbox)");
+                        _log?.Invoke($"[FIXUP] IntersectionPoint was 0,0,0 → using center {fix} (bbox/meppbbox)");
                         intersectionPoint = fix;
                     }
                 }
@@ -2942,7 +2942,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             bool isInputZero = Math.Abs(intersectionPoint.X) < 1e-9 && Math.Abs(intersectionPoint.Y) < 1e-9 && Math.Abs(intersectionPoint.Z) < 1e-9;
             if (isInputZero)
             {
-                _log($"[⚠️ CREATE-WARNING] IntersectionPoint is ZERO when creating ClashZone: MEP={mepElement.Id}, Structural={structuralElement.Id}, Point=({intersectionPoint.X},{intersectionPoint.Y},{intersectionPoint.Z})");
+                _log?.Invoke($"[⚠️ CREATE-WARNING] IntersectionPoint is ZERO when creating ClashZone: MEP={mepElement.Id}, Structural={structuralElement.Id}, Point=({intersectionPoint.X},{intersectionPoint.Y},{intersectionPoint.Z})");
                 try 
                 { 
                     var debugPath = SafeFileLogger.GetLogFilePath("refresh_intersection_debug.log");
@@ -2977,14 +2977,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     if (!DeploymentConfiguration.DeploymentMode && (mepParameterValues.Count > 0 || hostParameterValues.Count > 0))
                     {
-                        _log($"[PARAM-SNAPSHOT] Captured {mepParameterValues.Count} MEP parameters and {hostParameterValues.Count} host parameters for ClashZone (MEP={mepElement.Id}, Host={structuralElement.Id})");
+                        _log?.Invoke($"[PARAM-SNAPSHOT] Captured {mepParameterValues.Count} MEP parameters and {hostParameterValues.Count} host parameters for ClashZone (MEP={mepElement.Id}, Host={structuralElement.Id})");
                     }
                 }
             }
             catch (Exception ex)
             {
                 // Non-fatal: Log error but continue with empty parameter lists
-                _log($"[PARAM-SNAPSHOT] ⚠️ Error capturing parameters: {ex.Message}");
+                _log?.Invoke($"[PARAM-SNAPSHOT] ⚠️ Error capturing parameters: {ex.Message}");
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     DebugLogger.Warning($"[PARAM-SNAPSHOT] Failed to capture parameters for MEP={mepElement?.Id}, Host={structuralElement?.Id}: {ex.Message}");
@@ -3155,7 +3155,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
                     {
                         string guidSource = (oldGuid == clashZone.Id) ? "EXISTING (reused)" : "NEW (generated)";
-                        _log($"[DETERMINISTIC-GUID] {guidSource} GUID {clashZone.Id} for MEP={mepId}, Host={hostId}, Category={clashZone.MepElementCategory}, IntersectionPoint=({clashZone.IntersectionPointX:F6},{clashZone.IntersectionPointY:F6},{clashZone.IntersectionPointZ:F6})");
+                        _log?.Invoke($"[DETERMINISTIC-GUID] {guidSource} GUID {clashZone.Id} for MEP={mepId}, Host={hostId}, Category={clashZone.MepElementCategory}, IntersectionPoint=({clashZone.IntersectionPointX:F6},{clashZone.IntersectionPointY:F6},{clashZone.IntersectionPointZ:F6})");
                     }
                 }
                 else
@@ -3163,7 +3163,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Invalid data - keep random GUID from default initialization
                     if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
                     {
-                        _log($"[DETERMINISTIC-GUID] ⚠️ WARNING: Invalid data for deterministic GUID - MEP={mepId}, Host={hostId}, Category={clashZone.MepElementCategory}, IntersectionPointX={clashZone.IntersectionPointX:F6}, IntersectionPointY={clashZone.IntersectionPointY:F6}, IntersectionPointZ={clashZone.IntersectionPointZ:F6} - using random GUID {clashZone.Id}");
+                        _log?.Invoke($"[DETERMINISTIC-GUID] ⚠️ WARNING: Invalid data for deterministic GUID - MEP={mepId}, Host={hostId}, Category={clashZone.MepElementCategory}, IntersectionPointX={clashZone.IntersectionPointX:F6}, IntersectionPointY={clashZone.IntersectionPointY:F6}, IntersectionPointZ={clashZone.IntersectionPointZ:F6} - using random GUID {clashZone.Id}");
                     }
                 }
             }
@@ -3180,17 +3180,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // DEBUG: Log the pre-calculated data
             if (OptimizationFlags.UseDiagnosticMode)
             {
-                _log($"[DEBUG] Created ClashZone {clashZone.Id}:");
-                _log($"[DEBUG]   IntersectionPoint: {intersectionPoint} (used as placement point)");
+                _log?.Invoke($"[DEBUG] Created ClashZone {clashZone.Id}:");
+                _log?.Invoke($"[DEBUG]   IntersectionPoint: {intersectionPoint} (used as placement point)");
                 if (intersectionPoint == null || (Math.Abs(intersectionPoint.X) < 1e-9 && Math.Abs(intersectionPoint.Y) < 1e-9 && Math.Abs(intersectionPoint.Z) < 1e-9))
                 {
-                    _log($"[WARN]   IntersectionPoint is zero/invalid at save time. BBox null? {boundingBox == null}");
+                    _log?.Invoke($"[WARN]   IntersectionPoint is zero/invalid at save time. BBox null? {boundingBox == null}");
                 }
-                _log($"[DEBUG]   SleevePlacementPoint: {finalPlacementPoint} (calculated using bbox method at wall centerline)");
-                _log($"[DEBUG]   MepElementWidth: {finalWidth}, MepElementHeight: {finalHeight}");
-                _log($"[DEBUG]   MepElementOrientation: {mepOrientation}");
-                _log($"[DEBUG]   PipeOpeningType: {pipeOpeningType}");
-                _log($"[DEBUG]   IsResolved: {hasExistingSleeve}");
+                _log?.Invoke($"[DEBUG]   SleevePlacementPoint: {finalPlacementPoint} (calculated using bbox method at wall centerline)");
+                _log?.Invoke($"[DEBUG]   MepElementWidth: {finalWidth}, MepElementHeight: {finalHeight}");
+                _log?.Invoke($"[DEBUG]   MepElementOrientation: {mepOrientation}");
+                _log?.Invoke($"[DEBUG]   PipeOpeningType: {pipeOpeningType}");
+                _log?.Invoke($"[DEBUG]   IsResolved: {hasExistingSleeve}");
             }
             
             // ✅ CRITICAL: Immediately update Global XML when sleeve is found (optimized path)
@@ -3209,11 +3209,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // GlobalIndexService.UpsertFlagsWithIds(document, mepCategory, updates);
                     
                     if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
-                        _log($"[OPTIMIZED-SLEEVE-LOOKUP] ✓ Skipped Global XML update (legacy service deleted): Entry {clashZone.Id} → IsResolved=true, SleeveInstanceId={existingSleeveId}");
+                        _log?.Invoke($"[OPTIMIZED-SLEEVE-LOOKUP] ✓ Skipped Global XML update (legacy service deleted): Entry {clashZone.Id} → IsResolved=true, SleeveInstanceId={existingSleeveId}");
                 }
                 catch (Exception ex)
                 {
-                    _log($"[OPTIMIZED-SLEEVE-LOOKUP] Error (legacy service deleted): {ex.Message}");
+                    _log?.Invoke($"[OPTIMIZED-SLEEVE-LOOKUP] Error (legacy service deleted): {ex.Message}");
                 }
             }
             
@@ -3289,7 +3289,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return false; // Not a duct, no need to check
                 }
 
-                _log($"[METHOD3] Checking for damper at duct end: Duct {duct.Id} near intersection {intersectionPoint}");
+                _log?.Invoke($"[METHOD3] Checking for damper at duct end: Duct {duct.Id} near intersection {intersectionPoint}");
 
                 // Get duct geometry and find end points
                 var ductGeometry = duct.get_Geometry(Helpers.GeometryOptionsFactory.CreateIntersectionOptions());
@@ -3298,7 +3298,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var ductEndPoints = GetDuctEndPoints(duct, ductGeometry);
                 if (ductEndPoints.Count == 0) return false;
 
-                _log($"[METHOD3] Found {ductEndPoints.Count} duct end points");
+                _log?.Invoke($"[METHOD3] Found {ductEndPoints.Count} duct end points");
 
                 // Check each end point for damper presence
                 foreach (var endPoint in ductEndPoints)
@@ -3308,23 +3308,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Only check end points that are reasonably close to the intersection (within 2 feet)
                     if (distanceToIntersection < 2.0) // 2 feet = ~600mm
                     {
-                        _log($"[METHOD3] Checking end point {endPoint} (distance to intersection: {distanceToIntersection:F3}ft)");
+                        _log?.Invoke($"[METHOD3] Checking end point {endPoint} (distance to intersection: {distanceToIntersection:F3}ft)");
                         
                         // Search for dampers within radius of this end point
                         if (SearchForDampersNearPoint(document, endPoint, 0.5)) // 0.5 feet = ~150mm radius
                         {
-                            _log($"[METHOD3] ✓ DAMPER FOUND: Damper detected near duct end point {endPoint}");
+                            _log?.Invoke($"[METHOD3] ✓ DAMPER FOUND: Damper detected near duct end point {endPoint}");
                             return true; // Damper found, skip this duct
                         }
                     }
                 }
 
-                _log($"[METHOD3] ✗ NO DAMPER: No damper found near any duct end points");
+                _log?.Invoke($"[METHOD3] ✗ NO DAMPER: No damper found near any duct end points");
                 return false; // No damper found, create clash zone normally
             }
             catch (Exception ex)
             {
-                _log($"[METHOD3] ERROR: Failed to check for damper at duct end: {ex.Message}");
+                _log?.Invoke($"[METHOD3] ERROR: Failed to check for damper at duct end: {ex.Message}");
                 return false; // On error, allow clash zone creation (fail safe)
             }
         }
@@ -3369,12 +3369,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
 
-                _log($"[METHOD3] Extracted {uniqueEndPoints.Count} unique end points from duct geometry");
+                _log?.Invoke($"[METHOD3] Extracted {uniqueEndPoints.Count} unique end points from duct geometry");
                 return uniqueEndPoints;
             }
             catch (Exception ex)
             {
-                _log($"[METHOD3] ERROR: Failed to get duct end points: {ex.Message}");
+                _log?.Invoke($"[METHOD3] ERROR: Failed to get duct end points: {ex.Message}");
                 return new List<XYZ>();
             }
         }
@@ -3405,7 +3405,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 var dampers = damperCollector.ToList();
                 
-                _log($"[METHOD3] Found {dampers.Count} duct accessories within {searchRadius}ft of point {searchPoint}");
+                _log?.Invoke($"[METHOD3] Found {dampers.Count} duct accessories within {searchRadius}ft of point {searchPoint}");
 
                 // Check if any of these are actually dampers (fire dampers, volume dampers, etc.)
                 foreach (var damper in dampers)
@@ -3413,12 +3413,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var damperType = damper.get_Parameter(BuiltInParameter.ELEM_TYPE_PARAM)?.AsValueString();
                     var damperFamily = damper.get_Parameter(BuiltInParameter.ELEM_FAMILY_PARAM)?.AsValueString();
                     
-                    _log($"[METHOD3] Checking damper {damper.Id}: Type='{damperType}', Family='{damperFamily}'");
+                    _log?.Invoke($"[METHOD3] Checking damper {damper.Id}: Type='{damperType}', Family='{damperFamily}'");
                     
                     // Check if this is a fire damper, volume damper, or other damper type
                     if (IsDamperType(damperType, damperFamily))
                     {
-                        _log($"[METHOD3] ✓ CONFIRMED DAMPER: {damper.Id} is a damper (Type='{damperType}', Family='{damperFamily}')");
+                        _log?.Invoke($"[METHOD3] ✓ CONFIRMED DAMPER: {damper.Id} is a damper (Type='{damperType}', Family='{damperFamily}')");
                         return true;
                     }
                 }
@@ -3427,7 +3427,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                _log($"[METHOD3] ERROR: Failed to search for dampers near point: {ex.Message}");
+                _log?.Invoke($"[METHOD3] ERROR: Failed to search for dampers near point: {ex.Message}");
                 return false;
             }
         }
@@ -3449,7 +3449,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             if (isDamper)
             {
-                _log($"[METHOD3] Damper detected: '{combinedName}' contains damper keywords");
+                _log?.Invoke($"[METHOD3] Damper detected: '{combinedName}' contains damper keywords");
             }
             
             return isDamper;
@@ -3475,7 +3475,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (insulationValue > 0.0)
                     {
                         double insulationMm = RevitUnitConversionService.Instance.FromInternalMillimeters(insulationValue);
-                        _log($"[DEBUG] Element {element.Id} has insulation: {insulationMm:F1}mm");
+                        _log?.Invoke($"[DEBUG] Element {element.Id} has insulation: {insulationMm:F1}mm");
                         return "Insulated";
                     }
                 }
@@ -3484,7 +3484,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                _log($"Error detecting insulation type: {ex.Message}");
+                _log?.Invoke($"Error detecting insulation type: {ex.Message}");
                 return "Normal"; // Safe default
             }
         }
@@ -3507,7 +3507,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var ductType = duct?.DuctType;
                 var familyName = ductType?.FamilyName ?? string.Empty;
                 
-                _log($"[DEBUG] Duct {element.Id} family name: {familyName}");
+                _log?.Invoke($"[DEBUG] Duct {element.Id} family name: {familyName}");
                 
                 // Check family name for shape indicators
                 if (familyName.Contains("Round", StringComparison.OrdinalIgnoreCase))
@@ -3529,7 +3529,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                _log($"Error getting duct shape: {ex.Message}");
+                _log?.Invoke($"Error getting duct shape: {ex.Message}");
                 return "Rectangular"; // Safe default
             }
         }
@@ -3585,7 +3585,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 categorySleeves = allSleeves;
                 
                 if (!DeploymentConfiguration.DeploymentMode)
-                    _log($"[OPTIMIZED-SLEEVE-LOOKUP] Pre-collected {categorySleeves.Count} sleeves for category '{category}' (filtered by MEP_Category parameter)");
+                    _log?.Invoke($"[OPTIMIZED-SLEEVE-LOOKUP] Pre-collected {categorySleeves.Count} sleeves for category '{category}' (filtered by MEP_Category parameter)");
                 
                 // ✅ OPTIMIZATION: Build spatial index with 0.1ft tolerance (matches Global XML and recovery)
                 double pointTolerance = 0.1; // 0.1ft = ~30mm tolerance (matches GlobalIndexService.FindByMepHostAndPoint)
@@ -3625,11 +3625,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 
                 if (!DeploymentConfiguration.DeploymentMode)
-                    _log($"[OPTIMIZED-SLEEVE-LOOKUP] Built spatial index with {spatialIndex.Count} entries for {categorySleeves.Count} sleeves");
+                    _log?.Invoke($"[OPTIMIZED-SLEEVE-LOOKUP] Built spatial index with {spatialIndex.Count} entries for {categorySleeves.Count} sleeves");
             }
             catch (Exception ex)
             {
-                _log($"[OPTIMIZED-SLEEVE-LOOKUP] Error pre-collecting sleeves: {ex.Message}");
+                _log?.Invoke($"[OPTIMIZED-SLEEVE-LOOKUP] Error pre-collecting sleeves: {ex.Message}");
             }
             
             return (spatialIndex, sleeveIds, categorySleeves);
@@ -3664,7 +3664,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                _log($"[OPTIMIZED-SLEEVE-LOOKUP] Error finding sleeve in spatial index: {ex.Message}");
+                _log?.Invoke($"[OPTIMIZED-SLEEVE-LOOKUP] Error finding sleeve in spatial index: {ex.Message}");
             }
             
             return (false, -1);
@@ -3687,7 +3687,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                     .ToList();
 
-                _log($"[CheckExistingSleeve] Checking for sleeves at EXACT placement point {placementPoint}");
+                _log?.Invoke($"[CheckExistingSleeve] Checking for sleeves at EXACT placement point {placementPoint}");
 
                 foreach (var opening in openingFamilies)
                 {
@@ -3710,18 +3710,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         double distance = openingLocation.DistanceTo(placementPoint);
                         if (distance < 0.003) // ~1mm tolerance for Revit precision
                         {
-                            _log($"[CheckExistingSleeve] ✓ Found existing sleeve {opening.Id} at EXACT placement point");
+                            _log?.Invoke($"[CheckExistingSleeve] ✓ Found existing sleeve {opening.Id} at EXACT placement point");
                             return true;
                         }
                     }
                 }
                 
-                _log($"[CheckExistingSleeve] No existing sleeve found at EXACT placement point {placementPoint}");
+                _log?.Invoke($"[CheckExistingSleeve] No existing sleeve found at EXACT placement point {placementPoint}");
                 return false;
             }
             catch (Exception ex)
             {
-                _log($"[CheckExistingSleeve] Error: {ex.Message}");
+                _log?.Invoke($"[CheckExistingSleeve] Error: {ex.Message}");
                 return false; // Assume no sleeve if error
             }
         }
@@ -4296,14 +4296,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (connectorInfo.HasMepConnector)
                 {
-                    _log($"[DEBUG] Damper {mepElement?.Id}: Found MEP connector on side '{connectorInfo.ConnectorSide}', Type='{connectorInfo.DamperType}', IsStandard={connectorInfo.IsStandardDamper}");
+                    _log?.Invoke($"[DEBUG] Damper {mepElement?.Id}: Found MEP connector on side '{connectorInfo.ConnectorSide}', Type='{connectorInfo.DamperType}', IsStandard={connectorInfo.IsStandardDamper}");
                 }
                 
                 return connectorInfo;
             }
             catch (Exception ex)
             {
-                _log($"[DEBUG] Error getting damper connector info: {ex.Message}");
+                _log?.Invoke($"[DEBUG] Error getting damper connector info: {ex.Message}");
                 return DamperConnectorInfo.None;
             }
         }
@@ -4589,7 +4589,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (hasDucts && !hasDuctAccessories)
                 {
-                    _log($"[FOOLPROOF] User selected ducts but forgot duct accessories - auto-detecting dampers");
+                    _log?.Invoke($"[FOOLPROOF] User selected ducts but forgot duct accessories - auto-detecting dampers");
                     
                     // Get all structural elements that ducts intersect with
                     var ductWallIds = currentIntersections
@@ -4607,24 +4607,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!enhancedIntersections.Any(i => i.Item1.Id == damperElement.Id))
                         {
                             enhancedIntersections.Add((damperElement, wallElement, boundingBox, intersectionPoint));
-                            _log($"[FOOLPROOF] Auto-detected damper {damperElement.Id} intersecting wall {wallElement.Id}");
+                            _log?.Invoke($"[FOOLPROOF] Auto-detected damper {damperElement.Id} intersecting wall {wallElement.Id}");
                         }
                     }
                     
-                    _log($"[FOOLPROOF] Auto-detected {autoDetectedDampers.Count} dampers that user missed");
+                    _log?.Invoke($"[FOOLPROOF] Auto-detected {autoDetectedDampers.Count} dampers that user missed");
                 }
                 else if (hasDuctAccessories)
                 {
-                    _log($"[FOOLPROOF] User correctly selected duct accessories - no auto-detection needed");
+                    _log?.Invoke($"[FOOLPROOF] User correctly selected duct accessories - no auto-detection needed");
                 }
                 else
                 {
-                    _log($"[FOOLPROOF] No ducts selected - no auto-detection needed");
+                    _log?.Invoke($"[FOOLPROOF] No ducts selected - no auto-detection needed");
                 }
             }
             catch (Exception ex)
             {
-                _log($"Error in auto-detection: {ex.Message}");
+                _log?.Invoke($"Error in auto-detection: {ex.Message}");
             }
             
             return enhancedIntersections;
@@ -4707,7 +4707,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                _log($"Error finding dampers intersecting same walls: {ex.Message}");
+                _log?.Invoke($"Error finding dampers intersecting same walls: {ex.Message}");
             }
             
             return damperIntersections;
@@ -4732,7 +4732,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Priority 1: Dampers (highest priority)
                 var dampers = intersections.Where(i => IsDamperElement(i.Item1)).ToList();
                 prioritized.AddRange(dampers);
-                _log($"[PRIORITY] Added {dampers.Count} dampers (Priority 1)");
+                _log?.Invoke($"[PRIORITY] Added {dampers.Count} dampers (Priority 1)");
                 
                 // Priority 2: Other Duct Accessories (medium priority)
                 var otherDuctAccessories = intersections.Where(i => 
@@ -4742,7 +4742,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                            !IsDamperElement(i.Item1);
                 }).ToList();
                 prioritized.AddRange(otherDuctAccessories);
-                _log($"[PRIORITY] Added {otherDuctAccessories.Count} other duct accessories (Priority 2)");
+                _log?.Invoke($"[PRIORITY] Added {otherDuctAccessories.Count} other duct accessories (Priority 2)");
                 
                 // Priority 3: Ducts (lower priority - will be skipped if damper nearby)
                 var ducts = intersections.Where(i => 
@@ -4751,7 +4751,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return string.Equals(mepCat, "Ducts", StringComparison.OrdinalIgnoreCase);
                 }).ToList();
                 prioritized.AddRange(ducts);
-                _log($"[PRIORITY] Added {ducts.Count} ducts (Priority 3)");
+                _log?.Invoke($"[PRIORITY] Added {ducts.Count} ducts (Priority 3)");
                 
                 // Priority 4: Everything else (lowest priority)
                 var others = intersections.Where(i => 
@@ -4761,13 +4761,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                            !string.Equals(mepCat, "Ducts", StringComparison.OrdinalIgnoreCase);
                 }).ToList();
                 prioritized.AddRange(others);
-                _log($"[PRIORITY] Added {others.Count} other MEP elements (Priority 4)");
+                _log?.Invoke($"[PRIORITY] Added {others.Count} other MEP elements (Priority 4)");
                 
-                _log($"[PRIORITY] Total prioritized intersections: {prioritized.Count} (Original: {intersections.Count})");
+                _log?.Invoke($"[PRIORITY] Total prioritized intersections: {prioritized.Count} (Original: {intersections.Count})");
             }
             catch (Exception ex)
             {
-                _log($"Error prioritizing intersections: {ex.Message}");
+                _log?.Invoke($"Error prioritizing intersections: {ex.Message}");
                 return intersections; // Fallback to original order
             }
             
@@ -4815,18 +4815,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         Min = new XYZ(intersectionPoint.X - approximateSize, intersectionPoint.Y - approximateSize, intersectionPoint.Z - approximateSize),
                                         Max = new XYZ(intersectionPoint.X + approximateSize, intersectionPoint.Y + approximateSize, intersectionPoint.Z + approximateSize)
                                     };
-                                    _log($"[PRE-CALC-XML] Damper {clashZone.MepElementId} in linked file - using intersection point approximation");
+                                    _log?.Invoke($"[PRE-CALC-XML] Damper {clashZone.MepElementId} in linked file - using intersection point approximation");
                                 }
                             }
                             
                             if (damperBbox != null)
                             {
                                 damperLocations.Add((damperId: clashZone.MepElementId, bbox: damperBbox, wallId: clashZone.StructuralElementId));
-                                _log($"[PRE-CALC-XML] Damper {clashZone.MepElementId} location cached from XML (wall: {clashZone.StructuralElementId})");
+                                _log?.Invoke($"[PRE-CALC-XML] Damper {clashZone.MepElementId} location cached from XML (wall: {clashZone.StructuralElementId})");
                             }
                             else
                             {
-                                _log($"[PRE-CALC-XML] Warning: Could not get bounding box for damper {clashZone.MepElementId} from XML");
+                                _log?.Invoke($"[PRE-CALC-XML] Warning: Could not get bounding box for damper {clashZone.MepElementId} from XML");
                             }
                         }
                     }
@@ -4847,17 +4847,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             if (!damperLocations.Any(d => d.damperId == mepElement.Id))
                             {
                                 damperLocations.Add((damperId: mepElement.Id, bbox: damperBbox, wallId: structuralElement.Id));
-                                _log($"[PRE-CALC-CURRENT] Damper {mepElement.Id} location cached from current intersections");
+                                _log?.Invoke($"[PRE-CALC-CURRENT] Damper {mepElement.Id} location cached from current intersections");
                             }
                         }
                     }
                 }
                 
-                _log($"[PRE-CALC] Total damper locations: {damperLocations.Count} (XML: {_clashZoneStorage?.ClashZones?.Count(c => IsDamperClashZone(c)) ?? 0}, Current: {currentIntersections.Count(i => IsDamperElement(i.Item1))})");
+                _log?.Invoke($"[PRE-CALC] Total damper locations: {damperLocations.Count} (XML: {_clashZoneStorage?.ClashZones?.Count(c => IsDamperClashZone(c)) ?? 0}, Current: {currentIntersections.Count(i => IsDamperElement(i.Item1))})");
             }
             catch (Exception ex)
             {
-                _log($"Error pre-calculating damper locations: {ex.Message}");
+                _log?.Invoke($"Error pre-calculating damper locations: {ex.Message}");
             }
             
             return damperLocations;
@@ -4899,17 +4899,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var ductBbox = ductElement.get_BoundingBox(null);
                 if (ductBbox == null)
                 {
-                    _log($"[DUCT-DAMPER] Duct {ductElement.Id} has no bounding box - cannot check damper proximity");
+                    _log?.Invoke($"[DUCT-DAMPER] Duct {ductElement.Id} has no bounding box - cannot check damper proximity");
                     return false;
                 }
                 
                 // ✅ CRITICAL FIX: Filter dampers by SAME WALL first (major optimization and correctness fix)
                 var dampersOnSameWall = damperLocations.Where(d => d.wallId == wallId).ToList();
-                _log($"[DUCT-DAMPER] Checking duct {ductElement.Id} on wall {wallId} against {dampersOnSameWall.Count} dampers on same wall (total dampers: {damperLocations.Count})");
+                _log?.Invoke($"[DUCT-DAMPER] Checking duct {ductElement.Id} on wall {wallId} against {dampersOnSameWall.Count} dampers on same wall (total dampers: {damperLocations.Count})");
                 
                 if (dampersOnSameWall.Count == 0)
                 {
-                    _log($"[DUCT-DAMPER] No dampers on wall {wallId} - duct {ductElement.Id} will proceed");
+                    _log?.Invoke($"[DUCT-DAMPER] No dampers on wall {wallId} - duct {ductElement.Id} will proceed");
                     return false;
                 }
                 
@@ -4925,14 +4925,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     if (distanceToIntersection <= intersectionTolerance)
                     {
-                        _log($"[DUCT-DAMPER] ✓ MATCH AT INTERSECTION: Duct {ductElement.Id} intersection point is {distanceToIntersection:F4}ft from Damper {damperId} center on wall {wallId} (tolerance: {intersectionTolerance}ft = 10mm)");
+                        _log?.Invoke($"[DUCT-DAMPER] ✓ MATCH AT INTERSECTION: Duct {ductElement.Id} intersection point is {distanceToIntersection:F4}ft from Damper {damperId} center on wall {wallId} (tolerance: {intersectionTolerance}ft = 10mm)");
                         return true;
                     }
                     
                     // ✅ METHOD 2: Check if damper bbox contains or is near intersection point
                     if (IsPointNearBoundingBox(intersectionPoint, damperBbox, intersectionTolerance))
                     {
-                        _log($"[DUCT-DAMPER] ✓ MATCH AT INTERSECTION (bbox): Duct {ductElement.Id} intersection point is within {intersectionTolerance}ft (10mm) of Damper {damperId} bounding box on wall {wallId}");
+                        _log?.Invoke($"[DUCT-DAMPER] ✓ MATCH AT INTERSECTION (bbox): Duct {ductElement.Id} intersection point is within {intersectionTolerance}ft (10mm) of Damper {damperId} bounding box on wall {wallId}");
                         return true;
                     }
                     
@@ -4940,18 +4940,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var bboxDistance = GetMinimumDistanceBetweenBoundingBoxes(ductBbox, damperBbox);
                     if (bboxDistance <= bboxProximityTolerance)
                     {
-                        _log($"[DUCT-DAMPER] ✓ MATCH (bbox proximity): Duct {ductElement.Id} bbox is {bboxDistance:F4}ft from Damper {damperId} bbox on wall {wallId} (tolerance: {bboxProximityTolerance}ft = 10mm)");
+                        _log?.Invoke($"[DUCT-DAMPER] ✓ MATCH (bbox proximity): Duct {ductElement.Id} bbox is {bboxDistance:F4}ft from Damper {damperId} bbox on wall {wallId} (tolerance: {bboxProximityTolerance}ft = 10mm)");
                         return true;
                     }
                 }
                 
-                _log($"[DUCT-DAMPER] No dampers found near duct {ductElement.Id} on wall {wallId} (checked intersection point and bbox proximity)");
+                _log?.Invoke($"[DUCT-DAMPER] No dampers found near duct {ductElement.Id} on wall {wallId} (checked intersection point and bbox proximity)");
                 return false;
             }
             catch (Exception ex)
             {
-                _log($"Error checking duct-damper proximity: {ex.Message}");
-                _log($"Stack trace: {ex.StackTrace}");
+                _log?.Invoke($"Error checking duct-damper proximity: {ex.Message}");
+                _log?.Invoke($"Stack trace: {ex.StackTrace}");
                 return false;
             }
         }
@@ -4985,7 +4985,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private bool IsDuctNearDamper(Element ductElement, List<(ElementId damperId, BoundingBoxXYZ bbox, ElementId wallId)> damperLocations)
         {
             // This method doesn't check same wall - use IsDuctNearDamperOnSameWall instead
-            _log($"[WARNING] IsDuctNearDamper called without wall check - this is deprecated");
+            _log?.Invoke($"[WARNING] IsDuctNearDamper called without wall check - this is deprecated");
             return false;
         }
         
@@ -5400,7 +5400,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                _log($"[ClashZoneService] Error getting MEP element level info: {ex.Message}");
+                _log?.Invoke($"[ClashZoneService] Error getting MEP element level info: {ex.Message}");
                 return ("Level 1", 0.0, elevationFromLevel);
             }
         }
@@ -5430,18 +5430,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         double distance = locationPoint.Point.DistanceTo(placementPoint);
                         if (distance <= tolerance)
                         {
-                            _log($"[CheckForExistingSleeve] Found existing opening at distance {distance:F3} from placement point");
+                            _log?.Invoke($"[CheckForExistingSleeve] Found existing opening at distance {distance:F3} from placement point");
                             return true;
                         }
                     }
                 }
                 
-                _log($"[CheckForExistingSleeve] No existing sleeve found at placement point {placementPoint}");
+                _log?.Invoke($"[CheckForExistingSleeve] No existing sleeve found at placement point {placementPoint}");
                 return false;
             }
             catch (Exception ex)
             {
-                _log($"[CheckForExistingSleeve] Error checking for existing sleeve: {ex.Message}");
+                _log?.Invoke($"[CheckForExistingSleeve] Error checking for existing sleeve: {ex.Message}");
                 return false;
             }
         }
@@ -5462,7 +5462,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
                     .ToList();
                 
-                _log($"[CheckForExistingClusterSleeve] Checking for cluster sleeves at placement point {placementPoint}");
+                _log?.Invoke($"[CheckForExistingClusterSleeve] Checking for cluster sleeves at placement point {placementPoint}");
                 
                 // Check if any opening exists within tolerance of the placement point
                 foreach (var opening in openingFamilies)
@@ -5486,19 +5486,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             
                             if (isRectangular || isLargeSleeve)
                             {
-                                _log($"[CheckForExistingClusterSleeve] Found existing cluster sleeve at distance {distance:F3}ft: {opening.Id} ({familyName})");
+                                _log?.Invoke($"[CheckForExistingClusterSleeve] Found existing cluster sleeve at distance {distance:F3}ft: {opening.Id} ({familyName})");
                                 return true;
                             }
                         }
                     }
                 }
                 
-                _log($"[CheckForExistingClusterSleeve] No existing cluster sleeve found at placement point {placementPoint}");
+                _log?.Invoke($"[CheckForExistingClusterSleeve] No existing cluster sleeve found at placement point {placementPoint}");
                 return false;
             }
             catch (Exception ex)
             {
-                _log($"[CheckForExistingClusterSleeve] Error checking for existing cluster sleeve: {ex.Message}");
+                _log?.Invoke($"[CheckForExistingClusterSleeve] Error checking for existing cluster sleeve: {ex.Message}");
                 return false;
             }
         }
@@ -5543,7 +5543,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                _log($"[WARNING] Failed to update WallCenterline for zone {existingZone.Id}: {ex.Message}");
+                _log?.Invoke($"[WARNING] Failed to update WallCenterline for zone {existingZone.Id}: {ex.Message}");
             }
             existingZone.ClashBoundingBox = boundingBox;
             existingZone.MepElementSize = GetMepElementSize(mepElement);
@@ -5575,7 +5575,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                _log($"[WARNING] Failed to update enrichment data for zone {existingZone.Id}: {ex.Message}");
+                _log?.Invoke($"[WARNING] Failed to update enrichment data for zone {existingZone.Id}: {ex.Message}");
             }
             
             // ✅ STAGE 1 (REFRESH): Capture MEP and Host parameters using ParameterSnapshotService
@@ -5609,18 +5609,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var mepSampleStr = mepSampleKeys.Count > 0 ? string.Join(", ", mepSampleKeys) : "none";
                         if (mepParameterValues.Count > mepSampleKeys.Count) mepSampleStr += $" (+{mepParameterValues.Count - mepSampleKeys.Count} more)";
                         
-                        _log($"[PARAM-SNAPSHOT] ✅ ASSIGNED {mepParameterValues.Count} MEP parameters and {hostParameterValues.Count} host parameters to existing ClashZone {existingZone.Id} (MEP={mepElement.Id}, Host={structuralElement.Id})");
-                        _log($"[PARAM-SNAPSHOT] ✅ MEP parameter sample keys: {mepSampleStr}");
+                        _log?.Invoke($"[PARAM-SNAPSHOT] ✅ ASSIGNED {mepParameterValues.Count} MEP parameters and {hostParameterValues.Count} host parameters to existing ClashZone {existingZone.Id} (MEP={mepElement.Id}, Host={structuralElement.Id})");
+                        _log?.Invoke($"[PARAM-SNAPSHOT] ✅ MEP parameter sample keys: {mepSampleStr}");
                         
                         // ✅ VERIFY: Check if parameters are actually in the zone object
                         var verifyMepCount = existingZone.MepParameterValues?.Count ?? 0;
                         if (verifyMepCount != mepParameterValues.Count)
                         {
-                            _log($"[PARAM-SNAPSHOT] ⚠️⚠️⚠️ VERIFICATION FAILED: Assigned {mepParameterValues.Count} but zone now has {verifyMepCount} MEP parameters!");
+                            _log?.Invoke($"[PARAM-SNAPSHOT] ⚠️⚠️⚠️ VERIFICATION FAILED: Assigned {mepParameterValues.Count} but zone now has {verifyMepCount} MEP parameters!");
                         }
                         else
                         {
-                            _log($"[PARAM-SNAPSHOT] ✅ VERIFICATION PASSED: Zone has {verifyMepCount} MEP parameters after assignment");
+                            _log?.Invoke($"[PARAM-SNAPSHOT] ✅ VERIFICATION PASSED: Zone has {verifyMepCount} MEP parameters after assignment");
                         }
                     }
                 }
@@ -5628,7 +5628,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             catch (Exception ex)
             {
                 // Non-fatal: Log error but continue
-                _log($"[PARAM-SNAPSHOT] ⚠️ Error capturing parameters for existing ClashZone: {ex.Message}");
+                _log?.Invoke($"[PARAM-SNAPSHOT] ⚠️ Error capturing parameters for existing ClashZone: {ex.Message}");
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     DebugLogger.Warning($"[PARAM-SNAPSHOT] Failed to capture parameters for existing ClashZone MEP={mepElement?.Id}, Host={structuralElement?.Id}: {ex.Message}");
@@ -5656,7 +5656,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     existingZone.SleeveInstanceId = -1; // Will be populated during placement if needed
                 }
-                _log($"[UpdateExistingClashZone] Found existing individual sleeve at intersection point - set IsResolved=true for clash zone {existingZone.Id}, preserved SleeveInstanceId={existingZone.SleeveInstanceId}");
+                _log?.Invoke($"[UpdateExistingClashZone] Found existing individual sleeve at intersection point - set IsResolved=true for clash zone {existingZone.Id}, preserved SleeveInstanceId={existingZone.SleeveInstanceId}");
             }
             
             // ✅ PHASE 3 OPTIMIZATION: Check for existing cluster sleeve (using same pre-indexed map for now, though cluster usually has higher tolerance)
@@ -5675,7 +5675,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 existingZone.IsClusterResolved = true;
                 existingZone.ClusterSleeveInstanceId = -1; // Will be populated during clustering if needed
-                _log($"[UpdateExistingClashZone] Found existing cluster sleeve at intersection point - set IsClusterResolved=true for clash zone {existingZone.Id}");
+                _log?.Invoke($"[UpdateExistingClashZone] Found existing cluster sleeve at intersection point - set IsClusterResolved=true for clash zone {existingZone.Id}");
             }
             
             existingZone.LastUpdated = DateTime.Now;
@@ -5690,7 +5690,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 .Count(cz => !cz.IsResolved && !currentStructuralIds.Contains(cz.StructuralElementId));
             if (noLongerIntersecting > 0)
             {
-                _log($"{noLongerIntersecting} clash zones are not present in this refresh; preserving IsResolved state (no auto-resolve).");
+                _log?.Invoke($"{noLongerIntersecting} clash zones are not present in this refresh; preserving IsResolved state (no auto-resolve).");
             }
         }
         
@@ -5861,7 +5861,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                _log($"Error calculating clearance: {ex.Message}, using default");
+                _log?.Invoke($"Error calculating clearance: {ex.Message}, using default");
                 return RevitUnitConversionService.Instance.ToInternalMillimeters(50.0); // Fallback to 50mm converted to feet
             }
         }

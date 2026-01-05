@@ -8530,7 +8530,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
         }
 
-        private void UpdateFilterWithCurrentUIState(OpeningFilter filter)
+        private void UpdateFilterWithCurrentUIState(OpeningFilter? filter)
         {
             // ✅ DEBUG LOG: Add to filter UI state debug log
             string filterDebugLogPath = SafeFileLogger.GetLogFilePath("filter_ui_state_debug.log");
@@ -8609,7 +8609,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] OpeningSettings EXISTS - Updating existing object");
                     }
                     
-                    filter.OpeningSettings.ClearanceSettings = clearanceSettings;
+                    filter.OpeningSettings.ClearanceSettings = clearanceSettings ?? new Dictionary<string, double>();
                     logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ✅ Assigned ClearanceSettings to filter.OpeningSettings");
                     
                     // ✅ SAVE: "Adopt to modified document" checkbox value to OpeningSettings

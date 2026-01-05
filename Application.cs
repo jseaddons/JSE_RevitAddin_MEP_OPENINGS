@@ -30,7 +30,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS
             // 
             // ⚠️ TO CHECK STATUS: Click "Diagnostic Status" button in Revit ribbon
             // ⚠️ TO TOGGLE: Click "Toggle Diagnostic" button in Revit ribbon
-            MasterSwitch.DiagnosticLogging = true; // ⬅️ CHANGE THIS VALUE: true = ON (SLOW), false = OFF (FAST) - ✅ DIAGNOSTIC MODE ON for Bottom of Opening investigation
+            MasterSwitch.DiagnosticLogging = false; // ⬅️ Set to deployment mode: false = OFF (FAST), true = ON (SLOW)
             
             // ✅ VERIFY SETTING: Double-check that the values were actually set
             System.Diagnostics.Debug.WriteLine($"[Application.OnStartup] ✅ AFTER MasterSwitch.DiagnosticLogging = true:");

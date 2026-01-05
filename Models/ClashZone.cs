@@ -41,7 +41,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// The MEP element involved in the clash
         /// </summary>
         [XmlIgnore]
-        public ElementId MepElementId { get; set; }
+        public ElementId MepElementId { get; set; } = ElementId.InvalidElementId;
         
         /// <summary>
         /// XML serializable MEP element ID
@@ -62,7 +62,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// The structural element involved in the clash
         /// </summary>
         [XmlIgnore]
-        public ElementId StructuralElementId { get; set; }
+        public ElementId StructuralElementId { get; set; } = ElementId.InvalidElementId;
         
         /// <summary>
         /// XML serializable structural element ID
@@ -185,7 +185,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// The bounding box of the clash zone
         /// </summary>
         [XmlIgnore]
-        public BoundingBoxXYZ ClashBoundingBox { get; set; }
+        public BoundingBoxXYZ ClashBoundingBox { get; set; } = new BoundingBoxXYZ();
         
         /// <summary>
         /// ✅ NEW: XML-serializable bounding box coordinates for clustering
@@ -571,7 +571,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// Sleeve placement point in ACTIVE document coordinates (for proximity calculation)
         /// </summary>
         [XmlIgnore]
-        public XYZ SleevePlacementPointActiveDocument { get; set; }
+        public XYZ? SleevePlacementPointActiveDocument { get; set; }
         
         /// <summary>
         /// XML serializable sleeve placement point X coordinate in active document
@@ -789,7 +789,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// This enables robust sleeve rotation without expensive Revit API calls during placement
         /// </summary>
         [XmlIgnore]
-        public XYZ WallDirection { get; set; }
+        public XYZ? WallDirection { get; set; }
         
         /// <summary>
         /// XML serializable wall direction X coordinate
@@ -861,7 +861,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// For framing: framing direction vector
         /// </summary>
         [XmlIgnore]
-        public XYZ StructuralElementNormal { get; set; }
+        public XYZ? StructuralElementNormal { get; set; }
         
         /// <summary>
         /// XML serializable structural element normal X coordinate
@@ -936,7 +936,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// Pre-calculated MEP element orientation vector (no linked file access needed during placement)
         /// </summary>
         [XmlIgnore]
-        public XYZ MepElementOrientation { get; set; }
+        public XYZ? MepElementOrientation { get; set; }
         
         /// <summary>
         /// Pre-calculated MEP element orientation direction ("X" or "Y") for sleeve rotation
@@ -1080,7 +1080,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
             // Clearing it would zero out _intersectionPointX/Y/Z, losing the intersection point data!
             // IntersectionPoint getter creates a NEW XYZ from backing fields, so there's no heavy object to clear
             // ClashBoundingBox = null;  // ✅ PRESERVED: Keep bounding box for normalization fallback
-            SleevePlacementPoint = null;
+            SleevePlacementPoint = new XYZ(0,0,0);
             SleevePlacementPointActiveDocument = null;
             WallDirection = null;
             StructuralElementNormal = null;

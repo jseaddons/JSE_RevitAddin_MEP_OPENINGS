@@ -67,7 +67,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             if (conditions == null)
             {
-                _log("[ConditionsService] Cannot save conditions: payload is null");
+                _log?.Invoke("[ConditionsService] Cannot save conditions: payload is null");
                 return false;
             }
 
@@ -101,7 +101,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         serializer.Serialize(writer, conditions);
                     }
 
-                    _log($"[ConditionsService] Saved conditions to: {filePath}");
+                    _log?.Invoke($"[ConditionsService] Saved conditions to: {filePath}");
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         var clearance = conditions.ClearanceSettings ?? new ClearanceSettings();
@@ -110,7 +110,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 else
                 {
-                    _log($"[ConditionsService] ⚠️ XML creation disabled - skipping conditions XML save (database only mode). Key='{combinedKey}'");
+                    _log?.Invoke($"[ConditionsService] ⚠️ XML creation disabled - skipping conditions XML save (database only mode). Key='{combinedKey}'");
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         var clearance = conditions.ClearanceSettings ?? new ClearanceSettings();
@@ -126,21 +126,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     // ⚠️ CRITICAL: Log warning but DO NOT fail the entire save operation
                     // XML save succeeded, but SQLite save failed - this is a non-fatal error
-                    _log($"[ConditionsService] ⚠️ Conditions saved to XML but SQLite save failed for '{combinedKey}'");
+                    _log?.Invoke($"[ConditionsService] ⚠️ Conditions saved to XML but SQLite save failed for '{combinedKey}'");
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Warning($"[ConditionsService] ⚠️ Conditions saved to XML but SQLite save failed for '{combinedKey}'");
                 }
                 else
                 {
                     // ✅ SUCCESS: Both XML and SQLite saves succeeded
-                    _log($"[ConditionsService] ✅ Conditions saved to BOTH XML and SQLite for '{combinedKey}'");
+                    _log?.Invoke($"[ConditionsService] ✅ Conditions saved to BOTH XML and SQLite for '{combinedKey}'");
                 }
 
                 return true;
             }
             catch (Exception ex)
             {
-                _log($"[ConditionsService] Error saving conditions: {ex.Message}");
+                _log?.Invoke($"[ConditionsService] Error saving conditions: {ex.Message}");
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[ConditionsService] Error saving conditions: {ex.Message}");
                 return false;
@@ -162,7 +162,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 if (string.IsNullOrEmpty(filterName))
                 {
-                    _log("[ConditionsService] Cannot load conditions: key is empty");
+                    _log?.Invoke("[ConditionsService] Cannot load conditions: key is empty");
                     return CreateDefaultConditions(filterName);
                 }
 
@@ -171,7 +171,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (!File.Exists(filePath))
                 {
-                    _log($"[ConditionsService] Conditions file not found: {filePath}, creating defaults");
+                    _log?.Invoke($"[ConditionsService] Conditions file not found: {filePath}, creating defaults");
                     var defaults = CreateDefaultConditions(filterName);
                     defaults.Category = ResolveNormalizedCategory(defaults, filterName);
                     return defaults;
@@ -184,7 +184,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     conditions.FilterName = ResolveFilterName(conditions, filterName);
                     conditions.Category = ResolveNormalizedCategory(conditions, filterName);
 
-                    _log($"[ConditionsService] Loaded conditions from: {filePath}");
+                    _log?.Invoke($"[ConditionsService] Loaded conditions from: {filePath}");
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         var clearance = conditions.ClearanceSettings ?? new ClearanceSettings();
@@ -196,7 +196,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                _log($"[ConditionsService] Error loading conditions: {ex.Message}");
+                _log?.Invoke($"[ConditionsService] Error loading conditions: {ex.Message}");
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[ConditionsService] Error loading conditions: {ex.Message}");
                 var defaults = CreateDefaultConditions(filterName);
@@ -395,7 +395,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ⚠️ CRITICAL VALIDATION #1: Document must exist
             if (_document == null)
             {
-                _log($"[ConditionsService] ❌ SQLite save skipped: Document is null");
+                _log?.Invoke($"[ConditionsService] ❌ SQLite save skipped: Document is null");
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning($"[ConditionsService] SQLite save skipped: Document is null");
                 return false; // ⚠️ DO NOT change to true - this is a validation failure
@@ -404,7 +404,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ⚠️ CRITICAL VALIDATION #2: FilterName and CombinedKey must be valid
             if (string.IsNullOrWhiteSpace(filterName) || string.IsNullOrWhiteSpace(combinedKey))
             {
-                _log($"[ConditionsService] ❌ SQLite save skipped: FilterName='{filterName}', CombinedKey='{combinedKey}'");
+                _log?.Invoke($"[ConditionsService] ❌ SQLite save skipped: FilterName='{filterName}', CombinedKey='{combinedKey}'");
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning($"[ConditionsService] SQLite save skipped: FilterName='{filterName}', CombinedKey='{combinedKey}'");
                 return false; // ⚠️ DO NOT change to true - this is a validation failure
@@ -413,7 +413,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ⚠️ CRITICAL VALIDATION #3: Conditions object must not be null
             if (conditions == null)
             {
-                _log($"[ConditionsService] ❌ SQLite save skipped: Conditions object is null");
+                _log?.Invoke($"[ConditionsService] ❌ SQLite save skipped: Conditions object is null");
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning($"[ConditionsService] SQLite save skipped: Conditions object is null");
                 return false; // ⚠️ DO NOT change to true - this is a validation failure
@@ -421,30 +421,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             try
             {
-                using (var context = new SleeveDbContext(_document, msg => _log($"[SQLite] {msg}")))
+                using (var context = new SleeveDbContext(_document, msg => _log?.Invoke($"[SQLite] {msg}")))
                 {
-                    var filterRepository = new FilterRepository(context, msg => _log($"[SQLite] {msg}"));
-                    var conditionRepository = new ConditionRepository(context, msg => _log($"[SQLite] {msg}"));
+                    var filterRepository = new FilterRepository(context, msg => _log?.Invoke($"[SQLite] {msg}"));
+                    var conditionRepository = new ConditionRepository(context, msg => _log?.Invoke($"[SQLite] {msg}"));
 
-                    _log($"[ConditionsService] Attempting to save conditions to SQLite: FilterName='{filterName}', Category='{normalizedCategory}', CombinedKey='{combinedKey}'");
+                    _log?.Invoke($"[ConditionsService] Attempting to save conditions to SQLite: FilterName='{filterName}', Category='{normalizedCategory}', CombinedKey='{combinedKey}'");
                     
                     int filterId = filterRepository.EnsureFilter(filterName, normalizedCategory);
                     if (filterId <= 0)
                     {
-                        _log($"[ConditionsService] ❌ SQLite filter registration failed for '{filterName}' (Category='{normalizedCategory}'). FilterId={filterId}");
+                        _log?.Invoke($"[ConditionsService] ❌ SQLite filter registration failed for '{filterName}' (Category='{normalizedCategory}'). FilterId={filterId}");
                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Error($"[ConditionsService] SQLite filter registration failed for '{filterName}' (Category='{normalizedCategory}'). FilterId={filterId}");
                         return false;
                     }
 
-                    _log($"[ConditionsService] ✅ Filter registered: FilterId={filterId} for '{filterName}' (Category='{normalizedCategory}')");
+                    _log?.Invoke($"[ConditionsService] ✅ Filter registered: FilterId={filterId} for '{filterName}' (Category='{normalizedCategory}')");
                     
                     // ⚠️⚠️⚠️ CRITICAL: This call MUST succeed for conditions to be saved to database ⚠️⚠️⚠️
                     // ✅ WORKING AS OF 2025-11-15: Conditions are successfully populating in SQLite database
                     // DO NOT remove, bypass, or modify this call without extensive testing
                     conditionRepository.UpsertConditions(filterId, combinedKey, normalizedCategory, conditions);
                     
-                    _log($"[ConditionsService] ✅ SQLite save succeeded for '{combinedKey}' (FilterId={filterId})");
+                    _log?.Invoke($"[ConditionsService] ✅ SQLite save succeeded for '{combinedKey}' (FilterId={filterId})");
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[ConditionsService] ✅ SQLite save succeeded for '{combinedKey}' (FilterId={filterId})");
                     return true; // ⚠️ DO NOT change to false - this indicates successful save
@@ -452,7 +452,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                _log($"[ConditionsService] ❌ SQLite save failed: {ex.Message}");
+                _log?.Invoke($"[ConditionsService] ❌ SQLite save failed: {ex.Message}");
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[ConditionsService] SQLite save failed: {ex.Message}\n{ex.StackTrace}");
                 return false;
@@ -475,9 +475,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ FIX: Normalize CombinedKey before database lookup
                 string normalizedKey = NormalizeCombinedKeyForDatabase(combinedKey);
                 
-                using (var context = new SleeveDbContext(_document, msg => _log($"[SQLite] {msg}")))
+                using (var context = new SleeveDbContext(_document, msg => _log?.Invoke($"[SQLite] {msg}")))
                 {
-                    var conditionRepository = new ConditionRepository(context, msg => _log($"[SQLite] {msg}"));
+                    var conditionRepository = new ConditionRepository(context, msg => _log?.Invoke($"[SQLite] {msg}"));
                     var conditions = conditionRepository.GetConditions(normalizedKey);
                     if (conditions != null)
                     {
@@ -503,7 +503,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             catch (Exception ex)
             {
-                _log($"[ConditionsService] ⚠️ SQLite retrieval failed: {ex.Message}");
+                _log?.Invoke($"[ConditionsService] ⚠️ SQLite retrieval failed: {ex.Message}");
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Warning($"[ConditionsService] SQLite retrieval failed: {ex.Message}");
                 return null;

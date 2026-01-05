@@ -2751,8 +2751,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                 
                                 if (isValidRotatedBbox)
                                 {
-                                    bboxMin = rotatedBboxMin;
-                                    bboxMax = rotatedBboxMax;
+                                    bboxMin = rotatedBboxMin!;
+                                    bboxMax = rotatedBboxMax!;
                                 }
                                 // Otherwise, keep using Revit bounding box (bbox.Min/Max from above)
                                 

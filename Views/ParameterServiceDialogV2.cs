@@ -168,37 +168,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _transferParametersButton.Click += OnTransferParametersClick;
             topBar.Controls.Add(_transferParametersButton);
 
-            // --- SAFETY LOCK BUTTON ---
-            _resetLockButton = new WinForms.Button
-            {
-                Text = "🔒 LOCKED",
-                Size = new Size(80, 32),
-                Location = new Point(buttonsStartX + 3 * (buttonWidth + buttonSpacing) - 40, 9), // Top Right Corner
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                BackColor = Color.Gray,
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Microsoft Sans Serif", 8F, FontStyle.Bold)
-            };
-            _resetLockButton.Click += (s, e) => {
-                _isResetUnlocked = !_isResetUnlocked;
-                bool unlocked = _isResetUnlocked;
-                
-                _resetLockButton.Text = unlocked ? "🔓 UNLOCKED" : "🔒 LOCKED";
-                _resetLockButton.BackColor = unlocked ? Color.IndianRed : Color.Gray;
-
-                _resetNumberingButton.Enabled = unlocked;
-                _resetNumberingButton.BackColor = unlocked ? Color.IndianRed : Color.LightGray;
-                
-                _resetSelectionButton.Enabled = unlocked;
-                _resetSelectionButton.BackColor = unlocked ? Color.IndianRed : Color.LightGray;
-                
-                _resetParametersButton.Enabled = unlocked;
-                _resetParametersButton.BackColor = unlocked ? Color.IndianRed : Color.LightGray;
-            };
-            topBar.Controls.Add(_resetLockButton);
-
-
             // --- ROW 2: Reset Buttons (Below corresponding actions) ---
             int row2Y = 50;
 
@@ -249,6 +218,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             _resetParametersButton.Click += OnResetParametersClick;
             topBar.Controls.Add(_resetParametersButton);
+
+             // --- SAFETY LOCK BUTTON (Icon Style, Row 2) ---
+            _resetLockButton = new WinForms.Button
+            {
+                Text = "🔒",
+                Size = new Size(25, 22), // Matching Project Prefix Size
+                Location = new Point(buttonsStartX + 3 * (buttonWidth + buttonSpacing), row2Y + 5), // Vertically centered
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                BackColor = Color.LightGreen, // Matching Project Prefix Default (Safe/Locked)
+                ForeColor = Color.Black, // specific check for contrast
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI Emoji", 8F) // Matching Project Prefix Font
+            };
+            _resetLockButton.Click += (s, e) => {
+                _isResetUnlocked = !_isResetUnlocked;
+                bool unlocked = _isResetUnlocked;
+                
+                _resetLockButton.Text = unlocked ? "🔓" : "🔒";
+                _resetLockButton.BackColor = unlocked ? Color.IndianRed : Color.LightGreen; // Danger vs Safe
+
+                _resetNumberingButton.Enabled = unlocked;
+                _resetNumberingButton.BackColor = unlocked ? Color.IndianRed : Color.LightGray;
+                
+                _resetSelectionButton.Enabled = unlocked;
+                _resetSelectionButton.BackColor = unlocked ? Color.IndianRed : Color.LightGray;
+                
+                _resetParametersButton.Enabled = unlocked;
+                _resetParametersButton.BackColor = unlocked ? Color.IndianRed : Color.LightGray;
+            };
+            topBar.Controls.Add(_resetLockButton);
             
             // Button 4: Close
             _closeButton = new WinForms.Button

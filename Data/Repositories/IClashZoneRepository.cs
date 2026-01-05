@@ -139,7 +139,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Retrieve ClashZone objects associated with the given Revit Sleeve Instance IDs.
         /// This checks both individual SleeveInstanceId and ClusterSleeveInstanceId.
         /// </summary>
-        ClashZone GetClashZoneByMepElementId(int mepElementId);
+        ClashZone? GetClashZoneByMepElementId(int mepElementId);
         List<ClashZone> GetClashZonesBySleeveIds(IEnumerable<int> sleeveInstanceIds);
 
         /// <summary>
