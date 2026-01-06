@@ -16,18 +16,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
     /// </summary>
     public class ClusterRotationService : IClusterRotationService
     {
+        // ✅ THREAD-SAFETY: Use ThreadLocal storage for parallel processing isolation
+        // Each thread gets its own isolated dictionary to prevent race conditions during parallel execution
+        
         // Store rotation angle and rotated bounding box for each cluster sleeve
-        // Key: ClusterInstanceId
-        private readonly Dictionary<int, (double rotationAngleDeg, bool isRotated, XYZ rotatedBboxMin, XYZ rotatedBboxMax, double rotatedWidth, double rotatedHeight, double rotatedDepth)> _clusterRotationData;
+        private readonly System.Threading.ThreadLocal<Dictionary<int, (double rotationAngleDeg, bool isRotated, XYZ rotatedBboxMin, XYZ rotatedBboxMax, double rotatedWidth, double rotatedHeight, double rotatedDepth)>> _clusterRotationData;
 
         // ✅ PERFORMANCE: Cache rotated bounding box calculations by cluster signature + rotation angle
-        // Key: Hash of (sorted sleeve IDs + rotation angle), Value: (width, height, depth, mid, rotatedMinX, ...)
-        private readonly Dictionary<string, (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ)> _rotatedBboxCache;
+        private readonly System.Threading.ThreadLocal<Dictionary<string, (double width, double height, double depth, XYZ mid, double? rotatedMinX, double? rotatedMinY, double? rotatedMinZ, double? rotatedMaxX, double? rotatedMaxY, double? rotatedMaxZ)>> _rotatedBboxCache;
         private const int MAX_ROTATED_BBOX_CACHE_SIZE = 1000; // Limit cache size to prevent memory growth
 
         // ✅ PERFORMANCE: Cache individual ClashZone lookups to avoid repeated database queries for same sleeve
-        // Key: sleeveInstanceId, Value: ClashZone (cached to avoid repeated _getClashZoneFunc calls)
-        private readonly Dictionary<int, ClashZone> _clashZoneCache;
+        private readonly System.Threading.ThreadLocal<Dictionary<int, ClashZone>> _clashZoneCache;
         private const int MAX_CLASHZONE_CACHE_SIZE = 5000; // Limit cache size to prevent memory growth
 
         // Delegate for getting ClashZone by sleeve instance ID (injected dependency)
@@ -46,9 +46,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     "getClashZoneFunc cannot be null. Provide a function that returns ClashZone (can return null if not found).");
             }
             
-            _clusterRotationData = new Dictionary<int, (double, bool, XYZ, XYZ, double, double, double)>();
-            _rotatedBboxCache = new Dictionary<string, (double, double, double, XYZ, double?, double?, double?, double?, double?, double?)>();
-            _clashZoneCache = new Dictionary<int, ClashZone>();
+            // ✅ THREAD-SAFETY: Initialize ThreadLocal factories
+            _clusterRotationData = new System.Threading.ThreadLocal<Dictionary<int, (double, bool, XYZ, XYZ, double, double, double)>>(() => new Dictionary<int, (double, bool, XYZ, XYZ, double, double, double)>());
+            _rotatedBboxCache = new System.Threading.ThreadLocal<Dictionary<string, (double, double, double, XYZ, double?, double?, double?, double?, double?, double?)>>(() => new Dictionary<string, (double, double, double, XYZ, double?, double?, double?, double?, double?, double?)>());
+            _clashZoneCache = new System.Threading.ThreadLocal<Dictionary<int, ClashZone>>(() => new Dictionary<int, ClashZone>());
+            
             _getClashZoneFunc = getClashZoneFunc;
         }
 
@@ -352,7 +354,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     {
                         string cacheKey = $"RBB_{string.Join("_", sleeveIds)}_{rotationAngle:F6}";
                         
-                        if (_rotatedBboxCache.TryGetValue(cacheKey, out var cachedResult))
+                        if (_rotatedBboxCache.Value.TryGetValue(cacheKey, out var cachedResult))
                         {
                             calcStopwatch.Stop();
                             if (!DeploymentConfiguration.DeploymentMode)
@@ -369,8 +371,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
                                 SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                    $"[{DateTime.Now:HH:mm:ss}] 💾 CACHE MISS: Rotated bounding box for {cluster.Count} sleeves, rotation={rotationAngle * 180 / Math.PI:F1}°, cacheKey={cacheKey.Substring(0, Math.Min(50, cacheKey.Length))}, cacheSize={_rotatedBboxCache.Count}\n");
-                                DebugLogger.Info($"[BBOX-CACHE] 💾 CACHE MISS: Rotated bounding box for {cluster.Count} sleeves, rotation={rotationAngle * 180 / Math.PI:F1}°, cacheSize={_rotatedBboxCache.Count}");
+                                    $"[{DateTime.Now:HH:mm:ss}] 💾 CACHE MISS: Rotated bounding box for {cluster.Count} sleeves, rotation={rotationAngle * 180 / Math.PI:F1}°, cacheKey={cacheKey.Substring(0, Math.Min(50, cacheKey.Length))}, cacheSize={_rotatedBboxCache.Value.Count}\n");
+                                DebugLogger.Info($"[BBOX-CACHE] 💾 CACHE MISS: Rotated bounding box for {cluster.Count} sleeves, rotation={rotationAngle * 180 / Math.PI:F1}°, cacheSize={_rotatedBboxCache.Value.Count}");
                             }
                         }
                     }
@@ -704,9 +706,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                         string cacheKey = $"RBB_{string.Join("_", sleeveIds)}_{rotationAngle:F6}";
                         var circularResult = (circularWidth, circularHeight, circularDepth, placementPoint, (double?)circularMinX, (double?)circularMinY, (double?)circularMinZ, (double?)circularMaxX, (double?)circularMaxY, (double?)circularMaxZ);
                         
-                        if (_rotatedBboxCache.Count < MAX_ROTATED_BBOX_CACHE_SIZE)
+                        if (_rotatedBboxCache.Value.Count < MAX_ROTATED_BBOX_CACHE_SIZE)
                         {
-                            _rotatedBboxCache[cacheKey] = circularResult;
+                            _rotatedBboxCache.Value[cacheKey] = circularResult;
                         }
                         
                         calcStopwatch.Stop();
@@ -2164,10 +2166,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 if (cluster != null && cluster.Count > 0)
                 {
                     var sleeveIds = cluster.Select(s => s?.SleeveInstanceId ?? 0).Where(id => id > 0).OrderBy(id => id).ToList();
-                    if (sleeveIds.Count == cluster.Count && _rotatedBboxCache.Count < MAX_ROTATED_BBOX_CACHE_SIZE)
+                    if (sleeveIds.Count == cluster.Count && _rotatedBboxCache.Value.Count < MAX_ROTATED_BBOX_CACHE_SIZE)
                     {
                         string cacheKey = $"RBB_{string.Join("_", sleeveIds)}_{rotationAngle:F6}";
-                        _rotatedBboxCache[cacheKey] = result;
+                        _rotatedBboxCache.Value[cacheKey] = result;
                         
                         if (!DeploymentConfiguration.DeploymentMode && calcStopwatch.ElapsedMilliseconds > 10)
                         {
@@ -2195,7 +2197,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         /// </summary>
         public (double rotationAngleDeg, bool isRotated, XYZ rotatedBboxMin, XYZ rotatedBboxMax, double rotatedWidth, double rotatedHeight, double rotatedDepth)? GetRotationData(int clusterInstanceId)
         {
-            if (_clusterRotationData.TryGetValue(clusterInstanceId, out var data))
+            if (_clusterRotationData.Value.TryGetValue(clusterInstanceId, out var data))
             {
                 return data;
             }
@@ -2207,7 +2209,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         /// </summary>
         public void StoreRotationData(int clusterInstanceId, double rotationAngleDeg, bool isRotated, XYZ rotatedBboxMin, XYZ rotatedBboxMax, double rotatedWidth, double rotatedHeight, double rotatedDepth)
         {
-            _clusterRotationData[clusterInstanceId] = (rotationAngleDeg, isRotated, rotatedBboxMin, rotatedBboxMax, rotatedWidth, rotatedHeight, rotatedDepth);
+            _clusterRotationData.Value[clusterInstanceId] = (rotationAngleDeg, isRotated, rotatedBboxMin, rotatedBboxMax, rotatedWidth, rotatedHeight, rotatedDepth);
         }
 
         /// <summary>
@@ -2215,7 +2217,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         /// </summary>
         public void ClearRotationData()
         {
-            _clusterRotationData.Clear();
+            _clusterRotationData.Value.Clear();
         }
 
         /// <summary>
@@ -2235,7 +2237,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
             foreach (int sleeveId in uniqueIds)
             {
                 // Skip if already in cache
-                if (_clashZoneCache.ContainsKey(sleeveId))
+                if (_clashZoneCache.Value.ContainsKey(sleeveId))
                     continue;
 
                 // Load and cache
@@ -2244,9 +2246,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     var cz = _getClashZoneFunc(sleeveId, xmlFilePath);
                     var clashZone = cz as ClashZone;
                     
-                    if (clashZone != null && _clashZoneCache.Count < MAX_CLASHZONE_CACHE_SIZE)
+                    if (clashZone != null && _clashZoneCache.Value.Count < MAX_CLASHZONE_CACHE_SIZE)
                     {
-                        _clashZoneCache[sleeveId] = clashZone;
+                        _clashZoneCache.Value[sleeveId] = clashZone;
                         preloadedCount++;
                     }
                 }
@@ -2276,12 +2278,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 int sleeveId = kvp.Key;
                 ClashZone clashZone = kvp.Value;
                 
-                if (sleeveId > 0 && clashZone != null && _clashZoneCache.Count < MAX_CLASHZONE_CACHE_SIZE)
+                if (sleeveId > 0 && clashZone != null && _clashZoneCache.Value.Count < MAX_CLASHZONE_CACHE_SIZE)
                 {
                     // Skip if already in cache
-                    if (!_clashZoneCache.ContainsKey(sleeveId))
+                    if (!_clashZoneCache.Value.ContainsKey(sleeveId))
                     {
-                        _clashZoneCache[sleeveId] = clashZone;
+                        _clashZoneCache.Value[sleeveId] = clashZone;
                         preloadedCount++;
                     }
                 }
@@ -2299,7 +2301,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 return null;
             
             // Check cache first
-            if (_clashZoneCache.TryGetValue(sleeveInstanceId, out var cached))
+            if (_clashZoneCache.Value.TryGetValue(sleeveInstanceId, out var cached))
             {
                 return cached;
             }
@@ -2309,9 +2311,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
             var clashZone = cz as ClashZone;
             
             // Store in cache (if not null and cache not full)
-            if (clashZone != null && _clashZoneCache.Count < MAX_CLASHZONE_CACHE_SIZE)
+            if (clashZone != null && _clashZoneCache.Value.Count < MAX_CLASHZONE_CACHE_SIZE)
             {
-                _clashZoneCache[sleeveInstanceId] = clashZone;
+                _clashZoneCache.Value[sleeveInstanceId] = clashZone;
             }
             
             return clashZone;
@@ -2326,13 +2328,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         {
             try
             {
-                if (cluster != null && cluster.Count > 0 && _rotatedBboxCache.Count < MAX_ROTATED_BBOX_CACHE_SIZE)
+                if (cluster != null && cluster.Count > 0 && _rotatedBboxCache.Value.Count < MAX_ROTATED_BBOX_CACHE_SIZE)
                 {
                     var sleeveIds = cluster.Select(s => s?.SleeveInstanceId ?? 0).Where(id => id > 0).OrderBy(id => id).ToList();
                     if (sleeveIds.Count == cluster.Count)
                     {
                         string cacheKey = $"RBB_{string.Join("_", sleeveIds)}_{rotationAngle:F6}";
-                        _rotatedBboxCache[cacheKey] = result;
+                        _rotatedBboxCache.Value[cacheKey] = result;
                         
                         if (!DeploymentConfiguration.DeploymentMode && calcStopwatch.ElapsedMilliseconds > 10)
                         {
