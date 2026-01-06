@@ -369,7 +369,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Location: Services/Clustering/RefactoredClusterService.cs
         /// Note: Falls back to legacy code automatically if pre-calculation fails (crash-safe).
         /// </summary>
-        public static bool UseSOLIDRefactoredClusterPreCalculation { get; set; } = false; // 🔧 DISABLED: Parallel pre-calculation causing issues in crowd mode
+        public static bool UseSOLIDRefactoredClusterPreCalculation { get; set; } = true; // ✅ ENABLED: Safe category-partitioned parallel processing
 
         /// <summary>
         /// Enable "Bottom of Opening" parameter calculation for RectangularOpeningOnWall sleeves.

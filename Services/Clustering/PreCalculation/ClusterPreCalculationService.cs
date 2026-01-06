@@ -65,20 +65,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.PreCalculation
             var results = new ConcurrentDictionary<int, ClusterCalculationResult>();
             int clusterIndex = 0;
 
-            // ✅ PERFORMANCE: Flatten all clusters into a single list for parallel processing
-            var allClusters = new List<(int index, SleeveGroupKey groupKey, List<dynamic> cluster)>();
+            // ✅ SAFE PARALLEL PROCESSING: Partition by category FIRST to avoid cross-category interference
+            // Each category is processed independently (Pipes don't interfere with Ducts, etc.)
+            var clustersByCategory = new Dictionary<string, List<(int index, SleeveGroupKey groupKey, List<dynamic> cluster)>>();
+            
             foreach (var groupEntry in clustersByGroup)
             {
+                string category = groupEntry.Key.category ?? "Unknown";
+                if (!clustersByCategory.ContainsKey(category))
+                {
+                    clustersByCategory[category] = new List<(int, SleeveGroupKey, List<dynamic>)>();
+                }
+                
                 foreach (var cluster in groupEntry.Value)
                 {
                     if (cluster.Count > 1) // Only process clusters with multiple sleeves
                     {
-                        allClusters.Add((clusterIndex++, groupEntry.Key, cluster));
+                        clustersByCategory[category].Add((clusterIndex++, groupEntry.Key, cluster));
                     }
                 }
             }
 
-            if (allClusters.Count == 0)
+            int totalClusters = clustersByCategory.Values.Sum(list => list.Count);
+            if (totalClusters == 0)
             {
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
@@ -115,17 +124,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.PreCalculation
             {
                 // ✅ FALLBACK: Collect sleeve IDs and do individual lookups (slower but works)
                 var allSleeveIds = new HashSet<int>();
-                foreach (var clusterInfo in allClusters)
+                foreach (var categoryList in clustersByCategory.Values)
                 {
-                    foreach (var sleeveData in clusterInfo.cluster)
+                    foreach (var clusterInfo in categoryList)
                     {
-                        try
+                        foreach (var sleeveData in clusterInfo.cluster)
                         {
-                            int sleeveId = sleeveData.SleeveInstanceId;
-                            if (sleeveId > 0)
-                                allSleeveIds.Add(sleeveId);
+                            try
+                            {
+                                int sleeveId = sleeveData.SleeveInstanceId;
+                                if (sleeveId > 0)
+                                    allSleeveIds.Add(sleeveId);
+                            }
+                            catch { }
                         }
-                        catch { }
                     }
                 }
                 
@@ -144,41 +156,99 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.PreCalculation
                 OptimizationFlags.ClusterPreCalculationMaxThreads,
                 OptimizationFlags.UseDatabaseOnlyPreCalculation);
 
-            // ✅ DIAGNOSTIC: Always log mode and flag status (even in deployment mode for debugging)
+            // ✅ DIAGNOSTIC: Log category partitioning info
             SafeFileLogger.SafeAppendText("cluster_debug.log",
-                $"[{DateTime.Now:HH:mm:ss}] [PreCalculation] 🚀 Starting parallel pre-calculation for {allClusters.Count} clusters using {maxThreads} threads " +
-                $"(max of {Environment.ProcessorCount} logical cores, " +
-                $"mode={(OptimizationFlags.UseDatabaseOnlyPreCalculation ? "DATABASE-ONLY" : "REVIT-API")}, " +
-                $"flag={OptimizationFlags.UseDatabaseOnlyPreCalculation})\n");
-
-            // ✅ MULTI-THREADING: Process clusters in parallel (pure math operations, safe for parallelization)
-            // ✅ OPTIMIZATION: Limit threads to reduce contention (especially important for i5 processors)
-            System.Threading.Tasks.Parallel.ForEach(allClusters, new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = maxThreads }, clusterInfo =>
+                $"[{DateTime.Now:HH:mm:ss}] [PreCalculation] 🔀 CATEGORY PARTITIONING: {clustersByCategory.Count} categories, {totalClusters} total clusters\n");
+            foreach (var kvp in clustersByCategory)
             {
-                try
-                {
-                    var result = PreCalculateSingleCluster(clusterInfo.cluster, clusterInfo.groupKey, doc, xmlFilePath);
-                    result.Cluster = clusterInfo.cluster;
-                    result.GroupKey = clusterInfo.groupKey;
-                    results[clusterInfo.index] = result;
-                }
-                catch (Exception ex)
-                {
-                    // ✅ CRASH-SAFE: Graceful degradation - mark as invalid but continue processing
-                    results[clusterInfo.index] = new ClusterCalculationResult
-                    {
-                        IsValid = false,
-                        ErrorMessage = ex.Message,
-                        Cluster = clusterInfo.cluster,
-                        GroupKey = clusterInfo.groupKey
-                    };
+                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss}] [PreCalculation]   - {kvp.Key}: {kvp.Value.Count} clusters\n");
+            }
 
-                    if (!DeploymentConfiguration.DeploymentMode)
+            // ✅ SAFE PARALLEL PROCESSING: Process each CATEGORY in parallel (categories are independent)
+            // Within each category, use SPATIAL PARTITIONING to avoid overlapping clusters interfering
+            System.Threading.Tasks.Parallel.ForEach(clustersByCategory, new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = clustersByCategory.Count }, categoryEntry =>
+            {
+                string category = categoryEntry.Key;
+                var categoryClusters = categoryEntry.Value;
+                
+                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss}] [PreCalculation] 🚀 Processing category '{category}' with {categoryClusters.Count} clusters\n");
+
+                // ✅ SPATIAL PARTITIONING: Group clusters by spatial grid cell (10 feet = ~3 meters)
+                // Clusters in different spatial cells can be processed in parallel safely
+                double cellSize = 10.0; // 10 feet grid
+                var spatialPartitions = new Dictionary<string, List<(int index, SleeveGroupKey groupKey, List<dynamic> cluster)>>();
+                
+                foreach (var clusterInfo in categoryClusters)
+                {
+                    // Get placement point from first sleeve in cluster
+                    XYZ? placementPoint = null;
+                    try
                     {
-                        SafeFileLogger.SafeAppendText("cluster_errors.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [PreCalculation] ❌ Error pre-calculating cluster {clusterInfo.index}: {ex.Message}\n");
+                        var firstSleeve = clusterInfo.cluster[0];
+                        placementPoint = new XYZ(
+                            firstSleeve.PlacementX ?? 0.0,
+                            firstSleeve.PlacementY ?? 0.0,
+                            firstSleeve.PlacementZ ?? 0.0);
                     }
+                    catch
+                    {
+                        placementPoint = XYZ.Zero;
+                    }
+                    
+                    // Calculate spatial grid cell key
+                    int cellX = (int)(placementPoint.X / cellSize);
+                    int cellY = (int)(placementPoint.Y / cellSize);
+                    int cellZ = (int)(placementPoint.Z / cellSize);
+                    string spatialKey = $"{cellX}_{cellY}_{cellZ}";
+                    
+                    if (!spatialPartitions.ContainsKey(spatialKey))
+                    {
+                        spatialPartitions[spatialKey] = new List<(int, SleeveGroupKey, List<dynamic>)>();
+                    }
+                    spatialPartitions[spatialKey].Add(clusterInfo);
                 }
+                
+                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss}] [PreCalculation]   📍 Spatial partitioning: {spatialPartitions.Count} spatial cells for category '{category}'\n");
+
+                // ✅ HYBRID PARALLEL: Process spatial partitions in parallel (non-overlapping regions)
+                // Within each spatial partition, process sequentially (potential overlap within same cell)
+                System.Threading.Tasks.Parallel.ForEach(spatialPartitions, new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = maxThreads }, spatialEntry =>
+                {
+                    string spatialKey = spatialEntry.Key;
+                    var spatialClusters = spatialEntry.Value;
+                    
+                    // Process clusters in this spatial cell SEQUENTIALLY to avoid overlap issues
+                    foreach (var clusterInfo in spatialClusters)
+                    {
+                        try
+                        {
+                            var result = PreCalculateSingleCluster(clusterInfo.cluster, clusterInfo.groupKey, doc, xmlFilePath);
+                            result.Cluster = clusterInfo.cluster;
+                            result.GroupKey = clusterInfo.groupKey;
+                            results[clusterInfo.index] = result;
+                        }
+                        catch (Exception ex)
+                        {
+                            // ✅ CRASH-SAFE: Graceful degradation - mark as invalid but continue processing
+                            results[clusterInfo.index] = new ClusterCalculationResult
+                            {
+                                IsValid = false,
+                                ErrorMessage = ex.Message,
+                                Cluster = clusterInfo.cluster,
+                                GroupKey = clusterInfo.groupKey
+                            };
+
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("cluster_errors.log",
+                                    $"[{DateTime.Now:HH:mm:ss.fff}] [PreCalculation] ❌ Error pre-calculating cluster {clusterInfo.index} (category={category}, cell={spatialKey}): {ex.Message}\n");
+                            }
+                        }
+                    }
+                });
             });
 
             sw.Stop();
