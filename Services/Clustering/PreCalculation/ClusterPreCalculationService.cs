@@ -71,7 +71,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.PreCalculation
             
             foreach (var groupEntry in clustersByGroup)
             {
-                string category = groupEntry.Key.category ?? "Unknown";
+                string category = groupEntry.Key.systemType ?? "Unknown";
                 if (!clustersByCategory.ContainsKey(category))
                 {
                     clustersByCategory[category] = new List<(int, SleeveGroupKey, List<dynamic>)>();
@@ -260,7 +260,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.PreCalculation
             {
                 SafeFileLogger.SafeAppendText("cluster_debug.log",
                     $"[{DateTime.Now:HH:mm:ss}] [PreCalculation] ✅ Completed parallel pre-calculation: {validCount} valid, {invalidCount} invalid, " +
-                    $"Time={sw.ElapsedMilliseconds}ms ({sw.ElapsedMilliseconds / (double)allClusters.Count:F1}ms per cluster)\n");
+                    $"Time={sw.ElapsedMilliseconds}ms ({sw.ElapsedMilliseconds / (double)totalClusters:F1}ms per cluster)\n");
             }
 
             return results.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
