@@ -75,7 +75,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         
                         int totalProcessed = 0;
                         int totalErrors = 0;
-                        var markService = new MarkParameterService();
+                        // ✅ LOGGING FIX: Inject logger action
+                        var markService = new MarkParameterService(doc, NumberingDebugLogger.LogInfo);
                         var numberFormat = _markPrefixes?.NumberFormat ?? "000";
                         var allowedPrefixes = new HashSet<string>();
 
@@ -113,18 +114,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         // ---------------------------------------------------------
                         if (_mode != MarkingMode.PrefixOnly)
                         {
-                            // Build allowed prefixes filter to ensure we only number what we touched/selected
-                            foreach (var category in categoriesToProcess)
-                            {
-                                var disciplinePrefix = _markPrefixes?.GetDisciplinePrefix(category) ?? GetDisciplinePrefixForCategory(category);
-                                // The prefix on the element will be "{ProjectPrefix}{DisciplinePrefix}"
-                                allowedPrefixes.Add($"{_projectPrefix}{disciplinePrefix}");
-                            }
-                            // Always allow Combined Prefix if we are processing ALL or huge selection?
-                            // For safety, let's include "MEP" prefix standard if we processed general categories
-                            allowedPrefixes.Add($"{_projectPrefix}MEP"); 
-
-                            var (p2, e2) = markService.ApplyNumbersBatch(doc, numberFormat, allowedPrefixes, _markPrefixes);
+                            // ✅ USER REQUEST: REMOVE ALL PREFIX CONSTRAINTS
+                            // "WE WANT ONLY PREFIX BASED"
+                            // Passing null means "Process ALL prefixes found in the model"
+                            var (p2, e2) = markService.ApplyNumbersBatch(doc, numberFormat, null, _markPrefixes);
                             totalProcessed += p2;
                             totalErrors += e2;
                         }
@@ -141,7 +134,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     {
                         tx.Start();
 
-                        var markService = new MarkParameterService();
+                        // ✅ LOGGING FIX: Inject logger action
+                        var markService = new MarkParameterService(doc, NumberingDebugLogger.LogInfo);
                         var numberFormat = _markPrefixes?.NumberFormat ?? "000";
                         
                         // 1. PREFIX
@@ -166,12 +160,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         // 2. NUMBER
                          if (_mode != MarkingMode.PrefixOnly)
                         {
-                            var allowedPrefixes = new HashSet<string>();
-                            var disciplinePrefix = _markPrefixes?.GetDisciplinePrefix(_targetCategory) ?? GetDisciplinePrefixForCategory(_targetCategory);
-                            allowedPrefixes.Add($"{_projectPrefix}{disciplinePrefix}");
-                            allowedPrefixes.Add($"{_projectPrefix}MEP"); // Just in case combined sleeves are relevant
-
-                            markService.ApplyNumbersBatch(doc, numberFormat, allowedPrefixes, _markPrefixes);
+                            // ✅ USER REQUEST: REMOVE ALL PREFIX CONSTRAINTS
+                            // "WE WANT ONLY PREFIX BASED" - Do not filter by category allowed list.
+                            markService.ApplyNumbersBatch(doc, numberFormat, null, _markPrefixes);
                         }
 
                         tx.Commit();

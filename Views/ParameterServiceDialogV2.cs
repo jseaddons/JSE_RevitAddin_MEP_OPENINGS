@@ -150,7 +150,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // Button 2: Remark Selected (Slot 1)
             _remarkSelectedButton = new WinForms.Button
             {
-                Text = "Remark Selected",
+                Text = "Reset Prefix",
                 Size = new Size(buttonWidth, 32),
                 Location = new Point(buttonsStartX + 1 * (buttonWidth + buttonSpacing), 9),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left,
@@ -680,7 +680,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // Start Number
             var startNumberLabel = new WinForms.Label
             {
-                Text = "Start Number:",
+                // ✅ USER REQUEST: Rename to clarify this is for forcing a reset
+                Text = "Start Number (New Sheet):",
                 Location = new Point(10, yPos),
                 Size = new Size(100, 20)
             };
@@ -690,7 +691,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Location = new Point(120, yPos - 2),
                 Size = new Size(120, 22),
-                Text = "1" // Default to 1
+                // ✅ FIX: Default to EMPTY so it uses Global History by default. 
+                // User enters "1" only if they want to force a reset.
+                Text = "" 
             };
             _leftPrefixPanel.Controls.Add(_startNumberTextBox);
             yPos += 35;
@@ -2761,12 +2764,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
                         if (totalProcessed > 0)
                         {
-                            WinForms.MessageBox.Show($"Re-marked {totalProcessed} categories:\n{string.Join(", ", categoriesProcessed)}",
-                                "Remark Selected Complete", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                            WinForms.MessageBox.Show($"Reset prefix for {totalProcessed} categories:\n{string.Join(", ", categoriesProcessed)}",
+                                "Reset Prefix Complete", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
                         }
                         else
                         {
-                            WinForms.MessageBox.Show("No categories selected for re-marking. Please check remark checkboxes.",
+                            WinForms.MessageBox.Show("No categories selected for resetting prefix. Please check remark checkboxes.",
                                 "No Selection", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
                         }
                     }

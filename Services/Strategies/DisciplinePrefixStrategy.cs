@@ -11,14 +11,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
             if (settings == null) return "OPN"; // Fallback
 
             // ✅ OPTIMIZED: Use pre-resolved properties from model (loaded from direct DB columns)
-            string systemType = zone.MepSystemType;
-            string serviceType = zone.MepServiceType;
+            string systemType = zone.MepSystemType?.Trim();
+            string serviceType = zone.MepServiceType?.Trim();
 
             // Fallback to searching parameter list if DB columns are empty (legacy/backward compatibility)
             if (string.IsNullOrEmpty(systemType)) systemType = GetParameterValue(zone, "System Type");
             if (string.IsNullOrEmpty(serviceType)) serviceType = GetParameterValue(zone, "Service Type");
 
-            RemarkDebugLogger.LogInfo($"[DisciplinePrefixStrategy] Category: {category}, SystemType: '{systemType}', ServiceType: '{serviceType}'");
+            NumberingDebugLogger.LogInfo($"[DisciplinePrefixStrategy] Category: {category}, SystemType: '{systemType}', ServiceType: '{serviceType}'");
 
             // Delegate to Settings logic (which handles the overrides)
             return settings.GetPrefixForElement(category, systemType, serviceType);
@@ -28,7 +28,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
         {
             if (zone?.MepParameterValues == null) 
             {
-                RemarkDebugLogger.LogInfo($"[DisciplinePrefixStrategy] Zone {zone?.ClashZoneId} has NULL MepParameterValues");
+                NumberingDebugLogger.LogInfo($"[DisciplinePrefixStrategy] Zone {zone?.ClashZoneId} has NULL MepParameterValues");
                 return null;
             }
             
@@ -43,7 +43,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
 
             // Diagnostic: Log all keys if not found
             var keys = string.Join(", ", zone.MepParameterValues.Select(k => k.Key));
-            RemarkDebugLogger.LogInfo($"[DisciplinePrefixStrategy] Parameter '{paramName}' NOT found. Available keys: {keys}");
+            NumberingDebugLogger.LogInfo($"[DisciplinePrefixStrategy] Parameter '{paramName}' NOT found. Available keys: {keys}");
             
             return null;
         }

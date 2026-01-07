@@ -93,12 +93,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         var settings = markPrefixes ?? new MarkPrefixSettings();
                         prefix = settings.GetDisciplinePrefix(category);
-                        RemarkDebugLogger.LogInfo($"[MarkParameterService] Cluster {instanceId}: Using discipline prefix '{prefix}' (system type overrides ignored for clusters)");
+                        NumberingDebugLogger.LogInfo($"[MarkParameterService] Cluster {instanceId}: Using discipline prefix '{prefix}' (system type overrides ignored for clusters)");
                     }
                     else // Individual sleeve
                     {
                         prefix = prefixStrategy.ResolvePrefix(category, markPrefixes ?? new MarkPrefixSettings(), primaryZone);
-                        RemarkDebugLogger.LogInfo($"[MarkParameterService] Individual Sleeve {instanceId}: Using resolved prefix '{prefix}'");
+                        NumberingDebugLogger.LogInfo($"[MarkParameterService] Individual Sleeve {instanceId}: Using resolved prefix '{prefix}'");
                     }
                     
                     if (!prefixGroups.ContainsKey(prefix)) prefixGroups[prefix] = new List<ElementId>();
@@ -150,7 +150,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var prefixStrategy = new DisciplinePrefixStrategy();
 
                 var zones = markRepo.GetMarkableClashZones(category);
-                RemarkDebugLogger.LogInfo($"Found {zones.Count} markable zones for category '{category}' in DB");
+                NumberingDebugLogger.LogInfo($"Found {zones.Count} markable zones for category '{category}' in DB");
                 if (zones.Count == 0) return (0, 0);
 
                 var updates = new List<(ElementId Id, string Value)>();
@@ -161,7 +161,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     .Where(z => z.ClusterInstanceId <= 0 && z.CombinedClusterSleeveInstanceId <= 0)
                     .ToList();
 
-                RemarkDebugLogger.LogInfo($"[PREFIX-ONLY] Total zones: {zones.Count}, Individual sleeves: {individualZones.Count}, Skipped (clusters/combined): {zones.Count - individualZones.Count}");
+                NumberingDebugLogger.LogInfo($"[PREFIX-ONLY] Total zones: {zones.Count}, Individual sleeves: {individualZones.Count}, Skipped (clusters/combined): {zones.Count - individualZones.Count}");
 
                 foreach (var zone in individualZones)
                 {
@@ -179,11 +179,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     string elementPrefix = prefixStrategy.ResolvePrefix(category, settings, zone);
                     string targetPrefix = $"{projectPrefix}{elementPrefix}";
                     
-                    RemarkDebugLogger.LogInfo($"[PREFIX-ONLY] Individual {targetId}: Prefix '{targetPrefix}' (Existing: '{existingMark}')");
+                    NumberingDebugLogger.LogInfo($"[PREFIX-ONLY] Individual {targetId}: Prefix '{targetPrefix}' (Existing: '{existingMark}')");
                     updates.Add((el.Id, targetPrefix));
                 }
 
-                RemarkDebugLogger.LogStep($"Applying {updates.Count} prefix updates to Revit...");
+                // Sort updates by mark value to ensure sequential application (though dictionary iteration order is not guaranteed, the loop above was sequential)
+                updates = updates.OrderBy(u => u.Value).ToList();
+
+                NumberingDebugLogger.LogStep($"[DEBUG] Total updates to apply: {updates.Count}");
+                foreach (var up in updates.Take(50)) // Log first 50 to see enough examples
+                {
+                    NumberingDebugLogger.LogInfo($"[DEBUG] Update: ElementId={up.Id.IntegerValue}, Value='{up.Value}'");
+                }
+
+                NumberingDebugLogger.LogStep($"Applying {updates.Count} prefix updates to Revit...");
                 foreach (var update in updates)
                 {
                     try
@@ -197,7 +206,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                         else
                         {
-                            RemarkDebugLogger.LogStep($"FAILED to update element {update.Id.IntegerValue}: Parameter NULL or ReadOnly");
+                            NumberingDebugLogger.LogStep($"FAILED to update element {update.Id.IntegerValue}: Parameter NULL or ReadOnly");
                         }
                     }
                     catch (Exception ex)
@@ -238,16 +247,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     var p = sleeve.LookupParameter("MEP Mark") ?? sleeve.LookupParameter("Mark");
                     string currentMark = p?.AsString() ?? "";
-                    if (string.IsNullOrWhiteSpace(currentMark)) continue;
+                    if (string.IsNullOrWhiteSpace(currentMark)) 
+                    {
+                        NumberingDebugLogger.LogInfo($"[NUMBERING SKIPPED] Element {sleeve.Id.IntegerValue} has empty/null MEP Mark.");
+                        continue;
+                    }
 
                     string prefix = ExtractPrefix(currentMark);
-                    if (allowedPrefixes != null && !allowedPrefixes.Any(ap => prefix.StartsWith(ap))) continue;
+                    
+                    if (allowedPrefixes != null && !allowedPrefixes.Any(ap => prefix.StartsWith(ap)))
+                    {
+                        NumberingDebugLogger.LogInfo($"[NUMBERING SKIPPED] Element {sleeve.Id.IntegerValue} Prefix '{prefix}' NOT in allowed list: {string.Join(", ", allowedPrefixes)}");
+                        continue; 
+                    }
 
                     if (!prefixGroups.ContainsKey(prefix)) prefixGroups[prefix] = new List<FamilyInstance>();
                     prefixGroups[prefix].Add(sleeve);
                 }
 
                 using var context = new SleeveDbContext(doc);
+                // ✅ USER REQUEST: RESTORED BACKEND LOGIC FOR GLOBAL SEQUENCE (UNDO "REMOVE")
                 var markerRepo = new CategoryProcessingMarkerRepository(context);
                 var updates = new List<(ElementId Id, string Value)>();
 
@@ -255,8 +274,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     string prefix = group.Key;
                     var items = group.Value.OrderBy(i => i.Id.IntegerValue).ToList();
-                    var (lastNum, _) = markerRepo.GetMarker(prefix);
-                    int startNum = lastNum + 1;
+                    int startNum = 1;
+                    if (markPrefixes != null && markPrefixes.StartNumber > 0)
+                    {
+                         // Respect UI Start Number if set
+                         startNum = markPrefixes.StartNumber;
+                    }
+                    else
+                    {
+                         // Fallback to Global History
+                         var (lastNum, _) = markerRepo.GetMarker(prefix);
+                         startNum = lastNum + 1;
+                    }
 
                     foreach (var item in items)
                     {
@@ -264,7 +293,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         updates.Add((item.Id, newVal));
                         startNum++;
                     }
-                    markerRepo.UpdateMarker(prefix, startNum - 1);
+                    markerRepo.UpdateMarker(prefix, startNum - 1); // RESTORED GLOBAL UPDATE
                 }
 
                 foreach (var up in updates)
