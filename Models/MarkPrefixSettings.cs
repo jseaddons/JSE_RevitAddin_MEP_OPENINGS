@@ -151,6 +151,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         {
             // ✅ TIER 2 (HIGHEST PRIORITY): Check System Type override first (if applicable)
             // This MUST take precedence over discipline prefix
+            RemarkDebugLogger.LogInfo($"[MarkPrefixSettings] Resolving prefix for Category: {category}, SystemType: '{systemType}', ServiceType: '{serviceType}'");
+
             if (category == "Ducts" && !string.IsNullOrEmpty(systemType))
             {
                 // ✅ CRITICAL FIX: Use case-insensitive matching for system type lookup
@@ -159,11 +161,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
                 
                 if (!string.IsNullOrEmpty(matchingOverride.Key))
                 {
-                    // ✅ SYSTEM TYPE OVERRIDE FOUND - Return it (takes precedence over discipline prefix)
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"[MarkPrefixSettings] ✅ SYSTEM TYPE OVERRIDE: Duct System Type '{systemType}' → Prefix '{matchingOverride.Value}' (overrides discipline prefix)");
-                    }
+                    RemarkDebugLogger.LogInfo($"[MarkPrefixSettings] ✅ SYSTEM TYPE OVERRIDE: Duct System Type '{systemType}' → Prefix '{matchingOverride.Value}'");
                     return matchingOverride.Value; // System Type prefix takes precedence
                 }
             }
@@ -176,11 +174,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
                 
                 if (!string.IsNullOrEmpty(matchingOverride.Key))
                 {
-                    // ✅ SYSTEM TYPE OVERRIDE FOUND - Return it (takes precedence over discipline prefix)
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"[MarkPrefixSettings] ✅ SYSTEM TYPE OVERRIDE: Pipe System Type '{systemType}' → Prefix '{matchingOverride.Value}' (overrides discipline prefix)");
-                    }
+                    RemarkDebugLogger.LogInfo($"[MarkPrefixSettings] ✅ SYSTEM TYPE OVERRIDE: Pipe System Type '{systemType}' → Prefix '{matchingOverride.Value}'");
                     return matchingOverride.Value; // System Type prefix takes precedence
                 }
             }
@@ -193,11 +187,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
                 
                 if (!string.IsNullOrEmpty(matchingOverride.Key))
                 {
-                    // ✅ SYSTEM TYPE OVERRIDE FOUND - Return it (takes precedence over discipline prefix)
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"[MarkPrefixSettings] ✅ SYSTEM TYPE OVERRIDE: Duct Accessories System Type '{systemType}' → Prefix '{matchingOverride.Value}' (overrides discipline prefix)");
-                    }
+                    RemarkDebugLogger.LogInfo($"[MarkPrefixSettings] ✅ SYSTEM TYPE OVERRIDE: Duct Accessories System Type '{systemType}' → Prefix '{matchingOverride.Value}'");
                     return matchingOverride.Value; // System Type prefix takes precedence
                 }
             }
@@ -209,22 +199,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
                     string.Equals(kvp.Key, serviceType, StringComparison.OrdinalIgnoreCase));
                 
                 if (!string.IsNullOrEmpty(matchingOverride.Key))
-            {
-                    // ✅ SERVICE TYPE OVERRIDE FOUND - Return it (takes precedence over discipline prefix)
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"[MarkPrefixSettings] ✅ SERVICE TYPE OVERRIDE: Cable Tray Service Type '{serviceType}' → Prefix '{matchingOverride.Value}' (overrides discipline prefix)");
-                    }
+                {
+                    RemarkDebugLogger.LogInfo($"[MarkPrefixSettings] ✅ SERVICE TYPE OVERRIDE: Cable Tray Service Type '{serviceType}' → Prefix '{matchingOverride.Value}'");
                     return matchingOverride.Value; // Service Type prefix takes precedence
                 }
             }
             
             // ✅ TIER 1 (FALLBACK): No system/service type override found - use discipline prefix
             var disciplinePrefix = GetDisciplinePrefix(category);
-            if (!DeploymentConfiguration.DeploymentMode && !string.IsNullOrEmpty(systemType))
-            {
-                DebugLogger.Info($"[MarkPrefixSettings] No override found for System Type '{systemType}' in category '{category}' - using discipline prefix '{disciplinePrefix}'");
-            }
+            RemarkDebugLogger.LogInfo($"[MarkPrefixSettings] No override found for System Type '{systemType}' in category '{category}' - using discipline prefix '{disciplinePrefix}'");
             return disciplinePrefix;
         }
     }

@@ -83,8 +83,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 foreach (var group in elementGroups)
                 {
                     int instanceId = group.Key;
-                    var primaryZone = group.First();
-                    string prefix = prefixStrategy.ResolvePrefix(category, markPrefixes ?? new MarkPrefixSettings(), primaryZone);
+                    var zonesInGroup = group.ToList();
+                    var primaryZone = zonesInGroup.First();
+
+                    // ✅ CLUSTER RULE: For clusters, ALWAYS use discipline prefix only (ignore system type overrides)
+                    // For individual sleeves, use full prefix resolution (including system type overrides)
+                    string prefix;
+                    if (instanceId > 0 && zonesInGroup.Count > 1) // It's a cluster
+                    {
+                        var settings = markPrefixes ?? new MarkPrefixSettings();
+                        prefix = settings.GetDisciplinePrefix(category);
+                        RemarkDebugLogger.LogInfo($"[MarkParameterService] Cluster {instanceId}: Using discipline prefix '{prefix}' (system type overrides ignored for clusters)");
+                    }
+                    else // Individual sleeve
+                    {
+                        prefix = prefixStrategy.ResolvePrefix(category, markPrefixes ?? new MarkPrefixSettings(), primaryZone);
+                        RemarkDebugLogger.LogInfo($"[MarkParameterService] Individual Sleeve {instanceId}: Using resolved prefix '{prefix}'");
+                    }
+                    
                     if (!prefixGroups.ContainsKey(prefix)) prefixGroups[prefix] = new List<ElementId>();
                     prefixGroups[prefix].Add(new ElementId(instanceId));
                 }
@@ -134,14 +150,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var prefixStrategy = new DisciplinePrefixStrategy();
 
                 var zones = markRepo.GetMarkableClashZones(category);
+                RemarkDebugLogger.LogInfo($"Found {zones.Count} markable zones for category '{category}' in DB");
                 if (zones.Count == 0) return (0, 0);
 
                 var updates = new List<(ElementId Id, string Value)>();
                 var settings = markPrefixes ?? new MarkPrefixSettings();
 
-                foreach (var zone in zones)
+                // ✅ REMARK SELECTED: Only process INDIVIDUAL sleeves (skip clusters and combined sleeves)
+                var individualZones = zones
+                    .Where(z => z.ClusterInstanceId <= 0 && z.CombinedClusterSleeveInstanceId <= 0)
+                    .ToList();
+
+                RemarkDebugLogger.LogInfo($"[PREFIX-ONLY] Total zones: {zones.Count}, Individual sleeves: {individualZones.Count}, Skipped (clusters/combined): {zones.Count - individualZones.Count}");
+
+                foreach (var zone in individualZones)
                 {
-                    int targetId = (zone.ClusterInstanceId > 0) ? zone.ClusterInstanceId : zone.SleeveInstanceId;
+                    int targetId = zone.SleeveInstanceId;
+                    if (targetId <= 0) continue;
+
                     var el = doc.GetElement(new ElementId(targetId));
                     if (el == null) continue;
 
@@ -149,28 +175,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     string existingMark = p?.AsString() ?? "";
                     if (!remarkAll && !string.IsNullOrEmpty(existingMark)) continue;
 
+                    // Individual sleeves use full prefix resolution (including system type overrides)
                     string elementPrefix = prefixStrategy.ResolvePrefix(category, settings, zone);
-                    string effectiveProjectPrefix = projectPrefix;
-
-                    if (settings != null && !settings.RemarkProjectPrefix && !string.IsNullOrEmpty(existingMark))
-                    {
-                        // Logic to preserve existing project prefix could go here
-                    }
-
-                    string targetPrefix = $"{effectiveProjectPrefix}{elementPrefix}";
+                    string targetPrefix = $"{projectPrefix}{elementPrefix}";
+                    
+                    RemarkDebugLogger.LogInfo($"[PREFIX-ONLY] Individual {targetId}: Prefix '{targetPrefix}' (Existing: '{existingMark}')");
                     updates.Add((el.Id, targetPrefix));
                 }
 
+                RemarkDebugLogger.LogStep($"Applying {updates.Count} prefix updates to Revit...");
                 foreach (var update in updates)
                 {
                     try
                     {
                         var el = doc.GetElement(update.Id);
                         var p = el?.LookupParameter("MEP Mark") ?? el?.LookupParameter("Mark");
-                        if (p != null && !p.IsReadOnly) { p.Set(update.Value); processedCount++; }
+                        if (p != null && !p.IsReadOnly) 
+                        { 
+                            p.Set(update.Value); 
+                            processedCount++; 
+                        }
+                        else
+                        {
+                            RemarkDebugLogger.LogStep($"FAILED to update element {update.Id.IntegerValue}: Parameter NULL or ReadOnly");
+                        }
                     }
-                    catch { errorCount++; }
+                    catch (Exception ex)
+                    { 
+                        RemarkDebugLogger.LogError($"Error updating element {update.Id.IntegerValue}", ex);
+                        errorCount++; 
+                    }
                 }
+                RemarkDebugLogger.LogStep($"Finished applying prefixes. Processed: {processedCount}, Errors: {errorCount}");
             }
             catch (Exception ex)
             {

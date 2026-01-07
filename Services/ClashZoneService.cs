@@ -2855,6 +2855,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             var systemAbbreviation = GetMepSystemAbbreviation(mepElement);
             
+            // ✅ EXTRACT System Type and Service Type from MEP element parameters (same pattern as systemAbbreviation)
+            SafeFileLogger.SafeAppendText("save_db_diagnostic.log", $"[EXTRACT-START] Extracting System/Service Type for element {mepElement.Id}, Category: {mepElement.Category?.Name}\n");
+            string mepSystemType = string.Empty;
+            string mepServiceType = string.Empty;
+            try
+            {
+                var systemTypeParam = mepElement.LookupParameter("System Type");
+                if (systemTypeParam != null)
+                {
+                    mepSystemType = systemTypeParam.AsString() ?? string.Empty;
+                    SafeFileLogger.SafeAppendText("save_db_diagnostic.log", $"[EXTRACT-SUCCESS] Element {mepElement.Id}: System Type = '{mepSystemType}'\n");
+                }
+                else
+                {
+                    SafeFileLogger.SafeAppendText("save_db_diagnostic.log", $"[EXTRACT-FAIL] Element {mepElement.Id}: 'System Type' parameter not found\n");
+                }
+                
+                var serviceTypeParam = mepElement.LookupParameter("Service Type");
+                if (serviceTypeParam != null)
+                {
+                    mepServiceType = serviceTypeParam.AsString() ?? string.Empty;
+                    SafeFileLogger.SafeAppendText("save_db_diagnostic.log", $"[EXTRACT-SUCCESS] Element {mepElement.Id}: Service Type = '{mepServiceType}'\n");
+                }
+                else
+                {
+                    SafeFileLogger.SafeAppendText("save_db_diagnostic.log", $"[EXTRACT-FAIL] Element {mepElement.Id}: 'Service Type' parameter not found\n");
+                }
+            }
+            catch (Exception ex)
+            {
+                SafeFileLogger.SafeAppendText("save_db_diagnostic.log", $"[EXTRACT-ERROR] Failed to extract System/Service Type for element {mepElement.Id}: {ex.Message}\n");
+            }
+            
             // ✅ WALL-AWARE DETECTION: Wall orientation already retrieved above
             // string wallOrientation = WallDirectionService.GetHostOrientation(structuralElement);
             
@@ -3062,6 +3095,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 MepElementFormattedSize = formattedSize, // Pre-calculated formatted size (e.g., "600x300", "Ø200")
                 MepElementSizeParameterValue = sizeParameterValue, // ✅ SIZE PARAMETER VALUE: Raw Size parameter as string (e.g., "20 mmø", "200 mm dia symbol") for snapshot table and parameter transfer
                 MepElementSystemAbbreviation = systemAbbreviation, // Pre-calculated system abbreviation (e.g., "SA", "RA")
+                MepSystemType = mepSystemType, // ✅ EXTRACTED: System Type from MEP element (e.g., "Supply Air", "Domestic Cold Water")
+                MepServiceType = mepServiceType, // ✅ EXTRACTED: Service Type from MEP element (e.g., "Power", "Signal")
                 
                 // ✅ WALL CENTERLINE POINT: Pre-calculated during refresh (passed from caller, calculated once before CreateClashZone using bbox method)
                 // For ducts, pipes, cable trays: uses bbox method (same as dampers) - cheaper and more reliable than ray-trace
@@ -5572,6 +5607,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 existingZone.MepElementFormattedSize = GetMepElementSizeString(mepElement, mepWidth, mepHeight, ductShape, pipeNominalDiameter);
                 existingZone.MepElementSizeParameterValue = GetMepElementSizeParameterValue(mepElement);
                 existingZone.MepElementSystemAbbreviation = GetMepSystemAbbreviation(mepElement);
+                
+                // ✅ EXTRACT System Type and Service Type for existing zones (same as new zones)
+                try
+                {
+                    var systemTypeParam = mepElement.LookupParameter("System Type");
+                    if (systemTypeParam != null)
+                    {
+                        existingZone.MepSystemType = systemTypeParam.AsString() ?? string.Empty;
+                    }
+                    
+                    var serviceTypeParam = mepElement.LookupParameter("Service Type");
+                    if (serviceTypeParam != null)
+                    {
+                        existingZone.MepServiceType = serviceTypeParam.AsString() ?? string.Empty;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SafeFileLogger.SafeAppendText("save_db_diagnostic.log", $"[UPDATE-EXTRACT-ERROR] Failed to extract System/Service Type for existing zone {existingZone.Id}: {ex.Message}\n");
+                }
             }
             catch (Exception ex)
             {

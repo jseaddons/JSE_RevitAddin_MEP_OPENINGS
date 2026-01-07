@@ -55,16 +55,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     _targetCategory.Equals("SELECTED", StringComparison.OrdinalIgnoreCase))
                 {
                     var availableCategories = GetAllAvailableCategories(doc);
+                    RemarkDebugLogger.LogInfo($"Available categories from DB/XML: {string.Join(", ", availableCategories)}");
                     var categoriesToProcess = new List<string>();
                     
                     // Filter categories based on selection/remark flags
                     foreach (var category in availableCategories)
                     {
                         var remarkFlag = _markPrefixes?.GetRemarkFlag(category) ?? _remarkAll;
+                        RemarkDebugLogger.LogInfo($"Category '{category}' RemarkFlag: {remarkFlag}");
                         if (_targetCategory.Equals("SELECTED", StringComparison.OrdinalIgnoreCase) && !remarkFlag) 
                             continue;
                         categoriesToProcess.Add(category);
                     }
+                    RemarkDebugLogger.LogStep($"Categories to process in phase 1 & 2: {string.Join(", ", categoriesToProcess)}");
 
                     using (var tx = new Transaction(doc, "Mark Categories"))
                     {
@@ -86,7 +89,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                                 var disciplinePrefix = _markPrefixes?.GetDisciplinePrefix(category) ?? GetDisciplinePrefixForCategory(category);
                                 var remarkFlag = _markPrefixes?.GetRemarkFlag(category) ?? _remarkAll;
                                 
+                                RemarkDebugLogger.LogStep($"Calling ApplyPrefixesOnly for '{category}' (Remark: {remarkFlag})");
                                 var (p1, e1) = markService.ApplyPrefixesOnly(doc, category, _projectPrefix, disciplinePrefix, remarkFlag, _markPrefixes);
+                                RemarkDebugLogger.LogInfo($"ApplyPrefixesOnly for '{category}' Result: {p1} updated, {e1} errors");
                                 totalErrors += e1;
                                 // Note: ApplyPrefixesOnly returns count of updates. 
                             }

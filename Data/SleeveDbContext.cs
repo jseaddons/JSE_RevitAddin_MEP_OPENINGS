@@ -735,6 +735,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                         _logger("[SQLite] ✅ Added MepParameterValuesJson column to ClashZones (stores MEP parameter values as JSON)");
                     if (AddColumnIfMissing("ClashZones", "HostParameterValuesJson", "TEXT", transaction))
                         _logger("[SQLite] ✅ Added HostParameterValuesJson column to ClashZones (stores Host parameter values as JSON)");
+
+                    // ✅ OPTIMIZED LOOKUP: Add dedicated columns for System Type and Service Type
+                    // This avoids expensive JSON parsing during marking/remarking
+                    if (AddColumnIfMissing("ClashZones", "MepSystemType", "TEXT DEFAULT ''", transaction))
+                        _logger("[SQLite] ✅ Added MepSystemType column to ClashZones");
+                    if (AddColumnIfMissing("ClashZones", "MepServiceType", "TEXT DEFAULT ''", transaction))
+                        _logger("[SQLite] ✅ Added MepServiceType column to ClashZones");
                     
                     // ✅ COMBO FLAG: Add IsFilterComboNew column to FileCombos table (defaults to 0=false for existing combos)
                     if (AddColumnIfMissing("FileCombos", "IsFilterComboNew", "INTEGER NOT NULL DEFAULT 0", transaction))

@@ -854,7 +854,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             MepRotationAngleDeg REAL,
                             MepOrientationDirection TEXT,
                             StructuralThickness REAL,
-                            ElevationFromLevel REAL
+                            ElevationFromLevel REAL,
+                            MepSystemType TEXT,
+                            MepServiceType TEXT
                         )";
                     cmd.ExecuteNonQuery();
                     cmd.CommandText = "DELETE FROM BulkUpdateZones";
@@ -871,8 +873,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                     // 3. Insert update data into Temp Table
                     cmd.CommandText = @"
-                        INSERT INTO BulkUpdateZones (ClashZoneId, IsResolvedFlag, IsClusterResolvedFlag, IsCombinedResolved, SleeveInstanceId, ClusterInstanceId, MepParameterValuesJson, HostParameterValuesJson, WallCenterlinePointX, WallCenterlinePointY, WallCenterlinePointZ, MepOrientationX, MepOrientationY, MepOrientationZ, MepRotationAngleRad, MepRotationAngleDeg, MepOrientationDirection, StructuralThickness, ElevationFromLevel) 
-                        VALUES (@ClashZoneId, @IsResolvedFlag, @IsClusterResolvedFlag, @IsCombinedResolved, @SleeveInstanceId, @ClusterInstanceId, @MepParameterValuesJson, @HostParameterValuesJson, @WallCenterlinePointX, @WallCenterlinePointY, @WallCenterlinePointZ, @MepOrientationX, @MepOrientationY, @MepOrientationZ, @MepRotationAngleRad, @MepRotationAngleDeg, @MepOrientationDirection, @StructuralThickness, @ElevationFromLevel)";
+                        INSERT INTO BulkUpdateZones (ClashZoneId, IsResolvedFlag, IsClusterResolvedFlag, IsCombinedResolved, SleeveInstanceId, ClusterInstanceId, MepParameterValuesJson, HostParameterValuesJson, WallCenterlinePointX, WallCenterlinePointY, WallCenterlinePointZ, MepOrientationX, MepOrientationY, MepOrientationZ, MepRotationAngleRad, MepRotationAngleDeg, MepOrientationDirection, StructuralThickness, ElevationFromLevel, MepSystemType, MepServiceType) 
+                        VALUES (@ClashZoneId, @IsResolvedFlag, @IsClusterResolvedFlag, @IsCombinedResolved, @SleeveInstanceId, @ClusterInstanceId, @MepParameterValuesJson, @HostParameterValuesJson, @WallCenterlinePointX, @WallCenterlinePointY, @WallCenterlinePointZ, @MepOrientationX, @MepOrientationY, @MepOrientationZ, @MepRotationAngleRad, @MepRotationAngleDeg, @MepOrientationDirection, @StructuralThickness, @ElevationFromLevel, @MepSystemType, @MepServiceType)";
 
                     var pId = cmd.Parameters.Add("@ClashZoneId", System.Data.DbType.Int32);
                     var pRes = cmd.Parameters.Add("@IsResolvedFlag", System.Data.DbType.Int32);
@@ -893,6 +895,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     var pDir = cmd.Parameters.Add("@MepOrientationDirection", System.Data.DbType.String);
                     var pStructThick = cmd.Parameters.Add("@StructuralThickness", System.Data.DbType.Double);
                     var pElevFromLevel = cmd.Parameters.Add("@ElevationFromLevel", System.Data.DbType.Double);
+                    var pSys = cmd.Parameters.Add("@MepSystemType", System.Data.DbType.String);
+                    var pSer = cmd.Parameters.Add("@MepServiceType", System.Data.DbType.String);
 
                     foreach (var zone in validZones)
                     {
@@ -918,6 +922,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         pDir.Value = zone.MepElementOrientationDirection ?? string.Empty;
                         pStructThick.Value = zone.StructuralElementThickness; // ✅ CRITICAL FIX: Ensure thickness is updated
                         pElevFromLevel.Value = zone.ElevationFromLevel; // ✅ CRITICAL FIX: Persist MEP element's Elevation from Level during refresh
+                        pSys.Value = zone.MepSystemType ?? string.Empty;
+                        pSer.Value = zone.MepServiceType ?? string.Empty;
                         cmd.ExecuteNonQuery();
                     }
 
@@ -943,6 +949,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             MepOrientationDirection = (SELECT MepOrientationDirection FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
                             StructuralThickness = (SELECT StructuralThickness FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
                             ElevationFromLevel = (SELECT ElevationFromLevel FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
+                            MepSystemType = (SELECT MepSystemType FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
+                            MepServiceType = (SELECT MepServiceType FROM BulkUpdateZones WHERE BulkUpdateZones.ClashZoneId = ClashZones.ClashZoneId),
                             UpdatedAt = CURRENT_TIMESTAMP
                         WHERE ClashZoneId IN (SELECT ClashZoneId FROM BulkUpdateZones)";
                     cmd.ExecuteNonQuery();
@@ -1782,6 +1790,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// </summary>
         private void BulkInsertClashZones(List<ClashZone> zones, Dictionary<Guid, int> comboMap, SQLiteTransaction transaction)
         {
+            SafeFileLogger.SafeAppendText("save_db_diagnostic.log", $"[BULK-INSERT] Called with {zones?.Count ?? 0} zones\n");
             if (zones == null || zones.Count == 0) return;
 
             const int batchSize = 100; // SQLite limit around 500 parameters per query
@@ -1811,6 +1820,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         MepAngleToXRad, MepAngleToXDeg, MepAngleToYRad, MepAngleToYDeg,
                         MepParameterValuesJson, HostParameterValuesJson,
                         MepElementSystemAbbreviation, MepElementFormattedSize, IsStandardDamper,
+                        MepSystemType, MepServiceType,
                         IsCurrentClashFlag, ReadyForPlacementFlag, UpdatedAt
                     ) VALUES ");
 
@@ -1832,7 +1842,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                    $"@LN{j}, @LE{j}, @EFL{j}, @STH{j}, @WTH{j}, @FTH{j}, @INS{j}, @INSTH{j}, @CONN{j}, @CONNSIDE{j}, " +
                                    $"@SDK{j}, @HDK{j}, @UID{j}, @HO{j}, @MOD{j}, @MOX{j}, @MOY{j}, @MOZ{j}, " +
                                    $"@MRAR{j}, @MRAD{j}, @MAXR{j}, @MAXD{j}, @MAYR{j}, @MAYD{j}, " +
-                                   $"@MPJ{j}, @HPJ{j}, @MSA{j}, @MFS{j}, @ISD{j}, 1, 1, @T{j})");
+                                   $"@MPJ{j}, @HPJ{j}, @MSA{j}, @MFS{j}, @ISD{j}, " +
+                                   $"@MSY{j}, @MSE{j}, 1, 1, @T{j})");
                         if (j < currentBatch.Count - 1) sql.Append(",");
 
                         cmd.Parameters.AddWithValue($"@G{j}", zone.Id.ToString());
@@ -1919,10 +1930,54 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         }
                         cmd.Parameters.AddWithValue($"@HPJ{j}", hostParamJson);
 
+                        // ✅ EXTRACT System Type and Service Type from MepParameterValues dictionary
+                        string systemType = zone.MepSystemType ?? string.Empty;
+                        string serviceType = zone.MepServiceType ?? string.Empty;
+                        
+                        // DEBUG: Log all keys in MepParameterValues to diagnose extraction issues
+                        if (zone.MepParameterValues != null && zone.MepParameterValues.Count > 0)
+                        {
+                            var allKeys = string.Join(", ", zone.MepParameterValues.Select(kv => $"'{kv.Key}'"));
+                            SafeFileLogger.SafeAppendText("save_db_diagnostic.log", $"[EXTRACT-DEBUG] Zone {zone.Id} has {zone.MepParameterValues.Count} params: {allKeys}\n");
+                        }
+                        
+                        if (string.IsNullOrEmpty(systemType) && zone.MepParameterValues != null)
+                        {
+                            var systemTypeParam = zone.MepParameterValues.FirstOrDefault(kv => 
+                                kv != null && string.Equals(kv.Key, "System Type", StringComparison.OrdinalIgnoreCase));
+                            if (systemTypeParam != null)
+                            {
+                                systemType = systemTypeParam.Value ?? string.Empty;
+                                if (!string.IsNullOrEmpty(systemType))
+                                    SafeFileLogger.SafeAppendText("save_db_diagnostic.log", $"[EXTRACT-SUCCESS] Zone {zone.Id}: System Type = '{systemType}'\n");
+                            }
+                            else
+                            {
+                                SafeFileLogger.SafeAppendText("save_db_diagnostic.log", $"[EXTRACT-FAIL] Zone {zone.Id}: 'System Type' key not found in MepParameterValues\n");
+                            }
+                        }
+                        
+                        if (string.IsNullOrEmpty(serviceType) && zone.MepParameterValues != null)
+                        {
+                            var serviceTypeParam = zone.MepParameterValues.FirstOrDefault(kv => 
+                                kv != null && string.Equals(kv.Key, "Service Type", StringComparison.OrdinalIgnoreCase));
+                            if (serviceTypeParam != null)
+                            {
+                                serviceType = serviceTypeParam.Value ?? string.Empty;
+                                if (!string.IsNullOrEmpty(serviceType))
+                                    SafeFileLogger.SafeAppendText("save_db_diagnostic.log", $"[EXTRACT-SUCCESS] Zone {zone.Id}: Service Type = '{serviceType}'\n");
+                            }
+                            else
+                            {
+                                SafeFileLogger.SafeAppendText("save_db_diagnostic.log", $"[EXTRACT-FAIL] Zone {zone.Id}: 'Service Type' key not found in MepParameterValues\n");
+                            }
+                        }
 
                         cmd.Parameters.AddWithValue($"@MSA{j}", zone.MepElementSystemAbbreviation ?? string.Empty);
                         cmd.Parameters.AddWithValue($"@MFS{j}", zone.MepElementFormattedSize ?? string.Empty);
                         cmd.Parameters.AddWithValue($"@ISD{j}", zone.IsStandardDamper ? 1 : 0);
+                        cmd.Parameters.AddWithValue($"@MSY{j}", systemType);
+                        cmd.Parameters.AddWithValue($"@MSE{j}", serviceType);
 
                         cmd.Parameters.AddWithValue($"@T{j}", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
                     }
@@ -6346,6 +6401,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             clashZone.MepElementLevelName = GetNullableString(reader, "MepElementLevelName") ?? string.Empty;
             clashZone.MepElementLevelElevation = GetDouble(reader, "MepElementLevelElevation", 0.0);
             clashZone.ElevationFromLevel = GetDouble(reader, "ElevationFromLevel", 0.0);
+            clashZone.MepSystemType = GetNullableString(reader, "MepSystemType") ?? string.Empty;
+            clashZone.MepServiceType = GetNullableString(reader, "MepServiceType") ?? string.Empty;
 
             // ✅ DIAGNOSTIC: Log level elevation loading for debugging (especially for dampers)
             if (!DeploymentConfiguration.DeploymentMode && !string.IsNullOrWhiteSpace(clashZone.MepElementLevelName))

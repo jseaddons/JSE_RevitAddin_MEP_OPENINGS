@@ -104,6 +104,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
             get => _intersectionPointX;
             set => _intersectionPointX = value;
         }
+
+        /// <summary>
+        /// ✅ SYSTEM TYPE: Specific system type extracted from MEP element (e.g., "Supply Air")
+        /// Stored as a dedicated column for fast prefix lookup
+        /// </summary>
+        public string MepSystemType { get; set; } = string.Empty;
+
+        /// <summary>
+        /// ✅ SERVICE TYPE: Specific service type extracted from MEP element (mostly for Cable Trays)
+        /// Stored as a dedicated column for fast prefix lookup
+        /// </summary>
+        public string MepServiceType { get; set; } = string.Empty;
+        
         
         /// <summary>
         /// XML serializable intersection point Y coordinate

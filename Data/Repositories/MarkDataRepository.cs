@@ -20,7 +20,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             var results = new List<ClashZone>();
             string sql = @"
                 SELECT cz.ClashZoneId, cz.SleeveInstanceId, COALESCE(cz.MepCategory, cs.Category) AS MepCategory, cz.ClusterInstanceId, 
-                       COALESCE(ss_cluster.MepParametersJson, ss_ind.MepParametersJson) AS ParamsJson
+                       COALESCE(ss_cluster.MepParametersJson, ss_ind.MepParametersJson) AS ParamsJson,
+                       cz.MepSystemType, cz.MepServiceType
                 FROM ClashZones cz
                 LEFT JOIN ClusterSleeves cs ON cz.ClusterInstanceId = cs.ClusterInstanceId
                 LEFT JOIN SleeveSnapshots ss_cluster ON (cz.ClusterInstanceId > 0 AND cz.ClusterInstanceId = ss_cluster.ClusterInstanceId)
@@ -34,27 +35,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 {
                     cmd.CommandText = sql;
                     cmd.Parameters.AddWithValue("@cat", category);
+                    RemarkDebugLogger.LogInfo($"Executing GetMarkableClashZones SQL for category: '{category}'");
 
                     using (var reader = cmd.ExecuteReader())
                     {
-                        var seenIds = new HashSet<int>();
+                        int rawCount = 0;
 
                         while (reader.Read())
                         {
                             int sleeveId = reader.GetInt32(1);
                             int clusterId = reader.IsDBNull(3) ? -1 : reader.GetInt32(3);
 
-                            // Duplicate check logic (borrowed from original service)
-                            int trackingId = (clusterId > 0) ? -clusterId : sleeveId;
-                            if (seenIds.Contains(trackingId)) continue;
-                            seenIds.Add(trackingId);
+                            rawCount++;
 
                             var cz = new ClashZone
                             {
                                 ClashZoneId = reader.GetInt32(0),
                                 SleeveInstanceId = sleeveId,
                                 MepElementCategory = reader.GetString(2),
-                                ClusterInstanceId = clusterId
+                                ClusterInstanceId = clusterId,
+                                MepSystemType = reader.IsDBNull(5) ? string.Empty : reader.GetString(5),
+                                MepServiceType = reader.IsDBNull(6) ? string.Empty : reader.GetString(6)
                             };
 
                             // Load Snapshot if available
@@ -76,6 +77,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             }
                             results.Add(cz);
                         }
+                        RemarkDebugLogger.LogInfo($"SQL returned {rawCount} raw rows, {results.Count} unique markable zones for '{category}'");
                     }
                 }
             }
@@ -97,7 +99,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             string sql = @"
                 SELECT cz.ClashZoneId, cz.SleeveInstanceId, COALESCE(cz.MepCategory, cs.Category) AS MepCategory, 
                        cz.ClusterInstanceId, COALESCE(ss_cluster.MepParametersJson, ss_ind.MepParametersJson) AS ParamsJson,
-                       cz.IntersectionPointX, cz.IntersectionPointY, cz.IntersectionPointZ
+                       cz.IntersectionPointX, cz.IntersectionPointY, cz.IntersectionPointZ,
+                       cz.MepSystemType, cz.MepServiceType
                 FROM ClashZones cz
                 LEFT JOIN ClusterSleeves cs ON cz.ClusterInstanceId = cs.ClusterInstanceId
                 LEFT JOIN SleeveSnapshots ss_cluster ON (cz.ClusterInstanceId > 0 AND cz.ClusterInstanceId = ss_cluster.ClusterInstanceId)
@@ -133,15 +136,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                     using (var reader = cmd.ExecuteReader())
                     {
-                        var seenIds = new HashSet<int>();
                         while (reader.Read())
                         {
                             int sleeveId = reader.GetInt32(1);
                             int clusterId = reader.IsDBNull(3) ? -1 : reader.GetInt32(3);
-                            int trackingId = (clusterId > 0) ? -clusterId : sleeveId;
-
-                            if (seenIds.Contains(trackingId)) continue;
-                            seenIds.Add(trackingId);
 
                             var cz = new ClashZone
                             {
@@ -151,7 +149,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 ClusterInstanceId = clusterId,
                                 IntersectionPointX = reader.GetDouble(5),
                                 IntersectionPointY = reader.GetDouble(6),
-                                IntersectionPointZ = reader.GetDouble(7)
+                                IntersectionPointZ = reader.GetDouble(7),
+                                MepSystemType = reader.IsDBNull(8) ? string.Empty : reader.GetString(8),
+                                MepServiceType = reader.IsDBNull(9) ? string.Empty : reader.GetString(9)
                             };
 
                             if (!reader.IsDBNull(4))
