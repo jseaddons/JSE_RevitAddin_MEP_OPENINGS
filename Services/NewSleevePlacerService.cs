@@ -94,8 +94,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         // Includes dampers (Duct Accessories) - ParallelSleevePlacementPlanner handles all categories
         private readonly ISleevePlacementPlanner? _planner;
         
+        // ? 3-TIER PARALLEL PRE-CALCULATION: Optional service for robust parallel pre-calculation (OOP, DI-ready)
+        // When enabled via OptimizationFlags.UseSOLIDRefactoredIndividualPreCalculation, uses 3-tier partitioning:
+        // TIER 1: Category Partitioning | TIER 2: Spatial Partitioning | TIER 3: Sequential within cell
+        // Uses ThreadLocal caches to prevent cross-thread data mixing
+        private readonly IIndividualSleevePreCalculationService? _individualPreCalcService;
+        
         // ? FORCE DETECTION MODE: Flag to force recalculation of placement points
         private readonly bool _isForceDetectionMode;
+
 
         public NewSleevePlacerService(
             Document doc,
@@ -211,7 +218,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 _planner = null; // Parallel planning disabled via safety flag
             }
+            
+            // ? 3-TIER PARALLEL PRE-CALCULATION: Initialize service (create if flag enabled)
+            // Safety flag: OptimizationFlags.UseSOLIDRefactoredIndividualPreCalculation controls this feature
+            if (OptimizationFlags.UseSOLIDRefactoredIndividualPreCalculation)
+            {
+                _individualPreCalcService = new IndividualSleevePreCalculationService(
+                    conditions,
+                    clearanceSettings,
+                    _sizingService);
+            }
+            else
+            {
+                _individualPreCalcService = null;
+            }
         }
+
 
         public (int placed, int skipped, int errors) PlaceAllSleevesInTransaction(List<ClashZone> clashZones)
         {
@@ -434,7 +456,73 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 DebugLogger.Info($"[NewSleevePlacer] ?? PARALLEL PLANNING: Disabled via safety flag (DeploymentConfiguration.EnableParallelPlanning=false) - Using sequential processing");
             }
             
+            // ? 3-TIER PARALLEL PRE-CALCULATION: Run robust pre-calculation if enabled
+            // Uses Category Partitioning → Spatial Partitioning → Sequential within cell
+            // ThreadLocal caches prevent cross-thread data mixing (matches ClusterPreCalculationService pattern)
+            Dictionary<Guid, SleevePreCalculationResult>? individualPreCalcMap = null;
+            
+            if (OptimizationFlags.UseSOLIDRefactoredIndividualPreCalculation && _individualPreCalcService != null && filteredZones.Count > 0)
+            {
+                using (var preCalcTracker = _performanceMonitor?.TrackOperation("3-Tier Individual PreCalculation"))
+                {
+                    try
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[NewSleevePlacer] ?? 3-TIER PRE-CALCULATION: Starting parallel pre-computation for {filteredZones.Count} zones");
+                        }
+                        
+                        // ? 3-TIER PARALLEL PROCESSING: Run pre-calculation
+                        individualPreCalcMap = _individualPreCalcService.PreCalculateAllZones(filteredZones, _doc);
+                        preCalcTracker?.SetItemCount(individualPreCalcMap.Count);
+                        
+                        // ? EARLY SKIP: Filter out zones marked for skip
+                        var skipGuids = individualPreCalcMap
+                            .Where(kvp => !string.IsNullOrEmpty(kvp.Value.SkipReason))
+                            .Select(kvp => kvp.Key)
+                            .ToHashSet();
+                        
+                        // Update filtered zones to exclude skipped ones
+                        int previousCount = filteredZones.Count;
+                        filteredZones = filteredZones
+                            .Where(cz => !skipGuids.Contains(cz.Id))
+                            .ToList();
+                        
+                        // ? REORDERING: Sort by risk (low risk first, high risk last)
+                        filteredZones = filteredZones
+                            .OrderBy(cz => individualPreCalcMap.ContainsKey(cz.Id) 
+                                ? (int)individualPreCalcMap[cz.Id].Risk 
+                                : int.MaxValue)
+                            .ThenByDescending(cz => individualPreCalcMap.ContainsKey(cz.Id) 
+                                ? individualPreCalcMap[cz.Id].TargetWidth 
+                                : 0)
+                            .ToList();
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            int validCount = individualPreCalcMap.Values.Count(r => r.IsValid);
+                            int skippedCount = skipGuids.Count;
+                            DebugLogger.Info($"[NewSleevePlacer] ? 3-TIER PRE-CALCULATION: Completed - Valid={validCount}, Skipped={skippedCount}, Remaining={filteredZones.Count}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // ? GRACEFUL FALLBACK: If pre-calculation fails, continue with existing zones
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Warning($"[NewSleevePlacer] ?? 3-tier pre-calculation failed: {ex.Message} - Continuing with sequential processing");
+                        }
+                        individualPreCalcMap = null;
+                    }
+                }
+            }
+            else if (OptimizationFlags.UseSOLIDRefactoredIndividualPreCalculation && !DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Info($"[NewSleevePlacer] ?? 3-TIER PRE-CALCULATION: Service not initialized - Using sequential processing");
+            }
+            
             // ? TIMEOUT PROTECTION: Check timeout periodically
+
             foreach (var clashZone in filteredZones)
             {
                 // ? TIMEOUT PROTECTION: Check if operation has exceeded timeout

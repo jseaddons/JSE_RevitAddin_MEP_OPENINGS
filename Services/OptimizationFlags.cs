@@ -383,6 +383,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Features: Supports parameter batching, performance monitoring, safe validation, diagnostic logging.
         /// </summary>
         public static bool UseBottomOfOpeningCalculation { get; set; } = true;
+
+        /// <summary>
+        /// Enable SOLID-refactored individual sleeve pre-calculation with 3-tier parallel processing.
+        /// When true: Uses IndividualSleevePreCalculationService to pre-calculate dimensions, clearance,
+        ///            and validation data in parallel BEFORE the placement loop.
+        /// When false: Uses legacy sequential calculation inside placement loop (current behavior).
+        /// Default: true (enabled - matches ClusterPreCalculationService pattern).
+        /// Architecture: 
+        ///   - TIER 1: Category Partitioning (Ducts, Pipes, Cable Trays processed independently)
+        ///   - TIER 2: Spatial Partitioning (10ft grid cells allow parallel processing)
+        ///   - TIER 3: Sequential within cell (avoids overlap issues)
+        ///   - ThreadLocal caches prevent cross-thread data mixing
+        /// Performance: Pre-calculation runs in parallel (pure math, no Revit API calls).
+        /// Location: Services/Placement/IndividualSleevePreCalculationService.cs, Services/NewSleevePlacerService.cs
+        /// Note: Falls back to legacy code automatically if pre-calculation fails (crash-safe).
+        /// </summary>
+        public static bool UseSOLIDRefactoredIndividualPreCalculation { get; set; } = true;
         #endregion
         
         
