@@ -188,7 +188,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             // This MUST work in both R2023 and R2024
             try
             {
-                var versionTag = Helpers.VersionInfo.VersionTag; // "R2023" or "R2024"
+                var versionTag = VersionInfo.VersionTag; // "R2023" or "R2024"
                 var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                 var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                 
@@ -227,7 +227,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 var buildTimestamp = !string.IsNullOrWhiteSpace(assemblyPath)
                     ? System.IO.File.GetLastWriteTime(assemblyPath).ToString("yyyy-MM-dd HH:mm:ss")
                     : "unknown";
-                var versionTag = Helpers.VersionInfo.VersionTag; // "R2023" or "R2024"
+                var versionTag = VersionInfo.VersionTag; // "R2023" or "R2024"
                 
                 SafeFileLogger.SafeAppendText("cluster_debug.log", $"\n========== REFACTORED CLUSTER SERVICE STARTED ==========\n");
                 SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔨 BUILD TIMESTAMP: {buildTimestamp} | VERSION: {versionTag} | Assembly: {Path.GetFileName(assemblyPath)}\n");
@@ -620,7 +620,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                 // 🔥 CRITICAL: Direct IO logging before placement attempt
                                 try
                                 {
-                                    var versionTag = Helpers.VersionInfo.VersionTag;
+                                    var versionTag = VersionInfo.VersionTag;
                                     var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                                     var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                                     if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
@@ -667,7 +667,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                 // 🔥 CRITICAL: Direct IO logging after placement attempt
                                 try
                                 {
-                                    var versionTag = Helpers.VersionInfo.VersionTag;
+                                    var versionTag = VersionInfo.VersionTag;
                                     var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                                     var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                                     if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
@@ -686,7 +686,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                 {
                                     try
                                     {
-                                        var versionTag = Helpers.VersionInfo.VersionTag;
+                                        var versionTag = VersionInfo.VersionTag;
                                         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                                         var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                                         if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
@@ -702,7 +702,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                     {
                                         try
                                         {
-                                            var versionTag = Helpers.VersionInfo.VersionTag;
+                                            var versionTag = VersionInfo.VersionTag;
                                             var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                                             var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                                             if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
@@ -731,7 +731,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
                                         try
                                         {
-                                            var versionTag = Helpers.VersionInfo.VersionTag;
+                                            var versionTag = VersionInfo.VersionTag;
                                             var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                                             var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                                             if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
@@ -744,7 +744,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
                                         try
                                         {
-                                            var versionTag = Helpers.VersionInfo.VersionTag;
+                                            var versionTag = VersionInfo.VersionTag;
                                             var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                                             var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                                             if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
@@ -804,7 +804,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                     {
                                         try
                                         {
-                                            var versionTag = Helpers.VersionInfo.VersionTag;
+                                            var versionTag = VersionInfo.VersionTag;
                                             var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                                             var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                                             if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
@@ -818,7 +818,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                 {
                                     try
                                     {
-                                        var versionTag = Helpers.VersionInfo.VersionTag;
+                                        var versionTag = VersionInfo.VersionTag;
                                         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                                         var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                                         if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
@@ -977,7 +977,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 {
                     try
                     {
-                        var versionTag = Helpers.VersionInfo.VersionTag;
+                        var versionTag = VersionInfo.VersionTag;
                         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                         var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                         var logPath = Path.Combine(logDir, "cluster_debug.log");
@@ -990,7 +990,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
                     try
                     {
-                        var versionTag = Helpers.VersionInfo.VersionTag;
+                        var versionTag = VersionInfo.VersionTag;
                         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                         var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                         var logPath = Path.Combine(logDir, "cluster_debug.log");
@@ -1004,7 +1004,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
                     try
                     {
-                        var versionTag = Helpers.VersionInfo.VersionTag;
+                        var versionTag = VersionInfo.VersionTag;
                         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                         var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                         var logPath = Path.Combine(logDir, "cluster_debug.log");
@@ -1350,7 +1350,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             // 🔥 CRITICAL: Direct IO logging at method entry
             try
             {
-                var versionTag = Helpers.VersionInfo.VersionTag;
+                var versionTag = VersionInfo.VersionTag;
                 var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                 var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                 if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
@@ -1364,7 +1364,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 // 🔥 CRITICAL: Log before rotation angle calculation
                 try
                 {
-                    var versionTag = Helpers.VersionInfo.VersionTag;
+                    var versionTag = VersionInfo.VersionTag;
                     var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                     var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                     if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
@@ -1426,7 +1426,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 // 🔥 CRITICAL: Log after bounding box calculation
                 try
                 {
-                    var versionTag = Helpers.VersionInfo.VersionTag;
+                    var versionTag = VersionInfo.VersionTag;
                     var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                     var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                     if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
@@ -1482,7 +1482,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     // 🔥 CRITICAL: Log invalid bounding box
                     try
                     {
-                        var versionTag = Helpers.VersionInfo.VersionTag;
+                        var versionTag = VersionInfo.VersionTag;
                         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                         var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                         if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
@@ -1509,7 +1509,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 // 🔥 CRITICAL: Direct IO logging before placement
                 try
                 {
-                    var versionTag = Helpers.VersionInfo.VersionTag;
+                    var versionTag = VersionInfo.VersionTag;
                     var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                     var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                     if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
@@ -1548,7 +1548,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 // 🔥 CRITICAL: Direct IO logging after placement
                 try
                 {
-                    var versionTag = Helpers.VersionInfo.VersionTag;
+                    var versionTag = VersionInfo.VersionTag;
                     var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                     var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                     if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
@@ -1562,7 +1562,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     // 🔥 CRITICAL: Direct IO logging for failure
                     try
                     {
-                        var versionTag = Helpers.VersionInfo.VersionTag;
+                        var versionTag = VersionInfo.VersionTag;
                         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                         var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                         if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
@@ -1844,7 +1844,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 // 🔥 CRITICAL: Log exception details
                 try
                 {
-                    var versionTag = Helpers.VersionInfo.VersionTag;
+                    var versionTag = VersionInfo.VersionTag;
                     var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                     var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                     if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
@@ -2515,7 +2515,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             {
                                 try
                                 {
-                                    var versionTag = Helpers.VersionInfo.VersionTag;
+                                    var versionTag = VersionInfo.VersionTag;
                                     var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                                     var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                                     var logPath = Path.Combine(logDir, "cluster_debug.log");

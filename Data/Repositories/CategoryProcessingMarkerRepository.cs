@@ -178,5 +178,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
             return markers;
         }
+
+        /// <summary>
+        /// ✅ Reset all processing markers (Delete all entries)
+        /// </summary>
+        public void ResetAllMarkers()
+        {
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = "DELETE FROM CategoryProcessingMarkers";
+                    cmd.ExecuteNonQuery();
+                    _logger?.Invoke("[MARKER] ♻️ Reset all category markers successfully");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.Invoke($"[MARKER] ⚠️ Failed to reset markers: {ex.Message}");
+            }
+        }
     }
 }

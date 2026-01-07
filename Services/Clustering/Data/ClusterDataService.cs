@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data
 {
@@ -113,7 +114,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data
                 // 🔥 CRITICAL: Direct IO logging (bypass SafeFileLogger completely for R2023 compatibility)
                 try
                 {
-                    var versionTag = Helpers.VersionInfo.VersionTag;
+                    var versionTag = VersionInfo.VersionTag;
                     var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                     var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                     if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
@@ -130,7 +131,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data
                     // 🔥 CRITICAL: Direct IO logging (bypass SafeFileLogger)
                     try
                     {
-                        var versionTag = Helpers.VersionInfo.VersionTag;
+                        var versionTag = VersionInfo.VersionTag;
                         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                         var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                         if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
@@ -160,7 +161,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data
                             // 🔥 CRITICAL: Direct IO logging (bypass SafeFileLogger)
                             try
                             {
-                                var versionTag = Helpers.VersionInfo.VersionTag;
+                                var versionTag = VersionInfo.VersionTag;
                                 var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                                 var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                                 if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
@@ -183,7 +184,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data
                         // 🔥 CRITICAL: Direct IO logging (bypass SafeFileLogger)
                         try
                         {
-                            var versionTag = Helpers.VersionInfo.VersionTag;
+                            var versionTag = VersionInfo.VersionTag;
                             var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                             var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                             if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
@@ -216,7 +217,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data
                         // 🔥 CRITICAL: Direct IO logging (bypass SafeFileLogger)
                         try
                         {
-                            var versionTag = Helpers.VersionInfo.VersionTag;
+                            var versionTag = VersionInfo.VersionTag;
                             var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                             var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                             if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
@@ -235,7 +236,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data
                 // 🔥 CRITICAL: Direct IO logging for errors (bypass SafeFileLogger)
                 try
                 {
-                    var versionTag = Helpers.VersionInfo.VersionTag;
+                    var versionTag = VersionInfo.VersionTag;
                     var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                     var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                     if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);

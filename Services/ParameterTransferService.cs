@@ -7,6 +7,7 @@ using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -3442,7 +3443,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ FALLBACK: If no cached section box, try live Revit API
                 if (sectionBoxBounds == null && uiDoc != null && uiDoc.ActiveView is View3D view3D && view3D.IsSectionBoxActive)
                 {
-                    sectionBoxBounds = Helpers.SectionBoxHelper.GetSectionBoxBounds(view3D);
+                    sectionBoxBounds = SectionBoxHelper.GetSectionBoxBounds(view3D);
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         DebugLogger.Info($"[PARAM_TRANSFER] Using live Revit section box bounds (cache not available)");
@@ -3729,8 +3730,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                var geom1 = element1.get_Geometry(Helpers.GeometryOptionsFactory.CreateIntersectionOptions());
-                var geom2 = element2.get_Geometry(Helpers.GeometryOptionsFactory.CreateIntersectionOptions());
+                var geom1 = element1.get_Geometry(GeometryOptionsFactory.CreateIntersectionOptions());
+                var geom2 = element2.get_Geometry(GeometryOptionsFactory.CreateIntersectionOptions());
                 
                 if (geom1 == null || geom2 == null) return false;
                 

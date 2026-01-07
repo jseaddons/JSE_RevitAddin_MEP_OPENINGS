@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -247,7 +248,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 foreach (var provision in provisions)
                 {
                     // Get the geometry of the provision
-                    var geometry = provision.get_Geometry(Helpers.GeometryOptionsFactory.CreateIntersectionOptions());
+                    var geometry = provision.get_Geometry(GeometryOptionsFactory.CreateIntersectionOptions());
                     if (geometry == null)
                         continue;
 

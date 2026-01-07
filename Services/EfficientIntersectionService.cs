@@ -594,7 +594,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             try
             {
-                var structuralOptions = Helpers.GeometryOptionsFactory.CreateIntersectionOptions();
+                var structuralOptions = GeometryOptionsFactory.CreateIntersectionOptions();
                 var structuralGeometry = structuralElement.get_Geometry(structuralOptions);
                 // Collect all valid solids from geometry
                 var solids = new List<Solid>();

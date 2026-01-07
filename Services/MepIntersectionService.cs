@@ -569,7 +569,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // If SafeFileLogger fails, try direct write as fallback
                 try
                 {
-                    var versionTag = Helpers.VersionInfo.VersionTag;
+                    var versionTag = VersionInfo.VersionTag;
                     var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                     var logDir = System.IO.Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                     if (!System.IO.Directory.Exists(logDir)) System.IO.Directory.CreateDirectory(logDir);
@@ -755,7 +755,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var geomSw = System.Diagnostics.Stopwatch.StartNew();
                     try
                     {
-                        var options = Helpers.GeometryOptionsFactory.CreateIntersectionOptions();
+                        var options = GeometryOptionsFactory.CreateIntersectionOptions();
                         var geometry = element.get_Geometry(options);
                         geomSw.Stop();
                         totalGeometryExtractionMs += geomSw.ElapsedMilliseconds;
@@ -964,7 +964,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     else
                     {
                         // Compute and Cache (extracted from original loop)
-                        var options = Helpers.GeometryOptionsFactory.CreateIntersectionOptions();
+                        var options = GeometryOptionsFactory.CreateIntersectionOptions();
                         var g = structEntry.element.get_Geometry(options);
                         var solids = GetSolidsFromGeometry(g);
                         if (solids != null && solids.Count > 0)
@@ -1205,7 +1205,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                         // ✅ PERFORMANCE PROFILING: Track geometry extraction (expensive operation)
                         var geometryExtractionStopwatch = System.Diagnostics.Stopwatch.StartNew();
-                        var options = Helpers.GeometryOptionsFactory.CreateIntersectionOptions();
+                        var options = GeometryOptionsFactory.CreateIntersectionOptions();
                         var geometry = structElement.get_Geometry(options);
                         geometryExtractionStopwatch.Stop();
                         totalGeometryExtractionMs += geometryExtractionStopwatch.ElapsedMilliseconds;
@@ -1557,7 +1557,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     if (!TryGetFromGeometryCache(cacheKey, out var cachedSolid))
                     {
-                        var options = Helpers.GeometryOptionsFactory.CreateIntersectionOptions();
+                        var options = GeometryOptionsFactory.CreateIntersectionOptions();
                         var geometry = structuralElement.get_Geometry(options);
                         if (geometry == null) continue;
 
@@ -1718,7 +1718,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     List<Solid> solids;
                     if (!TryGetFromGeometryCache(cacheKey, out var cachedSolid))
                     {
-                        var options = Helpers.GeometryOptionsFactory.CreateIntersectionOptions();
+                        var options = GeometryOptionsFactory.CreateIntersectionOptions();
                         var geometry = structuralElement.get_Geometry(options);
                         if (geometry == null) continue;
                         solids = GetSolidsFromGeometry(geometry);
@@ -2253,10 +2253,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Note: MepParameterHelper is deprecated but kept for backward compatibility
             // TODO: Migrate to IElementParameterExtractor pattern when refactoring this code path
 #pragma warning disable CS0618 // Type or member is obsolete
-            var damperParameterCache = new Dictionary<ElementId, Helpers.MepParameterHelper.MepParameterSnapshot>();
+            var damperParameterCache = new Dictionary<ElementId, MepParameterHelper.MepParameterSnapshot>();
             foreach (var fi in damperFamilyInstances)
             {
-                damperParameterCache[fi.Id] = Helpers.MepParameterHelper.CaptureParameters(fi);
+                damperParameterCache[fi.Id] = MepParameterHelper.CaptureParameters(fi);
                 mepElements.Add(fi);
             }
 #pragma warning restore CS0618 // Type or member is obsolete

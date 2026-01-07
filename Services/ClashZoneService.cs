@@ -1100,7 +1100,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             try
                             {
-                                var (orientation, widthDirection) = Helpers.MepElementOrientationHelper.GetDuctWidthOrientation(duct);
+                                var (orientation, widthDirection) = MepElementOrientationHelper.GetDuctWidthOrientation(duct);
                                 existingClashZone.MepElementOrientationDirection = orientation == "X-ORIENTED" ? "X" : "Y";
                                 _log?.Invoke($"✅ UPDATED MepElementOrientationDirection for resolved clash zone {existingClashZone.Id}: '{existingClashZone.MepElementOrientationDirection}' ({orientation})");
                             }
@@ -1889,7 +1889,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         _log?.Invoke($"No active 3D section box - clash zone {clashZone.Id} considered visible (legacy mode)");
                         return true;
                     }
-                    var sectionBox = Helpers.SectionBoxHelper.GetSectionBoxBounds(view3D);
+                    var sectionBox = SectionBoxHelper.GetSectionBoxBounds(view3D);
                     if (sectionBox == null)
                     {
                         _log?.Invoke($"Could not get section box bounds - clash zone {clashZone.Id} considered visible (legacy mode)");
@@ -3292,7 +3292,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 _log?.Invoke($"[METHOD3] Checking for damper at duct end: Duct {duct.Id} near intersection {intersectionPoint}");
 
                 // Get duct geometry and find end points
-                var ductGeometry = duct.get_Geometry(Helpers.GeometryOptionsFactory.CreateIntersectionOptions());
+                var ductGeometry = duct.get_Geometry(GeometryOptionsFactory.CreateIntersectionOptions());
                 if (ductGeometry == null) return false;
 
                 var ductEndPoints = GetDuctEndPoints(duct, ductGeometry);
@@ -5174,7 +5174,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         try
                         {
-                            var (orientation, widthDirection) = Helpers.MepElementOrientationHelper.GetDuctWidthOrientation(duct);
+                            (string orientation, XYZ widthDirection) = MepElementOrientationHelper.GetDuctWidthOrientation(duct);
                                                         if (!DeploymentConfiguration.DeploymentMode)
                                                         if (!DeploymentConfiguration.DeploymentMode)
                                 DebugLogger.Info($"[GetMepElementOrientation] Duct {mepElement.Id}: Width orientation={orientation}, WidthDirection=({widthDirection.X:F3}, {widthDirection.Y:F3}, {widthDirection.Z:F3})");
@@ -5204,7 +5204,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     
                     try
                     {
-                        var (orientation, widthDirection) = Helpers.MepElementOrientationHelper.GetDuctWidthOrientation(verticalDuct);
+                        (string orientation, XYZ widthDirection) = MepElementOrientationHelper.GetDuctWidthOrientation(verticalDuct);
                                                 if (!DeploymentConfiguration.DeploymentMode)
                                                 if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[GetMepElementOrientation] Duct {mepElement.Id}: Width orientation={orientation}, WidthDirection=({widthDirection.X:F3}, {widthDirection.Y:F3}, {widthDirection.Z:F3})");
@@ -5266,7 +5266,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             try
                             {
-                                var (orientation, widthDirection) = Helpers.MepElementOrientationHelper.GetCableTrayWidthOrientation(cableTray);
+                                (string orientation, XYZ widthDirection) = MepElementOrientationHelper.GetCableTrayWidthOrientation(cableTray);
                                 if (!DeploymentConfiguration.DeploymentMode)
                                                                         if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Info($"[GetMepElementOrientation] Vertical CableTray {mepElement.Id}: Using width direction ({widthDirection.X:F3}, {widthDirection.Y:F3}, {widthDirection.Z:F3}) instead of centerline direction ({direction.X:F3}, {direction.Y:F3}, {direction.Z:F3})");

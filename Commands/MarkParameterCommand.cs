@@ -13,174 +13,170 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
     /// <summary>
     /// Mark Parameter Command - Applies MEPMARK to cluster sleeves for a specific category
     /// Can be called from any context (ICommand, ExternalEvent, etc.)
-    /// No UI dialogs - fully automated workflow using prefixes configured in main UI
+    /// Supports splitting Prefix and Numbering logic.
     /// </summary>
     public class MarkParameterCommand : ICommand
     {
+        public enum MarkingMode
+        {
+            Full,
+            PrefixOnly,
+            NumberOnly
+        }
+
         private readonly string _targetCategory;
         private readonly string _projectPrefix;
         private readonly string _disciplinePrefix;
         private readonly bool _remarkAll;
         private readonly MarkPrefixSettings _markPrefixes;
+        private readonly MarkingMode _mode;
         
-        public MarkParameterCommand(string targetCategory, string projectPrefix, string disciplinePrefix, bool remarkAll = false, MarkPrefixSettings? markPrefixes = null)
+        public MarkParameterCommand(string targetCategory, string projectPrefix, string disciplinePrefix, bool remarkAll = false, MarkPrefixSettings? markPrefixes = null, MarkingMode mode = MarkingMode.Full)
         {
             _targetCategory = targetCategory ?? throw new ArgumentNullException(nameof(targetCategory));
             _projectPrefix = projectPrefix ?? throw new ArgumentNullException(nameof(projectPrefix));
             _disciplinePrefix = disciplinePrefix ?? throw new ArgumentNullException(nameof(disciplinePrefix));
             _remarkAll = remarkAll;
             _markPrefixes = markPrefixes;
+            _mode = mode;
         }
         
         public void Execute(UIApplication app)
         {
-            // 🔥 CRITICAL DEBUG: Direct file logging to trace MarkParameterCommand execution
-            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥 MarkParameterCommand.Execute CALLED 🔥\n");
+            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥 MarkParameterCommand.Execute CALLED 🔥 Mode: {_mode}\n");
             DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Target Category: {_targetCategory}\n");
-            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Project Prefix: '{_projectPrefix}', Discipline Prefix: '{_disciplinePrefix}', RemarkAll: {_remarkAll}\n");
-
+            
             try
             {
-                DebugLogger.Info($"[MarkParameterCommand] Starting MEPMARK application for {_targetCategory}");
-                DebugLogger.Info($"[MarkParameterCommand] Project Prefix: '{_projectPrefix}', Discipline Prefix: '{_disciplinePrefix}'");
-
                 var doc = app.ActiveUIDocument.Document;
-                var uiDoc = app.ActiveUIDocument;
-
-                // ✅ FIX: Handle "ALL" category by processing each category individually
-                if (_targetCategory.Equals("ALL", StringComparison.OrdinalIgnoreCase))
+                
+                // ✅ HANDLE "ALL" or "SELECTED" CATEGORIES
+                if (_targetCategory.Equals("ALL", StringComparison.OrdinalIgnoreCase) || 
+                    _targetCategory.Equals("SELECTED", StringComparison.OrdinalIgnoreCase))
                 {
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Processing ALL categories individually\n");
-
-                    // Get all available categories from XML files
                     var availableCategories = GetAllAvailableCategories(doc);
+                    var categoriesToProcess = new List<string>();
                     
-                    // ✅ DEBUG: Log available categories
-                    if (!DeploymentConfiguration.DeploymentMode)
+                    // Filter categories based on selection/remark flags
+                    foreach (var category in availableCategories)
                     {
-                        string orchestratorLogPath = SafeFileLogger.GetLogFilePath("orchestrator_debug.log");
-                        System.IO.File.AppendAllText(orchestratorLogPath,
-                        $"[{DateTime.Now:HH:mm:ss}] Found {availableCategories.Count} categories: {string.Join(", ", availableCategories)}\n");
+                        var remarkFlag = _markPrefixes?.GetRemarkFlag(category) ?? _remarkAll;
+                        if (_targetCategory.Equals("SELECTED", StringComparison.OrdinalIgnoreCase) && !remarkFlag) 
+                            continue;
+                        categoriesToProcess.Add(category);
                     }
 
-                    // ✅ BIM 360 OPTIMIZATION: Use SINGLE transaction for ALL categories
-                    // This reduces cloud sync overhead from N syncs to 1 sync (25-50x faster on BIM 360)
-                    using (var tx = new Transaction(doc, "Mark All Categories"))
+                    using (var tx = new Transaction(doc, "Mark Categories"))
                     {
                         tx.Start();
                         
                         int totalProcessed = 0;
                         int totalErrors = 0;
+                        var markService = new MarkParameterService();
+                        var numberFormat = _markPrefixes?.NumberFormat ?? "000";
+                        var allowedPrefixes = new HashSet<string>();
 
-                        // ✅ CRITICAL FIX: Process each category OUTSIDE the deployment mode check
-                        // Process each category with its specific discipline prefix from UI
-                        foreach (var category in availableCategories)
+                        // ---------------------------------------------------------
+                        // PHASE 1: APPLY PREFIXES (Per Category, DB Driven)
+                        // ---------------------------------------------------------
+                        if (_mode != MarkingMode.NumberOnly)
                         {
-                            var disciplinePrefix = _markPrefixes?.GetDisciplinePrefix(category) ?? GetDisciplinePrefixForCategory(category);
-                            // ✅ FIX: Get remark flag per category from MarkPrefixSettings
-                            var remarkFlag = _markPrefixes?.GetRemarkFlag(category) ?? _remarkAll;
-                            
-                            // ✅ DEBUG: Log remark flag details
-                            if (!DeploymentConfiguration.DeploymentMode)
+                            foreach (var category in categoriesToProcess)
                             {
-                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Processing category: {category}, discipline: {disciplinePrefix}, remark: {remarkFlag}");
-                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}]   RemarkAll={_markPrefixes?.RemarkAll ?? false}, RemarkProjectPrefix={_markPrefixes?.RemarkProjectPrefix ?? false}");
-                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}]   RemarkDuctPrefix={_markPrefixes?.RemarkDuctPrefix ?? false}, RemarkPipePrefix={_markPrefixes?.RemarkPipePrefix ?? false}");
-                                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}]   RemarkCableTrayPrefix={_markPrefixes?.RemarkCableTrayPrefix ?? false}, RemarkDamperPrefix={_markPrefixes?.RemarkDamperPrefix ?? false}\n");
+                                var disciplinePrefix = _markPrefixes?.GetDisciplinePrefix(category) ?? GetDisciplinePrefixForCategory(category);
+                                var remarkFlag = _markPrefixes?.GetRemarkFlag(category) ?? _remarkAll;
+                                
+                                var (p1, e1) = markService.ApplyPrefixesOnly(doc, category, _projectPrefix, disciplinePrefix, remarkFlag, _markPrefixes);
+                                totalErrors += e1;
+                                // Note: ApplyPrefixesOnly returns count of updates. 
                             }
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Processing category: {category}, discipline: {disciplinePrefix}, remark: {remarkFlag}\n");
 
-                            var markService = new MarkParameterService();
-                            var numberFormat = _markPrefixes?.NumberFormat ?? "000";
-                            // ✅ OPTIMIZED: Use Batch Transfer (Read-Calculate-Write)
-                            // ApplyMepMarkToClustersBatch detects doc.IsModifiable and reuses the existing transaction for "All Categories".
-                            var (processedCount, errorCount) = markService.ApplyMepMarkToClustersBatch(
-                                doc, category, _projectPrefix, disciplinePrefix, remarkFlag, numberFormat, _markPrefixes);
-
-                            totalProcessed += processedCount;
-                            totalErrors += errorCount;
-
-                            DebugLogger.Info($"[MarkParameterCommand] ✓ MEPMARK complete for {category}: {processedCount} clusters processed, {errorCount} errors");
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Category {category}: {processedCount} processed, {errorCount} errors\n");
-                        }
-                        
-                        // ✅ COMBINED SLEEVES: Separate optimized flow (NO category check, NO GetClashZoneByCategory)
-                        {
-                            var combinedMarkService = new MarkParameterService();
-                            var combinedSleeves = combinedMarkService.GetAllCombinedSleeves(doc);
-                            
+                            // Handle Combined Sleeves Prefixes
+                            var comboService = new CombinedSleeveMarkService();
+                            var combinedSleeves = comboService.GetAllCombinedSleeves(doc);
                             if (combinedSleeves.Count > 0)
                             {
-                                var numberFormat = _markPrefixes?.NumberFormat ?? "000";
-                                int startNumber = 1; // Combined sleeves start from 1
-                                bool remarkAll = _markPrefixes?.RemarkAll ?? _remarkAll;
-                                
-                                // Calculate marks (MEP prefix hardcoded)
-                                var markAssignments = combinedMarkService.CalculateCombinedSleeveMarks(
-                                    doc, combinedSleeves, _projectPrefix, numberFormat, startNumber, remarkAll);
-                                
-                                // Apply marks (uses existing transaction)
-                                var (combinedSuccess, combinedFailed) = combinedMarkService.ApplyCombinedSleeveMarksBatch(
-                                    doc, markAssignments);
-                                
-                                DebugLogger.Info($"[MarkParameterCommand] ✓ Combined Sleeves: {combinedSuccess} marked, {combinedFailed} failed");
+                                bool remarkCombined = _markPrefixes?.RemarkAll ?? _remarkAll;
+                                var prefixAssignments = comboService.CalculateCombinedSleevePrefixes(doc, combinedSleeves, _projectPrefix, remarkCombined);
+                                var (s, f) = comboService.ApplyCombinedSleeveMarksBatch(doc, prefixAssignments);
+                                totalErrors += f;
                             }
                         }
+
+                        // ---------------------------------------------------------
+                        // PHASE 2: APPLY NUMBERS (Batch, Revit Scan)
+                        // ---------------------------------------------------------
+                        if (_mode != MarkingMode.PrefixOnly)
+                        {
+                            // Build allowed prefixes filter to ensure we only number what we touched/selected
+                            foreach (var category in categoriesToProcess)
+                            {
+                                var disciplinePrefix = _markPrefixes?.GetDisciplinePrefix(category) ?? GetDisciplinePrefixForCategory(category);
+                                // The prefix on the element will be "{ProjectPrefix}{DisciplinePrefix}"
+                                allowedPrefixes.Add($"{_projectPrefix}{disciplinePrefix}");
+                            }
+                            // Always allow Combined Prefix if we are processing ALL or huge selection?
+                            // For safety, let's include "MEP" prefix standard if we processed general categories
+                            allowedPrefixes.Add($"{_projectPrefix}MEP"); 
+
+                            var (p2, e2) = markService.ApplyNumbersBatch(doc, numberFormat, allowedPrefixes, _markPrefixes);
+                            totalProcessed += p2;
+                            totalErrors += e2;
+                        }
                         
-                        // ✅ BIM 360 OPTIMIZATION: Single commit for all categories
-                        tx.Commit(); // Cloud sync happens ONCE for all categories
-                        
-                        DebugLogger.Info($"[MarkParameterCommand] ✅ ALL CATEGORIES COMPLETE: {totalProcessed} total processed, {totalErrors} total errors");
+                        tx.Commit();
+                        DebugLogger.Info($"[MarkParameterCommand] ✅ ALL COMPLETE: {totalProcessed} numbered, {totalErrors} errors");
                     }
                 }
-                else
+                else  // ✅ SINGLE CATEGORY
+                {
+                    var remarkFlag = _markPrefixes?.GetRemarkFlag(_targetCategory) ?? _remarkAll;
+                    
+                    using (var tx = new Transaction(doc, $"Mark {_targetCategory}"))
                     {
-                        // Process single category
-                        // ✅ CRITICAL FIX: Get remark flag per category from MarkPrefixSettings (not just _remarkAll)
-                        // This ensures that when Remark Selected button is clicked, each category's checkbox state is respected
-                        var remarkFlag = _markPrefixes?.GetRemarkFlag(_targetCategory) ?? _remarkAll;
-                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Processing single category: {_targetCategory}, discipline: {_disciplinePrefix}, remark: {remarkFlag}\n");
+                        tx.Start();
+
+                        var markService = new MarkParameterService();
+                        var numberFormat = _markPrefixes?.NumberFormat ?? "000";
                         
-                        using (var tx = new Transaction(doc, $"Mark {_targetCategory} Clusters"))
+                        // 1. PREFIX
+                        if (_mode != MarkingMode.NumberOnly)
                         {
-                            tx.Start();
-
-                            var markService = new MarkParameterService();
-                            var numberFormat = _markPrefixes?.NumberFormat ?? "000";
-                            // ✅ OPTIMIZED: Use Batch Transfer (Read-Calculate-Write)
-                            // We are inside a transaction, so it will reuse it.
-                            var (processedCount, errorCount) = markService.ApplyMepMarkToClustersBatch(
-                                doc, _targetCategory, _projectPrefix, _disciplinePrefix, remarkFlag, numberFormat, _markPrefixes);
-
-                            // ✅ COMBINED SLEEVES: Also process in single category mode
-                            var combinedSleeves = markService.GetAllCombinedSleeves(doc);
+                            var disciplinePrefix = _markPrefixes?.GetDisciplinePrefix(_targetCategory) ?? GetDisciplinePrefixForCategory(_targetCategory);
+                            markService.ApplyPrefixesOnly(doc, _targetCategory, _projectPrefix, disciplinePrefix, remarkFlag, _markPrefixes);
+                            
+                            // Combined? Usually not for single category click, but existing logic did it.
+                            // We'll skip complex combined logic for single category click to stay focused? 
+                            // Or just include it blindly. Existing code included it.
+                            var comboService = new CombinedSleeveMarkService();
+                            var combinedSleeves = comboService.GetAllCombinedSleeves(doc);
                             if (combinedSleeves.Count > 0)
                             {
-                                int startNumber = 1;
-                                bool remarkCombined = _markPrefixes?.RemarkAll ?? _remarkAll;
-                                
-                                var markAssignments = markService.CalculateCombinedSleeveMarks(
-                                    doc, combinedSleeves, _projectPrefix, numberFormat, startNumber, remarkCombined);
-                                
-                                var (combinedSuccess, combinedFailed) = markService.ApplyCombinedSleeveMarksBatch(
-                                    doc, markAssignments);
-                                
-                                DebugLogger.Info($"[MarkParameterCommand] ✓ Combined Sleeves: {combinedSuccess} marked, {combinedFailed} failed");
+                                 bool remarkCombined = _markPrefixes?.RemarkAll ?? _remarkAll;
+                                 var prefixAssignments = comboService.CalculateCombinedSleevePrefixes(doc, combinedSleeves, _projectPrefix, remarkCombined);
+                                 comboService.ApplyCombinedSleeveMarksBatch(doc, prefixAssignments);
                             }
-
-                            tx.Commit();
-
-                            DebugLogger.Info($"[MarkParameterCommand] ✓ MEPMARK complete for {_targetCategory}: {processedCount} clusters processed, {errorCount} errors");
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Category {_targetCategory}: {processedCount} processed, {errorCount} errors\n");
                         }
+                        
+                        // 2. NUMBER
+                         if (_mode != MarkingMode.PrefixOnly)
+                        {
+                            var allowedPrefixes = new HashSet<string>();
+                            var disciplinePrefix = _markPrefixes?.GetDisciplinePrefix(_targetCategory) ?? GetDisciplinePrefixForCategory(_targetCategory);
+                            allowedPrefixes.Add($"{_projectPrefix}{disciplinePrefix}");
+                            allowedPrefixes.Add($"{_projectPrefix}MEP"); // Just in case combined sleeves are relevant
+
+                            markService.ApplyNumbersBatch(doc, numberFormat, allowedPrefixes, _markPrefixes);
+                        }
+
+                        tx.Commit();
                     }
+                }
             }
             catch (Exception ex)
             {
-                DebugLogger.Error($"[MarkParameterCommand] Error applying MEPMARK to {_targetCategory}: {ex.Message}");
-                DebugLogger.Error($"[MarkParameterCommand] Stack trace: {ex.StackTrace}");
-                // Don't show TaskDialog here - let orchestrator handle errors
-                throw; // Re-throw to let caller handle
+                DebugLogger.Error($"[MarkParameterCommand] Error: {ex.Message}");
+                throw;
             }
         }
         

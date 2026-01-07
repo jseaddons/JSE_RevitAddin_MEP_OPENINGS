@@ -14,6 +14,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -783,7 +784,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var buildTimestamp = !string.IsNullOrWhiteSpace(assemblyPath)
                             ? System.IO.File.GetLastWriteTime(assemblyPath).ToString("yyyy-MM-dd HH:mm:ss")
                             : "unknown";
-                        var versionTag = Helpers.VersionInfo.VersionTag; // "R2023" or "R2024"
+                        var versionTag = VersionInfo.VersionTag; // "R2023" or "R2024"
                         
                         var orchestratorDebugLogPath = SafeFileLogger.GetLogFilePath("orchestrator_debug.log");
                         File.AppendAllText(orchestratorDebugLogPath, $"[{DateTime.Now:HH:mm:ss}] 🔨 BUILD TIMESTAMP: {buildTimestamp} | VERSION: {versionTag} | Assembly: {Path.GetFileName(assemblyPath)}\n");

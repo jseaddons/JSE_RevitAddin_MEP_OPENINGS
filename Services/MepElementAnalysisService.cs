@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
@@ -308,7 +309,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                var geom = element.get_Geometry(Helpers.GeometryOptionsFactory.CreateIntersectionOptions());
+                var geom = element.get_Geometry(GeometryOptionsFactory.CreateIntersectionOptions());
                 if (geom != null)
                 {
                     var bbox = geom.GetBoundingBox();

@@ -142,7 +142,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 }
 
                 // ✅ Declare versionTag at method start for use throughout method
-                var versionTag = Helpers.VersionInfo.VersionTag;
+                var versionTag = VersionInfo.VersionTag;
                 
                 // 🔥 CRITICAL: Direct IO logging (bypass SafeFileLogger)
                 try

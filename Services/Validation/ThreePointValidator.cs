@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Validation
@@ -148,8 +149,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Validation
             try
             {
                 // Get geometry from both elements
-                var mepGeometry = mepElement.get_Geometry(Helpers.GeometryOptionsFactory.CreateIntersectionOptions());
-                var structuralGeometry = structuralElement.get_Geometry(Helpers.GeometryOptionsFactory.CreateIntersectionOptions());
+                var mepGeometry = mepElement.get_Geometry(GeometryOptionsFactory.CreateIntersectionOptions());
+                var structuralGeometry = structuralElement.get_Geometry(GeometryOptionsFactory.CreateIntersectionOptions());
 
                 if (mepGeometry == null || structuralGeometry == null)
                 {

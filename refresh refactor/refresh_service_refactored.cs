@@ -8,6 +8,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Refresh;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -342,7 +343,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     BoundingBoxXYZ? sectionBox = null;
                     if (_document.ActiveView is View3D v3 && v3.IsSectionBoxActive)
                     {
-                        sectionBox = Helpers.SectionBoxHelper.GetSectionBoxBounds(v3);
+                        sectionBox = SectionBoxHelper.GetSectionBoxBounds(v3);
                     }
 
                     var filterName = context.SelectedFilterNames?.FirstOrDefault() ?? "";
@@ -672,7 +673,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 BoundingBoxXYZ? sectionBoxNullable = null;
                                 if (_document.ActiveView is View3D view3D && view3D.IsSectionBoxActive)
                                 {
-                                    sectionBoxNullable = Helpers.SectionBoxHelper.GetSectionBoxBounds(view3D);
+                                    sectionBoxNullable = SectionBoxHelper.GetSectionBoxBounds(view3D);
                                     if (sectionBoxNullable != null && !context.IsDeploymentMode)
                                     {
                                         BoundingBoxXYZ sb = sectionBoxNullable;
@@ -1389,7 +1390,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             BoundingBoxXYZ? sectionBoxNullable = null;
             if (_document.ActiveView is View3D view3D && view3D.IsSectionBoxActive)
             {
-                sectionBoxNullable = Helpers.SectionBoxHelper.GetSectionBoxBounds(view3D);
+                sectionBoxNullable = SectionBoxHelper.GetSectionBoxBounds(view3D);
                 if (sectionBoxNullable != null && !context.IsDeploymentMode)
                 {
                     BoundingBoxXYZ sb = sectionBoxNullable;
@@ -1552,7 +1553,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         BoundingBoxXYZ? sectionBox = null;
                         if (_document.ActiveView is View3D view3D && view3D.IsSectionBoxActive)
                         {
-                            sectionBox = Helpers.SectionBoxHelper.GetSectionBoxBounds(view3D);
+                            sectionBox = SectionBoxHelper.GetSectionBoxBounds(view3D);
                         }
                         
                         // Get ClashZoneStorage from context (or create new one)
