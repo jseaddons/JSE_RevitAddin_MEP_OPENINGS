@@ -198,5 +198,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 _logger?.Invoke($"[MARKER] ⚠️ Failed to reset markers: {ex.Message}");
             }
         }
+
+        /// <summary>
+        /// ✅ NEW: Reset markers for a specific level only (e.g., "M|Level 1", "P|Level 1")
+        /// </summary>
+        public void ResetMarkersForLevel(string levelName)
+        {
+            if (string.IsNullOrEmpty(levelName)) return;
+
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    // Delete all rows where Category ends with "|LevelName"
+                    cmd.CommandText = "DELETE FROM CategoryProcessingMarkers WHERE Category LIKE @pattern";
+                    cmd.Parameters.AddWithValue("@pattern", $"%|{levelName}");
+                    int deleted = cmd.ExecuteNonQuery();
+                    _logger?.Invoke($"[MARKER] ♻️ Reset {deleted} markers for level '{levelName}'");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.Invoke($"[MARKER] ⚠️ Failed to reset markers for level '{levelName}': {ex.Message}");
+            }
+        }
     }
 }

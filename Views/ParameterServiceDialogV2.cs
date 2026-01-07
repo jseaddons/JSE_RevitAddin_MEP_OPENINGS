@@ -2660,31 +2660,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
                 int clearedCount = markService.ResetMarksForLevel(_document, levelName, viewExtent);
 
-                // Reset Counters (Global)
-                if (!activeViewOnly)
+                // ✅ CONTEXT-SENSITIVE RESET: Only reset counters for the CURRENT level
+                // This ensures other levels keep their numbering history intact.
+                if (levelName != "ALL")
                 {
-                    // Only reset global counters if we are not in "Active View" mode
-                    // OR should we reset them anyway? 
-                    // User said "Reset Numbering", which implies resetting the sequence key.
-                    // But if I only clear 5 sleeves in a view, should the counter reset?
-                    // Safe approach: Reset counters if they asked for it. 
-                    // Actually, if they reset "Active View", they might want to re-number those 5.
-                    // But duplicates might occur if other views have 6-100.
-                    // Re-read user request: "reset the numbering or delete apply marks"
-                    // I will reset counters.
-                    markService.ResetCategoryCounters(_document); // Reset all category counters
+                    markService.ResetCategoryCounters(_document, levelName);
                 }
                 else
                 {
-                    // If active view only, we simply clear marks. Resetting global counter creates collision risk.
-                    // I will Warn about counters not being reset in partial clear?
-                    // No, let's keep it simple. Clears marks.
-                    // User can manually reset counters by unchecking active view? 
-                    // Let's reset counters anyway, assuming they want to "start over".
-                    markService.ResetCategoryCounters(_document); // Reset all category counters
+                    // Fallback: If somehow we are not in a valid view, reset all (rare case)
+                    markService.ResetCategoryCounters(_document);
                 }
 
-                WinForms.MessageBox.Show($"Successfully cleared Marks from {clearedCount} sleeves.\nCounters have been reset.", "Reset Complete");
+                WinForms.MessageBox.Show($"Successfully cleared Marks from {clearedCount} sleeves.\nCounters for '{levelName}' have been reset.", "Reset Complete");
             }
             catch (Exception ex)
             {

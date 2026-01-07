@@ -270,36 +270,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var updates = new List<(ElementId Id, string Value)>();
 
                 // ✅ PER-VIEW SCOPING: Determine the scope for numbering memory
-                // If ActiveViewOnly is true, we scope markers to the current Level/View
-                string viewScope = "";
+                string targetScope = ""; // Where we save progress (Active View)
+                string sourceScope = ""; // Where we read start number from (Selected View or Active View)
+
                 if (markPrefixes?.ActiveViewOnly == true && doc.ActiveView != null)
                 {
+                    // Target is ALWAYS the Active View/Level
+                    if (doc.ActiveView is ViewPlan vp && vp.GenLevel != null)
+                        targetScope = vp.GenLevel.Name;
+                    else
+                        targetScope = doc.ActiveView.Name;
+
+                    // Source defaults to Target, unless "Continue" is selected
                     if (markPrefixes.UseContinueNumbering && !string.IsNullOrEmpty(markPrefixes.ContinueFromViewName))
                     {
-                        viewScope = markPrefixes.ContinueFromViewName;
-                        NumberingDebugLogger.LogInfo($"[NUMBERING SCOPE] CONTINUING from Source View: '{viewScope}'");
+                        sourceScope = markPrefixes.ContinueFromViewName;
+                        NumberingDebugLogger.LogInfo($"[NUMBERING SCOPE] CONTINUING from Source: '{sourceScope}' -> Target: '{targetScope}'");
                     }
                     else
                     {
-                        if (doc.ActiveView is ViewPlan vp && vp.GenLevel != null)
-                            viewScope = vp.GenLevel.Name;
-                        else
-                            viewScope = doc.ActiveView.Name;
-                        
-                        NumberingDebugLogger.LogInfo($"[NUMBERING SCOPE] Using View-Specific memory for: '{viewScope}'");
+                        sourceScope = targetScope;
+                        NumberingDebugLogger.LogInfo($"[NUMBERING SCOPE] Using View-Specific memory for: '{targetScope}'");
                     }
                 }
                 else
                 {
                     NumberingDebugLogger.LogInfo("[NUMBERING SCOPE] Using Global (Project-wide) memory.");
                 }
+
                 foreach (var group in prefixGroups)
                 {
                     string prefix = group.Key;
                     var items = group.Value.OrderBy(i => i.Id.IntegerValue).ToList();
                     
-                    // ✅ SCOPED KEY: Combine prefix and viewScope for independent numbering per sheet
-                    string markerKey = string.IsNullOrEmpty(viewScope) ? prefix : $"{prefix}|{viewScope}";
+                    // ✅ SCOPED KEYS: Use source for reading, target for writing
+                    string sourceKey = string.IsNullOrEmpty(sourceScope) ? prefix : $"{prefix}|{sourceScope}";
+                    string targetKey = string.IsNullOrEmpty(targetScope) ? prefix : $"{prefix}|{targetScope}";
                     
                     int startNum = 1;
                     if (markPrefixes != null && markPrefixes.StartNumber > 0)
@@ -311,20 +317,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     else
                     {
                          // Fallback to Scoped History
-                         var (lastNum, _) = markerRepo.GetMarker(markerKey);
+                         var (lastNum, _) = markerRepo.GetMarker(sourceKey);
                          startNum = lastNum + 1;
-                         NumberingDebugLogger.LogInfo($"[NUMBERING] Prefix '{prefix}' in scope '{viewScope}' - Continuing from history: {startNum}");
+                         NumberingDebugLogger.LogInfo($"[NUMBERING] Prefix '{prefix}' - Starting from '{sourceKey}' history: {startNum}");
                     }
 
                     foreach (var item in items)
                     {
-                        string newVal = $"{prefix}{startNum.ToString(numberFormat)}";
-                        updates.Add((item.Id, newVal));
+                        string markValue = $"{prefix}{startNum.ToString(markPrefixes?.NumberFormat ?? "000")}";
+                        updates.Add((item.Id, markValue));
                         startNum++;
                     }
-                    
-                    // Update the scoped marker in database
-                    markerRepo.UpdateMarker(markerKey, startNum - 1); 
+
+                    // Update the database marker for the TARGET (Active Level)
+                    markerRepo.UpdateMarker(targetKey, startNum - 1, string.Join(",", items.Select(i => i.Id.IntegerValue)));
                 }
 
                 foreach (var up in updates)
@@ -417,13 +423,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return clearedCount;
         }
 
-        public void ResetCategoryCounters(Document doc)
+        public void ResetCategoryCounters(Document doc, string levelName = null)
         {
             try
             {
                 using var context = new SleeveDbContext(doc);
                 var repo = new CategoryProcessingMarkerRepository(context);
-                repo.ResetAllMarkers();
+                
+                if (string.IsNullOrEmpty(levelName))
+                {
+                    repo.ResetAllMarkers();
+                }
+                else
+                {
+                    repo.ResetMarkersForLevel(levelName);
+                }
             }
             catch (Exception ex) { DebugLogger.Error($"[MarkParameterService] ResetCategoryCounters error: {ex.Message}"); }
         }
