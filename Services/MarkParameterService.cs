@@ -266,25 +266,54 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 using var context = new SleeveDbContext(doc);
-                // ✅ USER REQUEST: RESTORED BACKEND LOGIC FOR GLOBAL SEQUENCE (UNDO "REMOVE")
                 var markerRepo = new CategoryProcessingMarkerRepository(context);
                 var updates = new List<(ElementId Id, string Value)>();
 
+                // ✅ PER-VIEW SCOPING: Determine the scope for numbering memory
+                // If ActiveViewOnly is true, we scope markers to the current Level/View
+                string viewScope = "";
+                if (markPrefixes?.ActiveViewOnly == true && doc.ActiveView != null)
+                {
+                    if (markPrefixes.UseContinueNumbering && !string.IsNullOrEmpty(markPrefixes.ContinueFromViewName))
+                    {
+                        viewScope = markPrefixes.ContinueFromViewName;
+                        NumberingDebugLogger.LogInfo($"[NUMBERING SCOPE] CONTINUING from Source View: '{viewScope}'");
+                    }
+                    else
+                    {
+                        if (doc.ActiveView is ViewPlan vp && vp.GenLevel != null)
+                            viewScope = vp.GenLevel.Name;
+                        else
+                            viewScope = doc.ActiveView.Name;
+                        
+                        NumberingDebugLogger.LogInfo($"[NUMBERING SCOPE] Using View-Specific memory for: '{viewScope}'");
+                    }
+                }
+                else
+                {
+                    NumberingDebugLogger.LogInfo("[NUMBERING SCOPE] Using Global (Project-wide) memory.");
+                }
                 foreach (var group in prefixGroups)
                 {
                     string prefix = group.Key;
                     var items = group.Value.OrderBy(i => i.Id.IntegerValue).ToList();
+                    
+                    // ✅ SCOPED KEY: Combine prefix and viewScope for independent numbering per sheet
+                    string markerKey = string.IsNullOrEmpty(viewScope) ? prefix : $"{prefix}|{viewScope}";
+                    
                     int startNum = 1;
                     if (markPrefixes != null && markPrefixes.StartNumber > 0)
                     {
-                         // Respect UI Start Number if set
+                         // Respect UI Start Number if set (forces a reset for this batch)
                          startNum = markPrefixes.StartNumber;
+                         NumberingDebugLogger.LogInfo($"[NUMBERING] Prefix '{prefix}' - FORCING Start Number {startNum} (UI Override)");
                     }
                     else
                     {
-                         // Fallback to Global History
-                         var (lastNum, _) = markerRepo.GetMarker(prefix);
+                         // Fallback to Scoped History
+                         var (lastNum, _) = markerRepo.GetMarker(markerKey);
                          startNum = lastNum + 1;
+                         NumberingDebugLogger.LogInfo($"[NUMBERING] Prefix '{prefix}' in scope '{viewScope}' - Continuing from history: {startNum}");
                     }
 
                     foreach (var item in items)
@@ -293,12 +322,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         updates.Add((item.Id, newVal));
                         startNum++;
                     }
-                    markerRepo.UpdateMarker(prefix, startNum - 1); // RESTORED GLOBAL UPDATE
+                    
+                    // Update the scoped marker in database
+                    markerRepo.UpdateMarker(markerKey, startNum - 1); 
                 }
 
                 foreach (var up in updates)
                 {
-                    try { doc.GetElement(up.Id)?.LookupParameter("MEP Mark")?.Set(up.Value); processedCount++; } catch { errorCount++; }
+                    try 
+                    { 
+                        var el = doc.GetElement(up.Id);
+                        var p = el?.LookupParameter("MEP Mark") ?? el?.LookupParameter("Mark");
+                        if (p != null && !p.IsReadOnly)
+                        {
+                            p.Set(up.Value); 
+                            processedCount++; 
+                        }
+                    } 
+                    catch { errorCount++; }
                 }
             }
             catch (Exception ex) { DebugLogger.Error($"[MarkParameterService] Batch numbering error: {ex.Message}"); }

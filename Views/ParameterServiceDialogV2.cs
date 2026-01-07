@@ -48,14 +48,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         // ✅ NEW: Track last focused category for system type dropdown population
         private string _lastFocusedCategory = null;
 
-        // Number format and remark checkboxes
+        // Number format
         private WinForms.ComboBox _numberFormatCombo = null!;
         private WinForms.Button _numberFormatLockButton = null!;
-        private WinForms.CheckBox _remarkProjectCheckBox = null!;
-        private WinForms.CheckBox _remarkDuctCheckBox = null!;
-        private WinForms.CheckBox _remarkPipeCheckBox = null!;
-        private WinForms.CheckBox _remarkCableTrayCheckBox = null!;
-        private WinForms.CheckBox _remarkDamperCheckBox = null!;
 
         // Right Panel: Parameter Mapping
         private WinForms.TabControl _masterParameterTabs = null!;
@@ -68,16 +63,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.Button _addPrefixButton = null!;
         private WinForms.Button _addNumberButton = null!;
         private WinForms.CheckBox _enableNumberingCheckBox = null!; // ✅ New Safety Checkbox
-        private WinForms.Button _remarkSelectedButton = null!;
+        private WinForms.Button _resetPrefixButton = null!;
         private WinForms.Button _transferParametersButton = null!;
         private WinForms.Button _closeButton = null!;
         // private WinForms.CheckBox _activeViewOnlyCheckBox = null!; // REMOVED
         private WinForms.TextBox _startNumberTextBox = null!;
+        private WinForms.Panel _numberingSequencePanel = null!;
+        private WinForms.RadioButton _modeNewSheetRadio = null!;
+        private WinForms.RadioButton _modeContinueRadio = null!;
+        private WinForms.ComboBox _sourceViewCombo = null!;
 
         // Reset Buttons (Safety Locked)
         private WinForms.Button _resetLockButton = null!;
         private WinForms.Button _resetNumberingButton = null!;
-        private WinForms.Button _resetSelectionButton = null!;
         private WinForms.Button _resetParametersButton = null!;
         private bool _isResetUnlocked = false;
 
@@ -130,15 +128,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             int buttonSpacing = 10;
             int buttonsStartX = 20; // Fixed Left Margin
 
+            // --- LAYOUT CONSTANTS ---
+            int row1Y = 9;
+            int row2Y = 50;
+
             // --- ROW 1: Main Action Buttons (Y=9) ---
 
-            // Button 1: Add Prefix Only (Slot 0)
+            // Button 1: Add Prefix Only (Slot 1 - Vertically above Reset Prefix)
             _addPrefixButton = new WinForms.Button
             {
                 Text = "Add Prefix",
                 Size = new Size(buttonWidth, 32),
-                Location = new Point(buttonsStartX, 9),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left, // Changed to Left
+                Location = new Point(buttonsStartX + 1 * (buttonWidth + buttonSpacing), row1Y), // Moved to Slot 1
+                Anchor = AnchorStyles.Top | AnchorStyles.Left,
                 BackColor = Color.FromArgb(70, 130, 180), // SteelBlue
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
@@ -147,27 +149,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _addPrefixButton.Click += OnAddPrefixClick;
             topBar.Controls.Add(_addPrefixButton);
 
-            // Button 2: Remark Selected (Slot 1)
-            _remarkSelectedButton = new WinForms.Button
+            // Button 2: Reset Prefix (Slot 1 Row 2 - See Row 2 Setup)
+            _resetPrefixButton = new WinForms.Button
             {
                 Text = "Reset Prefix",
                 Size = new Size(buttonWidth, 32),
-                Location = new Point(buttonsStartX + 1 * (buttonWidth + buttonSpacing), 9),
+                Location = new Point(buttonsStartX + 1 * (buttonWidth + buttonSpacing), row2Y), // Moved to Row 2, Slot 1
                 Anchor = AnchorStyles.Top | AnchorStyles.Left,
-                BackColor = Color.FromArgb(150, 100, 200),
+                BackColor = Color.LightGray, // Initially Grey (Locked)
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Microsoft Sans Serif", 9F, FontStyle.Bold)
+                Font = new Font("Microsoft Sans Serif", 8F, FontStyle.Bold), // Smaller font like other reset buttons
+                Enabled = false // Initially Disabled
             };
-            _remarkSelectedButton.Click += OnRemarkSelectedClick;
-            topBar.Controls.Add(_remarkSelectedButton);
+            _resetPrefixButton.Click += OnResetPrefixClick;
+            topBar.Controls.Add(_resetPrefixButton);
 
             // Button 3: Add Number (Slot 2)
             _addNumberButton = new WinForms.Button
             {
                 Text = "Add Number",
                 Size = new Size(buttonWidth, 32),
-                Location = new Point(buttonsStartX + 2 * (buttonWidth + buttonSpacing), 9),
+                Location = new Point(buttonsStartX + 2 * (buttonWidth + buttonSpacing), row1Y),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left,
                 BackColor = Color.FromArgb(60, 179, 113), // MediumSeaGreen
                 ForeColor = Color.White,
@@ -184,7 +187,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Text = "Transfer Parameters",
                 Size = new Size(buttonWidth, 32),
-                Location = new Point(buttonsStartX + 3 * (buttonWidth + buttonSpacing), 9),
+                Location = new Point(buttonsStartX + 3 * (buttonWidth + buttonSpacing), row1Y),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left,
                 BackColor = Color.FromArgb(100, 150, 200),
                 ForeColor = Color.White,
@@ -200,7 +203,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Text = "✕ Close",
                 Size = new Size(buttonWidth, 32),
                 // Fix: Slot 4
-                Location = new Point(buttonsStartX + 4 * (buttonWidth + buttonSpacing), 9),
+                Location = new Point(buttonsStartX + 4 * (buttonWidth + buttonSpacing), row1Y),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left,
                 BackColor = Color.FromArgb(200, 100, 100),
                 ForeColor = Color.White,
@@ -212,7 +215,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
 
             // --- ROW 2: Reset Buttons & Checkboxes (Y=50) ---
-            int row2Y = 50;
 
             // Reset Lock (Left of buttons)
             _resetLockButton = new WinForms.Button
@@ -234,9 +236,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 _resetLockButton.BackColor = unlocked ? Color.IndianRed : Color.LightGreen;
 
                 // Toggle reset buttons
-                if (_resetSelectionButton != null) {
-                   _resetSelectionButton.Enabled = unlocked;
-                   _resetSelectionButton.BackColor = unlocked ? Color.IndianRed : Color.LightGray;
+                if (_resetPrefixButton != null) {
+                   _resetPrefixButton.Enabled = unlocked;
+                   _resetPrefixButton.BackColor = unlocked ? Color.IndianRed : Color.LightGray;
                 }
                 if (_resetNumberingButton != null) {
                    _resetNumberingButton.Enabled = unlocked;
@@ -253,21 +255,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // _activeViewOnlyCheckBox = ...
 
 
-            // Reset Selection (Below Slot 1 - Remark Selected)
-            _resetSelectionButton = new WinForms.Button
-            {
-                Text = "Reset Selection",
-                Size = new Size(buttonWidth, 32),
-                Location = new Point(buttonsStartX + 1 * (buttonWidth + buttonSpacing), row2Y),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left,
-                BackColor = Color.LightGray,
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Microsoft Sans Serif", 8F, FontStyle.Bold),
-                Enabled = false
-            };
-            _resetSelectionButton.Click += OnResetSelectionClick;
-            topBar.Controls.Add(_resetSelectionButton);
 
 
             // Reset Numbering (Below Slot 2 - Add Number)
@@ -632,16 +619,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             _projectPrefixLockButton.Click += (s, e) => ToggleLock(_projectPrefixLockButton, _projectPrefixTextBox);
             _leftPrefixPanel.Controls.Add(_projectPrefixLockButton);
-
-            // Remark checkbox for Project Prefix
-            _remarkProjectCheckBox = new WinForms.CheckBox
-            {
-                Text = "Remark",
-                Location = new Point(280, yPos - 2),
-                AutoSize = true,
-                Checked = false
-            };
-            _leftPrefixPanel.Controls.Add(_remarkProjectCheckBox);
             yPos += 35;
 
             // Number Format selector
@@ -677,74 +654,123 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _leftPrefixPanel.Controls.Add(_numberFormatLockButton);
             yPos += 35;
 
-            // Start Number
-            var startNumberLabel = new WinForms.Label
-            {
-                // ✅ USER REQUEST: Rename to clarify this is for forcing a reset
-                Text = "Start Number (New Sheet):",
-                Location = new Point(10, yPos),
-                Size = new Size(100, 20)
-            };
-            _leftPrefixPanel.Controls.Add(startNumberLabel);
+            // Start Number - MOVED TO Numbering Sequence Section below
+            // ...
 
-            _startNumberTextBox = new WinForms.TextBox
-            {
-                Location = new Point(120, yPos - 2),
-                Size = new Size(120, 22),
-                // ✅ FIX: Default to EMPTY so it uses Global History by default. 
-                // User enters "1" only if they want to force a reset.
-                Text = "" 
-            };
-            _leftPrefixPanel.Controls.Add(_startNumberTextBox);
-            yPos += 35;
-
-            // Section Title
+            // Section Title: Discipline Prefixes
             var disciplineLabel = new WinForms.Label
             {
-                Text = "Discipline Prefixes:",
+                Text = "Discipline Prefixes (2x2 Grid):",
                 Font = new Font("Microsoft Sans Serif", 9F, FontStyle.Bold),
                 Location = new Point(10, yPos),
-                Size = new Size(150, 20)
+                Size = new Size(180, 20),
+                ForeColor = Color.FromArgb(51, 51, 51)
             };
             _leftPrefixPanel.Controls.Add(disciplineLabel);
             yPos += 25;
 
-            // Row 1: Duct
-            var ductLabel = new WinForms.Label { Text = "Duct:", Location = new Point(10, yPos), Size = new Size(80, 20) };
+            // Row 1: Duct & Pipe
+            var ductLabel = new WinForms.Label { Text = "Duct:", Location = new Point(10, yPos), Size = new Size(40, 20) };
             _leftPrefixPanel.Controls.Add(ductLabel);
-            _ductPrefixTextBox = new WinForms.TextBox { Location = new Point(90, yPos - 2), Size = new Size(50, 22), Text = "M" };
+            _ductPrefixTextBox = new WinForms.TextBox { Location = new Point(55, yPos - 2), Size = new Size(50, 22), Text = "M" };
             _ductPrefixTextBox.GotFocus += (s, e) => { _lastFocusedCategory = "Ducts"; };
             _leftPrefixPanel.Controls.Add(_ductPrefixTextBox);
-            _remarkDuctCheckBox = new WinForms.CheckBox { Text = "Remark", Location = new Point(150, yPos - 2), Size = new Size(70, 22), Checked = true };
-            _leftPrefixPanel.Controls.Add(_remarkDuctCheckBox);
-            yPos += 30;
 
-            // Row 2: Pipe
-            var pipeLabel = new WinForms.Label { Text = "Pipe:", Location = new Point(10, yPos), Size = new Size(80, 20) };
+            var pipeLabel = new WinForms.Label { Text = "Pipe:", Location = new Point(135, yPos), Size = new Size(40, 20) };
             _leftPrefixPanel.Controls.Add(pipeLabel);
-            _pipePrefixTextBox = new WinForms.TextBox { Location = new Point(90, yPos - 2), Size = new Size(50, 22), Text = "P" };
+            _pipePrefixTextBox = new WinForms.TextBox { Location = new Point(180, yPos - 2), Size = new Size(50, 22), Text = "P" };
+            _pipePrefixTextBox.GotFocus += (s, e) => { _lastFocusedCategory = "Pipes"; };
             _leftPrefixPanel.Controls.Add(_pipePrefixTextBox);
-            _remarkPipeCheckBox = new WinForms.CheckBox { Text = "Remark", Location = new Point(150, yPos - 2), Size = new Size(70, 22), Checked = true };
-            _leftPrefixPanel.Controls.Add(_remarkPipeCheckBox);
             yPos += 30;
 
-            // Row 3: Cable Tray
-            var cableTrayLabel = new WinForms.Label { Text = "Cable Tray:", Location = new Point(10, yPos), Size = new Size(70, 20) };
+            // Row 2: Cable Tray & Damper
+            var cableTrayLabel = new WinForms.Label { Text = "Tray:", Location = new Point(10, yPos), Size = new Size(40, 20) };
             _leftPrefixPanel.Controls.Add(cableTrayLabel);
-            _cableTrayPrefixTextBox = new WinForms.TextBox { Location = new Point(90, yPos - 2), Size = new Size(50, 22), Text = "E" };
+            _cableTrayPrefixTextBox = new WinForms.TextBox { Location = new Point(55, yPos - 2), Size = new Size(50, 22), Text = "E" };
+            _cableTrayPrefixTextBox.GotFocus += (s, e) => { _lastFocusedCategory = "Cable Trays"; };
             _leftPrefixPanel.Controls.Add(_cableTrayPrefixTextBox);
-            _remarkCableTrayCheckBox = new WinForms.CheckBox { Text = "Remark", Location = new Point(150, yPos - 2), Size = new Size(70, 22), Checked = true };
-            _leftPrefixPanel.Controls.Add(_remarkCableTrayCheckBox);
-            yPos += 30;
 
-            // Row 4: Damper
-            var damperLabel = new WinForms.Label { Text = "Damper:", Location = new Point(10, yPos), Size = new Size(80, 20) };
+            var damperLabel = new WinForms.Label { Text = "Damp:", Location = new Point(135, yPos), Size = new Size(40, 20) };
             _leftPrefixPanel.Controls.Add(damperLabel);
-            _damperPrefixTextBox = new WinForms.TextBox { Location = new Point(90, yPos - 2), Size = new Size(50, 22), Text = "DMP" };
+            _damperPrefixTextBox = new WinForms.TextBox { Location = new Point(180, yPos - 2), Size = new Size(50, 22), Text = "DMP" };
+            _damperPrefixTextBox.GotFocus += (s, e) => { _lastFocusedCategory = "Duct Accessories"; };
             _leftPrefixPanel.Controls.Add(_damperPrefixTextBox);
-            _remarkDamperCheckBox = new WinForms.CheckBox { Text = "Remark", Location = new Point(150, yPos - 2), Size = new Size(70, 22), Checked = true };
-            _leftPrefixPanel.Controls.Add(_remarkDamperCheckBox);
             yPos += 40;
+
+            // ✅ NEW: Numbering Sequence Management
+            var numberingTitle = new WinForms.Label
+            {
+                Text = "Numbering Sequence Logic:",
+                Font = new Font("Microsoft Sans Serif", 9F, FontStyle.Bold),
+                Location = new Point(10, yPos),
+                Size = new Size(200, 20),
+                ForeColor = Color.FromArgb(51, 51, 51)
+            };
+            _leftPrefixPanel.Controls.Add(numberingTitle);
+            yPos += 25;
+
+            // Container for Numbering Modes
+            _numberingSequencePanel = new WinForms.Panel
+            {
+                Location = new Point(10, yPos),
+                Size = new Size(_leftPrefixPanel.Width - 25, 80),
+                BackColor = Color.FromArgb(245, 245, 245),
+                BorderStyle = BorderStyle.FixedSingle
+            };
+            _leftPrefixPanel.Controls.Add(_numberingSequencePanel);
+            
+            // Mode 1: New Sheet (Start Number)
+            _modeNewSheetRadio = new WinForms.RadioButton
+            {
+                Text = "Start Number New Sheet:",
+                Location = new Point(5, 5),
+                Size = new Size(160, 20),
+                Checked = true,
+                Font = new Font("Microsoft Sans Serif", 8.25F, FontStyle.Regular)
+            };
+            _numberingSequencePanel.Controls.Add(_modeNewSheetRadio);
+
+            _startNumberTextBox = new WinForms.TextBox
+            {
+                Location = new Point(170, 4),
+                Size = new Size(60, 20),
+                Text = "" 
+            };
+            _numberingSequencePanel.Controls.Add(_startNumberTextBox);
+
+            // Mode 2: Continue from Floor Plan
+            _modeContinueRadio = new WinForms.RadioButton
+            {
+                Text = "Continue from Floor Plan:",
+                Location = new Point(5, 30),
+                Size = new Size(160, 20),
+                Font = new Font("Microsoft Sans Serif", 8.25F, FontStyle.Regular)
+            };
+            _numberingSequencePanel.Controls.Add(_modeContinueRadio);
+
+            _sourceViewCombo = new WinForms.ComboBox
+            {
+                Location = new Point(5, 52),
+                Size = new Size(_numberingSequencePanel.Width - 10, 21),
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Enabled = false // Only enabled if _modeContinueRadio is checked
+            };
+            _numberingSequencePanel.Controls.Add(_sourceViewCombo);
+
+            // Wire up toggle logic
+            _modeNewSheetRadio.CheckedChanged += (s, e) => {
+                _startNumberTextBox.Enabled = _modeNewSheetRadio.Checked;
+                _sourceViewCombo.Enabled = _modeContinueRadio.Checked;
+            };
+            _modeContinueRadio.CheckedChanged += (s, e) => {
+                _startNumberTextBox.Enabled = _modeNewSheetRadio.Checked;
+                _sourceViewCombo.Enabled = _modeContinueRadio.Checked;
+            };
+
+            // Populate Floor Plans
+            PopulateFloorPlans();
+
+            yPos += 90;
 
             // ✅ NEW: System Type Overrides section (always visible, not collapsible)
             var systemTypeLabel = new WinForms.Label
@@ -1630,16 +1656,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             header.Controls.Add(renameLabel);
 
-            // Remark column header
-            var remarkLabel = new WinForms.Label
-            {
-                Text = "Remark",
-                Location = new Point(215, 5),
-                Size = new Size(70, 16),
-                Font = new Font("Microsoft Sans Serif", 8.5F, FontStyle.Bold)
-            };
-            header.Controls.Add(remarkLabel);
-
             // "+" button aligned with close buttons (same X position)
             var addBtn = new WinForms.Button
             {
@@ -1704,16 +1720,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Text = prefix
             };
             row.Controls.Add(prefixTextBox);
-
-            // Remark checkbox
-            var remarkCheckBox = new WinForms.CheckBox
-            {
-                Text = "",
-                Location = new Point(218, 5),
-                Size = new Size(20, 20),
-                Checked = true // Default to Checked as per user request
-            };
-            row.Controls.Add(remarkCheckBox);
 
             // Close button (aligned with parameter mapping close buttons)
             var closeBtn = new WinForms.Button
@@ -1851,6 +1857,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             else
             {
                 comboBox.Text = string.IsNullOrWhiteSpace(selectedValue) ? "<Select>" : selectedValue;
+            }
+        }
+
+        /// <summary>
+        /// ✅ NEW: Populate Floor Plan dropdown for numbering continuation
+        /// </summary>
+        private void PopulateFloorPlans()
+        {
+            if (_document == null || _sourceViewCombo == null) return;
+
+            try 
+            {
+                var floorPlans = new FilteredElementCollector(_document)
+                    .OfClass(typeof(ViewPlan))
+                    .Cast<ViewPlan>()
+                    .Where(vp => !vp.IsTemplate)
+                    .OrderBy(vp => vp.Name)
+                    .ToList();
+
+                _sourceViewCombo.Items.Clear();
+                _sourceViewCombo.Items.Add("<Select Floor Plan>");
+
+                foreach (var vp in floorPlans)
+                {
+                    // Use GenLevel Name if possible, fallback to View Name
+                    string displayName = vp.GenLevel?.Name ?? vp.Name;
+                    _sourceViewCombo.Items.Add(displayName);
+                }
+
+                if (_sourceViewCombo.Items.Count > 0)
+                    _sourceViewCombo.SelectedIndex = 0;
+            }
+            catch (Exception ex)
+            {
+                RemarkDebugLogger.LogError($"Error populating floor plans: {ex.Message}");
             }
         }
 
@@ -2202,256 +2243,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         }
 
         /// <summary>
-        /// Handle Apply Marks button click
-        /// Applies marks to sleeves based on selected remark checkboxes
-        /// NOTE: This needs XML files to determine which category each sleeve belongs to (Ducts/Pipes/etc.)
+        /// Handle Reset Prefix button click
+        /// Re-marks only the categories where prefixes have changed
         /// </summary>
-        private void OnApplyMarksClick(object sender, EventArgs e)
-        {
-            try
-            {
-                if (_document == null || _uiDocument == null)
-                {
-                    WinForms.MessageBox.Show("Document not available.", "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
-                    return;
-                }
-
-                // ✅ VALIDATION: Numbering/Apply Marks ONLY allowed in Floor Plan with Crop Box or Scope Box (Session Context)
-                if (!(_document.ActiveView is ViewPlan plan) || !(plan.CropBoxActive || (plan.get_Parameter(BuiltInParameter.VIEWER_VOLUME_OF_INTEREST_CROP)?.AsElementId() ?? ElementId.InvalidElementId) != ElementId.InvalidElementId))
-                {
-                    WinForms.MessageBox.Show(
-                        "Numbering is only allowed in Floor Plan Views with an active Crop Box or Scope Box applied.\n\nPlease switch to a valid view to define the numbering session context.", 
-                        "Invalid View Context", 
-                        WinForms.MessageBoxButtons.OK, 
-                        WinForms.MessageBoxIcon.Warning);
-                    return;
-                }
-
-                // ✅ DATABASE-BASED: Check if categories have clash zone data in the database
-                // Apply Marks needs clash zone data to determine which category each sleeve belongs to
-                var missingCategories = GetCategoriesWithoutData();
-                if (missingCategories.Count > 0)
-                {
-                    var categoryList = string.Join("\n• ", missingCategories);
-                    var result = WinForms.MessageBox.Show(
-                        $"⚠️ CLASH DATA NOT FOUND\n\n" +
-                        $"The following categories cannot be processed because no clash zone data is found in the database:\n\n" +
-                        $"• {categoryList}\n\n" +
-                        $"Apply Marks requires clash zone data in the database to determine sleeve categories.\n\n" +
-                        $"Please run Refresh to detect clash zones before applying marks.\n\n" +
-                        $"Would you like to continue with available categories only?",
-                        "Missing Clash Data",
-                        WinForms.MessageBoxButtons.YesNo,
-                        WinForms.MessageBoxIcon.Warning);
-
-                    if (result != WinForms.DialogResult.Yes)
-                    {
-                        return; // User cancelled
-                    }
-
-                     // Γ£à WARNING SUPPRESSED: Log warning instead of showing popup
-                     RemarkDebugLogger.LogStep($"[OnRemarkSelectedClick] Warning: Some categories missing clash data ({string.Join(", ", missingCategories)}). Continuing with available data as per user preference (Warning Box Suppressed).");
-                }
-
-                // Collect settings from UI
-                var projectPrefix = _projectPrefixTextBox.Text.Trim();
-                var numberFormat = _numberFormatCombo.SelectedIndex switch
-                {
-                    0 => "00",
-                    1 => "000",
-                    2 => "0000",
-                    _ => "000"
-                };
-
-                var remarkProject = _remarkProjectCheckBox.Checked;
-                var remarkDuct = _remarkDuctCheckBox.Checked;
-                var remarkPipe = _remarkPipeCheckBox.Checked;
-                var remarkCableTray = _remarkCableTrayCheckBox.Checked;
-                var remarkDamper = _remarkDamperCheckBox.Checked;
-
-                // Show progress dialog
-                using (var progressForm = new WinForms.Form())
-                {
-                    progressForm.Text = "Applying Marks...";
-                    progressForm.Size = new Size(400, 100);
-                    progressForm.StartPosition = FormStartPosition.CenterScreen;
-                    progressForm.FormBorderStyle = FormBorderStyle.FixedDialog;
-                    progressForm.MaximizeBox = false;
-                    progressForm.MinimizeBox = false;
-
-                    var progressLabel = new WinForms.Label
-                    {
-                        Text = "Applying marks to sleeves with remark checkboxes enabled...",
-                        Location = new Point(10, 30),
-                        Size = new Size(380, 20),
-                        TextAlign = System.Drawing.ContentAlignment.MiddleCenter
-                    };
-                    progressForm.Controls.Add(progressLabel);
-
-                    progressForm.Show();
-                    progressForm.Refresh();
-
-                    // Prepare mark prefixes settings
-                    var ductPrefix = _ductPrefixTextBox.Text.Trim();
-                    var pipePrefix = _pipePrefixTextBox.Text.Trim();
-                    var cableTrayPrefix = _cableTrayPrefixTextBox.Text.Trim();
-                    var damperPrefix = _damperPrefixTextBox.Text.Trim();
-
-                    int startNum = 1;
-                    int.TryParse(_startNumberTextBox.Text, out startNum);
-
-                    var markPrefixes = new Models.MarkPrefixSettings
-                    {
-                        ProjectPrefix = projectPrefix,
-                        DuctPrefix = ductPrefix,
-                        PipePrefix = pipePrefix,
-                        CableTrayPrefix = cableTrayPrefix,
-                        DamperPrefix = damperPrefix,
-                        NumberFormat = numberFormat,
-                        // ✅ OPTIMIZATION: Always use Active View context (validated above)
-                        ActiveViewOnly = true, 
-                        StartNumber = startNum
-                    };
-
-                    // Sync remark checkboxes so MarkParameterCommand honours the user's selection
-                    markPrefixes.RemarkAll = remarkProject;
-                    markPrefixes.RemarkProjectPrefix = remarkProject;
-                    markPrefixes.RemarkDuctPrefix = remarkDuct;
-                    markPrefixes.RemarkPipePrefix = remarkPipe;
-                    markPrefixes.RemarkCableTrayPrefix = remarkCableTray;
-                    markPrefixes.RemarkDamperPrefix = remarkDamper;
-
-                    // Collect checked System Type Overrides
-                    var systemTypeOverrides = new List<(string systemType, string prefix)>();
-                    foreach (var row in _systemTypeRows)
-                    {
-                        // Find checkbox in row
-                        var checkbox = row.Controls.OfType<WinForms.CheckBox>().FirstOrDefault();
-                        if (checkbox != null && checkbox.Checked)
-                        {
-                            var comboBox = row.Controls.OfType<WinForms.ComboBox>().FirstOrDefault();
-                            var textBox = row.Controls.OfType<WinForms.TextBox>().FirstOrDefault();
-
-                            if (comboBox != null && textBox != null)
-                            {
-                                systemTypeOverrides.Add((comboBox.Text, textBox.Text));
-                            }
-                        }
-                    }
-
-                    // Persist any per-system overrides that were checked
-                    foreach (var (systemType, prefix) in systemTypeOverrides)
-                    {
-                        if (!string.IsNullOrWhiteSpace(systemType))
-                        {
-                            markPrefixes.DuctSystemTypeOverrides[systemType] = prefix ?? string.Empty;
-                            markPrefixes.PipeSystemTypeOverrides[systemType] = prefix ?? string.Empty;
-                            markPrefixes.DuctAccessoriesSystemTypeOverrides[systemType] = prefix ?? string.Empty;
-                        }
-                    }
-
-                    // Debug: Log the prefix values being used
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Apply Marks - Project: '{projectPrefix}', Duct: '{ductPrefix}', Pipe: '{pipePrefix}', CableTray: '{cableTrayPrefix}', Damper: '{damperPrefix}', Format: '{numberFormat}', Start: {startNum}\n");
-
-                    // ✅ PERFORMANCE MONITORING: Track Apply Marks performance
-                    int totalProcessed = 0;
-                    using (var perfMonitor = new ParameterOperationPerformanceMonitor("Apply Marks"))
-                    {
-                        if (markPrefixes.ActiveViewOnly && _document != null)
-                        {
-                            // ✅ BIM 360 OPTIMIZATION: Per-sheet numbering using database-driven logic
-                            var markService = new Services.MarkParameterService(null, msg => { if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info(msg); });
-
-                            // ✅ PARALLEL OPTIMIZATION: Process combined sleeves in parallel with individual categories
-                            System.Threading.Tasks.Task<(int processed, int errors)>? combinedTask = null;
-                            combinedTask = System.Threading.Tasks.Task.Run(() =>
-                            {
-                                using (var context = new Data.SleeveDbContext(_document))
-                                {
-                                    var repo = new Data.Repositories.ClashZoneRepository(context, msg => { });
-                                    var levelName = (_document.ActiveView as ViewPlan)?.GenLevel?.Name ?? "";
-
-                                    // Check if combined sleeves exist in current session (IsCurrentClash=1)
-                                    var combinedCount = repo.GetSleevesForLevel(levelName, "Combined")
-                                        .Count(z => z.IsCurrentClash && z.CombinedClusterSleeveInstanceId > 0);
-
-                                    if (combinedCount > 0)
-                                    {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[ParameterServiceDialogV2] Found {combinedCount} combined sleeves in session - processing with MEP prefix");
-
-                                        // Process combined sleeves in parallel
-                                        return markService.ApplyMarksFromDatabase(_document, markPrefixes, "Combined");
-                                    }
-
-                                    return (0, 0); // No combined sleeves
-                                }
-                            });
-
-                            // Pass 1: Individual Disciplines (runs in parallel with combined task)
-                            var disciplineCategories = new[] { "Ducts", "Pipes", "Cable Trays", "Duct Accessories" };
-                            foreach (var cat in disciplineCategories)
-                            {
-                                // Only process categories that have their remark checkbox enabled
-                                if (!markPrefixes.GetRemarkFlag(cat)) continue;
-
-                                var (processed, errors) = markService.ApplyMarksFromDatabase(_document, markPrefixes, cat);
-                                totalProcessed += processed;
-                            }
-
-                            // Pass 2: Wait for combined sleeves to complete
-                            var (combinedProcessed, combinedErrors) = combinedTask.Result;
-                            totalProcessed += combinedProcessed;
-                        }
-                        else
-                        {
-                            // Legacy logic: Mark ALL sleeves regardless of checkbox state (using old command)
-                            var cmd = new MarkParameterCommand("ALL", projectPrefix, "", false, markPrefixes);
-                            cmd.Execute(_uiDocument.Application);
-
-                            // Get total sleeves count for performance monitoring
-                            totalProcessed = new FilteredElementCollector(_document)
-                                .OfClass(typeof(FamilyInstance))
-                                .Cast<FamilyInstance>()
-                                .Where(fi => {
-                                    var famName = fi.Symbol?.Family?.Name ?? string.Empty;
-                                    return famName.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0
-                                        || famName.IndexOf("OpeningOnSlab", StringComparison.OrdinalIgnoreCase) >= 0;
-                                })
-                                .Count();
-                        }
-
-                        perfMonitor.SetItemCount(totalProcessed);
-                    }
-
-                    progressForm.Close();
-
-                    var prefixSummary = string.IsNullOrWhiteSpace(projectPrefix)
-                        ? $"Duct:{ductPrefix}, Pipe:{pipePrefix}, CableTray:{cableTrayPrefix}, Damper:{damperPrefix}"
-                        : $"Project:{projectPrefix}, Duct:{ductPrefix}, Pipe:{pipePrefix}, CableTray:{cableTrayPrefix}, Damper:{damperPrefix}";
-
-                    WinForms.MessageBox.Show($"Marks applied to all categories using:\n{prefixSummary}",
-                        "Apply Marks Complete", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
-                }
-            }
-            catch (Exception ex)
-            {
-                WinForms.MessageBox.Show($"Error during mark application: {ex.Message}",
-                    "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
-            }
-        }
-
-        /// <summary>
-        /// Handle Remark Selected button click
-        /// Re-marks only the categories with remark checkboxes checked
-        /// NOTE: This DOES need XML files to determine which sleeves belong to each category
-        /// </summary>
-        private void OnRemarkSelectedClick(object sender, EventArgs e)
+        private void OnResetPrefixClick(object sender, EventArgs e)
         {
             // ✅ PERSISTENCE: Save settings before processing
             SaveCurrentSettings();
 
-            RemarkDebugLogger.LogStep("--- Remark Selected Clicked ---");
+            RemarkDebugLogger.LogStep("--- Reset Prefix Clicked ---");
             try
             {
                 if (_document == null || _uiDocument == null)
@@ -2461,326 +2261,179 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     return;
                 }
 
-                // Collect remark checkbox states
-                var remarkProject = _remarkProjectCheckBox.Checked;
-                var remarkDuct = _remarkDuctCheckBox.Checked;
-                var remarkPipe = _remarkPipeCheckBox.Checked;
-                var remarkCableTray = _remarkCableTrayCheckBox.Checked;
-                var remarkDamper = _remarkDamperCheckBox.Checked;
+                // Collect settings from UI (with smart change detection)
+                var (markPrefixes, isValid) = GetMarkPrefixSettingsFromUI();
+                if (!isValid) return;
 
-                RemarkDebugLogger.LogSelection("RemarkProject", remarkProject);
-                RemarkDebugLogger.LogSelection("RemarkDuct", remarkDuct);
-                RemarkDebugLogger.LogSelection("RemarkPipe", remarkPipe);
-                RemarkDebugLogger.LogSelection("RemarkCableTray", remarkCableTray);
-                RemarkDebugLogger.LogSelection("RemarkDamper", remarkDamper);
-
-                // Collect prefix values
-                var projectPrefix = _projectPrefixTextBox.Text.Trim();
-                var ductPrefix = _ductPrefixTextBox.Text.Trim();
-                var pipePrefix = _pipePrefixTextBox.Text.Trim();
-                var cableTrayPrefix = _cableTrayPrefixTextBox.Text.Trim();
-                var damperPrefix = _damperPrefixTextBox.Text.Trim();
-
-                RemarkDebugLogger.LogSelection("ProjectPrefix", projectPrefix);
-                RemarkDebugLogger.LogSelection("DuctPrefix", ductPrefix);
-                RemarkDebugLogger.LogSelection("PipePrefix", pipePrefix);
-                RemarkDebugLogger.LogSelection("CableTrayPrefix", cableTrayPrefix);
-                RemarkDebugLogger.LogSelection("DamperPrefix", damperPrefix);
-
-                var numberFormat = _numberFormatCombo.SelectedIndex switch
+                // Show progress dialog
+                using (var progressForm = new WinForms.Form())
                 {
-                    0 => "00",
-                    1 => "000",
-                    2 => "0000",
-                    _ => "000"
-                };
-                RemarkDebugLogger.LogSelection("NumberFormat", numberFormat);
+                    progressForm.Text = "Resetting Prefixes...";
+                    progressForm.Size = new Size(400, 100);
+                    progressForm.StartPosition = FormStartPosition.CenterScreen;
+                    progressForm.FormBorderStyle = FormBorderStyle.FixedDialog;
+                    progressForm.MaximizeBox = false;
+                    progressForm.MinimizeBox = false;
 
-                // ✅ CRITICAL FIX: Collect System/Service Type Overrides and detect which category they belong to
-                var ductSystemTypeOverrides = new List<(string systemType, string prefix)>();
-                var pipeSystemTypeOverrides = new List<(string systemType, string prefix)>();
-                var ductAccessoriesSystemTypeOverrides = new List<(string systemType, string prefix)>();
-                var cableTrayServiceTypeOverrides = new List<(string serviceType, string prefix)>();
-                bool hasDuctSystemOverrideRemark = false;
-                bool hasPipeSystemOverrideRemark = false;
-                bool hasDuctAccessoriesSystemOverrideRemark = false;
-                bool hasCableTrayServiceOverrideRemark = false;
-
-                // ✅ STEP 1: Get available system/service types for each category to detect which category they belong to
-                var cableTrayServiceTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                var ductSystemTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                var pipeSystemTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                var ductAccessoriesSystemTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-                try
-                {
-                    if (_document != null)
+                    var progressLabel = new WinForms.Label
                     {
-                        var catalogService = new SystemTypeCatalogService(msg => { });
+                        Text = "Detecting changes and applying new prefixes...",
+                        Location = new Point(10, 30),
+                        Size = new Size(380, 20),
+                        TextAlign = System.Drawing.ContentAlignment.MiddleCenter
+                    };
+                    progressForm.Controls.Add(progressLabel);
 
-                        // Get Cable Tray Service Types
-                        var cableTrayCatalog = catalogService.Load(_document, "Cable Trays");
-                        foreach (var st in cableTrayCatalog.ServiceTypes ?? Enumerable.Empty<string>())
-                        {
-                            if (!string.IsNullOrWhiteSpace(st))
-                                cableTrayServiceTypes.Add(st.Trim());
-                        }
+                    progressForm.Show();
+                    progressForm.Refresh();
 
-                        // Get Duct System Types
-                        var ductCatalog = catalogService.Load(_document, "Ducts");
-                        foreach (var st in ductCatalog.SystemTypes ?? Enumerable.Empty<string>())
-                        {
-                            if (!string.IsNullOrWhiteSpace(st))
-                                ductSystemTypes.Add(st.Trim());
-                        }
+                    // ✅ SMART EXECUTION: If everything is same, we force everything? 
+                    // No, if user clicks "Reset Prefix" they might want to re-run everything.
+                    // But if they just changed ONE thing, we only reset that one.
+                    
+                    var markService = new Services.MarkParameterService(null, msg => { if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info(msg); });
+                    int totalProcessed = 0;
 
-                        // Get Pipe System Types
-                        var pipeCatalog = catalogService.Load(_document, "Pipes");
-                        foreach (var st in pipeCatalog.SystemTypes ?? Enumerable.Empty<string>())
-                        {
-                            if (!string.IsNullOrWhiteSpace(st))
-                                pipeSystemTypes.Add(st.Trim());
-                        }
-
-                        // Get Duct Accessories System Types
-                        var ductAccessoriesCatalog = catalogService.Load(_document, "Duct Accessories");
-                        foreach (var st in ductAccessoriesCatalog.SystemTypes ?? Enumerable.Empty<string>())
-                        {
-                            if (!string.IsNullOrWhiteSpace(st))
-                                ductAccessoriesSystemTypes.Add(st.Trim());
-                        }
-                    }
-                }
-                catch { /* Ignore errors */ }
-
-                foreach (var row in _systemTypeRows)
-                {
-                    // Find checkbox in row
-                    var checkbox = row.Controls.OfType<WinForms.CheckBox>().FirstOrDefault();
-                    if (checkbox != null && checkbox.Checked)
+                    using (var perfMonitor = new ParameterOperationPerformanceMonitor("Reset Prefix"))
                     {
-                        var comboBox = row.Controls.OfType<WinForms.ComboBox>().FirstOrDefault();
-                        var textBox = row.Controls.OfType<WinForms.TextBox>().FirstOrDefault();
+                         // Pass 1: Individual Disciplines
+                         var disciplineCategories = new[] { "Ducts", "Pipes", "Cable Trays", "Duct Accessories" };
+                         foreach (var cat in disciplineCategories)
+                         {
+                             // Only process categories that have their prefix changed (marked by the smart helper)
+                             if (!markPrefixes.GetRemarkFlag(cat)) continue;
 
-                        if (comboBox != null && textBox != null)
-                        {
-                            var systemOrServiceType = comboBox.Text;
-                            var prefix = textBox.Text;
+                             var (processed, errors) = markService.ApplyMarksFromDatabase(_document, markPrefixes, cat);
+                             totalProcessed += processed;
+                         }
 
-                            // ✅ CRITICAL: Detect which category this system/service type belongs to
-                            // Priority: Cable Tray Service Types > Duct System Types > Pipe System Types > Duct Accessories System Types
-                            if (cableTrayServiceTypes.Contains(systemOrServiceType))
-                            {
-                                // This is a Cable Tray Service Type
-                                cableTrayServiceTypeOverrides.Add((systemOrServiceType, prefix));
-                                hasCableTrayServiceOverrideRemark = true;
-                            }
-                            else if (ductSystemTypes.Contains(systemOrServiceType))
-                            {
-                                // This is a Duct System Type
-                                ductSystemTypeOverrides.Add((systemOrServiceType, prefix));
-                                hasDuctSystemOverrideRemark = true;
-                            }
-                            else if (pipeSystemTypes.Contains(systemOrServiceType))
-                            {
-                                // This is a Pipe System Type
-                                pipeSystemTypeOverrides.Add((systemOrServiceType, prefix));
-                                hasPipeSystemOverrideRemark = true;
-                            }
-                            else if (ductAccessoriesSystemTypes.Contains(systemOrServiceType))
-                            {
-                                // This is a Duct Accessories System Type
-                                ductAccessoriesSystemTypeOverrides.Add((systemOrServiceType, prefix));
-                                hasDuctAccessoriesSystemOverrideRemark = true;
-                            }
-                            else
-                            {
-                                // Unknown - default to Duct System Type (backward compatibility)
-                                ductSystemTypeOverrides.Add((systemOrServiceType, prefix));
-                                hasDuctSystemOverrideRemark = true;
-                            }
-                        }
-                    }
-                }
+                         // Pass 2: Combined Sleeves (Force if project prefix changed)
+                         if (markPrefixes.RemarkProjectPrefix)
+                         {
+                             var (combinedProcessed, combinedErrors) = markService.ApplyMarksFromDatabase(_document, markPrefixes, "Combined");
+                             totalProcessed += combinedProcessed;
+                         }
 
-                // ✅ NEW: Check if filter XML files exist for any category we plan to remark
-                var categoriesNeedingFilters = new List<string>();
-                if (remarkProject || remarkDuct || hasDuctSystemOverrideRemark) categoriesNeedingFilters.Add("Ducts");
-                if (remarkProject || remarkPipe || hasPipeSystemOverrideRemark) categoriesNeedingFilters.Add("Pipes");
-                if (remarkProject || remarkCableTray || hasCableTrayServiceOverrideRemark) categoriesNeedingFilters.Add("Cable Trays");
-                if (remarkProject || remarkDamper || hasDuctAccessoriesSystemOverrideRemark) categoriesNeedingFilters.Add("Duct Accessories");
-
-                if (categoriesNeedingFilters.Count > 0)
-                {
-                    RemarkDebugLogger.LogInfo($"Categories needing filters: {string.Join(", ", categoriesNeedingFilters)}");
-                    var missingCategories = GetCategoriesWithoutData()
-                        .Where(cat => categoriesNeedingFilters.Contains(cat))
-                        .ToList();
-
-                    if (missingCategories.Count > 0)
-                    {
-                        RemarkDebugLogger.LogStep($"WARNING: Missing clash data for: {string.Join(", ", missingCategories)}");
-                        // ✅ SUPPRESSED: User requested to continue without warning dialog
-                        // Continue to process what we can
-                        RemarkDebugLogger.LogStep("Continuing with available categories (Warning suppressed via user request)");
+                         perfMonitor.SetItemCount(totalProcessed);
                     }
 
-                    // Show progress dialog
-                    using (var progressForm = new WinForms.Form())
-                    {
-                        progressForm.Text = "Remarking Selected Categories...";
-                        progressForm.Size = new Size(400, 100);
-                        progressForm.StartPosition = FormStartPosition.CenterScreen;
-                        progressForm.FormBorderStyle = FormBorderStyle.FixedDialog;
-                        progressForm.MaximizeBox = false;
-                        progressForm.MinimizeBox = false;
+                    progressForm.Close();
 
-                        var progressLabel = new WinForms.Label
-                        {
-                            Text = "Remarking selected categories...",
-                            Location = new Point(10, 30),
-                            Size = new Size(380, 20),
-                            TextAlign = System.Drawing.ContentAlignment.MiddleCenter
-                        };
-                        progressForm.Controls.Add(progressLabel);
+                    var prefixSummary = string.IsNullOrWhiteSpace(markPrefixes.ProjectPrefix)
+                        ? $"Duct:{markPrefixes.DuctPrefix}, Pipe:{markPrefixes.PipePrefix}, CableTray:{markPrefixes.CableTrayPrefix}, Damper:{markPrefixes.DamperPrefix}"
+                        : $"Project:{markPrefixes.ProjectPrefix}, Duct:{markPrefixes.DuctPrefix}, Pipe:{markPrefixes.PipePrefix}, CableTray:{markPrefixes.CableTrayPrefix}, Damper:{markPrefixes.DamperPrefix}";
 
-                        progressForm.Show();
-                        progressForm.Refresh();
-
-                        // Prepare mark prefixes settings
-                        var markPrefixes = new Models.MarkPrefixSettings
-                        {
-                            ProjectPrefix = projectPrefix,
-                            DuctPrefix = ductPrefix,
-                            PipePrefix = pipePrefix,
-                            CableTrayPrefix = cableTrayPrefix,
-                            DamperPrefix = damperPrefix,
-                            NumberFormat = numberFormat
-                        };
-
-                        // Sync remark checkboxes so MarkParameterCommand honours the user's selection
-                        markPrefixes.RemarkAll = remarkProject;
-                        markPrefixes.RemarkProjectPrefix = remarkProject;
-                        markPrefixes.RemarkDuctPrefix = remarkDuct || hasDuctSystemOverrideRemark;
-                        markPrefixes.RemarkPipePrefix = remarkPipe || hasPipeSystemOverrideRemark;
-                        markPrefixes.RemarkCableTrayPrefix = remarkCableTray || hasCableTrayServiceOverrideRemark;
-                        markPrefixes.RemarkDamperPrefix = remarkDamper || hasDuctAccessoriesSystemOverrideRemark;
-
-                        // ✅ CRITICAL FIX: Add system/service type overrides to correct dictionaries based on category
-                        // Duct System Type Overrides
-                        foreach (var (systemType, prefix) in ductSystemTypeOverrides)
-                        {
-                            if (!string.IsNullOrWhiteSpace(systemType))
-                            {
-                                markPrefixes.DuctSystemTypeOverrides[systemType] = prefix ?? string.Empty;
-                            }
-                        }
-
-                        // Pipe System Type Overrides
-                        foreach (var (systemType, prefix) in pipeSystemTypeOverrides)
-                        {
-                            if (!string.IsNullOrWhiteSpace(systemType))
-                            {
-                                markPrefixes.PipeSystemTypeOverrides[systemType] = prefix ?? string.Empty;
-                            }
-                        }
-
-                        // Duct Accessories System Type Overrides
-                        foreach (var (systemType, prefix) in ductAccessoriesSystemTypeOverrides)
-                        {
-                            if (!string.IsNullOrWhiteSpace(systemType))
-                            {
-                                markPrefixes.DuctAccessoriesSystemTypeOverrides[systemType] = prefix ?? string.Empty;
-                            }
-                        }
-
-                        // Cable Tray Service Type Overrides
-                        foreach (var (serviceType, prefix) in cableTrayServiceTypeOverrides)
-                        {
-                            if (!string.IsNullOrWhiteSpace(serviceType))
-                            {
-                                markPrefixes.CableTrayServiceTypeOverrides[serviceType] = prefix ?? string.Empty;
-                            }
-                        }
-
-                        // ✅ PERFORMANCE MONITORING: Track Remark Selected performance
-                        int totalProcessed = 0;
-                        var categoriesProcessed = new List<string>();
-
-                        using (var perfMonitor = new ParameterOperationPerformanceMonitor("Remark Selected"))
-                        {
-                            // ✅ CRITICAL FIX: Use markPrefixes.GetRemarkFlag() instead of hardcoded true
-                            // This ensures that each category's checkbox state is respected
-
-                            // If Project Prefix remark is checked, re-mark ALL categories with new project prefix
-                            // ✅ CRITICAL FIX: Use PrefixOnly mode for Remark Selected
-                            // This aligns with the new separated workflow where prefixes and numbers are handled independently.
-                            RemarkDebugLogger.LogStep("Executing MarkParameterCommand in SELECTED/PrefixOnly mode");
-                            var cmd = new MarkParameterCommand(
-                                "SELECTED",
-                                projectPrefix,
-                                "",
-                                false,
-                                markPrefixes,
-                                MarkParameterCommand.MarkingMode.PrefixOnly
-                            );
-                            cmd.Execute(_uiDocument.Application);
-
-                            // Populate summary for completion message
-                            if (remarkProject)
-                            {
-                                categoriesProcessed.Add("All Categories (Project Prefix)");
-                            }
-                            else
-                            {
-                                if (markPrefixes.RemarkDuctPrefix)
-                                    categoriesProcessed.Add(hasDuctSystemOverrideRemark && !remarkDuct ? "Ducts (System Type Overrides)" : "Ducts");
-                                if (markPrefixes.RemarkPipePrefix)
-                                    categoriesProcessed.Add(hasPipeSystemOverrideRemark && !remarkPipe ? "Pipes (System Type Overrides)" : "Pipes");
-                                if (markPrefixes.RemarkCableTrayPrefix)
-                                    categoriesProcessed.Add(hasCableTrayServiceOverrideRemark && !remarkCableTray ? "Cable Trays (Service Type Overrides)" : "Cable Trays");
-                                if (markPrefixes.RemarkDamperPrefix)
-                                    categoriesProcessed.Add(hasDuctAccessoriesSystemOverrideRemark && !remarkDamper ? "Duct Accessories (System Type Overrides)" : "Duct Accessories");
-                            }
-                            RemarkDebugLogger.LogInfo($"Categories processed by UI logic: {string.Join(", ", categoriesProcessed)}");
-
-                            totalProcessed = categoriesProcessed.Count > 0 ? 1 : 0;
-
-                            // Get total sleeves count for performance monitoring
-                            var allSleeves = new FilteredElementCollector(_document)
-                                .OfClass(typeof(FamilyInstance))
-                                .Cast<FamilyInstance>()
-                                .Where(fi =>
-                                {
-                                    var famName = fi.Symbol?.Family?.Name ?? string.Empty;
-                                    return famName.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0
-                                        || famName.IndexOf("OpeningOnSlab", StringComparison.OrdinalIgnoreCase) >= 0;
-                                })
-                                .Count();
-                            perfMonitor.SetItemCount(allSleeves);
-                        }
-
-                        progressForm.Close();
-
-                        if (totalProcessed > 0)
-                        {
-                            WinForms.MessageBox.Show($"Reset prefix for {totalProcessed} categories:\n{string.Join(", ", categoriesProcessed)}",
-                                "Reset Prefix Complete", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
-                        }
-                        else
-                        {
-                            WinForms.MessageBox.Show("No categories selected for resetting prefix. Please check remark checkboxes.",
-                                "No Selection", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
-                        }
-                    }
+                    WinForms.MessageBox.Show($"Prefixes reset successfully for modified categories.\n\nSummary:\n{prefixSummary}",
+                        "Reset Prefix Complete", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
                 }
             }
             catch (Exception ex)
             {
-                WinForms.MessageBox.Show($"Error during remark: {ex.Message}",
+                WinForms.MessageBox.Show($"Error during prefix reset: {ex.Message}",
                     "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
             }
         }
+
+        /// <summary>
+        /// Handle Add Prefix button click
+        /// Applies ONLY prefixes (DB-based) to items where prefix has changed
+        /// </summary>
+        private void OnAddPrefixClick(object sender, EventArgs e)
+        {
+            // ✅ PERSISTENCE: Save user inputs before applying
+            SaveCurrentSettings();
+
+            var (settings, isValid) = GetMarkPrefixSettingsFromUI();
+            if (!isValid) return;
+
+            try
+            {
+                // Show mini progress
+                using (var progressForm = new WinForms.Form { Text = "Applying Prefixes...", Size = new Size(300, 100), StartPosition = FormStartPosition.CenterScreen })
+                {
+                    var progressLabel = new WinForms.Label
+                    {
+                        Text = "Updating prefixes on sleeves...",
+                        Location = new Point(10, 30),
+                        Size = new Size(280, 20),
+                        TextAlign = System.Drawing.ContentAlignment.MiddleCenter
+                    };
+                    progressForm.Controls.Add(progressLabel);
+                    progressForm.Show();
+                    progressForm.Refresh();
+
+                    // Execute Command in PrefixOnly mode
+                    // PrefixOnly mode typically update the prefix without resetting the number
+                    var cmd = new MarkParameterCommand(
+                        "ALL",
+                        settings.ProjectPrefix,
+                        "", 
+                        false, // NO remark/reset here, just apply prefix
+                        settings,
+                        MarkParameterCommand.MarkingMode.PrefixOnly
+                    );
+
+                    cmd.Execute(_uiDocument.Application);
+
+                    progressForm.Close();
+                    WinForms.MessageBox.Show("Prefixes applied successfully.", "Complete", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                WinForms.MessageBox.Show($"Error applying prefixes: {ex.Message}", "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
+            }
+        }
+
+        /// <summary>
+        /// Handle Add Number button click
+        /// Applies ONLY numbers (Revit scan) to marked items
+        /// </summary>
+        private void OnAddNumberClick(object sender, EventArgs e)
+        {
+            // ✅ PERSISTENCE: Save user inputs before applying
+            SaveCurrentSettings();
+
+            var (settings, isValid) = GetMarkPrefixSettingsFromUI();
+            if (!isValid) return;
+
+            try
+            {
+                using (var progressForm = new WinForms.Form { Text = "Applying Numbers...", Size = new Size(300, 100), StartPosition = FormStartPosition.CenterScreen })
+                {
+                    var progressLabel = new WinForms.Label
+                    {
+                        Text = "Numbering sleeves in sequence...",
+                        Location = new Point(10, 30),
+                        Size = new Size(280, 20),
+                        TextAlign = System.Drawing.ContentAlignment.MiddleCenter
+                    };
+                    progressForm.Controls.Add(progressLabel);
+                    progressForm.Show();
+                    progressForm.Refresh();
+
+                    // Execute Command in NumberOnly mode
+                    var cmd = new MarkParameterCommand(
+                        "ALL",
+                        settings.ProjectPrefix,
+                        "",
+                        false,
+                        settings,
+                        MarkParameterCommand.MarkingMode.NumberOnly
+                    );
+
+                    cmd.Execute(_uiDocument.Application);
+
+                    progressForm.Close();
+                    WinForms.MessageBox.Show("Numbers applied successfully.", "Complete", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                WinForms.MessageBox.Show($"Error applying numbers: {ex.Message}", "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
+            }
+        }
+
 
         /// <summary>
         /// ✅ DATABASE-BASED: Check if categories have clash zone data in the database
@@ -3039,42 +2692,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
         }
 
-        /// <summary>
-        /// ✅ RESET SELECTION: Clears Marks from Selected Elements ONLY
-        /// </summary>
-        private void OnResetSelectionClick(object sender, EventArgs e)
-        {
-            if (_document == null || _uiDocument == null) return;
-
-            var selectedIds = _uiDocument.Selection.GetElementIds();
-            if (selectedIds.Count == 0)
-            {
-                WinForms.MessageBox.Show("Please select at least one sleeve element.", "No Selection");
-                return;
-            }
-
-            if (WinForms.MessageBox.Show(
-                $"Are you sure you want to clear 'MEP Mark' from the {selectedIds.Count} selected elements?\n\n" +
-                "Note: This does NOT reset the global numbering counters.",
-                "CONFIRM RESET SELECTION",
-                WinForms.MessageBoxButtons.YesNo,
-                WinForms.MessageBoxIcon.Question) != WinForms.DialogResult.Yes)
-            {
-                return;
-            }
-
-            try
-            {
-                var markService = new MarkParameterService(_document);
-                int clearedCount = markService.ResetMarksForSelection(_document, selectedIds);
-
-                WinForms.MessageBox.Show($"Cleared {clearedCount} marks.", "Success");
-            }
-            catch (Exception ex)
-            {
-                WinForms.MessageBox.Show($"Error clearing selection: {ex.Message}", "Error");
-            }
-        }
 
         /// <summary>
         /// ✅ RESET PARAMETERS: Clears Transferred Parameters
@@ -3170,88 +2787,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 WinForms.MessageBox.Show($"Error resetting parameters: {ex.Message}", "Error");
             }
         }
-        /// <summary>
-        /// Handle Add Prefix button click
-        /// Applies ONLY prefixes (DB-based) to marked items
-        /// </summary>
-        private void OnAddPrefixClick(object sender, EventArgs e)
-        {
-            // ✅ PERSISTENCE: Save user inputs before applying
-            SaveCurrentSettings();
-
-            var (settings, isValid) = GetMarkPrefixSettingsFromUI();
-            if (!isValid) return;
-
-            try
-            {
-                // Show mini progress
-                using (var progressForm = new WinForms.Form { Text = "Applying Prefixes...", Size = new Size(300, 50), StartPosition = FormStartPosition.CenterScreen })
-                {
-                    progressForm.Show();
-                    progressForm.Refresh();
-
-                    // Execute Command in PrefixOnly mode
-                    var cmd = new MarkParameterCommand(
-                        "ALL",
-                        settings.ProjectPrefix,
-                        "", // Discipline prefix handled by settings
-                        settings.RemarkAll,
-                        settings,
-                        MarkParameterCommand.MarkingMode.PrefixOnly
-                    );
-
-                    cmd.Execute(_uiDocument.Application);
-
-                    progressForm.Close();
-                    WinForms.MessageBox.Show("Prefixes applied successfully.", "Complete", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
-                }
-            }
-            catch (Exception ex)
-            {
-                WinForms.MessageBox.Show($"Error applying prefixes: {ex.Message}", "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
-            }
-        }
-
-        /// <summary>
-        /// Handle Add Number button click
-        /// Applies ONLY numbers (Revit scan) to marked items
-        /// </summary>
-        private void OnAddNumberClick(object sender, EventArgs e)
-        {
-            // ✅ PERSISTENCE: Save user inputs before applying
-            SaveCurrentSettings();
-
-            var (settings, isValid) = GetMarkPrefixSettingsFromUI(requireDbData: false);
-            if (!isValid) return;
-
-            try
-            {
-                using (var progressForm = new WinForms.Form { Text = "Applying Numbers...", Size = new Size(300, 50), StartPosition = FormStartPosition.CenterScreen })
-                {
-                    progressForm.Show();
-                    progressForm.Refresh();
-
-                    // Execute Command in NumberOnly mode
-                    var cmd = new MarkParameterCommand(
-                        "ALL",
-                        settings.ProjectPrefix,
-                        "",
-                        settings.RemarkAll,
-                        settings,
-                        MarkParameterCommand.MarkingMode.NumberOnly
-                    );
-
-                    cmd.Execute(_uiDocument.Application);
-
-                    progressForm.Close();
-                    WinForms.MessageBox.Show("Numbers applied successfully.", "Complete", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
-                }
-            }
-            catch (Exception ex)
-            {
-                WinForms.MessageBox.Show($"Error applying numbers: {ex.Message}", "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
-            }
-        }
 
         /// <summary>
         /// Helper to gather UI settings and validate state
@@ -3280,6 +2815,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
             */
 
+            var oldSettings = SystemTypeOverridePersistenceService.LoadSettings();
+
             var projectPrefix = _projectPrefixTextBox.Text.Trim();
             var numberFormat = _numberFormatCombo.SelectedIndex switch
             {
@@ -3289,27 +2826,67 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 _ => "000"
             };
 
-            int startNum = 1;
-            int.TryParse(_startNumberTextBox.Text, out startNum);
+            int startNum = 0;
+            if (_modeNewSheetRadio != null && _modeNewSheetRadio.Checked)
+            {
+                int.TryParse(_startNumberTextBox.Text, out startNum);
+            }
 
+            var ductPrefix = _ductPrefixTextBox.Text.Trim();
+            var pipePrefix = _pipePrefixTextBox.Text.Trim();
+            var cableTrayPrefix = _cableTrayPrefixTextBox.Text.Trim();
+            var damperPrefix = _damperPrefixTextBox.Text.Trim();
+
+            // ✅ SMART CHANGE DETECTION: Determine which categories need reset
+            bool projectChanged = projectPrefix != oldSettings.ProjectPrefix;
+            bool ductChanged = ductPrefix != oldSettings.DuctPrefix;
+            bool pipeChanged = pipePrefix != oldSettings.PipePrefix;
+            bool cableTrayChanged = cableTrayPrefix != oldSettings.CableTrayPrefix;
+            bool damperChanged = damperPrefix != oldSettings.DamperPrefix;
+
+            // If project prefix changed, reset everything. Otherwise, reset only modified ones.
             var settings = new Models.MarkPrefixSettings
             {
                 ProjectPrefix = projectPrefix,
-                DuctPrefix = _ductPrefixTextBox.Text.Trim(),
-                PipePrefix = _pipePrefixTextBox.Text.Trim(),
-                CableTrayPrefix = _cableTrayPrefixTextBox.Text.Trim(),
-                DamperPrefix = _damperPrefixTextBox.Text.Trim(),
+                DuctPrefix = ductPrefix,
+                PipePrefix = pipePrefix,
+                CableTrayPrefix = cableTrayPrefix,
+                DamperPrefix = damperPrefix,
                 NumberFormat = numberFormat,
                 ActiveViewOnly = true, // Hardcoded enforce session context
-                // ActiveViewOnly = _activeViewOnlyCheckBox.Checked, (Removed)
                 StartNumber = startNum,
-                RemarkAll = _remarkProjectCheckBox.Checked, // Use project checkbox as global 'All' default
-                RemarkProjectPrefix = _remarkProjectCheckBox.Checked,
-                RemarkDuctPrefix = _remarkDuctCheckBox.Checked,
-                RemarkPipePrefix = _remarkPipeCheckBox.Checked,
-                RemarkCableTrayPrefix = _remarkCableTrayCheckBox.Checked,
-                RemarkDamperPrefix = _remarkDamperCheckBox.Checked
+                
+                UseContinueNumbering = _modeContinueRadio?.Checked ?? false,
+                ContinueFromViewName = _sourceViewCombo?.SelectedItem?.ToString() != "<Select Floor Plan>" 
+                                       ? _sourceViewCombo?.SelectedItem?.ToString() 
+                                       : null,
+
+                RemarkProjectPrefix = projectChanged,
+                RemarkDuctPrefix = projectChanged || ductChanged,
+                RemarkPipePrefix = projectChanged || pipeChanged,
+                RemarkCableTrayPrefix = projectChanged || cableTrayChanged,
+                RemarkDamperPrefix = projectChanged || damperChanged
             };
+            
+            // RemarkAll is true if any category changed
+            settings.RemarkAll = settings.RemarkDuctPrefix || settings.RemarkPipePrefix || 
+                                 settings.RemarkCableTrayPrefix || settings.RemarkDamperPrefix;
+            
+            // If user clicked "Reset Prefix" but nothing changed, we assume they want to force a reset of EVERYTHING
+            if (!settings.RemarkAll)
+            {
+                settings.RemarkProjectPrefix = true;
+                settings.RemarkDuctPrefix = true;
+                settings.RemarkPipePrefix = true;
+                settings.RemarkCableTrayPrefix = true;
+                settings.RemarkDamperPrefix = true;
+                settings.RemarkAll = true;
+                RemarkDebugLogger.LogInfo("[SmartReset] No changes detected, forcing Full Reset of all categories.");
+            }
+            else
+            {
+                RemarkDebugLogger.LogInfo($"[SmartReset] Changes detected - Duct:{ductChanged}, Pipe:{pipeChanged}, Tray:{cableTrayChanged}, Damper:{damperChanged}, Project:{projectChanged}");
+            }
 
             // System Type Overrides
             foreach (var row in _systemTypeRows)
@@ -3374,17 +2951,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 if (_startNumberTextBox != null)
                     _startNumberTextBox.Text = savedSettings.StartNumber.ToString();
 
-                // Restore remark checkboxes - DEFAULT TO TRUE (checked) if no saved value
-                if (_remarkProjectCheckBox != null)
-                    _remarkProjectCheckBox.Checked = savedSettings.RemarkProjectPrefix;
-                if (_remarkDuctCheckBox != null)
-                    _remarkDuctCheckBox.Checked = savedSettings.RemarkDuctPrefix;
-                if (_remarkPipeCheckBox != null)
-                    _remarkPipeCheckBox.Checked = savedSettings.RemarkPipePrefix;
-                if (_remarkCableTrayCheckBox != null)
-                    _remarkCableTrayCheckBox.Checked = savedSettings.RemarkCableTrayPrefix;
-                if (_remarkDamperCheckBox != null)
-                    _remarkDamperCheckBox.Checked = savedSettings.RemarkDamperPrefix;
+                // Restore start number
+                if (_startNumberTextBox != null)
+                    _startNumberTextBox.Text = savedSettings.StartNumber.ToString();
+
+                // Restore Numbering Mode
+                if (_modeContinueRadio != null && _modeNewSheetRadio != null)
+                {
+                    if (savedSettings.UseContinueNumbering)
+                    {
+                        _modeContinueRadio.Checked = true;
+                    }
+                    else
+                    {
+                        _modeNewSheetRadio.Checked = true;
+                    }
+                }
+
+                // Restore Source View Selection
+                if (_sourceViewCombo != null && !string.IsNullOrEmpty(savedSettings.ContinueFromViewName))
+                {
+                    int viewIndex = _sourceViewCombo.FindStringExact(savedSettings.ContinueFromViewName);
+                    if (viewIndex != -1)
+                    {
+                        _sourceViewCombo.SelectedIndex = viewIndex;
+                    }
+                }
 
                 // ✅ PERSISTENCE: Restore System Type Overrides
                 var allOverrides = new Dictionary<string, string>();
@@ -3437,7 +3029,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             catch (Exception ex)
             {
                 RemarkDebugLogger.LogError($"[ParameterServiceDialogV2] Error loading saved settings: {ex.Message}");
-                RemarkDebugLogger.LogError($"[ParameterServiceDialogV2] Error loading saved settings: {ex.Message}");
             }
         }
 
@@ -3457,12 +3048,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     CableTrayPrefix = _cableTrayPrefixTextBox?.Text ?? "E",
                     DamperPrefix = _damperPrefixTextBox?.Text ?? "D",
                     NumberFormat = GetNumberFormatFromCombo(),
-                    StartNumber = int.TryParse(_startNumberTextBox?.Text, out int startNum) ? startNum : 1,
-                    RemarkProjectPrefix = _remarkProjectCheckBox?.Checked ?? false,
-                    RemarkDuctPrefix = _remarkDuctCheckBox?.Checked ?? true,
-                    RemarkPipePrefix = _remarkPipeCheckBox?.Checked ?? true,
-                    RemarkCableTrayPrefix = _remarkCableTrayCheckBox?.Checked ?? true,
-                    RemarkDamperPrefix = _remarkDamperCheckBox?.Checked ?? true
+                    StartNumber = (_modeNewSheetRadio?.Checked == true && int.TryParse(_startNumberTextBox?.Text, out int sn)) ? sn : 0,
+                    
+                    UseContinueNumbering = _modeContinueRadio?.Checked ?? false,
+                    ContinueFromViewName = _sourceViewCombo?.SelectedItem?.ToString() != "<Select Floor Plan>" 
+                                           ? _sourceViewCombo?.SelectedItem?.ToString() 
+                                           : null
                 };
 
                 // Collect system type overrides from UI rows

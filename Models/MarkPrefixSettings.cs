@@ -67,6 +67,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// ✅ NEW: Starting number for sequential numbering (default: 1)
         /// </summary>
         public int StartNumber { get; set; } = 1;
+        
+        /// <summary>
+        /// ✅ NEW: If true, numbering will continue from the sequence used in another view/floor plan
+        /// </summary>
+        public bool UseContinueNumbering { get; set; } = false;
+        
+        /// <summary>
+        /// ✅ NEW: Name of the view/floor plan to pull numbering sequence from
+        /// </summary>
+        public string? ContinueFromViewName { get; set; }
 
 
         
