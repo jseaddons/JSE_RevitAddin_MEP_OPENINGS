@@ -321,6 +321,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                         {
                             // ✅ STEP 1: Collect placement data for batch update (instead of immediate write)
                             repository.UpdateSleeveInstanceId(zone.Id, zone.SleeveInstanceId);
+                            
+                            // ✅ CRITICAL FIX: Save Family Name to DB (User Request)
+                            // "debug after placing sleeves it should populated the families in db"
+                            if (sleeve.Symbol != null && sleeve.Symbol.Family != null)
+                            {
+                                repository.UpdateSleeveFamilyName(zone.Id, sleeve.Symbol.Family.Name);
+                            }
+
                             placementUpdates.Add((
                                 zone.Id,
                                 zone.SleeveInstanceId,

@@ -36,6 +36,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         public string HostType { get; set; }
         public string HostOrientation { get; set; }
         public List<Guid> ClashZoneIds { get; set; }
+        
+        /// <summary>Family Name of the sleeve used for this cluster</summary>
+        public string SleeveFamilyName { get; set; }
 
         // ✅ CORNER PERISISTENCE (Added for proper cluster sizing)
         public double Corner1X { get; set; }
@@ -85,7 +88,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                        Corner1X, Corner1Y, Corner1Z,
                                        Corner2X, Corner2Y, Corner2Z,
                                        Corner3X, Corner3Y, Corner3Z,
-                                       Corner4X, Corner4Y, Corner4Z
+                                       Corner4X, Corner4Y, Corner4Z,
+                                       SleeveFamilyName
                                 FROM ClusterSleeves";
 
                 using (var reader = cmd.ExecuteReader())
@@ -125,7 +129,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             Corner3Z = GetDouble(reader, "Corner3Z", 0.0),
                             Corner4X = GetDouble(reader, "Corner4X", 0.0),
                             Corner4Y = GetDouble(reader, "Corner4Y", 0.0),
-                            Corner4Z = GetDouble(reader, "Corner4Z", 0.0)
+                            Corner4Z = GetDouble(reader, "Corner4Z", 0.0),
+                            SleeveFamilyName = GetString(reader, "SleeveFamilyName")
                         };
 
                         // Deserialize ClashZoneIds from JSON
@@ -176,7 +181,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                        Corner1X, Corner1Y, Corner1Z,
                                        Corner2X, Corner2Y, Corner2Z,
                                        Corner3X, Corner3Y, Corner3Z,
-                                       Corner4X, Corner4Y, Corner4Z
+                                       Corner4X, Corner4Y, Corner4Z,
+                                       SleeveFamilyName
                                 FROM ClusterSleeves
                                 WHERE ClusterInstanceId IN ({idString})";
 
@@ -217,7 +223,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             Corner3Z = GetDouble(reader, "Corner3Z", 0.0),
                             Corner4X = GetDouble(reader, "Corner4X", 0.0),
                             Corner4Y = GetDouble(reader, "Corner4Y", 0.0),
-                            Corner4Z = GetDouble(reader, "Corner4Z", 0.0)
+                            Corner4Z = GetDouble(reader, "Corner4Z", 0.0),
+                            SleeveFamilyName = GetString(reader, "SleeveFamilyName")
                         };
 
                         // Deserialize ClashZoneIds from JSON
@@ -271,7 +278,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             double corner1X, double corner1Y, double corner1Z,
             double corner2X, double corner2Y, double corner2Z,
             double corner3X, double corner3Y, double corner3Z,
-            double corner4X, double corner4Y, double corner4Z)
+            double corner4X, double corner4Y, double corner4Z,
+            string sleeveFamilyName = null)
         {
             if (clusterInstanceId <= 0)
                 throw new ArgumentException("ClusterInstanceId must be greater than 0", nameof(clusterInstanceId));
@@ -343,6 +351,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                             MepSizes = @MepSizes,
                                             MepSystemNames = @MepSystemNames,
                                             MepElementIds = @MepElementIds,
+                                            Corner1X = @Corner1X, Corner1Y = @Corner1Y, Corner1Z = @Corner1Z,
+                                            Corner2X = @Corner2X, Corner2Y = @Corner2Y, Corner2Z = @Corner2Z,
+                                            Corner3X = @Corner3X, Corner3Y = @Corner3Y, Corner3Z = @Corner3Z,
+                                            Corner4X = @Corner4X, Corner4Y = @Corner4Y, Corner4Z = @Corner4Z,
+                                            SleeveFamilyName = @SleeveFamilyName,
                                             UpdatedAt = CURRENT_TIMESTAMP
                                         WHERE ClusterGuid = @ClusterGuid";
                                 }
@@ -374,6 +387,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                         MepSizes = @MepSizes,
                                         MepSystemNames = @MepSystemNames,
                                         MepElementIds = @MepElementIds,
+                                        Corner1X = @Corner1X, Corner1Y = @Corner1Y, Corner1Z = @Corner1Z,
+                                        Corner2X = @Corner2X, Corner2Y = @Corner2Y, Corner2Z = @Corner2Z,
+                                        Corner3X = @Corner3X, Corner3Y = @Corner3Y, Corner3Z = @Corner3Z,
+                                        Corner4X = @Corner4X, Corner4Y = @Corner4Y, Corner4Z = @Corner4Z,
+                                        SleeveFamilyName = @SleeveFamilyName,
                                         UpdatedAt = CURRENT_TIMESTAMP
                                     WHERE ClusterInstanceId = @ClusterInstanceId";
                                 }
@@ -389,7 +407,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     corner2X, corner2Y, corner2Z,
                                     corner3X, corner3Y, corner3Z,
                                     corner4X, corner4Y, corner4Z,
-                                    clusterGuid);
+                                    clusterGuid,
+                                    sleeveFamilyName);
 
                                 // Add ClusterGuid parameter for WHERE clause
                                 if (!string.IsNullOrWhiteSpace(clusterGuid))
@@ -417,6 +436,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                         PlacementX, PlacementY, PlacementZ,
                                         HostType, HostOrientation, ClashZoneIdsJson,
                                         ClashZoneGuids, MepSizes, MepSystemNames, MepElementIds,
+                                        Corner1X, Corner1Y, Corner1Z,
+                                        Corner2X, Corner2Y, Corner2Z,
+                                        Corner3X, Corner3Y, Corner3Z,
+                                        Corner4X, Corner4Y, Corner4Z,
+                                        SleeveFamilyName,
                                         CreatedAt, UpdatedAt
                                     ) VALUES (
                                         @ClusterInstanceId, @ClusterGuid, @ComboId, @FilterId, @Category,
@@ -427,6 +451,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                         @PlacementX, @PlacementY, @PlacementZ,
                                         @HostType, @HostOrientation, @ClashZoneIdsJson,
                                         @ClashZoneGuids, @MepSizes, @MepSystemNames, @MepElementIds,
+                                        @Corner1X, @Corner1Y, @Corner1Z,
+                                        @Corner2X, @Corner2Y, @Corner2Z,
+                                        @Corner3X, @Corner3Y, @Corner3Z,
+                                        @Corner4X, @Corner4Y, @Corner4Z,
+                                        @SleeveFamilyName,
                                         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                                     )";
 
@@ -441,7 +470,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     corner2X, corner2Y, corner2Z,
                                     corner3X, corner3Y, corner3Z,
                                     corner4X, corner4Y, corner4Z,
-                                    clusterGuid);
+                                    clusterGuid,
+                                    sleeveFamilyName);
 
                                 var rowsAffected = insertCmd.ExecuteNonQuery();
 
@@ -588,6 +618,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                                 MepSizes = @MepSizes,
                                                 MepSystemNames = @MepSystemNames,
                                                 MepElementIds = @MepElementIds,
+                                                Corner1X = @Corner1X, Corner1Y = @Corner1Y, Corner1Z = @Corner1Z,
+                                                Corner2X = @Corner2X, Corner2Y = @Corner2Y, Corner2Z = @Corner2Z,
+                                                Corner3X = @Corner3X, Corner3Y = @Corner3Y, Corner3Z = @Corner3Z,
+                                                Corner4X = @Corner4X, Corner4Y = @Corner4Y, Corner4Z = @Corner4Z,
+                                                SleeveFamilyName = @SleeveFamilyName,
                                                 UpdatedAt = CURRENT_TIMESTAMP
                                             WHERE ClusterGuid = @ClusterGuid";
                                     }
@@ -626,6 +661,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                             Corner2X = @Corner2X, Corner2Y = @Corner2Y, Corner2Z = @Corner2Z,
                                             Corner3X = @Corner3X, Corner3Y = @Corner3Y, Corner3Z = @Corner3Z,
                                             Corner4X = @Corner4X, Corner4Y = @Corner4Y, Corner4Z = @Corner4Z,
+                                            SleeveFamilyName = @SleeveFamilyName,
                                             UpdatedAt = CURRENT_TIMESTAMP
                                         WHERE ClusterInstanceId = @ClusterInstanceId";
                                     }
@@ -662,6 +698,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                             Corner2X, Corner2Y, Corner2Z,
                                             Corner3X, Corner3Y, Corner3Z,
                                             Corner4X, Corner4Y, Corner4Z,
+                                            SleeveFamilyName,
                                             CreatedAt, UpdatedAt
                                         ) VALUES (
                                             @ClusterInstanceId, @ClusterGuid, @ComboId, @FilterId, @Category,
@@ -677,6 +714,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                             @Corner2X, @Corner2Y, @Corner2Z,
                                             @Corner3X, @Corner3Y, @Corner3Z,
                                             @Corner4X, @Corner4Y, @Corner4Z,
+                                            @SleeveFamilyName,
                                             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                                         )";
 
@@ -750,6 +788,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     Corner2X, Corner2Y, Corner2Z,
                                     Corner3X, Corner3Y, Corner3Z,
                                     Corner4X, Corner4Y, Corner4Z,
+                                    SleeveFamilyName,
                                     CreatedAt, UpdatedAt
                                 ) VALUES (
                                     @ClusterInstanceId, @ClusterGuid, @ComboId, @FilterId, @Category,
@@ -764,6 +803,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     @Corner2X, @Corner2Y, @Corner2Z,
                                     @Corner3X, @Corner3Y, @Corner3Z,
                                     @Corner4X, @Corner4Y, @Corner4Z,
+                                    @SleeveFamilyName,
                                     COALESCE((SELECT CreatedAt FROM ClusterSleeves WHERE ClusterInstanceId = @ClusterInstanceId), CURRENT_TIMESTAMP),
                                     CURRENT_TIMESTAMP
                                 )";
@@ -809,6 +849,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             cmd.Parameters.AddWithValue("@Corner4X", cluster.Corner4X);
                             cmd.Parameters.AddWithValue("@Corner4Y", cluster.Corner4Y);
                             cmd.Parameters.AddWithValue("@Corner4Z", cluster.Corner4Z);
+                            
+                            cmd.Parameters.AddWithValue("@SleeveFamilyName", cluster.SleeveFamilyName ?? (object)DBNull.Value);
 
                             // 🔥 DEBUG: Log before execution
                             try
@@ -895,6 +937,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                          @Corner2X{i}, @Corner2Y{i}, @Corner2Z{i},
                          @Corner3X{i}, @Corner3Y{i}, @Corner3Z{i},
                          @Corner4X{i}, @Corner4Y{i}, @Corner4Z{i},
+                         @SleeveFamilyName{i},
                          CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
 
                     // Add parameters for this cluster
@@ -915,6 +958,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         Corner2X, Corner2Y, Corner2Z,
                         Corner3X, Corner3Y, Corner3Z,
                         Corner4X, Corner4Y, Corner4Z,
+                        SleeveFamilyName,
                         CreatedAt, UpdatedAt
                     ) VALUES {string.Join(",", valuesClauses)}";
 
@@ -971,7 +1015,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     ("Corner1X", "double"), ("Corner1Y", "double"), ("Corner1Z", "double"),
                     ("Corner2X", "double"), ("Corner2Y", "double"), ("Corner2Z", "double"),
                     ("Corner3X", "double"), ("Corner3Y", "double"), ("Corner3Z", "double"),
-                    ("Corner4X", "double"), ("Corner4Y", "double"), ("Corner4Z", "double")
+                    ("Corner4X", "double"), ("Corner4Y", "double"), ("Corner4Z", "double"),
+                    ("SleeveFamilyName", "string")
                 };
 
                 for (int f = 0; f < fields.Length; f++)
@@ -1100,6 +1145,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 case "Corner4X": return cluster.Corner4X;
                 case "Corner4Y": return cluster.Corner4Y;
                 case "Corner4Z": return cluster.Corner4Z;
+                case "SleeveFamilyName": return cluster.SleeveFamilyName ?? (object)DBNull.Value;
             }
             return DBNull.Value;
         }
@@ -1156,7 +1202,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             cmd.Parameters.AddWithValue($"@Corner3Z{index}", cluster.Corner3Z);
             cmd.Parameters.AddWithValue($"@Corner4X{index}", cluster.Corner4X);
             cmd.Parameters.AddWithValue($"@Corner4Y{index}", cluster.Corner4Y);
+            cmd.Parameters.AddWithValue($"@Corner4X{index}", cluster.Corner4X);
+            cmd.Parameters.AddWithValue($"@Corner4Y{index}", cluster.Corner4Y);
             cmd.Parameters.AddWithValue($"@Corner4Z{index}", cluster.Corner4Z);
+            cmd.Parameters.AddWithValue($"@SleeveFamilyName{index}", cluster.SleeveFamilyName ?? (object)DBNull.Value);
         }
 
         private void AddClusterSleeveParameters(SQLiteCommand cmd, ClusterSaveData cluster)
@@ -1183,7 +1232,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 cluster.Corner2X, cluster.Corner2Y, cluster.Corner2Z,
                 cluster.Corner3X, cluster.Corner3Y, cluster.Corner3Z,
                 cluster.Corner4X, cluster.Corner4Y, cluster.Corner4Z,
-                clusterGuid);
+                clusterGuid,
+                cluster.SleeveFamilyName);
         }
 
         /// <summary>
@@ -1229,7 +1279,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             double corner2X, double corner2Y, double corner2Z,
             double corner3X, double corner3Y, double corner3Z,
             double corner4X, double corner4Y, double corner4Z,
-            string clusterGuid = null)
+            string clusterGuid = null,
+            string sleeveFamilyName = null)
         {
             cmd.Parameters.AddWithValue("@ClusterInstanceId", clusterInstanceId);
             cmd.Parameters.AddWithValue("@ClusterGuid", string.IsNullOrWhiteSpace(clusterGuid) ? (object)DBNull.Value : clusterGuid);
@@ -1279,6 +1330,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             cmd.Parameters.AddWithValue("@Corner4X", corner4X);
             cmd.Parameters.AddWithValue("@Corner4Y", corner4Y);
             cmd.Parameters.AddWithValue("@Corner4Z", corner4Z);
+            
+            cmd.Parameters.AddWithValue("@SleeveFamilyName", sleeveFamilyName ?? (object)DBNull.Value);
         }
 
         /// <summary>
@@ -1503,7 +1556,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                ClusterWidth, ClusterHeight, ClusterDepth,
                                RotationAngleDeg, IsRotated,
                                PlacementX, PlacementY, PlacementZ,
-                               HostType, HostOrientation, ClashZoneIdsJson
+                               HostType, HostOrientation, ClashZoneIdsJson,
+                               SleeveFamilyName
                         FROM ClusterSleeves
                         WHERE ComboId = @ComboId";
                     cmd.Parameters.AddWithValue("@ComboId", comboId);
@@ -1517,7 +1571,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                ClusterWidth, ClusterHeight, ClusterDepth,
                                RotationAngleDeg, IsRotated,
                                PlacementX, PlacementY, PlacementZ,
-                               HostType, HostOrientation, ClashZoneIdsJson
+                               HostType, HostOrientation, ClashZoneIdsJson,
+                               SleeveFamilyName
                         FROM ClusterSleeves
                         WHERE ComboId = @ComboId AND Category = @Category";
                     cmd.Parameters.AddWithValue("@ComboId", comboId);
@@ -1549,7 +1604,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             PlacementY = GetDouble(reader, "PlacementY", 0.0),
                             PlacementZ = GetDouble(reader, "PlacementZ", 0.0),
                             HostType = GetString(reader, "HostType"),
-                            HostOrientation = GetString(reader, "HostOrientation")
+                            HostOrientation = GetString(reader, "HostOrientation"),
+                            SleeveFamilyName = GetString(reader, "SleeveFamilyName")
                         };
 
                         // Deserialize ClashZoneIds from JSON
@@ -1780,6 +1836,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         public string HostOrientation { get; set; } = string.Empty;
         public List<Guid> ClashZoneIds { get; set; } = new List<Guid>();
         
+        public string SleeveFamilyName { get; set; } = string.Empty;
+
         // Corner coordinates for precise geometric proximity checks
         public double Corner1X { get; set; }
         public double Corner1Y { get; set; }

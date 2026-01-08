@@ -1,7 +1,9 @@
 using System;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 
-namespace JSE_RevitAddin_MEP_OPENINGS.Services
+using JSE_RevitAddin_MEP_OPENINGS.Services.Parameters.Configuration;
+
+namespace JSE_RevitAddin_MEP_OPENINGS.Services.Parameters.Processing
 {
     /// <summary>
     /// Service to store and retrieve current mark prefixes from ParameterServiceDialog

@@ -15,6 +15,8 @@ using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Parameters.Configuration;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Parameters.Processing;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Views
 {
@@ -1881,8 +1883,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
                 foreach (var vp in floorPlans)
                 {
-                    // Use GenLevel Name if possible, fallback to View Name
-                    string displayName = vp.GenLevel?.Name ?? vp.Name;
+                    // ✅ FIX: Use View Name as requested by user ("view name not levels")
+                    // This aligns with MarkParameterService logic which scopes by View Name
+                    string displayName = vp.Name;
+                    
+                    // Optional: Append Level Name for clarity if needed, but sticking to requested "View Name"
+                    // string displayName = $"{vp.Name} ({vp.GenLevel?.Name ?? "No Level"})";
+                    
                     _sourceViewCombo.Items.Add(displayName);
                 }
 
@@ -2291,7 +2298,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     // No, if user clicks "Reset Prefix" they might want to re-run everything.
                     // But if they just changed ONE thing, we only reset that one.
                     
-                    var markService = new Services.MarkParameterService(null, msg => { if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info(msg); });
+                    var markService = new MarkParameterService(null, msg => { if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info(msg); });
                     int totalProcessed = 0;
 
                     using (var perfMonitor = new ParameterOperationPerformanceMonitor("Reset Prefix"))
@@ -2779,7 +2786,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         /// <summary>
         /// Helper to gather UI settings and validate state
         /// </summary>
-        private (Models.MarkPrefixSettings Settings, bool IsValid) GetMarkPrefixSettingsFromUI(bool requireDbData = true)
+        private (MarkPrefixSettings Settings, bool IsValid) GetMarkPrefixSettingsFromUI(bool requireDbData = true)
         {
             if (_document == null || _uiDocument == null)
             {
@@ -2833,7 +2840,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             bool damperChanged = damperPrefix != oldSettings.DamperPrefix;
 
             // If project prefix changed, reset everything. Otherwise, reset only modified ones.
-            var settings = new Models.MarkPrefixSettings
+            var settings = new MarkPrefixSettings
             {
                 ProjectPrefix = projectPrefix,
                 DuctPrefix = ductPrefix,
@@ -2849,33 +2856,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                                        ? _sourceViewCombo?.SelectedItem?.ToString() 
                                        : null,
 
-                RemarkProjectPrefix = projectChanged,
-                RemarkDuctPrefix = projectChanged || ductChanged,
-                RemarkPipePrefix = projectChanged || pipeChanged,
-                RemarkCableTrayPrefix = projectChanged || cableTrayChanged,
-                RemarkDamperPrefix = projectChanged || damperChanged
+                // ✅ FORCE RESET LOGIC: User requested that strict "changes only" logic be ignored for Reset.
+                // We will treat every 'Reset Prefix' action as a "force update regardless of change" action.
+                RemarkProjectPrefix = true, 
+                RemarkDuctPrefix = true,
+                RemarkPipePrefix = true,
+                RemarkCableTrayPrefix = true,
+                RemarkDamperPrefix = true,
+                RemarkAll = true, // Force Global Update
+                
+                // ✅ CRITICAL FIX: Copy System Type Overrides from persisted settings
+                // Without this, overrides are lost when creating a new settings object from UI inputs
+                DuctSystemTypeOverrides = oldSettings?.DuctSystemTypeOverrides ?? new Dictionary<string, string>(),
+                PipeSystemTypeOverrides = oldSettings?.PipeSystemTypeOverrides ?? new Dictionary<string, string>(),
+                DuctAccessoriesSystemTypeOverrides = oldSettings?.DuctAccessoriesSystemTypeOverrides ?? new Dictionary<string, string>(),
+                CableTrayServiceTypeOverrides = oldSettings?.CableTrayServiceTypeOverrides ?? new Dictionary<string, string>()
             };
             
-            // RemarkAll is true if any category changed
-            settings.RemarkAll = settings.RemarkDuctPrefix || settings.RemarkPipePrefix || 
-                                 settings.RemarkCableTrayPrefix || settings.RemarkDamperPrefix;
-            
-            // If user clicked "Reset Prefix" but nothing changed, we assume they want to force a reset of EVERYTHING
-            if (!settings.RemarkAll)
-            {
-                settings.RemarkProjectPrefix = true;
-                settings.RemarkDuctPrefix = true;
-                settings.RemarkPipePrefix = true;
-                settings.RemarkCableTrayPrefix = true;
-                settings.RemarkDamperPrefix = true;
-                settings.RemarkAll = true;
-                RemarkDebugLogger.LogInfo("[SmartReset] No changes detected, forcing Full Reset of all categories.");
-            }
-            else
-            {
-                RemarkDebugLogger.LogInfo($"[SmartReset] Changes detected - Duct:{ductChanged}, Pipe:{pipeChanged}, Tray:{cableTrayChanged}, Damper:{damperChanged}, Project:{projectChanged}");
-            }
-
             // System Type Overrides
             foreach (var row in _systemTypeRows)
             {

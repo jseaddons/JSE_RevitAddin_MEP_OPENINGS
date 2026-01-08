@@ -2855,32 +2855,94 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             var systemAbbreviation = GetMepSystemAbbreviation(mepElement);
             
-            // ✅ EXTRACT System Type and Service Type from MEP element parameters (same pattern as systemAbbreviation)
+            // ✅ ROBUST EXTRACTION: System Type and Service Type from MEP element parameters
+            // Try multiple parameter names and BuiltInParameters for maximum compatibility
             SafeFileLogger.SafeAppendText("save_db_diagnostic.log", $"[EXTRACT-START] Extracting System/Service Type for element {mepElement.Id}, Category: {mepElement.Category?.Name}\n");
             string mepSystemType = string.Empty;
             string mepServiceType = string.Empty;
             try
             {
-                var systemTypeParam = mepElement.LookupParameter("System Type");
+                // ✅ ROBUST: Try multiple approaches for System Type
+                Parameter systemTypeParam = null;
+                
+                // 1. Try BuiltInParameter first (most reliable)
+                systemTypeParam = mepElement.get_Parameter(BuiltInParameter.RBS_SYSTEM_NAME_PARAM);
+                if (systemTypeParam == null || string.IsNullOrEmpty(systemTypeParam.AsString()))
+                    systemTypeParam = mepElement.get_Parameter(BuiltInParameter.RBS_DUCT_SYSTEM_TYPE_PARAM);
+                if (systemTypeParam == null || string.IsNullOrEmpty(systemTypeParam.AsString()))
+                    systemTypeParam = mepElement.get_Parameter(BuiltInParameter.RBS_PIPING_SYSTEM_TYPE_PARAM);
+                if (systemTypeParam == null || string.IsNullOrEmpty(systemTypeParam.AsString()))
+                    systemTypeParam = mepElement.get_Parameter(BuiltInParameter.RBS_ELEC_CIRCUIT_NAME);
+                    
+                // 2. Try common parameter names
+                if (systemTypeParam == null || string.IsNullOrEmpty(systemTypeParam.AsString()))
+                    systemTypeParam = mepElement.LookupParameter("System Type");
+                if (systemTypeParam == null || string.IsNullOrEmpty(systemTypeParam.AsString()))
+                    systemTypeParam = mepElement.LookupParameter("System Name");
+                if (systemTypeParam == null || string.IsNullOrEmpty(systemTypeParam.AsString()))
+                    systemTypeParam = mepElement.LookupParameter("System Classification");
+                    
                 if (systemTypeParam != null)
                 {
-                    mepSystemType = systemTypeParam.AsString() ?? string.Empty;
+                    // Handle both string and ElementId parameter types
+                    if (systemTypeParam.StorageType == StorageType.String)
+                    {
+                        mepSystemType = systemTypeParam.AsString() ?? string.Empty;
+                    }
+                    else if (systemTypeParam.StorageType == StorageType.ElementId)
+                    {
+                        var sysTypeId = systemTypeParam.AsElementId();
+                        if (sysTypeId != null && sysTypeId != ElementId.InvalidElementId)
+                        {
+                            var sysTypeElement = mepElement.Document.GetElement(sysTypeId);
+                            mepSystemType = sysTypeElement?.Name ?? string.Empty;
+                        }
+                    }
+                    else
+                    {
+                        mepSystemType = systemTypeParam.AsValueString() ?? string.Empty;
+                    }
                     SafeFileLogger.SafeAppendText("save_db_diagnostic.log", $"[EXTRACT-SUCCESS] Element {mepElement.Id}: System Type = '{mepSystemType}'\n");
                 }
                 else
                 {
-                    SafeFileLogger.SafeAppendText("save_db_diagnostic.log", $"[EXTRACT-FAIL] Element {mepElement.Id}: 'System Type' parameter not found\n");
+                    SafeFileLogger.SafeAppendText("save_db_diagnostic.log", $"[EXTRACT-FAIL] Element {mepElement.Id}: No System Type parameter found (tried BuiltIn + Lookup)\n");
                 }
                 
-                var serviceTypeParam = mepElement.LookupParameter("Service Type");
+                // ✅ ROBUST: Try multiple approaches for Service Type
+                Parameter serviceTypeParam = null;
+                
+                // 1. Try common parameter names
+                serviceTypeParam = mepElement.LookupParameter("Service Type");
+                if (serviceTypeParam == null || string.IsNullOrEmpty(serviceTypeParam.AsString()))
+                    serviceTypeParam = mepElement.LookupParameter("MEP Service Type");
+                if (serviceTypeParam == null || string.IsNullOrEmpty(serviceTypeParam.AsString()))
+                    serviceTypeParam = mepElement.LookupParameter("System Service Type");
+                    
+                // 2. For Cable Trays, try electrical-specific parameters
+                if ((serviceTypeParam == null || string.IsNullOrEmpty(serviceTypeParam.AsString())) && 
+                    mepElement.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_CableTray)
+                {
+                    serviceTypeParam = mepElement.LookupParameter("Cable Tray Type");
+                    if (serviceTypeParam == null || string.IsNullOrEmpty(serviceTypeParam.AsString()))
+                        serviceTypeParam = mepElement.LookupParameter("Electrical System Type");
+                }
+                
+                // 3. Fallback: If no Service Type, try to derive from System Type
                 if (serviceTypeParam != null)
                 {
                     mepServiceType = serviceTypeParam.AsString() ?? string.Empty;
                     SafeFileLogger.SafeAppendText("save_db_diagnostic.log", $"[EXTRACT-SUCCESS] Element {mepElement.Id}: Service Type = '{mepServiceType}'\n");
                 }
+                else if (!string.IsNullOrEmpty(mepSystemType))
+                {
+                    // Derive Service Type from System Type if not found directly
+                    mepServiceType = mepSystemType;
+                    SafeFileLogger.SafeAppendText("save_db_diagnostic.log", $"[EXTRACT-FALLBACK] Element {mepElement.Id}: Service Type derived from System Type = '{mepServiceType}'\n");
+                }
                 else
                 {
-                    SafeFileLogger.SafeAppendText("save_db_diagnostic.log", $"[EXTRACT-FAIL] Element {mepElement.Id}: 'Service Type' parameter not found\n");
+                    SafeFileLogger.SafeAppendText("save_db_diagnostic.log", $"[EXTRACT-FAIL] Element {mepElement.Id}: No Service Type parameter found\n");
                 }
             }
             catch (Exception ex)
@@ -3021,6 +3083,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     DebugLogger.Warning($"[PARAM-SNAPSHOT] Failed to capture parameters for MEP={mepElement?.Id}, Host={structuralElement?.Id}: {ex.Message}");
+                }
+            }
+            
+            // ✅ FALLBACK: If MepSystemType or MepServiceType is still empty, try to read from captured JSON snapshot
+            // The JSON snapshot (mepParameterValues) often has "System Type" even when direct parameter lookup fails
+            if (string.IsNullOrEmpty(mepSystemType) && mepParameterValues != null && mepParameterValues.Count > 0)
+            {
+                var systemTypeFromJson = mepParameterValues.FirstOrDefault(p => 
+                    p.Key != null && (
+                        p.Key.IndexOf("System Type", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        p.Key.IndexOf("SystemType", StringComparison.OrdinalIgnoreCase) >= 0
+                    ));
+                if (systemTypeFromJson != null && !string.IsNullOrEmpty(systemTypeFromJson.Value))
+                {
+                    mepSystemType = systemTypeFromJson.Value;
+                    SafeFileLogger.SafeAppendText("save_db_diagnostic.log", $"[EXTRACT-JSON-FALLBACK] Element {mepElement.Id}: System Type from JSON = '{mepSystemType}'\n");
+                }
+            }
+            
+            if (string.IsNullOrEmpty(mepServiceType) && mepParameterValues != null && mepParameterValues.Count > 0)
+            {
+                var serviceTypeFromJson = mepParameterValues.FirstOrDefault(p => 
+                    p.Key != null && (
+                        p.Key.IndexOf("Service Type", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        p.Key.IndexOf("ServiceType", StringComparison.OrdinalIgnoreCase) >= 0
+                    ));
+                if (serviceTypeFromJson != null && !string.IsNullOrEmpty(serviceTypeFromJson.Value))
+                {
+                    mepServiceType = serviceTypeFromJson.Value;
+                    SafeFileLogger.SafeAppendText("save_db_diagnostic.log", $"[EXTRACT-JSON-FALLBACK] Element {mepElement.Id}: Service Type from JSON = '{mepServiceType}'\n");
+                }
+                
+                // ✅ FINAL FALLBACK: If still no Service Type, use System Type value
+                if (string.IsNullOrEmpty(mepServiceType) && !string.IsNullOrEmpty(mepSystemType))
+                {
+                    mepServiceType = mepSystemType;
+                    SafeFileLogger.SafeAppendText("save_db_diagnostic.log", $"[EXTRACT-DERIVED] Element {mepElement.Id}: Service Type derived from System Type = '{mepServiceType}'\n");
                 }
             }
             

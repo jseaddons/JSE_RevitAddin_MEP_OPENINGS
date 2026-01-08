@@ -197,8 +197,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data
                         
                         foreach (var cz in placedZones)
                         {
-                            // ✅ CRITICAL: Reconstruct SleevePlacementPoint from database properties
-                            cz.EnsureSleevePlacementPointReconstructed();
+                            // ✅ THREAD-SAFETY FIX: Reconstruct ALL XYZ properties BEFORE parallel processing
+                            // This prevents race conditions in WallDirection, StructuralElementNormal, MepElementOrientation setters
+                            cz.EnsureAllXyzPropertiesReconstructed();
                             
                             // ✅ ROTATION DATA FROM DB: MepElementRotationAngle is already loaded from database
                             // via GetClashZonesByCategory -> MepRotationAngleRad column (see ClashZoneRepository line 1235).
@@ -314,7 +315,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data
                     if (cz.MepElementIdValue <= 0)
                         continue;
 
-                    cz.EnsureSleevePlacementPointReconstructed();
+                    // ✅ THREAD-SAFETY FIX: Reconstruct ALL XYZ properties BEFORE parallel processing
+                    cz.EnsureAllXyzPropertiesReconstructed();
                     cz.IsCurrentClash = true;
                     _clashZoneCache[cz.MepElementIdValue] = cz;
                 }

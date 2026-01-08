@@ -653,6 +653,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         }
         
         /// <summary>
+        /// ✅ THREAD-SAFETY FIX: Reconstructs ALL XYZ properties from serializable X/Y/Z components.
+        /// MUST be called BEFORE any parallel processing to prevent race conditions.
+        /// 
+        /// XYZ setters use check-then-modify pattern which is NOT thread-safe:
+        ///   if (WallDirection == null) WallDirection = new XYZ(x, 0, 0);  // Race condition!
+        ///   else WallDirection = new XYZ(x, old.Y, old.Z);                // Uses stale Y/Z
+        /// 
+        /// By reconstructing all XYZ objects upfront, we ensure they are immutable during parallel processing.
+        /// </summary>
+        public void EnsureAllXyzPropertiesReconstructed()
+        {
+            // 1. SleevePlacementPoint (already handled by backing fields, but ensure initialized)
+            EnsureSleevePlacementPointReconstructed();
+            
+            // 2. WallDirection - crucial for Wall X/Y clustering
+            if (WallDirection == null && (WallDirectionX != 0 || WallDirectionY != 0 || WallDirectionZ != 0))
+            {
+                WallDirection = new XYZ(WallDirectionX, WallDirectionY, WallDirectionZ);
+            }
+            
+            // 3. StructuralElementNormal - used for orientation
+            if (StructuralElementNormal == null && (StructuralElementNormalX != 0 || StructuralElementNormalY != 0 || StructuralElementNormalZ != 0))
+            {
+                StructuralElementNormal = new XYZ(StructuralElementNormalX, StructuralElementNormalY, StructuralElementNormalZ);
+            }
+            
+            // 4. MepElementOrientation - crucial for rotation angle calculations
+            if (MepElementOrientation == null && (MepElementOrientationX != 0 || MepElementOrientationY != 0 || MepElementOrientationZ != 0))
+            {
+                MepElementOrientation = new XYZ(MepElementOrientationX, MepElementOrientationY, MepElementOrientationZ);
+            }
+            
+            // 5. SleevePlacementPointActiveDocument (if used)
+            EnsureSleevePlacementPointActiveDocumentReconstructed();
+            
+            // 6. Pre-calculate rotation cos/sin if not already set (immutable after this)
+            if (MepRotationCos == null && MepElementRotationAngle != 0)
+            {
+                MepRotationCos = Math.Cos(MepElementRotationAngle);
+                MepRotationSin = Math.Sin(MepElementRotationAngle);
+            }
+        }
+        
+        /// <summary>
         /// When this clash zone was first detected
         /// </summary>
         public DateTime DetectedAt { get; set; } = DateTime.Now;

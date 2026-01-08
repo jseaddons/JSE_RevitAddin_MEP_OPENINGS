@@ -30,8 +30,8 @@ obj/
 .vs/
 
 # Logs
-*.log
-Log/
+# *.log
+# Log/
 
 # Installer
 *.msi

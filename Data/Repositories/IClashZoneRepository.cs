@@ -73,6 +73,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         void UpdateMepCategory(System.Guid clashZoneGuid, string category);
 
         /// <summary>
+        /// Update the Sleeve Family Name for a clash zone
+        /// </summary>
+        void UpdateSleeveFamilyName(System.Guid clashZoneGuid, string familyName);
+
+        /// <summary>
         /// Get MEP Categories for a list of sleeve instance IDs
         /// Returns dictionary of SleeveInstanceId -> MepCategory
         /// </summary>

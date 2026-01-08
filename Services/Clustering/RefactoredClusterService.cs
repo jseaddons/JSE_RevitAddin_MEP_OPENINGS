@@ -2557,6 +2557,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                 PlacementZ = placementPoint.Z,
                                 HostType = hostType,
                                 HostOrientation = hostOrientation ?? "Unknown",
+                                SleeveFamilyName = clusterSleeve.Symbol?.Family?.Name ?? string.Empty,
                                 ClashZoneIds = clashZoneIds,
                                 // ✅ Corners
                                 Corner1X = c1x, Corner1Y = c1y, Corner1Z = c1z,
@@ -2924,6 +2925,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                 placementZ: placementPoint.Z,
                                 hostType: hostType,
                                 hostOrientation: hostOrientation ?? "Unknown",
+                                sleeveFamilyName: clusterSleeve.Symbol?.Family?.Name ?? string.Empty,
                                 clashZoneIds: clashZoneIds,
                                 // ✅ Pass Calculated Corners
                                 corner1X: c1.X, corner1Y: c1.Y, corner1Z: c1.Z,

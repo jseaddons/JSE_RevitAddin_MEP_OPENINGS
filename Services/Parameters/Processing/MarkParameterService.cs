@@ -10,7 +10,10 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Helpers;
 using Autodesk.Revit.UI;
 
-namespace JSE_RevitAddin_MEP_OPENINGS.Services
+using JSE_RevitAddin_MEP_OPENINGS.Services.Parameters.Configuration;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Parameters.Strategies;
+
+namespace JSE_RevitAddin_MEP_OPENINGS.Services.Parameters.Processing
 {
     /// <summary>
     /// Service for applying MEPMARK parameters to cluster sleeves.
@@ -74,6 +77,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (validZones.Count == 0) return (0, 0);
 
+                // 🔥 DIAGNOSTIC: Log what we loaded from database
+                NumberingDebugLogger.LogInfo($"[MarkParameterService] Loaded {validZones.Count} valid zones for level '{levelName}', category '{category}'");
+                var clustersCount = validZones.Count(z => z.ClusterInstanceId > 0);
+                var individualsCount = validZones.Count(z => z.ClusterInstanceId <= 0 && z.SleeveInstanceId > 0);
+                NumberingDebugLogger.LogInfo($"[MarkParameterService] 🔍 Breakdown: {clustersCount} clusters (ClusterInstanceId > 0), {individualsCount} individuals");
+                
+                // Log first few zones for debugging
+                foreach (var z in validZones.Take(5))
+                {
+                    NumberingDebugLogger.LogInfo($"[MarkParameterService] 🔍 Zone sample: ClashZoneId={z.ClashZoneId}, SleeveInstanceId={z.SleeveInstanceId}, ClusterInstanceId={z.ClusterInstanceId}");
+                }
+
                 var elementGroups = validZones
                     .GroupBy(z => (z.ClusterInstanceId > 0) ? z.ClusterInstanceId : z.SleeveInstanceId)
                     .OrderBy(g => g.Key)
@@ -88,12 +103,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     // ✅ CLUSTER RULE: For clusters, ALWAYS use discipline prefix only (ignore system type overrides)
                     // For individual sleeves, use full prefix resolution (including system type overrides)
+                    // ✅ FIX: Check ClusterInstanceId > 0 to detect clusters (each cluster has unique ID, so Count is always 1)
                     string prefix;
-                    if (instanceId > 0 && zonesInGroup.Count > 1) // It's a cluster
+                    bool isCluster = primaryZone.ClusterInstanceId > 0;
+                    if (isCluster)
                     {
                         var settings = markPrefixes ?? new MarkPrefixSettings();
                         prefix = settings.GetDisciplinePrefix(category);
-                        NumberingDebugLogger.LogInfo($"[MarkParameterService] Cluster {instanceId}: Using discipline prefix '{prefix}' (system type overrides ignored for clusters)");
+                        NumberingDebugLogger.LogInfo($"[MarkParameterService] Cluster {instanceId}: Using discipline prefix '{prefix}' (ClusterInstanceId={primaryZone.ClusterInstanceId})");
                     }
                     else // Individual sleeve
                     {
@@ -156,16 +173,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var updates = new List<(ElementId Id, string Value)>();
                 var settings = markPrefixes ?? new MarkPrefixSettings();
 
-                // ✅ REMARK SELECTED: Only process INDIVIDUAL sleeves (skip clusters and combined sleeves)
-                var individualZones = zones
-                    .Where(z => z.ClusterInstanceId <= 0 && z.CombinedClusterSleeveInstanceId <= 0)
+                // ✅ UPDATED: Process BOTH Individual Sleeves AND Clusters
+                // Previously filtered out clusters: .Where(z => z.ClusterInstanceId <= 0 && z.CombinedClusterSleeveInstanceId <= 0)
+                // Now we process everything that has a valid ID
+                var targetZones = zones
+                    .Where(z => z.SleeveInstanceId > 0 || z.ClusterInstanceId > 0)
                     .ToList();
+                
+                var clustersCount = targetZones.Count(z => z.ClusterInstanceId > 0);
+                NumberingDebugLogger.LogInfo($"[PREFIX-ONLY] Total zones: {zones.Count}, Processing: {targetZones.Count} (Individuals: {targetZones.Count - clustersCount}, Clusters: {clustersCount})");
 
-                NumberingDebugLogger.LogInfo($"[PREFIX-ONLY] Total zones: {zones.Count}, Individual sleeves: {individualZones.Count}, Skipped (clusters/combined): {zones.Count - individualZones.Count}");
-
-                foreach (var zone in individualZones)
+                foreach (var mode in new[] { "Individual", "Cluster" })
                 {
-                    int targetId = zone.SleeveInstanceId;
+                    // Process in two passes just for logging clarity if needed, or single pass
+                    // Let's do single pass for efficiency
+                }
+
+                foreach (var zone in targetZones)
+                {
+                    // Determine Target Element ID
+                    // If it's a Cluster, the ClusterInstanceId is the Revit ElementId of the cluster family
+                    int targetId = (zone.ClusterInstanceId > 0) ? zone.ClusterInstanceId : zone.SleeveInstanceId;
+                    
                     if (targetId <= 0) continue;
 
                     var el = doc.GetElement(new ElementId(targetId));
@@ -175,11 +204,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     string existingMark = p?.AsString() ?? "";
                     if (!remarkAll && !string.IsNullOrEmpty(existingMark)) continue;
 
-                    // Individual sleeves use full prefix resolution (including system type overrides)
-                    string elementPrefix = prefixStrategy.ResolvePrefix(category, settings, zone);
+                    // Resolve Prefix
+                    string elementPrefix;
+                    bool isCluster = zone.ClusterInstanceId > 0;
+                    
+                    if (isCluster)
+                    {
+                        // ✅ STRICT RULE: Clusters ALWAYS use Discipline Prefix only (ignore System Type overrides)
+                        elementPrefix = settings.GetDisciplinePrefix(category);
+                    }
+                    else
+                    {
+                        // Individuals use full resolution (System Type > Discipline)
+                        elementPrefix = prefixStrategy.ResolvePrefix(category, settings, zone);
+                    }
+
                     string targetPrefix = $"{projectPrefix}{elementPrefix}";
                     
-                    NumberingDebugLogger.LogInfo($"[PREFIX-ONLY] Individual {targetId}: Prefix '{targetPrefix}' (Existing: '{existingMark}')");
+                    // bool isCluster = zone.ClusterInstanceId > 0; // Removed: Duplicate declaration
+                    string typeLabel = isCluster ? "Cluster" : "Individual";
+                    
+                    NumberingDebugLogger.LogInfo($"[PREFIX-ONLY] {typeLabel} {targetId}: Prefix '{targetPrefix}' (Existing: '{existingMark}')");
                     updates.Add((el.Id, targetPrefix));
                 }
 
@@ -216,12 +261,83 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
                 RemarkDebugLogger.LogStep($"Finished applying prefixes. Processed: {processedCount}, Errors: {errorCount}");
+
+                // --------------------------------------------------------------------------------
+                // 🔍 ORPHAN CHECK (Sleeves in Model but NOT in DB)
+                // --------------------------------------------------------------------------------
+                // The logs indicated "PREFIX-ORPHANS" was running, but code was missing.
+                // Re-implementing correctly with CATEGORY SAFETY.
+                
+                var allSleevesInView = new FilteredElementCollector(doc, doc.ActiveView.Id)
+                    .OfClass(typeof(FamilyInstance))
+                    .WhereElementIsNotElementType()
+                    .Cast<FamilyInstance>()
+                    .Where(fi => {
+                         var famName = fi.Symbol?.Family?.Name ?? "";
+                         return famName.Contains("OpeningOnWall") || famName.Contains("OpeningOnSlab");
+                    })
+                    .ToList();
+
+                var dbSleeveIds = new HashSet<int>(targetZones.Select(z => z.SleeveInstanceId).Union(targetZones.Select(z => z.ClusterInstanceId)));
+                
+                var orphans = allSleevesInView
+                    .Where(s => !dbSleeveIds.Contains(s.Id.IntegerValue))
+                    .ToList();
+
+                if (orphans.Count > 0)
+                {
+                    NumberingDebugLogger.LogInfo($"[PREFIX-ORPHANS] Found {orphans.Count} sleeves in View NOT in DB (Orphans). Checking categories...");
+                    
+                    foreach (var orphan in orphans)
+                    {
+                        // ✅ CRITICAL FIX: Only process orphan if it matches the current CATEGORY
+                        if (orphan.Category == null || !orphan.Category.Name.Contains(category))
+                        {
+                            // Example: If running "Pipes", skip "Ducts" orphan
+                            // Note: Category names might be "Ducts", "Pipes", "Cable Trays", etc.
+                            // Better specific check:
+                            bool match = false;
+                            if (category.StartsWith("Duct") && orphan.Category.Name.Contains("Duct")) match = true;
+                            else if (category.StartsWith("Pipe") && orphan.Category.Name.Contains("Pipe")) match = true;
+                            else if (category.Contains("Tray") && orphan.Category.Name.Contains("Tray")) match = true;
+                            else if (category.Contains("Conduit") && orphan.Category.Name.Contains("Conduit")) match = true;
+                            
+                            if (!match)
+                            {
+                                // NumberingDebugLogger.LogInfo($"[PREFIX-ORPHANS] Skipping Orphan {orphan.Id} ({orphan.Category.Name}) - Mismatch with Target '{category}'");
+                                continue;
+                            }
+                        }
+
+                        // ✅ ORPHAN OVERRIDE LOGIC: Try to read System/Service Type from the sleeve element itself
+                        // (Since it's not in DB, we rely on transferred parameters if they exist)
+                        string sysType = orphan.LookupParameter("System Type")?.AsString() ?? 
+                                         orphan.LookupParameter("MEP System Type")?.AsString();
+                                         
+                        string srvType = orphan.LookupParameter("Service Type")?.AsString() ?? 
+                                         orphan.LookupParameter("MEP Service Type")?.AsString();
+
+                        // Resolve using the same settings logic as DB elements
+                        string resolvedPrefix = settings.GetPrefixForElement(category, sysType, srvType);
+                        string fullPrefix = $"{projectPrefix}{resolvedPrefix}";
+                        
+                        var p = orphan.LookupParameter("MEP Mark") ?? orphan.LookupParameter("Mark");
+                        string current = p?.AsString() ?? "";
+                        
+                        if (!remarkAll && !string.IsNullOrEmpty(current)) continue;
+
+                        NumberingDebugLogger.LogInfo($"[PREFIX-ORPHANS] Updating Orphan {orphan.Id}: '{fullPrefix}'");
+                        updates.Add((orphan.Id, fullPrefix));
+                    }
+                }
             }
             catch (Exception ex)
             {
                 DebugLogger.Error($"[MarkParameterService] Prefix error: {ex.Message}");
             }
             return (processedCount, errorCount);
+
+
         }
 
         public (int processedCount, int errorCount) ApplyNumbersBatch(Document doc, string numberFormat, HashSet<string> allowedPrefixes = null, MarkPrefixSettings? markPrefixes = null)
@@ -275,16 +391,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (markPrefixes?.ActiveViewOnly == true && doc.ActiveView != null)
                 {
-                    // Target is ALWAYS the Active View/Level
-                    if (doc.ActiveView is ViewPlan vp && vp.GenLevel != null)
-                        targetScope = vp.GenLevel.Name;
-                    else
-                        targetScope = doc.ActiveView.Name;
+                    // ✅ FIX: Use strict Level:View hierarchy for scope
+                    // User format request: "p:level 0 :viewname"
+                    // We construct scope as "LevelName:ViewName"
+                    string levelName = "NoLevel";
+                    if (doc.ActiveView.GenLevel != null)
+                        levelName = doc.ActiveView.GenLevel.Name;
+                    
+                    // Sanitize ':' from names to avoid parsing issues, though strictly we just use it as a separator
+                    // Using " : " (space colon space) for readability in DB if needed, or just ":"
+                    targetScope = $"{levelName}:{doc.ActiveView.Name}";
+
+                    NumberingDebugLogger.LogInfo($"[NUMBERING SCOPE] Target Scope: '{targetScope}' (Key format: Prefix|{targetScope})");
 
                     // Source defaults to Target, unless "Continue" is selected
                     if (markPrefixes.UseContinueNumbering && !string.IsNullOrEmpty(markPrefixes.ContinueFromViewName))
                     {
-                        sourceScope = markPrefixes.ContinueFromViewName;
+                        // Assume continuity is on the SAME LEVEL
+                        sourceScope = $"{levelName}:{markPrefixes.ContinueFromViewName}";
                         NumberingDebugLogger.LogInfo($"[NUMBERING SCOPE] CONTINUING from Source: '{sourceScope}' -> Target: '{targetScope}'");
                     }
                     else

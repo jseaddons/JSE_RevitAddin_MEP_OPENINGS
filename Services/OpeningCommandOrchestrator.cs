@@ -6,6 +6,7 @@ using System.Linq;
 using System.IO;
 using System.Xml.Serialization;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Parameters.Configuration;
 using JSE_RevitAddin_MEP_OPENINGS.Commands;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering;
@@ -141,8 +142,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ UNIFIED ALL-CATEGORY PLACEMENT (BIM 360 Optimization)
                 // When enabled: Places ALL individual sleeves in ONE transaction, then ALL clusters
                 // Result: 2 BIM 360 syncs instead of 8
+                
+                // 🔥 DIAGNOSTIC: Log flag value at runtime to debug why legacy path is taken
+                SafeFileLogger.SafeAppendText("placement_event_trace.log",
+                    $"[{DateTime.Now:HH:mm:ss}] 🔥 FLAG CHECK: UseUnifiedAllCategoryPlacement = {OptimizationFlags.UseUnifiedAllCategoryPlacement}\n");
+                
                 if (OptimizationFlags.UseUnifiedAllCategoryPlacement)
                 {
+                    SafeFileLogger.SafeAppendText("placement_event_trace.log",
+                        $"[{DateTime.Now:HH:mm:ss}] 🔥 ENTERING UNIFIED PATH\n");
                     ExecuteUnifiedAllCategoryPlacement(filters, showProgress);
                 }
                 else
@@ -310,9 +318,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     
                     SafeFileLogger.SafeAppendText("unified_placement.log",
-                        $"[{DateTime.Now:HH:mm:ss}] 🔧 UNIFIED PLACEMENT: Transaction started, placing {allZones.Count} sleeves\n");
+                        $"[{DateTime.Now:HH:mm:ss}] ═══════════════════════════════════════════════════════\n" +
+                        $"[{DateTime.Now:HH:mm:ss}] 🔧 PHASE 2: INDIVIDUAL SLEEVE PLACEMENT ({allZones.Count} zones)\n" +
+                        $"[{DateTime.Now:HH:mm:ss}] ═══════════════════════════════════════════════════════\n");
                     
-                    // ✅ Use UniversalSleevePlacementCommand for each filter (handles all dependencies correctly)
+                    // ✅ TRUE BATCH OPTIMIZATION: Merge ALL zones from ALL categories into single list
+                    // This eliminates per-category overhead and enables true batching
+                    var allZonesWithMetadata = new List<(ClashZone zone, string category, OpeningFilter filter)>();
+                    
                     foreach (var filterEntry in allZonesByFilter)
                     {
                         var filter = filterEntry.Key;
@@ -320,45 +333,141 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         if (zones.Count == 0) continue;
                         
+                        string categoryString = filter.Category switch
+                        {
+                            Models.MepCategory.Pipes => "Pipes",
+                            Models.MepCategory.CableTrays => "Cable Trays",
+                            Models.MepCategory.Ducts => "Ducts",
+                            Models.MepCategory.DuctAccessories => "Duct Accessories",
+                            _ => "Ducts"
+                        };
+                        
+                        foreach (var zone in zones)
+                        {
+                            allZonesWithMetadata.Add((zone, categoryString, filter));
+                        }
+                    }
+                    
+                    SafeFileLogger.SafeAppendText("unified_placement.log",
+                        $"[{DateTime.Now:HH:mm:ss}] 📊 Merged {allZonesWithMetadata.Count} zones from {allZonesByFilter.Count} categories\n");
+                    
+                    // ✅ Track per-category timing for consolidated report
+                    var categoryStats = new Dictionary<string, (int placed, int skipped, int errors, System.Diagnostics.Stopwatch timer)>();
+                    foreach (var cat in new[] { "Ducts", "Duct Accessories", "Pipes", "Cable Trays" })
+                    {
+                        categoryStats[cat] = (0, 0, 0, new System.Diagnostics.Stopwatch());
+                    }
+                    
+                    // ✅ PRE-CREATE SERVICES ONCE (not per category)
+                    var projectFiltersDir = ProjectPathService.GetFiltersDirectory(_document);
+                    var conditionsService = new ConditionsService(_document, projectFiltersDir, msg => { });
+                    var sleeveRepository = new Services.Repositories.SleeveRepository();
+                    var zoneFilterService = new ZoneFilterService();
+                    var flagManager = Services.FlagManagement.FlagManagerFactory.CreateAdapter(_document);
+                    
+                    // ✅ PRE-CREATE STRATEGIES (reusable across zones)
+                    var ductStrategy = new Strategies.DuctPlacementStrategy();
+                    var pipeStrategy = new Strategies.PipePlacementStrategy();
+                    var cableTrayStrategy = new Strategies.CableTrayPlacementStrategy();
+                    
+                    // ✅ OPTIMIZED: Group zones by category to minimize strategy swapping
+                    var zonesByCategory = allZonesWithMetadata
+                        .GroupBy(z => z.category)
+                        .ToDictionary(g => g.Key, g => g.ToList());
+                    
+                    // ✅ PLACE ALL ZONES BY CATEGORY (minimizes service recreation)
+                    foreach (var categoryGroup in zonesByCategory)
+                    {
+                        var category = categoryGroup.Key;
+                        var zonesInCategory = categoryGroup.Value;
+                        
+                        if (zonesInCategory.Count == 0) continue;
+                        
                         try
                         {
-                            // ✅ Category name for command
-                            string categoryString = filter.Category switch
+                            categoryStats[category].timer.Start();
+                            
+                            // Select strategy for this category
+                            ISleevePlacementStrategy strategy = category switch
                             {
-                                Models.MepCategory.Pipes => "Pipes",
-                                Models.MepCategory.CableTrays => "Cable Trays",
-                                Models.MepCategory.Ducts => "Ducts",
-                                Models.MepCategory.DuctAccessories => "Duct Accessories",
-                                _ => "Ducts"
+                                "Pipes" => pipeStrategy,
+                                "Cable Trays" => cableTrayStrategy,
+                                "Ducts" or "Duct Accessories" => ductStrategy,
+                                _ => ductStrategy
                             };
                             
-                            // ✅ Use existing command pattern (handles NewSleevePlacerService instantiation correctly)
-                            var universalCommand = new UniversalSleevePlacementCommand(
-                                _document, 
-                                zones, 
-                                categoryString, 
-                                filter.Name, 
-                                _uiClearances);
+                            // Get filter and conditions (all zones in category share same filter)
+                            var firstZone = zonesInCategory[0];
+                            var conditionsKey = $"{firstZone.filter.Name}_{MepCategoryConstants.Normalize(category)}";
+                            var conditions = conditionsService.LoadConditions(conditionsKey) ?? new OpeningConditions();
                             
-                            universalCommand.Execute(_uiDocument.Application);
+                            // ✅ Create ONE placer for this category
+                            var placer = new NewSleevePlacerService(
+                                _document,
+                                conditions,
+                                strategy,
+                                _uiClearances ?? new Dictionary<string, double>(),
+                                sleeveRepository,
+                                zoneFilterService,
+                                null, // familyManager
+                                flagManager,
+                                isReplayPath: false,
+                                filterName: firstZone.filter.Name,
+                                sizingService: null,
+                                fileNameNormalizer: null,
+                                sectionBoxChecker: null,
+                                crashSafeExecutor: _crashSafeExecutor,
+                                planner: null,
+                                isForceDetectionMode: _forceDetectionMode);
                             
-                            totalPlaced += universalCommand.PlacedCount;
-                            totalSkipped += universalCommand.SkippedCount;
-                            totalErrors += universalCommand.ErrorCount;
+                            // ✅ Place ALL zones for this category in ONE call
+                            var categoryZones = zonesInCategory.Select(z => z.zone).ToList();
+                            var (placed, skipped, errors) = placer.PlaceAllSleevesInTransaction(categoryZones);
                             
-                            // Log per-filter results (background only, no prompts)
-                            SafeFileLogger.SafeAppendText("unified_placement.log",
-                                $"[{DateTime.Now:HH:mm:ss}] ✅ Filter '{filter.Name}' ({categoryString}): Placed={universalCommand.PlacedCount}, Skipped={universalCommand.SkippedCount}, Errors={universalCommand.ErrorCount}\n");
+                            // Update category stats
+                            var stats = categoryStats[category];
+                            categoryStats[category] = (
+                                stats.placed + placed,
+                                stats.skipped + skipped,
+                                stats.errors + errors,
+                                stats.timer
+                            );
+                            
+                            totalPlaced += placed;
+                            totalSkipped += skipped;
+                            totalErrors += errors;
+                            
+                            categoryStats[category].timer.Stop();
                         }
                         catch (Exception ex)
                         {
                             SafeFileLogger.SafeAppendText("unified_placement.log",
-                                $"[{DateTime.Now:HH:mm:ss}] ❌ Filter '{filter.Name}' ERROR: {ex.Message}\n");
-                            totalErrors += zones.Count;
+                                $"[{DateTime.Now:HH:mm:ss}]   ❌ {category} ERROR: {ex.Message}\n");
+                            
+                            var stats = categoryStats[category];
+                            categoryStats[category] = (stats.placed, stats.skipped, stats.errors + zonesInCategory.Count, stats.timer);
+                            totalErrors += zonesInCategory.Count;
                         }
                     }
                     
-                    // ✅ SINGLE REGENERATION for all sleeves (already done by each command, but ensure)
+                    // Stop all category timers
+                    foreach (var cat in categoryStats.Keys.ToList())
+                    {
+                        var stats = categoryStats[cat];
+                        stats.timer.Stop();
+                        categoryStats[cat] = stats;
+                    }
+                    
+                    // ✅ Log per-category results
+                    foreach (var kvp in categoryStats.Where(s => s.Value.placed + s.Value.skipped + s.Value.errors > 0))
+                    {
+                        var (placed, skipped, errors, timer) = kvp.Value;
+                        SafeFileLogger.SafeAppendText("unified_placement.log",
+                            $"[{DateTime.Now:HH:mm:ss}]   ✅ {kvp.Key,-16} | Placed={placed,3} | Skipped={skipped,3} | Errors={errors,3} | {timer.ElapsedMilliseconds}ms\n");
+                    }
+
+                    
+                    // ✅ SINGLE REGENERATION for all sleeves
                     if (OptimizationFlags.UseSingleBatchRegeneration)
                     {
                         SafeFileLogger.SafeAppendText("unified_placement.log",
@@ -418,21 +527,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // PHASE 4: CLUSTER ALL CATEGORIES
                 // =====================================================
                 int totalClusters = 0;
+                var clusterTimings = new List<(string category, int clustered, long ms)>();
+                
+                SafeFileLogger.SafeAppendText("unified_placement.log",
+                    $"[{DateTime.Now:HH:mm:ss}] ═══════════════════════════════════════════════════════\n" +
+                    $"[{DateTime.Now:HH:mm:ss}] 🔗 PHASE 2: CLUSTERING ({filters.Count} categories)\n" +
+                    $"[{DateTime.Now:HH:mm:ss}] ═══════════════════════════════════════════════════════\n");
                 
                 foreach (var filter in filters)
                 {
                     try
                     {
+                        string catString = filter.Category switch
+                        {
+                            Models.MepCategory.Pipes => "Pipes",
+                            Models.MepCategory.CableTrays => "Cable Trays",
+                            Models.MepCategory.Ducts => "Ducts",
+                            Models.MepCategory.DuctAccessories => "Duct Accessories",
+                            _ => "Unknown"
+                        };
+                        
+                        var clusterTimer = System.Diagnostics.Stopwatch.StartNew();
                         var clusterResult = ExecuteClusteringForCategory(filter, showProgress, false, false, false);
+                        clusterTimer.Stop();
+                        
                         totalClusters += clusterResult.placedCount;
+                        clusterTimings.Add((catString, clusterResult.placedCount, clusterTimer.ElapsedMilliseconds));
                         
                         SafeFileLogger.SafeAppendText("unified_placement.log",
-                            $"[{DateTime.Now:HH:mm:ss}] 🔗 Clustering '{filter.Name}': Placed={clusterResult.placedCount}\n");
+                            $"[{DateTime.Now:HH:mm:ss}]   ✅ {catString,-16} | Clustered={clusterResult.placedCount,3} | {clusterTimer.ElapsedMilliseconds}ms\n");
                     }
                     catch (Exception ex)
                     {
                         SafeFileLogger.SafeAppendText("unified_placement.log",
-                            $"[{DateTime.Now:HH:mm:ss}] ❌ Clustering '{filter.Name}' ERROR: {ex.Message}\n");
+                            $"[{DateTime.Now:HH:mm:ss}]   ❌ {filter.Name} ERROR: {ex.Message}\n");
                     }
                     
                     // Reset filter combo flags
@@ -441,11 +569,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 sw.Stop();
                 
+                // ✅ CONSOLIDATED FINAL SUMMARY
                 SafeFileLogger.SafeAppendText("unified_placement.log",
-                    $"[{DateTime.Now:HH:mm:ss}] 🎉 UNIFIED PLACEMENT COMPLETE:\n" +
-                    $"   Individual: Placed={totalPlaced}, Skipped={totalSkipped}, Errors={totalErrors}\n" +
-                    $"   Clusters: {totalClusters}\n" +
-                    $"   Total Time: {sw.ElapsedMilliseconds}ms ({sw.ElapsedMilliseconds/1000.0:F1}s)\n");
+                    $"[{DateTime.Now:HH:mm:ss}] ═══════════════════════════════════════════════════════\n" +
+                    $"[{DateTime.Now:HH:mm:ss}] 🎉 UNIFIED PLACEMENT COMPLETE\n" +
+                    $"[{DateTime.Now:HH:mm:ss}] ═══════════════════════════════════════════════════════\n" +
+                    $"[{DateTime.Now:HH:mm:ss}]   Individual: Placed={totalPlaced}, Skipped={totalSkipped}, Errors={totalErrors}\n" +
+                    $"[{DateTime.Now:HH:mm:ss}]   Clusters:   {totalClusters}\n" +
+                    $"[{DateTime.Now:HH:mm:ss}]   TOTAL:      {totalPlaced + totalClusters} sleeves\n" +
+                    $"[{DateTime.Now:HH:mm:ss}]   Time:       {sw.ElapsedMilliseconds}ms ({sw.ElapsedMilliseconds/1000.0:F1}s)\n" +
+                    $"[{DateTime.Now:HH:mm:ss}] ═══════════════════════════════════════════════════════\n");
                 
                 // ✅ NO TASKDIALOG - Just log (SuppressPlacementPrompts)
                 if (!OptimizationFlags.SuppressPlacementPrompts)

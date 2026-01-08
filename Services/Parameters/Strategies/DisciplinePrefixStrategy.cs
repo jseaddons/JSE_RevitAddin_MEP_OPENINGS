@@ -1,8 +1,9 @@
-using System;
 using System.Linq;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Parameters.Configuration;
 
-namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
+namespace JSE_RevitAddin_MEP_OPENINGS.Services.Parameters.Strategies
 {
     public class DisciplinePrefixStrategy : IPrefixStrategy
     {
@@ -10,13 +11,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
         {
             if (settings == null) return "OPN"; // Fallback
 
-            // ✅ OPTIMIZED: Use pre-resolved properties from model (loaded from direct DB columns)
-            string systemType = zone.MepSystemType?.Trim();
-            string serviceType = zone.MepServiceType?.Trim();
-
-            // Fallback to searching parameter list if DB columns are empty (legacy/backward compatibility)
-            if (string.IsNullOrEmpty(systemType)) systemType = GetParameterValue(zone, "System Type");
-            if (string.IsNullOrEmpty(serviceType)) serviceType = GetParameterValue(zone, "Service Type");
+            // ✅ PRIORITIZE JSON: Use values from JSON blob first (matches User Expectation better)
+            // The direct DB column "MepSystemType" often contains internal Revit names (e.g., "Mechanical Supply Air 70")
+            // The JSON blob contains the parameter value (e.g., "Supply Air") which matches the UI settings.
+            string systemType = GetParameterValue(zone, "System Type");
+            string serviceType = GetParameterValue(zone, "Service Type");
+            
+            // Fallback to DB columns if JSON lookup failed
+            if (string.IsNullOrEmpty(systemType)) systemType = zone.MepSystemType?.Trim();
+            if (string.IsNullOrEmpty(serviceType)) serviceType = zone.MepServiceType?.Trim();
 
             NumberingDebugLogger.LogInfo($"[DisciplinePrefixStrategy] Category: {category}, SystemType: '{systemType}', ServiceType: '{serviceType}'");
 

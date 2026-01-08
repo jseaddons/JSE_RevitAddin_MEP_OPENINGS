@@ -205,8 +205,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 if (_clashZones == null || _clashZones.Count == 0)
                 {
                     DebugLogger.Warning($"{_logPrefix} ⚠️ No clash zones available for placement. Ensure Refresh completed successfully and data was saved.");
-                    TaskDialog.Show("No Clash Zones",
-                        "No clash zones were found for this category. Please run Refresh before placing sleeves.");
+                    if (!OptimizationFlags.SuppressPlacementPrompts)
+                    {
+                        TaskDialog.Show("No Clash Zones",
+                            "No clash zones were found for this category. Please run Refresh before placing sleeves.");
+                    }
                     return;
                 }
                 
@@ -340,7 +343,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         }
                         
                         DebugLogger.Info($"{_logPrefix} ⚠️ {message}");
-                        TaskDialog.Show("No Sleeves to Place", message);
+                        if (!OptimizationFlags.SuppressPlacementPrompts)
+                        {
+                            TaskDialog.Show("No Sleeves to Place", message);
+                        }
                         t.RollBack();
                         return;
                     }
@@ -534,28 +540,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                                 message = $"No {_category} sleeves placed\n✗ All clash zones were filtered out (already have sleeves or invalid)\nCheck logs for details";
                             }
                             
-                            MessageBox.Show(message, $"{_category} Sleeve Placement Complete", 
-                                MessageBoxButtons.OK, 
-                                MessageBoxIcon.Information);
+                            if (!OptimizationFlags.SuppressPlacementPrompts)
+                            {
+                                MessageBox.Show(message, $"{_category} Sleeve Placement Complete", 
+                                    MessageBoxButtons.OK, 
+                                    MessageBoxIcon.Information);
+                            }
                         }
                         else
                         {
                             DebugLogger.Error($"{_logPrefix} Transaction failed to commit: {status}");
                             DebugLogger.Error($"{_logPrefix} This might be due to duplicate suppression or existing sleeves");
                             
-                            MessageBox.Show($"Failed to place {_category} sleeves.\nStatus: {status}\nCheck log for details.", 
-                                "Placement Failed", 
-                                MessageBoxButtons.OK, 
-                                MessageBoxIcon.Warning);
+                            if (!OptimizationFlags.SuppressPlacementPrompts)
+                            {
+                                MessageBox.Show($"Failed to place {_category} sleeves.\nStatus: {status}\nCheck log for details.", 
+                                    "Placement Failed", 
+                                    MessageBoxButtons.OK, 
+                                    MessageBoxIcon.Warning);
+                            }
                         }
                     }
                     else
                     {
                         DebugLogger.Error($"{_logPrefix} Failed to start transaction");
-                        MessageBox.Show($"Failed to start transaction for {_category} sleeves.", 
-                            "Transaction Error", 
-                            MessageBoxButtons.OK, 
-                            MessageBoxIcon.Error);
+                        if (!OptimizationFlags.SuppressPlacementPrompts)
+                        {
+                            MessageBox.Show($"Failed to start transaction for {_category} sleeves.", 
+                                "Transaction Error", 
+                                MessageBoxButtons.OK, 
+                                MessageBoxIcon.Error);
+                        }
                     }
                 }
             }
@@ -564,10 +579,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 DebugLogger.Error($"{_logPrefix} Exception: {ex.Message}");
                 DebugLogger.Error($"{_logPrefix} Stack trace: {ex.StackTrace}");
                 
-                MessageBox.Show($"Error placing {_category} sleeves:\n\n{ex.Message}", 
-                    "Sleeve Placement Error", 
-                    MessageBoxButtons.OK, 
-                    MessageBoxIcon.Error);
+                if (!OptimizationFlags.SuppressPlacementPrompts)
+                {
+                    MessageBox.Show($"Error placing {_category} sleeves:\n\n{ex.Message}", 
+                        "Sleeve Placement Error", 
+                        MessageBoxButtons.OK, 
+                        MessageBoxIcon.Error);
+                }
             }
         }
         

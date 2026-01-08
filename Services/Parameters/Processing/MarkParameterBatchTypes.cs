@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
 
-namespace JSE_RevitAddin_MEP_OPENINGS.Services
+namespace JSE_RevitAddin_MEP_OPENINGS.Services.Parameters.Processing
 {
     /// <summary>
     /// Represents the identity data for a sleeve during mark calculation.

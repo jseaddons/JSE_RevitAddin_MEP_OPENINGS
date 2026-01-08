@@ -208,6 +208,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// Timestamp when this combined sleeve was last updated
         /// </summary>
         public DateTime UpdatedAt { get; set; }
+
+        /// <summary>
+        /// The Family Name of the placed sleeve (e.g. "Rectangular Sleeve", "Round Sleeve")
+        /// </summary>
+        public string SleeveFamilyName { get; set; }
         
         // ============================================================================
         // NAVIGATION PROPERTIES

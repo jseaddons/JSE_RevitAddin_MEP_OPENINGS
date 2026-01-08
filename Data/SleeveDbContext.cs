@@ -1174,6 +1174,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     Corner4X            REAL DEFAULT 0.0,
                     Corner4Y            REAL DEFAULT 0.0,
                     Corner4Z            REAL DEFAULT 0.0,
+                    SleeveFamilyName    TEXT,
                     CreatedAt           DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
                     UpdatedAt           DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
                     FOREIGN KEY(ComboId) REFERENCES FileCombos(ComboId) ON DELETE CASCADE,
@@ -1206,6 +1207,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
             AddColumnIfMissing("ClusterSleeves", "Corner4X", "REAL DEFAULT 0.0", transaction);
             AddColumnIfMissing("ClusterSleeves", "Corner4Y", "REAL DEFAULT 0.0", transaction);
             AddColumnIfMissing("ClusterSleeves", "Corner4Z", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves", "SleeveFamilyName", "TEXT", transaction);
             
             // ✅ COMBINED SLEEVE TRACKING: Instance ID for the combined sleeve if this cluster is part of one
             // NOTE: IsCombinedResolved is NOT needed here - only in ClashZones
@@ -1619,6 +1621,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     Corner4X            REAL DEFAULT 0.0,
                     Corner4Y            REAL DEFAULT 0.0,
                     Corner4Z            REAL DEFAULT 0.0,
+                    SleeveFamilyName    TEXT,
                     CreatedAt           DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
                     UpdatedAt           DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes'))
                 )", transaction);
@@ -1666,6 +1669,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
             catch (Exception ex)
             {
                 _logger($"[SQLite] ⚠️ Could not add DeterministicGuid column (may already exist): {ex.Message}");
+            }
+
+            try
+            {
+                AddColumnIfMissing("CombinedSleeves", "SleeveFamilyName", "TEXT", transaction);
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ⚠️ Could not add SleeveFamilyName column to CombinedSleeves: {ex.Message}");
             }
             
             // Table 2: Constituents (One-to-many relationship)

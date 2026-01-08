@@ -7,7 +7,9 @@ using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 
-namespace JSE_RevitAddin_MEP_OPENINGS.Services
+using JSE_RevitAddin_MEP_OPENINGS.Services.Parameters.Configuration;
+
+namespace JSE_RevitAddin_MEP_OPENINGS.Services.Parameters.Processing
 {
     public interface IMarkCacheService
     {

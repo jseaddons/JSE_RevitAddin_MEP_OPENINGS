@@ -66,10 +66,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 {
                                     try
                                     {
-                                        var mepParams = System.Text.Json.JsonSerializer.Deserialize<List<SerializableKeyValue>>(json);
-                                        if (mepParams != null)
+                                        // ✅ ROBUST DESERIALIZATION: Try Dictionary first (New Format), then List (Old Format)
+                                        try 
                                         {
-                                            cz.MepParameterValues = mepParams;
+                                            var dict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+                                            if (dict != null)
+                                            {
+                                                cz.MepParameterValues = new List<SerializableKeyValue>();
+                                                foreach (var kv in dict)
+                                                {
+                                                    cz.MepParameterValues.Add(new SerializableKeyValue { Key = kv.Key, Value = kv.Value });
+                                                }
+                                            }
+                                        }
+                                        catch
+                                        {
+                                            // Fallback to List (Legacy)
+                                            var mepParams = System.Text.Json.JsonSerializer.Deserialize<List<SerializableKeyValue>>(json);
+                                            if (mepParams != null) cz.MepParameterValues = mepParams;
                                         }
                                     }
                                     catch { /* Ignore JSON errors */ }
@@ -96,31 +110,63 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         public List<ClashZone> GetSleevesForLevel(string levelName, string category)
         {
             var results = new List<ClashZone>();
+            
+            // ✅ FIX: Use UNION to get BOTH individual sleeves AND cluster sleeves
+            // Individual sleeves: from ClashZones where SleeveInstanceId > 0 and ClusterInstanceId <= 0
+            // Cluster sleeves: from ClusterSleeves table (ClusterInstanceId is the sleeve ElementId in Revit)
             string sql = @"
-                SELECT cz.ClashZoneId, cz.SleeveInstanceId, COALESCE(cz.MepCategory, cs.Category) AS MepCategory, 
-                       cz.ClusterInstanceId, COALESCE(ss_cluster.MepParametersJson, ss_ind.MepParametersJson) AS ParamsJson,
+                -- Individual sleeves from ClashZones
+                SELECT cz.ClashZoneId, cz.SleeveInstanceId, cz.MepCategory, 
+                       0 AS ClusterInstanceId, ss.MepParametersJson AS ParamsJson,
                        cz.IntersectionPointX, cz.IntersectionPointY, cz.IntersectionPointZ,
                        cz.MepSystemType, cz.MepServiceType
                 FROM ClashZones cz
-                LEFT JOIN ClusterSleeves cs ON cz.ClusterInstanceId = cs.ClusterInstanceId
-                LEFT JOIN SleeveSnapshots ss_cluster ON (cz.ClusterInstanceId > 0 AND cz.ClusterInstanceId = ss_cluster.ClusterInstanceId)
-                LEFT JOIN SleeveSnapshots ss_ind ON (cz.SleeveInstanceId = ss_ind.SleeveInstanceId)
+                LEFT JOIN SleeveSnapshots ss ON cz.SleeveInstanceId = ss.SleeveInstanceId
                 WHERE cz.MepElementLevelName = @LevelName 
-                AND (cz.SleeveInstanceId > 0 OR cz.ClusterInstanceId > 0)";
-
+                AND cz.SleeveInstanceId > 0 
+                AND (cz.ClusterInstanceId IS NULL OR cz.ClusterInstanceId <= 0)
+                AND (cz.CombinedClusterSleeveInstanceId IS NULL OR cz.CombinedClusterSleeveInstanceId <= 0)";
+            
             bool isCombinedQuery = category != null && category.Equals("Combined", StringComparison.OrdinalIgnoreCase);
-
-            if (isCombinedQuery)
+            
+            if (!isCombinedQuery && !string.IsNullOrWhiteSpace(category))
             {
-                sql += " AND cz.CombinedClusterSleeveInstanceId > 0";
+                sql += " AND cz.MepCategory = @cat";
             }
-            else if (!string.IsNullOrWhiteSpace(category))
+            
+            // Add UNION for cluster sleeves
+            // ✅ FIX: Filter clusters by level using JOIN with ClashZones
+            // Since ClusterSleeves table doesn't have LevelName, we find clusters referenced by ClashZones on this level
+            sql += @"
+                
+                UNION ALL
+                
+                SELECT -1 AS ClashZoneId, 0 AS SleeveInstanceId, cs.Category AS MepCategory,
+                       cs.ClusterInstanceId, ss.MepParametersJson AS ParamsJson,
+                       cs.PlacementX AS IntersectionPointX, cs.PlacementY AS IntersectionPointY, cs.PlacementZ AS IntersectionPointZ,
+                       -- ✅ FIX: Fetch System/Service Type from FIRST constituent ClashZone
+                       COALESCE(cz_data.MepSystemType, '') AS MepSystemType, 
+                       COALESCE(cz_data.MepServiceType, '') AS MepServiceType
+                FROM ClusterSleeves cs
+                INNER JOIN (
+                    -- Get Cluster IDs on this level
+                    SELECT DISTINCT ClusterInstanceId 
+                    FROM ClashZones 
+                    WHERE MepElementLevelName = @LevelName AND ClusterInstanceId > 0
+                ) cz_filter ON cs.ClusterInstanceId = cz_filter.ClusterInstanceId
+                -- Join again to get data from one representative zone
+                LEFT JOIN (
+                    SELECT ClusterInstanceId, MAX(MepSystemType) as MepSystemType, MAX(MepServiceType) as MepServiceType
+                    FROM ClashZones
+                    WHERE ClusterInstanceId > 0
+                    GROUP BY ClusterInstanceId
+                ) cz_data ON cs.ClusterInstanceId = cz_data.ClusterInstanceId
+                LEFT JOIN SleeveSnapshots ss ON cs.ClusterInstanceId = ss.ClusterInstanceId
+                WHERE 1=1";
+            
+            if (!isCombinedQuery && !string.IsNullOrWhiteSpace(category))
             {
-                sql += " AND (cz.MepCategory = @cat OR cs.Category = @cat) AND (cz.CombinedClusterSleeveInstanceId IS NULL OR cz.CombinedClusterSleeveInstanceId <= 0)";
-            }
-            else
-            {
-                sql += " AND (cz.CombinedClusterSleeveInstanceId IS NULL OR cz.CombinedClusterSleeveInstanceId <= 0)";
+                sql += " AND cs.Category = @cat";
             }
 
             try
@@ -138,18 +184,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     {
                         while (reader.Read())
                         {
-                            int sleeveId = reader.GetInt32(1);
-                            int clusterId = reader.IsDBNull(3) ? -1 : reader.GetInt32(3);
+                            int sleeveId = reader.IsDBNull(1) ? 0 : reader.GetInt32(1);
+                            int clusterId = reader.IsDBNull(3) ? 0 : reader.GetInt32(3);
 
                             var cz = new ClashZone
                             {
-                                ClashZoneId = reader.GetInt32(0),
+                                ClashZoneId = reader.IsDBNull(0) ? -1 : reader.GetInt32(0),
                                 SleeveInstanceId = sleeveId,
-                                MepElementCategory = reader.GetString(2),
+                                MepElementCategory = reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
                                 ClusterInstanceId = clusterId,
-                                IntersectionPointX = reader.GetDouble(5),
-                                IntersectionPointY = reader.GetDouble(6),
-                                IntersectionPointZ = reader.GetDouble(7),
+                                IntersectionPointX = reader.IsDBNull(5) ? 0 : reader.GetDouble(5),
+                                IntersectionPointY = reader.IsDBNull(6) ? 0 : reader.GetDouble(6),
+                                IntersectionPointZ = reader.IsDBNull(7) ? 0 : reader.GetDouble(7),
                                 MepSystemType = reader.IsDBNull(8) ? string.Empty : reader.GetString(8),
                                 MepServiceType = reader.IsDBNull(9) ? string.Empty : reader.GetString(9)
                             };
@@ -157,12 +203,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             if (!reader.IsDBNull(4))
                             {
                                 string json = reader.GetString(4);
-                                try
-                                {
-                                    var values = System.Text.Json.JsonSerializer.Deserialize<List<JSE_RevitAddin_MEP_OPENINGS.Models.SerializableKeyValue>>(json);
-                                    if (values != null) cz.MepParameterValues = values;
-                                }
-                                catch { }
+                                    try
+                                    {
+                                        // ✅ ROBUST DESERIALIZATION: Try Dictionary first (New Format), then List (Old Format)
+                                        // ClashZoneRepository serializes as Dictionary<string, string>, so correct order is Dict -> List
+                                        try 
+                                        {
+                                            var dict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+                                            if (dict != null)
+                                            {
+                                                cz.MepParameterValues = new List<JSE_RevitAddin_MEP_OPENINGS.Models.SerializableKeyValue>();
+                                                foreach (var kv in dict)
+                                                {
+                                                    cz.MepParameterValues.Add(new JSE_RevitAddin_MEP_OPENINGS.Models.SerializableKeyValue { Key = kv.Key, Value = kv.Value });
+                                                }
+                                            }
+                                        }
+                                        catch
+                                        {
+                                            // Fallback to List (Legacy)
+                                            var values = System.Text.Json.JsonSerializer.Deserialize<List<JSE_RevitAddin_MEP_OPENINGS.Models.SerializableKeyValue>>(json);
+                                            if (values != null) cz.MepParameterValues = values;
+                                        }
+                                    }
+                                    catch { /* JSON Error */ }
                             }
                             results.Add(cz);
                         }

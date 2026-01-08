@@ -216,7 +216,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 Corner1X, Corner1Y, Corner1Z,
                                 Corner2X, Corner2Y, Corner2Z,
                                 Corner3X, Corner3Y, Corner3Z,
-                                Corner4X, Corner4Y, Corner4Z
+                                Corner4X, Corner4Y, Corner4Z,
+                                SleeveFamilyName
                             ) VALUES (
                                 @CombinedInstanceId, @DeterministicGuid, @ComboId, @FilterId, @Categories,
                                 @BoundingBoxMinX, @BoundingBoxMinY, @BoundingBoxMinZ,
@@ -227,7 +228,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 @Corner1X, @Corner1Y, @Corner1Z,
                                 @Corner2X, @Corner2Y, @Corner2Z,
                                 @Corner3X, @Corner3Y, @Corner3Z,
-                                @Corner4X, @Corner4Y, @Corner4Z
+                                @Corner4X, @Corner4Y, @Corner4Z,
+                                @SleeveFamilyName
                             );
                             SELECT last_insert_rowid();";
 
@@ -268,7 +270,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         cmd.Parameters.AddWithValue("@Corner3Z", combinedSleeve.Corner3Z);
                         cmd.Parameters.AddWithValue("@Corner4X", combinedSleeve.Corner4X);
                         cmd.Parameters.AddWithValue("@Corner4Y", combinedSleeve.Corner4Y);
+                        cmd.Parameters.AddWithValue("@Corner4Y", combinedSleeve.Corner4Y);
                         cmd.Parameters.AddWithValue("@Corner4Z", combinedSleeve.Corner4Z);
+                        cmd.Parameters.AddWithValue("@SleeveFamilyName", combinedSleeve.SleeveFamilyName ?? (object)DBNull.Value);
 
                         combinedSleeveId = Convert.ToInt32(cmd.ExecuteScalar());
              }
@@ -297,6 +301,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         Corner2X=@C2X, Corner2Y=@C2Y, Corner2Z=@C2Z,
                         Corner3X=@C3X, Corner3Y=@C3Y, Corner3Z=@C3Z,
                         Corner4X=@C4X, Corner4Y=@C4Y, Corner4Z=@C4Z,
+                        SleeveFamilyName = @SleeveFamilyName,
                         UpdatedAt = CURRENT_TIMESTAMP
                     WHERE CombinedSleeveId = @Id";
 
@@ -322,6 +327,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 cmd.Parameters.AddWithValue("@C2X", s.Corner2X); cmd.Parameters.AddWithValue("@C2Y", s.Corner2Y); cmd.Parameters.AddWithValue("@C2Z", s.Corner2Z);
                 cmd.Parameters.AddWithValue("@C3X", s.Corner3X); cmd.Parameters.AddWithValue("@C3Y", s.Corner3Y); cmd.Parameters.AddWithValue("@C3Z", s.Corner3Z);
                 cmd.Parameters.AddWithValue("@C4X", s.Corner4X); cmd.Parameters.AddWithValue("@C4Y", s.Corner4Y); cmd.Parameters.AddWithValue("@C4Z", s.Corner4Z);
+                cmd.Parameters.AddWithValue("@SleeveFamilyName", s.SleeveFamilyName ?? (object)DBNull.Value);
 
                 cmd.ExecuteNonQuery();
             }
@@ -807,6 +813,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 Corner4Y = reader.GetDouble(reader.GetOrdinal("Corner4Y")),
                 Corner4Z = reader.GetDouble(reader.GetOrdinal("Corner4Z")),
                 
+                SleeveFamilyName = reader.IsDBNull(reader.GetOrdinal("SleeveFamilyName")) ? null : reader.GetString(reader.GetOrdinal("SleeveFamilyName")),
+
                 CreatedAt = reader.GetDateTime(reader.GetOrdinal("CreatedAt")),
                 UpdatedAt = reader.GetDateTime(reader.GetOrdinal("UpdatedAt"))
             };

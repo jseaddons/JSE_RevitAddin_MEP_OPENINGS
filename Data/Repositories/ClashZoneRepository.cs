@@ -1361,6 +1361,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     cmd.Parameters.AddWithValue($"@WallCenterlinePointY{i}", zone.WallCenterlinePointY);
                     cmd.Parameters.AddWithValue($"@WallCenterlinePointZ{i}", zone.WallCenterlinePointZ);
 
+                    // ✅ CRITICAL FIX: Add MepSystemType and MepServiceType for proper prefix resolution on re-Refresh
+                    cmd.Parameters.AddWithValue($"@MepSystemType{i}", (object)zone.MepSystemType ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue($"@MepServiceType{i}", (object)zone.MepServiceType ?? DBNull.Value);
+
                     cmd.Parameters.AddWithValue($"@ZoneId{i}", clashZoneId);
                 }
 
@@ -1718,7 +1722,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 {
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @InsulationThickness{i}");
                 }
-                sql.AppendLine("    ELSE InsulationThickness END");
+                sql.AppendLine("    ELSE InsulationThickness END,");
+
+                // ✅ CRITICAL FIX: Add MepSystemType and MepServiceType for proper prefix resolution on re-Refresh
+                sql.AppendLine("  MepSystemType = CASE ClashZoneId");
+                for (int i = 0; i < validZones.Count; i++)
+                {
+                    sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepSystemType{i}");
+                }
+                sql.AppendLine("    ELSE MepSystemType END,");
+
+                sql.AppendLine("  MepServiceType = CASE ClashZoneId");
+                for (int i = 0; i < validZones.Count; i++)
+                {
+                    sql.AppendLine($"    WHEN @ZoneId{i} THEN @MepServiceType{i}");
+                }
+                sql.AppendLine("    ELSE MepServiceType END");
 
                 sql.AppendLine($"WHERE ClashZoneId IN ({idList})");
 
@@ -7384,7 +7403,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 }
                 else if (snapshotRowsAffected == 0 && !DeploymentConfiguration.DeploymentMode)
                 {
-                    _logger($"[SQLite] ⚠️ UpdateSleeveInstanceId: No snapshots updated for GUID {clashZoneGuid} (may not exist yet or is a cluster)");
+                    if (snapshotRowsAffected == 0)
+                    {
+                        _logger($"[SQLite] ⚠️ UpdateSleeveInstanceId: No snapshots updated for GUID {clashZoneGuid} (may not exist yet or is a cluster)");
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Update Sleeve Family Name for a clash zone
+        /// </summary>
+        public void UpdateSleeveFamilyName(Guid clashZoneGuid, string familyName)
+        {
+            if (string.IsNullOrEmpty(familyName)) return;
+
+            using (var cmd = _context.Connection.CreateCommand())
+            {
+                cmd.CommandText = @"
+                    UPDATE ClashZones 
+                    SET SleeveFamilyName = @FamilyName
+                    WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)";
+                
+                cmd.Parameters.AddWithValue("@FamilyName", familyName);
+                cmd.Parameters.AddWithValue("@ClashZoneGuid", clashZoneGuid.ToString());
+                
+                int rowsAffected = cmd.ExecuteNonQuery();
+                
+                if (!OptimizationFlags.DisableVerboseLogging && rowsAffected > 0)
+                {
+                    _logger($"[SQLite] ✅ UpdateSleeveFamilyName: Updated zone {clashZoneGuid} with family '{familyName}'");
                 }
             }
         }

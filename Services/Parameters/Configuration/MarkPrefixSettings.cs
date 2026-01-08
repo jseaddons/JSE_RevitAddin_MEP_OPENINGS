@@ -2,7 +2,7 @@ using System;
 using System.Linq;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 
-namespace JSE_RevitAddin_MEP_OPENINGS.Models
+namespace JSE_RevitAddin_MEP_OPENINGS.Services.Parameters.Configuration
 {
     /// <summary>
     /// Mark prefix configuration for MEPMARK parameter
@@ -165,53 +165,78 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
 
             if (category == "Ducts" && !string.IsNullOrEmpty(systemType))
             {
-                // ✅ CRITICAL FIX: Use case-insensitive matching for system type lookup
+                // ✅ FUZZY MATCH: Try exact match first, then partial (substring) match
                 var matchingOverride = DuctSystemTypeOverrides.FirstOrDefault(kvp => 
                     string.Equals(kvp.Key, systemType, StringComparison.OrdinalIgnoreCase));
                 
+                // If exact match failed, try partial match (e.g., "Supply Air" matches "Mechanical Supply Air 70")
+                if (string.IsNullOrEmpty(matchingOverride.Key))
+                {
+                    matchingOverride = DuctSystemTypeOverrides.FirstOrDefault(kvp => 
+                        systemType.IndexOf(kvp.Key, StringComparison.OrdinalIgnoreCase) >= 0);
+                }
+                
                 if (!string.IsNullOrEmpty(matchingOverride.Key))
                 {
-                    NumberingDebugLogger.LogInfo($"[MarkPrefixSettings] ✅ SYSTEM TYPE OVERRIDE: Duct System Type '{systemType}' → Prefix '{matchingOverride.Value}'");
-                    return matchingOverride.Value; // System Type prefix takes precedence
+                    NumberingDebugLogger.LogInfo($"[MarkPrefixSettings] ✅ SYSTEM TYPE OVERRIDE: Duct System Type '{systemType}' → Prefix '{matchingOverride.Value}' (Matched: '{matchingOverride.Key}')");
+                    return matchingOverride.Value;
                 }
             }
             
             if (category == "Pipes" && !string.IsNullOrEmpty(systemType))
             {
-                // ✅ CRITICAL FIX: Use case-insensitive matching for system type lookup
+                // ✅ FUZZY MATCH: Try exact match first, then partial (substring) match
                 var matchingOverride = PipeSystemTypeOverrides.FirstOrDefault(kvp => 
                     string.Equals(kvp.Key, systemType, StringComparison.OrdinalIgnoreCase));
                 
+                if (string.IsNullOrEmpty(matchingOverride.Key))
+                {
+                    matchingOverride = PipeSystemTypeOverrides.FirstOrDefault(kvp => 
+                        systemType.IndexOf(kvp.Key, StringComparison.OrdinalIgnoreCase) >= 0);
+                }
+                
                 if (!string.IsNullOrEmpty(matchingOverride.Key))
                 {
-                    NumberingDebugLogger.LogInfo($"[MarkPrefixSettings] ✅ SYSTEM TYPE OVERRIDE: Pipe System Type '{systemType}' → Prefix '{matchingOverride.Value}'");
-                    return matchingOverride.Value; // System Type prefix takes precedence
+                    NumberingDebugLogger.LogInfo($"[MarkPrefixSettings] ✅ SYSTEM TYPE OVERRIDE: Pipe System Type '{systemType}' → Prefix '{matchingOverride.Value}' (Matched: '{matchingOverride.Key}')");
+                    return matchingOverride.Value;
                 }
             }
             
             if (category == "Duct Accessories" && !string.IsNullOrEmpty(systemType))
             {
-                // ✅ CRITICAL FIX: Use case-insensitive matching for system type lookup
+                // ✅ FUZZY MATCH: Try exact match first, then partial (substring) match
                 var matchingOverride = DuctAccessoriesSystemTypeOverrides.FirstOrDefault(kvp => 
                     string.Equals(kvp.Key, systemType, StringComparison.OrdinalIgnoreCase));
                 
+                if (string.IsNullOrEmpty(matchingOverride.Key))
+                {
+                    matchingOverride = DuctAccessoriesSystemTypeOverrides.FirstOrDefault(kvp => 
+                        systemType.IndexOf(kvp.Key, StringComparison.OrdinalIgnoreCase) >= 0);
+                }
+                
                 if (!string.IsNullOrEmpty(matchingOverride.Key))
                 {
-                    NumberingDebugLogger.LogInfo($"[MarkPrefixSettings] ✅ SYSTEM TYPE OVERRIDE: Duct Accessories System Type '{systemType}' → Prefix '{matchingOverride.Value}'");
-                    return matchingOverride.Value; // System Type prefix takes precedence
+                    NumberingDebugLogger.LogInfo($"[MarkPrefixSettings] ✅ SYSTEM TYPE OVERRIDE: Duct Accessories System Type '{systemType}' → Prefix '{matchingOverride.Value}' (Matched: '{matchingOverride.Key}')");
+                    return matchingOverride.Value;
                 }
             }
             
             if (category == "Cable Trays" && !string.IsNullOrEmpty(serviceType))
             {
-                // ✅ CRITICAL FIX: Use case-insensitive matching for service type lookup
+                // ✅ FUZZY MATCH: Try exact match first, then partial (substring) match
                 var matchingOverride = CableTrayServiceTypeOverrides.FirstOrDefault(kvp => 
                     string.Equals(kvp.Key, serviceType, StringComparison.OrdinalIgnoreCase));
                 
+                if (string.IsNullOrEmpty(matchingOverride.Key))
+                {
+                    matchingOverride = CableTrayServiceTypeOverrides.FirstOrDefault(kvp => 
+                        serviceType.IndexOf(kvp.Key, StringComparison.OrdinalIgnoreCase) >= 0);
+                }
+                
                 if (!string.IsNullOrEmpty(matchingOverride.Key))
                 {
-                    NumberingDebugLogger.LogInfo($"[MarkPrefixSettings] ✅ SERVICE TYPE OVERRIDE: Cable Tray Service Type '{serviceType}' → Prefix '{matchingOverride.Value}'");
-                    return matchingOverride.Value; // Service Type prefix takes precedence
+                    NumberingDebugLogger.LogInfo($"[MarkPrefixSettings] ✅ SERVICE TYPE OVERRIDE: Cable Tray Service Type '{serviceType}' → Prefix '{matchingOverride.Value}' (Matched: '{matchingOverride.Key}')");
+                    return matchingOverride.Value;
                 }
             }
             
