@@ -402,6 +402,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public static bool UseSOLIDRefactoredIndividualPreCalculation { get; set; } = true;
         #endregion
         
+        #region Unified All-Category Placement (BIM 360 Optimization)
+        
+        /// <summary>
+        /// Enable unified all-category placement in ONE Revit transaction.
+        /// When true: Pre-calculates ALL categories in parallel (3-tier), then places ALL sleeves
+        ///            in a SINGLE loop within ONE transaction. Critical for BIM 360 performance
+        ///            (1 sync instead of 4).
+        /// When false: Legacy per-category sequential placement (4 transactions = 4 syncs).
+        /// Default: false (safe rollout - enable for testing).
+        /// Location: Services/OpeningCommandOrchestrator.cs
+        /// Architecture: Pre-calc (parallel) → Place ALL (sequential) → Regenerate ONCE → Bulk DB save
+        /// </summary>
+        public static bool UseUnifiedAllCategoryPlacement { get; set; } = true;
+        
+        /// <summary>
+        /// Suppress per-category TaskDialog prompts during placement.
+        /// When true: Logs results to file only, no UI prompts (faster, non-blocking).
+        /// When false: Shows TaskDialog after each category (legacy behavior).
+        /// Default: true (enabled - prompts slow down BIM 360 workflows).
+        /// Location: Services/OpeningCommandOrchestrator.cs, Services/NewSleevePlacerService.cs
+        /// </summary>
+        public static bool SuppressPlacementPrompts { get; set; } = true;
+        
+        /// <summary>
+        /// Enable single regeneration after ALL sleeves are placed (not per-sleeve).
+        /// When true: Defers doc.Regenerate() until ALL sleeves in batch are placed.
+        /// When false: Regenerates after each sleeve or small batch.
+        /// Default: true (enabled - significant performance improvement).
+        /// Location: Services/NewSleevePlacerService.cs
+        /// </summary>
+        public static bool UseSingleBatchRegeneration { get; set; } = true;
+        
+        /// <summary>
+        /// Enable bulk database persistence after placement batch.
+        /// When true: Saves ALL sleeve data to DB in ONE transaction after placement.
+        /// When false: Saves each sleeve immediately after placement.
+        /// Default: true (enabled - reduces DB overhead).
+        /// Location: Services/Placement/SleevePersistenceService.cs
+        /// </summary>
+        public static bool UseBulkDbPersistenceAfterPlacement { get; set; } = true;
+        
+        #endregion
         
         #region Advanced Optimizations (NEW - Priority 3, Optional)
         
