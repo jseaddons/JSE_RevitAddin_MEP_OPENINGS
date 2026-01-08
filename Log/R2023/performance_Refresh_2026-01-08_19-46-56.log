@@ -1,0 +1,50 @@
+[2026-01-08 19:46:58.842] === REFRESH PERFORMANCE REPORT ===
+Generated: 2026-01-08 19:46:58
+🔨 Build Timestamp: 2026-01-08 18:51:17 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+Total Time: 2632ms (00:02)
+Total Clash Zones: 21
+
+=== MEMORY USAGE ===
+Start: 272.38 MB
+End: 252.52 MB
+Delta: -19.86 MB
+Memory per Zone: -968.63 KB (target: <5 KB)
+
+=== OPERATION BREAKDOWN ===
+Operation                         Calls      Total        Avg        Min        Max      Items
+----------------------------------------------------------------------------------------------------
+6. Intersection Processing            1       1322ms    1322.0ms      1322ms      1322ms        16/s
+Damper Processing (Total)             1       1114ms    1114.0ms      1114ms      1114ms        19/s
+9. Process Dampers (Bulk Optimized)        1        754ms     754.0ms       754ms       754ms        28/s
+9. Save                               1        513ms     513.0ms       513ms       513ms        41/s
+9a. Database/XML Save                 1        409ms     409.0ms       409ms       409ms        51/s
+9a8. Repo Bulk Save                   1        254ms     254.0ms       254ms       254ms        83/s
+8. Parameter Capture                  1        110ms     110.0ms       110ms       110ms       191/s
+Collect Dampers                       1         90ms      90.0ms        90ms        90ms       233/s
+9a7. Group File Combos                1         59ms      59.0ms        59ms        59ms         0/s
+6b. Host Element Collection           1         57ms      57.0ms        57ms        57ms       193/s
+9b. Set ReadyForPlacement Flags        1         44ms      44.0ms        44ms        44ms       477/s
+3. Hierarchical Flag Reset            1         38ms      38.0ms        38ms        38ms      1263/s
+PrepareExistingZones                  1         34ms      34.0ms        34ms        34ms         0/s
+3. Load Existing Zones                1         26ms      26.0ms        26ms        26ms         0/s
+3B. Legacy Flag Sync                  1         20ms      20.0ms        20ms        20ms         0/s
+Collect Walls                         1         14ms      14.0ms        14ms        14ms       786/s
+6a. MEP Element Collection            1         14ms      14.0ms        14ms        14ms         0/s
+6a1. Section Box Outline              1          7ms       7.0ms         7ms         7ms         0/s
+PostProcess                           1          7ms       7.0ms         7ms         7ms         0/s
+2. XML Loading                        1          4ms       4.0ms         4ms         4ms         0/s
+4. Flag Sync                          1          3ms       3.0ms         3ms         3ms         0/s
+Cache Levels                          1          3ms       3.0ms         3ms         3ms         0/s
+1. UI Validation                      1          2ms       2.0ms         2ms         2ms         0/s
+9a1. Deduplicate Storage              1          2ms       2.0ms         2ms         2ms         0/s
+9a6. Filter Valid Zones               1          2ms       2.0ms         2ms         2ms         0/s
+9a01. Group By Cat                    1          1ms       1.0ms         1ms         1ms         0/s
+9a7. Enrich Orientation               1          1ms       1.0ms         1ms         1ms         0/s
+9a7b. Loop Overhead                   1          1ms       1.0ms         1ms         1ms         0/s
+10. Cleanup                           1          1ms       1.0ms         1ms         1ms         0/s
+5. Validation                         1          0ms       0.0ms         0ms         0ms         0/s
+
+=== PERFORMANCE TARGETS ===
+Clash Zones/Second: 8 (target: 500+)
+Status: ⚠️ BELOW TARGET
+

@@ -1632,7 +1632,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 // Log perf - commented out for performance
                 // swTotal.Stop();
 
-                return clashZone;
+                // ✅ CRITICAL FIX: Read Elevation from Level directly from parameter
+            // Matches strict logic from ClashZoneService.GetMepElementLevelInfo (Ducts/Pipes)
+            double elevationFromLevel = 0.0;
+            
+            // Prioritize "Elevation from Level" as per user feedback
+            Parameter elParam = damper.LookupParameter("Elevation from Level") ?? 
+                                damper.LookupParameter("Offset") ??
+                                damper.LookupParameter("Middle Elevation");
+            
+            if (elParam != null && elParam.HasValue)
+            {
+                elevationFromLevel = elParam.AsDouble();
+            }
+            
+            clashZone.ElevationFromLevel = elevationFromLevel;
+            
+            return clashZone;
             }
             catch (Exception ex)
             {

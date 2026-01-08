@@ -1,0 +1,1870 @@
+[2026-01-08 19:47:03.368] [19:47:03] 🔥🔥🔥 [FlagManagerService] BatchUpdateFlagsForPlacement CALLED: isCluster=False, category=Duct Accessories, count=21
+
+[2026-01-08 19:47:03.370] [19:47:03] 🔥 [FlagManagerService] CALLING _repository.BatchUpdateFlagsWithCurrentClash with 21 updates
+
+[2026-01-08 19:47:03.381] [19:47:03] ✅ [FlagManagerService] BatchUpdateFlagsWithCurrentClash COMPLETED for 21 updates
+
+[19:47:05] 🔥🔥🔥 ClusterSleeves METHOD CALLED
+[19:47:05] Version: R2023, Assembly: JSE_RevitAddin_MEP_OPENINGS.dll, BuildTime: 2026-01-08 18:51:17
+[19:47:05] Parameters: category=Duct Accessories, filter=Ventilation, comboId=4, filterId=3
+[2026-01-08 19:47:05.268] 
+========== REFACTORED CLUSTER SERVICE STARTED ==========
+
+[2026-01-08 19:47:05.269] [19:47:05] 🔨 BUILD TIMESTAMP: 2026-01-08 18:51:17 | VERSION: R2023 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+
+[2026-01-08 19:47:05.271] [19:47:05] Target category: Duct Accessories
+
+[2026-01-08 19:47:05.273] [19:47:05] Filter name: Ventilation
+
+[2026-01-08 19:47:05.274] [19:47:05] Path 1 Replay: False
+
+[2026-01-08 19:47:05.276] [19:47:05] PATH 3 Validated: False, Invalidated: False, New: False
+
+[2026-01-08 19:47:05.277] [19:47:05] ComboId: 4, FilterId: 3
+
+[2026-01-08 19:47:05.279] [19:47:05] DeploymentMode: False
+
+[2026-01-08 19:47:05.280] [19:47:05] ✅ DATABASE-ONLY ARCHITECTURE (No XML)
+
+[2026-01-08 19:47:05.282] [19:47:05] 🔍 ABOUT TO LOAD clash zones from database for category 'Duct Accessories'
+
+[19:47:05] 🔍 ClusterDataService: About to query database for category 'Duct Accessories'
+[19:47:05] ✅ DATABASE QUERY RESULT: 21 zones from database for category 'Duct Accessories'
+[2026-01-08 19:47:05.371] [19:47:05] ✅ DATABASE: Loaded 21 zones from database for category 'Duct Accessories'
+
+[19:47:05] 🔍 FILTERING: 21 total zones -> 21 with SleeveInstanceId>0 and !IsClusterResolved (after excluding inconsistent flags)
+[2026-01-08 19:47:05.373] [19:47:05] ✅ DATABASE: Filtered to 21 zones with SleeveInstanceId>0 and not cluster resolved
+
+[2026-01-08 19:47:05.376] [19:47:05] ✅ DATABASE: Returning 21 clash zones for clustering
+
+[19:47:05] ✅ DATABASE: Loaded 21 clash zones from database for category 'Duct Accessories'
+[2026-01-08 19:47:05.381] [19:47:05] ✅ DATABASE: Loaded 21 clash zones from database for category 'Duct Accessories'
+
+[2026-01-08 19:47:05.385] [19:47:05] 🔍 FILTERING: Starting with 21 total clash zones
+
+[2026-01-08 19:47:05.386] [TRACE-FILTER] ID 1183693: Found=False in allClashZones
+
+[2026-01-08 19:47:05.388] [TRACE-FILTER] ID 1183702: Found=False in allClashZones
+
+[2026-01-08 19:47:05.390] [19:47:05] 🔍 FILTERING: 21 zones with SleeveInstanceId > 0
+
+[2026-01-08 19:47:05.391] [19:47:05] 🔍 FILTERING: 21 zones not cluster resolved (or reset for re-clustering)
+
+[19:47:05] ✅ FILTERED: 21 clash zones ready for clustering (SleeveId>0, not cluster resolved, category='Duct Accessories')
+[2026-01-08 19:47:05.395] [19:47:05] ✅ FILTERED: 21 clash zones ready for clustering (SleeveId>0, not cluster resolved, category='Duct Accessories')
+
+[2026-01-08 19:47:05.403] [19:47:05] 📦 [GetBBox] Zone=63, SleeveId=1272378: SleeveBBox=(16.931095,0.393701,6.643701) to (20.704060,1.049869,8.776247)
+
+[2026-01-08 19:47:05.409] [19:47:05] 📦 [GetBBox] Zone=64, SleeveId=1272364: SleeveBBox=(20.868102,0.393701,6.479659) to (25.297236,1.049869,8.940289)
+
+[2026-01-08 19:47:05.411] [19:47:05] 📦 [GetBBox] Zone=65, SleeveId=1272336: SleeveBBox=(25.461278,0.393701,6.971785) to (28.249992,1.049869,8.448163)
+
+[2026-01-08 19:47:05.413] [19:47:05] 📦 [GetBBox] Zone=66, SleeveId=1272392: SleeveBBox=(29.963908,0.393701,5.610236) to (35.049210,1.049869,9.547244)
+
+[2026-01-08 19:47:05.414] [19:47:05] 📦 [GetBBox] Zone=67, SleeveId=1272350: SleeveBBox=(36.312333,0.393701,7.299869) to (38.937005,1.049869,9.104331)
+
+[2026-01-08 19:47:05.416] [19:47:05] 📦 [GetBBox] Zone=68, SleeveId=1272258: SleeveBBox=(41.049696,0.393701,9.814093) to (43.018200,1.049869,11.126429)
+
+[2026-01-08 19:47:05.418] [19:47:05] 📦 [GetBBox] Zone=69, SleeveId=1272385: SleeveBBox=(-1.164698,49.660494,6.512467) to (2.608268,50.316661,8.645013)
+
+[2026-01-08 19:47:05.419] [19:47:05] 📦 [GetBBox] Zone=70, SleeveId=1272371: SleeveBBox=(-1.492782,45.395402,6.348425) to (2.936352,46.051570,8.809055)
+
+[2026-01-08 19:47:05.421] [19:47:05] 📦 [GetBBox] Zone=71, SleeveId=1272343: SleeveBBox=(-0.672572,41.622436,6.840551) to (2.116142,42.278604,8.316929)
+
+[2026-01-08 19:47:05.422] [19:47:05] 📦 [GetBBox] Zone=72, SleeveId=1272399: SleeveBBox=(-1.820866,35.052877,5.216535) to (3.264436,35.709045,9.153543)
+
+[2026-01-08 19:47:05.424] [19:47:05] 📦 [GetBBox] Zone=73, SleeveId=1272357: SleeveBBox=(-0.590551,31.115869,7.431102) to (2.034121,31.772037,9.235564)
+
+[2026-01-08 19:47:05.426] [19:47:05] 📦 [GetBBox] Zone=74, SleeveId=1272266: SleeveBBox=(-0.262467,31.660658,9.863305) to (1.706037,32.316826,11.175641)
+
+[2026-01-08 19:47:05.427] [19:47:05] 📦 [GetBBox] Zone=75, SleeveId=1272315: SleeveBBox=(-0.262467,22.651302,9.973753) to (1.706037,23.307470,10.958005)
+
+[2026-01-08 19:47:05.430] [19:47:05] 📦 [GetBBox] Zone=76, SleeveId=1272273: SleeveBBox=(-0.262467,21.923250,7.130422) to (1.706037,22.579418,8.442758)
+
+[2026-01-08 19:47:05.431] [19:47:05] 📦 [GetBBox] Zone=77, SleeveId=1272322: SleeveBBox=(40.848975,0.393701,6.542918) to (42.817478,1.049869,7.527170)
+
+[2026-01-08 19:47:05.432] [19:47:05] 📦 [GetBBox] Zone=78, SleeveId=1272280: SleeveBBox=(42.798556,0.393701,4.101050) to (44.767060,1.049869,5.413386)
+
+[2026-01-08 19:47:05.434] [19:47:05] 📦 [GetBBox] Zone=79, SleeveId=1272287: SleeveBBox=(-0.262467,34.773651,9.863305) to (1.706037,35.429819,11.175641)
+
+[2026-01-08 19:47:05.436] [19:47:05] 📦 [GetBBox] Zone=80, SleeveId=1272329: SleeveBBox=(0.065617,36.246195,9.863305) to (1.377953,36.902363,11.175641)
+
+[2026-01-08 19:47:05.437] [19:47:05] 📦 [GetBBox] Zone=81, SleeveId=1272294: SleeveBBox=(-0.262467,27.953056,9.705810) to (1.706037,28.609224,11.018146)
+
+[2026-01-08 19:47:05.439] [19:47:05] 📦 [GetBBox] Zone=82, SleeveId=1272301: SleeveBBox=(59.284480,0.393701,8.049058) to (61.252984,1.049869,9.361394)
+
+[2026-01-08 19:47:05.440] [19:47:05] 📦 [GetBBox] Zone=83, SleeveId=1272308: SleeveBBox=(65.330071,0.393701,7.365486) to (67.298575,1.049869,8.677822)
+
+[2026-01-08 19:47:05.442] Prepared 21 sleeve data objects
+
+[2026-01-08 19:47:05.472] [19:47:05] 🔍 CLUSTERING: Forming clusters with tolerance=100.0mm, 2 sleeve groups
+
+[2026-01-08 19:47:05.556] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=True, Tol=100.0mm, ID1=1272378, ID2=1272364
+
+[2026-01-08 19:47:05.557] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=True, Tol=100.0mm, ID1=1272385, ID2=1272371
+
+[2026-01-08 19:47:05.562] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272378, ID2=1272336
+
+[2026-01-08 19:47:05.563] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272378, ID2=1272392
+
+[2026-01-08 19:47:05.565] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272385, ID2=1272343
+
+[2026-01-08 19:47:05.566] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272378, ID2=1272350
+
+[2026-01-08 19:47:05.571] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272378, ID2=1272258
+
+[2026-01-08 19:47:05.571] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272385, ID2=1272399
+
+[2026-01-08 19:47:05.574] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272385, ID2=1272357
+
+[2026-01-08 19:47:05.576] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272385, ID2=1272266
+
+[2026-01-08 19:47:05.572] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272378, ID2=1272322
+
+[2026-01-08 19:47:05.578] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272385, ID2=1272315
+
+[2026-01-08 19:47:05.579] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272378, ID2=1272280
+
+[2026-01-08 19:47:05.580] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272385, ID2=1272273
+
+[2026-01-08 19:47:05.585] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272385, ID2=1272287
+
+[2026-01-08 19:47:05.586] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272385, ID2=1272329
+
+[2026-01-08 19:47:05.583] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272378, ID2=1272301
+
+[2026-01-08 19:47:05.588] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272385, ID2=1272294
+
+[2026-01-08 19:47:05.589] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272378, ID2=1272308
+
+[2026-01-08 19:47:05.590] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=True, Tol=100.0mm, ID1=1272371, ID2=1272343
+
+[2026-01-08 19:47:05.594] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272371, ID2=1272399
+
+[2026-01-08 19:47:05.596] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272371, ID2=1272357
+
+[2026-01-08 19:47:05.598] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272371, ID2=1272266
+
+[2026-01-08 19:47:05.600] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272371, ID2=1272315
+
+[2026-01-08 19:47:05.602] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272371, ID2=1272273
+
+[2026-01-08 19:47:05.591] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=True, Tol=100.0mm, ID1=1272364, ID2=1272336
+
+[2026-01-08 19:47:05.604] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272371, ID2=1272287
+
+[2026-01-08 19:47:05.605] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272364, ID2=1272392
+
+[2026-01-08 19:47:05.605] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272371, ID2=1272329
+
+[2026-01-08 19:47:05.609] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272371, ID2=1272294
+
+[2026-01-08 19:47:05.611] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272343, ID2=1272399
+
+[2026-01-08 19:47:05.607] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272364, ID2=1272350
+
+[2026-01-08 19:47:05.612] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272343, ID2=1272357
+
+[2026-01-08 19:47:05.613] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272364, ID2=1272258
+
+[2026-01-08 19:47:05.614] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272343, ID2=1272266
+
+[2026-01-08 19:47:05.617] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272343, ID2=1272315
+
+[2026-01-08 19:47:05.619] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272343, ID2=1272273
+
+[2026-01-08 19:47:05.615] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272364, ID2=1272322
+
+[2026-01-08 19:47:05.621] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272343, ID2=1272287
+
+[2026-01-08 19:47:05.623] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272343, ID2=1272329
+
+[2026-01-08 19:47:05.625] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272343, ID2=1272294
+
+[2026-01-08 19:47:05.622] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272364, ID2=1272280
+
+[2026-01-08 19:47:05.627] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=True, Tol=100.0mm, ID1=1272399, ID2=1272357
+
+[2026-01-08 19:47:05.630] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272399, ID2=1272266
+
+[2026-01-08 19:47:05.632] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272399, ID2=1272315
+
+[2026-01-08 19:47:05.631] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272364, ID2=1272301
+
+[2026-01-08 19:47:05.634] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272399, ID2=1272273
+
+[2026-01-08 19:47:05.637] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272399, ID2=1272287
+
+[2026-01-08 19:47:05.639] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272399, ID2=1272329
+
+[2026-01-08 19:47:05.635] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272364, ID2=1272308
+
+[2026-01-08 19:47:05.641] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272399, ID2=1272294
+
+[2026-01-08 19:47:05.644] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272357, ID2=1272266
+
+[2026-01-08 19:47:05.646] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272357, ID2=1272315
+
+[2026-01-08 19:47:05.648] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272357, ID2=1272273
+
+[2026-01-08 19:47:05.650] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272357, ID2=1272287
+
+[2026-01-08 19:47:05.642] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272336, ID2=1272392
+
+[2026-01-08 19:47:05.652] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272357, ID2=1272329
+
+[2026-01-08 19:47:05.654] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272357, ID2=1272294
+
+[2026-01-08 19:47:05.653] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272336, ID2=1272350
+
+[2026-01-08 19:47:05.657] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272336, ID2=1272258
+
+[2026-01-08 19:47:05.659] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272336, ID2=1272322
+
+[2026-01-08 19:47:05.659] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272266, ID2=1272315
+
+[2026-01-08 19:47:05.662] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272266, ID2=1272273
+
+[2026-01-08 19:47:05.664] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272266, ID2=1272287
+
+[2026-01-08 19:47:05.666] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272266, ID2=1272329
+
+[2026-01-08 19:47:05.668] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272266, ID2=1272294
+
+[2026-01-08 19:47:05.669] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272315, ID2=1272273
+
+[2026-01-08 19:47:05.670] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272336, ID2=1272280
+
+[2026-01-08 19:47:05.671] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272315, ID2=1272287
+
+[2026-01-08 19:47:05.674] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272315, ID2=1272329
+
+[2026-01-08 19:47:05.672] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272336, ID2=1272301
+
+[2026-01-08 19:47:05.676] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272336, ID2=1272308
+
+[2026-01-08 19:47:05.677] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272315, ID2=1272294
+
+[2026-01-08 19:47:05.678] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272392, ID2=1272350
+
+[2026-01-08 19:47:05.680] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272273, ID2=1272287
+
+[2026-01-08 19:47:05.682] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272273, ID2=1272329
+
+[2026-01-08 19:47:05.685] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272273, ID2=1272294
+
+[2026-01-08 19:47:05.681] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272392, ID2=1272258
+
+[2026-01-08 19:47:05.686] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=True, Tol=100.0mm, ID1=1272287, ID2=1272329
+
+[2026-01-08 19:47:05.689] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272287, ID2=1272294
+
+[2026-01-08 19:47:05.688] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272392, ID2=1272322
+
+[2026-01-08 19:47:05.692] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272392, ID2=1272280
+
+[2026-01-08 19:47:05.694] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272392, ID2=1272301
+
+[2026-01-08 19:47:05.694] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272329, ID2=1272294
+
+[2026-01-08 19:47:05.697] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272392, ID2=1272308
+
+[2026-01-08 19:47:05.699] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272350, ID2=1272258
+
+[2026-01-08 19:47:05.701] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272350, ID2=1272322
+
+[2026-01-08 19:47:05.702] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272350, ID2=1272280
+
+[2026-01-08 19:47:05.704] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272350, ID2=1272301
+
+[2026-01-08 19:47:05.705] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272350, ID2=1272308
+
+[2026-01-08 19:47:05.707] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272258, ID2=1272322
+
+[2026-01-08 19:47:05.709] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272258, ID2=1272280
+
+[2026-01-08 19:47:05.711] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272258, ID2=1272301
+
+[2026-01-08 19:47:05.712] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272258, ID2=1272308
+
+[2026-01-08 19:47:05.713] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272322, ID2=1272280
+
+[2026-01-08 19:47:05.715] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272322, ID2=1272301
+
+[2026-01-08 19:47:05.716] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272322, ID2=1272308
+
+[2026-01-08 19:47:05.718] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272280, ID2=1272301
+
+[2026-01-08 19:47:05.720] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272280, ID2=1272308
+
+[2026-01-08 19:47:05.722] [CornerChecker] 📐 Duct Accessories Corner Proximity: Result=False, Tol=100.0mm, ID1=1272301, ID2=1272308
+
+[2026-01-08 19:47:05.732] [19:47:05] ✅ CLUSTERING: Formed 2 cluster groups, 15 total clusters, 4 clusters with >1 sleeve
+
+[2026-01-08 19:47:05.736] [19:47:05] ✅ CLUSTERING: Marked zones in 4 multi-sleeve clusters with MarkedForClusterProcess=true
+
+[2026-01-08 19:47:05.739] [19:47:05] 🚀 [SOLID-REFACTORING] Starting parallel pre-calculation for all clusters
+
+[2026-01-08 19:47:05.741] [19:47:05] 📦 [SOLID-REFACTORING] Passing 21 pre-loaded ClashZones to pre-calculation (FAST - no DB queries, from 21 total zones)
+
+[2026-01-08 19:47:05.763] [19:47:05] [PreCalculation] 🔍 DEBUG: preloadedClashZones is NOT NULL (21 items)
+
+[2026-01-08 19:47:05.767] [19:47:05] [PreCalculation] 📦 Pre-loaded 21/21 ClashZones from memory in 3ms (FAST - no DB queries)
+
+[2026-01-08 19:47:05.769] [19:47:05] [PreCalculation] 🔀 CATEGORY PARTITIONING: 1 categories, 4 total clusters
+
+[2026-01-08 19:47:05.770] [19:47:05] [PreCalculation]   - Duct Accessories: 4 clusters
+
+[2026-01-08 19:47:05.780] [19:47:05] [PreCalculation] 🚀 Processing category 'Duct Accessories' with 4 clusters
+
+[2026-01-08 19:47:05.783] [19:47:05] [PreCalculation]   📍 Spatial partitioning: 1 spatial cells for category 'Duct Accessories'
+
+[2026-01-08 19:47:05.809] [19:47:05.807] [PIPE-CATEGORY-DEBUG] Sleeve 1272385: MepElementCategory='Duct Accessories'
+
+[2026-01-08 19:47:05.811] [19:47:05.810] [PIPE-CATEGORY-DEBUG] Sleeve 1272371: MepElementCategory='Duct Accessories'
+
+[2026-01-08 19:47:05.813] [19:47:05.812] [PIPE-CATEGORY-DEBUG] Sleeve 1272343: MepElementCategory='Duct Accessories'
+
+[2026-01-08 19:47:05.818] [19:47:05] [CLUSTER-ANGLE-DEBUG] Sleeve 1272385 WallDirectionType='', HostOrientation='Y'
+
+[2026-01-08 19:47:05.819] [19:47:05] [CLUSTER-ANGLE-DEBUG] WALL HOST: StructuralType='Wall', WallDirectionType='', HostOrientation='Y', IsCircular=False
+
+[2026-01-08 19:47:05.821] [19:47:05] [CLUSTER-ANGLE] ✅ Y-WALL DETECTED → 0.0° (matches individual sleeve)
+
+[2026-01-08 19:47:05.822] [19:47:05.822] [PreCalculation] ✅ DATABASE-ONLY MODE: Skipping Revit API calls, using database data for 3 sleeves (flag=True)
+
+[2026-01-08 19:47:05.952] [19:47:05.952] [PreCalculation] ✅ Cluster: W=3450.0mm, H=750.0mm, D=200.0mm, Rotation=0.0°, Sleeves=3
+
+[2026-01-08 19:47:05.954] [19:47:05.953] [PIPE-CATEGORY-DEBUG] Sleeve 1272399: MepElementCategory='Duct Accessories'
+
+[2026-01-08 19:47:05.955] [19:47:05.955] [PIPE-CATEGORY-DEBUG] Sleeve 1272357: MepElementCategory='Duct Accessories'
+
+[2026-01-08 19:47:05.957] [19:47:05] [CLUSTER-ANGLE-DEBUG] Sleeve 1272399 WallDirectionType='', HostOrientation='Y'
+
+[2026-01-08 19:47:05.959] [19:47:05] [CLUSTER-ANGLE-DEBUG] WALL HOST: StructuralType='Wall', WallDirectionType='', HostOrientation='Y', IsCircular=False
+
+[2026-01-08 19:47:05.960] [19:47:05] [CLUSTER-ANGLE] ✅ Y-WALL DETECTED → 0.0° (matches individual sleeve)
+
+[2026-01-08 19:47:05.962] [19:47:05.961] [PreCalculation] ✅ DATABASE-ONLY MODE: Skipping Revit API calls, using database data for 2 sleeves (flag=True)
+
+[2026-01-08 19:47:06.002] [19:47:06.002] [PreCalculation] ✅ Cluster: W=2375.0mm, H=1225.0mm, D=200.0mm, Rotation=0.0°, Sleeves=2
+
+[2026-01-08 19:47:06.004] [19:47:06.003] [PIPE-CATEGORY-DEBUG] Sleeve 1272287: MepElementCategory='Duct Accessories'
+
+[2026-01-08 19:47:06.005] [19:47:06.005] [PIPE-CATEGORY-DEBUG] Sleeve 1272329: MepElementCategory='Duct Accessories'
+
+[2026-01-08 19:47:06.007] [19:47:06] [CLUSTER-ANGLE-DEBUG] Sleeve 1272287 WallDirectionType='', HostOrientation='Y'
+
+[2026-01-08 19:47:06.008] [19:47:06] [CLUSTER-ANGLE-DEBUG] WALL HOST: StructuralType='Wall', WallDirectionType='', HostOrientation='Y', IsCircular=False
+
+[2026-01-08 19:47:06.010] [19:47:06] [CLUSTER-ANGLE] ✅ Y-WALL DETECTED → 0.0° (matches individual sleeve)
+
+[2026-01-08 19:47:06.011] [19:47:06.011] [PreCalculation] ✅ DATABASE-ONLY MODE: Skipping Revit API calls, using database data for 2 sleeves (flag=True)
+
+[2026-01-08 19:47:06.056] [19:47:06.056] [PreCalculation] ✅ Cluster: W=948.8mm, H=400.0mm, D=200.0mm, Rotation=0.0°, Sleeves=2
+
+[2026-01-08 19:47:06.058] [19:47:06.057] [PIPE-CATEGORY-DEBUG] Sleeve 1272378: MepElementCategory='Duct Accessories'
+
+[2026-01-08 19:47:06.059] [19:47:06.059] [PIPE-CATEGORY-DEBUG] Sleeve 1272364: MepElementCategory='Duct Accessories'
+
+[2026-01-08 19:47:06.061] [19:47:06.060] [PIPE-CATEGORY-DEBUG] Sleeve 1272336: MepElementCategory='Duct Accessories'
+
+[2026-01-08 19:47:06.062] [19:47:06] [CLUSTER-ANGLE-DEBUG] Sleeve 1272378 WallDirectionType='', HostOrientation='X'
+
+[2026-01-08 19:47:06.064] [19:47:06] [CLUSTER-ANGLE-DEBUG] WALL HOST: StructuralType='Wall', WallDirectionType='', HostOrientation='X', IsCircular=False
+
+[2026-01-08 19:47:06.066] [19:47:06] [CLUSTER-ANGLE] ✅ X-WALL DETECTED → 90.0° (matches individual sleeve, applies to circular elements too)
+
+[2026-01-08 19:47:06.068] [19:47:06.067] [PreCalculation] ✅ DATABASE-ONLY MODE: Skipping Revit API calls, using database data for 3 sleeves (flag=True)
+
+[2026-01-08 19:47:06.118] [19:47:06.118] [PreCalculation] ✅ Cluster: W=3450.0mm, H=750.0mm, D=200.0mm, Rotation=90.0°, Sleeves=3
+
+[2026-01-08 19:47:06.121] [19:47:06] [PreCalculation] ✅ Completed parallel pre-calculation: 4 valid, 0 invalid, Time=356ms (89.0ms per cluster)
+
+[2026-01-08 19:47:06.124] [19:47:06] ✅ [SOLID-REFACTORING] Pre-calculation complete: 4 valid, 0 invalid
+
+[2026-01-08 19:47:06.146] [19:47:06] 🔍 PROCESSING: Group Wall/Duct Accessories/Y has 7 clusters
+
+[2026-01-08 19:47:06.147] [19:47:06] ✅ PROCESSING: Cluster with 3 sleeves (index=0)
+
+[19:47:06] 🔥 ABOUT TO CALL PlaceClusterForGroup: clusterSize=3, groupKey=Wall/Duct Accessories/Y, index=0
+[19:47:06] 🔥 PlaceClusterForGroup ENTRY: clusterSize=3, groupKey=Wall/Duct Accessories/Y
+[19:47:06] 🔥 BEFORE DetermineRotationAngle
+[2026-01-08 19:47:06.172] [19:47:06] ✅ [SOLID-REFACTORING] Using pre-calculated results: Rotation=0.0°, BBox=(3450.0mm x 750.0mm x 200.0mm)
+
+[19:47:06] 🔥 AFTER CalculateRotatedBoundingBox: width=11.32, height=2.46, depth=0.66
+[2026-01-08 19:47:06.175] [19:47:06] 📐 Cluster Bounding Box: W=3450.0mm, H=750.0mm, D=200.0mm, Rotation=0.0°, ClusterSize=3
+
+[2026-01-08 19:47:06.178] [19:47:06]   Sleeve 1272385: W=1150.0mm, H=650.0mm, Depth=650.0mm, Diameter=1150.0mm
+
+[2026-01-08 19:47:06.180] [19:47:06]   Sleeve 1272371: W=1350.0mm, H=750.0mm, Depth=750.0mm, Diameter=1350.0mm
+
+[2026-01-08 19:47:06.182] [19:47:06]   Sleeve 1272343: W=850.0mm, H=450.0mm, Depth=450.0mm, Diameter=850.0mm
+
+[2026-01-08 19:47:06.185] [19:47:06] 🔄 PROCESSING GROUP: Sleeves=[1272385,1272371,1272343], CalcWidth=3450.0mm, CalcHeight=750.0mm, CalcDepth=200.0mm
+
+[19:47:06] 🔥 ABOUT TO CALL PlaceClusterSleeve: placementPoint=(1.05,45.89,7.58), W=3450.0mm, H=750.0mm
+[2026-01-08 19:47:06.212] [19:47:06.212] [ClusterPlacementService] Starting cluster sleeve placement:
+  HostType=Wall, SystemType=Duct Accessories, Orientation=Y
+  TargetCategory=Duct Accessories, ClusterSize=3
+  Dimensions: W=3450.0mm, H=750.0mm, D=200.0mm
+  Rotation Angle: 0.0°
+
+[2026-01-08 19:47:06.214] [19:47:06] 🔥 PlaceClusterSleeve: Starting placement, hostType=Wall, systemType=Duct Accessories
+
+[2026-01-08 19:47:06.257] [19:47:06.256] [ComputeCornerBasedClusterMidpoint] ✅ Y-WALL/FRAMING PLACEMENT POINT (Host: Wall):
+  X (wall centerline, perpendicular to wall): 0.721785
+  Y (cluster width midpoint along wall): 46.215612 (from corner extremities: minY=40.556163, maxY=51.875060)
+  Z (cluster height midpoint): 7.578740 (from corner extremities: minZ=6.348425, maxZ=8.809055)
+  Final PlacementPoint: (0.721785, 46.215612, 7.578740)
+
+[2026-01-08 19:47:06.259] [19:47:06.258] [ClusterPlacementService] 🔥 WALL/FRAMING MIDPOINT OVERRIDE:
+  Original PlacementPoint (from delegate): (1.049869, 45.887528, 7.578740)
+  TheoreticalMid (from stored corners): (0.721785, 46.215612, 7.578740)
+  Delta: X=-100.00mm, Y=100.00mm, Z=0.00mm, Distance=141.42mm
+  ✅ Using TheoreticalMid for placement (overriding delegate midpoint)
+
+[2026-01-08 19:47:06.260] [19:47:06] 🔥 ABOUT TO CREATE cluster sleeve instance: familyName=RectangularOpeningOnWall, level=Level 0
+
+[2026-01-08 19:47:06.318] 2026-01-08T19:47:06.3176599+05:30	ClusterSleeveId=1272422	Family=RectangularOpeningOnWall	Symbol=ROW	Type=SLOW_OVERHEAD	TimeMs=54	TimeTicks=549708	GCCollections=0	Level=Level 0	ClusterSize=3
+
+[2026-01-08 19:47:06.320] [19:47:06] ✅✅✅ Cluster sleeve CREATED: ID=1272422
+
+[2026-01-08 19:47:06.321] [19:47:06.321] [ClusterPlacementService] ✅ Cluster sleeve created: ID=1272422
+
+[2026-01-08 19:47:06.334] [19:47:06] 📐 RCS DIMENSIONS: Orientation=Y, RCS W=3450.0mm (X=along wall), H=750.0mm (Z=vertical), D=200.0mm (Y=through wall)
+
+[2026-01-08 19:47:06.336] [19:47:06] 🔧 RCS WALL DEPTH FIX: Overriding depth from 200.0mm (RCS Y) to wall thickness 200.0mm
+
+[2026-01-08 19:47:06.338] [19:47:06] 📐 AFTER SWAP: Final W=3450.0mm, H=750.0mm, D=200.0mm
+
+[2026-01-08 19:47:06.340] [19:47:06] 📐 PRE-ROUNDING: Cluster 1272422 - Width=3450.000mm, Height=750.000mm, RoundingValue=50mm, RoundAlwaysUp=True
+
+[2026-01-08 19:47:06.344] [19:47:06.343] [SetSizeParameters] ✅ DEFERRED: Added Width=3450.0mm to deferredParameters for cluster sleeve 1272422
+
+[2026-01-08 19:47:06.345] [19:47:06.345] [SetSizeParameters] ✅ DEFERRED: Added Height=750.0mm to deferredParameters for cluster sleeve 1272422
+
+[2026-01-08 19:47:06.347] [19:47:06.346] [SetSizeParameters] ✅ DEFERRED: Added Depth=200.0mm to deferredParameters for cluster sleeve 1272422
+
+[2026-01-08 19:47:06.351] [19:47:06] ✅ Y-WALL: No rotation applied (0° matches individual sleeve placement)
+
+[2026-01-08 19:47:06.361] [19:47:06.359] [SetMetadata] ✅ IMMEDIATE (CRITICAL): Set 'Sleeve Instance ID'=-1 for cluster sleeve 1272422
+
+[2026-01-08 19:47:06.365] [19:47:06.364] [SetMetadata] ✅ IMMEDIATE (CRITICAL): Set 'Cluster Sleeve Instance ID'=1272422 for cluster sleeve 1272422
+
+[2026-01-08 19:47:06.381] [19:47:06] ✅ Set Schedule Level and Elevation from Level for cluster sleeve 1272422 from ClashZone 7bf0a81d-7f23-7b16-d366-ab8b9a4b8c39 (via injected SleeveParameterService)
+
+[2026-01-08 19:47:06.393] [19:47:06.392] [SetBottomOfOpeningForCluster] ✅ Cluster sleeve 1272422: Read Elevation from Level=2310.0mm from parameter (calculated by Revit after Schedule Level was set)
+
+[2026-01-08 19:47:06.395] [19:47:06.394] [SetBottomOfOpeningForCluster] ✅ DEFERRED: Added Bottom of Opening=1935.0mm (Elevation from Level=2310.0mm, Height=750.0mm) to deferredParameters for cluster sleeve 1272422
+
+[2026-01-08 19:47:06.397] [19:47:06] ✅✅✅ PlaceClusterSleeve RETURNING TRUE: placedClusterSleeve=NOT NULL, capturedId=1272422
+
+[19:47:06] 🔥 PlaceClusterSleeve RETURNED: success=True, placedClusterSleeve=NOT NULL, capturedId=1272422
+[2026-01-08 19:47:06.400] [19:47:06] ✅ PLACEMENT COMPLETE: Cluster 1272422 placed and parameters deferred.
+
+[2026-01-08 19:47:06.403] [19:47:06] 🔍 BEFORE UpdateFlagsForPlacement: ClashZone 7bf0a81d-7f23-7b16-d366-ab8b9a4b8c39, IsClusterResolved=False, ClusterId=-1, SleeveId=1272385, AfterClusterSleeveId=-1
+
+[2026-01-08 19:47:06.405] [19:47:06] ✅ Set AfterClusterSleevePlacedSleeveInstanceId=1272385 for ClashZone 7bf0a81d-7f23-7b16-d366-ab8b9a4b8c39 (original individual sleeve ID)
+
+[2026-01-08 19:47:06.407] [19:47:06] 🔥🔥🔥 [FlagManagerService] BatchUpdateFlagsForPlacement CALLED: isCluster=True, category=Duct Accessories, count=1
+
+[2026-01-08 19:47:06.409] [19:47:06] 🔥 [FlagManagerService] SET CLUSTER FLAGS: ClashZone=7bf0a81d-7f23-7b16-d366-ab8b9a4b8c39 (ID:69), IsClusterResolvedFlag=true, ClusterSleeveId=1272422
+
+[2026-01-08 19:47:06.411] [19:47:06] 🔥 [FlagManagerService] CALLING _repository.BatchUpdateFlagsWithCurrentClash with 1 updates
+
+[2026-01-08 19:47:06.418] [19:47:06] ✅ [FlagManagerService] BatchUpdateFlagsWithCurrentClash COMPLETED for 1 updates
+
+[2026-01-08 19:47:06.420] [19:47:06] ✅ AFTER UpdateFlagsForPlacement: ClashZone 7bf0a81d-7f23-7b16-d366-ab8b9a4b8c39, IsClusterResolved=True, ClusterId=1272422, SleeveId=-1, AfterClusterSleeveId=1272385, NewClusterId=1272422
+
+[2026-01-08 19:47:06.422] [19:47:06] 🔍 BEFORE UpdateFlagsForPlacement: ClashZone df577d30-6424-a37a-4833-fe0825bb05bf, IsClusterResolved=False, ClusterId=-1, SleeveId=1272371, AfterClusterSleeveId=-1
+
+[2026-01-08 19:47:06.424] [19:47:06] ✅ Set AfterClusterSleevePlacedSleeveInstanceId=1272371 for ClashZone df577d30-6424-a37a-4833-fe0825bb05bf (original individual sleeve ID)
+
+[2026-01-08 19:47:06.425] [19:47:06] 🔥🔥🔥 [FlagManagerService] BatchUpdateFlagsForPlacement CALLED: isCluster=True, category=Duct Accessories, count=1
+
+[2026-01-08 19:47:06.427] [19:47:06] 🔥 [FlagManagerService] SET CLUSTER FLAGS: ClashZone=df577d30-6424-a37a-4833-fe0825bb05bf (ID:70), IsClusterResolvedFlag=true, ClusterSleeveId=1272422
+
+[2026-01-08 19:47:06.429] [19:47:06] 🔥 [FlagManagerService] CALLING _repository.BatchUpdateFlagsWithCurrentClash with 1 updates
+
+[2026-01-08 19:47:06.436] [19:47:06] ✅ [FlagManagerService] BatchUpdateFlagsWithCurrentClash COMPLETED for 1 updates
+
+[2026-01-08 19:47:06.438] [19:47:06] ✅ AFTER UpdateFlagsForPlacement: ClashZone df577d30-6424-a37a-4833-fe0825bb05bf, IsClusterResolved=True, ClusterId=1272422, SleeveId=-1, AfterClusterSleeveId=1272371, NewClusterId=1272422
+
+[2026-01-08 19:47:06.440] [19:47:06] 🔍 BEFORE UpdateFlagsForPlacement: ClashZone a3145e45-b097-445f-2065-0863c3c137b6, IsClusterResolved=False, ClusterId=-1, SleeveId=1272343, AfterClusterSleeveId=-1
+
+[2026-01-08 19:47:06.442] [19:47:06] ✅ Set AfterClusterSleevePlacedSleeveInstanceId=1272343 for ClashZone a3145e45-b097-445f-2065-0863c3c137b6 (original individual sleeve ID)
+
+[2026-01-08 19:47:06.443] [19:47:06] 🔥🔥🔥 [FlagManagerService] BatchUpdateFlagsForPlacement CALLED: isCluster=True, category=Duct Accessories, count=1
+
+[2026-01-08 19:47:06.445] [19:47:06] 🔥 [FlagManagerService] SET CLUSTER FLAGS: ClashZone=a3145e45-b097-445f-2065-0863c3c137b6 (ID:71), IsClusterResolvedFlag=true, ClusterSleeveId=1272422
+
+[2026-01-08 19:47:06.447] [19:47:06] 🔥 [FlagManagerService] CALLING _repository.BatchUpdateFlagsWithCurrentClash with 1 updates
+
+[2026-01-08 19:47:06.452] [19:47:06] ✅ [FlagManagerService] BatchUpdateFlagsWithCurrentClash COMPLETED for 1 updates
+
+[2026-01-08 19:47:06.454] [19:47:06] ✅ AFTER UpdateFlagsForPlacement: ClashZone a3145e45-b097-445f-2065-0863c3c137b6, IsClusterResolved=True, ClusterId=1272422, SleeveId=-1, AfterClusterSleeveId=1272343, NewClusterId=1272422
+
+[2026-01-08 19:47:06.456] [19:47:06] ✅ VERIFY BEFORE DELETE: Cluster sleeve 1272422 EXISTS before deleting 3 individual sleeves
+
+[2026-01-08 19:47:06.457] [19:47:06] 🔍 DELETION PREPARATION: Preparing to delete 3 individual sleeves for cluster 1272422
+
+[2026-01-08 19:47:06.460] [19:47:06] 🗑️ QUEUED for deletion: individual sleeve 1272385 (part of cluster 1272422)
+
+[2026-01-08 19:47:06.462] [19:47:06] 🗑️ QUEUED for deletion: individual sleeve 1272371 (part of cluster 1272422)
+
+[2026-01-08 19:47:06.463] [19:47:06] 🗑️ QUEUED for deletion: individual sleeve 1272343 (part of cluster 1272422)
+
+[2026-01-08 19:47:06.465] [19:47:06] 🔍 DELETION QUEUE: 3 individual sleeves queued for deletion (out of 3 in cluster)
+
+[2026-01-08 19:47:06.468] [19:47:06] ✅ DELETED individual sleeve 1272385
+
+[2026-01-08 19:47:06.471] [19:47:06] ✅ DELETED individual sleeve 1272371
+
+[2026-01-08 19:47:06.473] [19:47:06] ✅ DELETED individual sleeve 1272343
+
+[2026-01-08 19:47:06.475] [19:47:06] ✅ VERIFY AFTER DELETE: Cluster sleeve 1272422 STILL EXISTS after deleting 3 individual sleeves
+
+[2026-01-08 19:47:06.476] [19:47:06] 📊 Cluster 1272422: Deleted 3 of 3 individual sleeves
+
+[19:47:06] 🔥 PlaceClusterForGroup RETURNED: success=True, placedCount=1, deletedCount=3, capturedId=1272422, placedClusterSleeve=NOT NULL | BUILD: 2026-01-08 18:51:17
+[19:47:06] ✅✅✅ PLACEMENT SUCCESS: Adding to _clusterToClashZoneIds
+[19:47:06] ✅ Adding cluster to placedClusters and _clusterToClashZoneIds: clusterSleeveId=1272422
+[2026-01-08 19:47:06.482] [19:47:06] [FLAG-MANAGER-HELPER] ✅✅✅ REGISTERED recently placed cluster sleeve ID=1272422 (protected from deletion)
+
+[2026-01-08 19:47:06.484] [19:47:06] ✅✅✅ REGISTERED cluster sleeve 1272422 with FlagManagerProtectionHelper (static protection)
+
+[19:47:06] ✅ Adding 3 ClashZoneIds to _clusterToClashZoneIds[1272422]
+[19:47:06] ✅ AFTER ADD: _clusterToClashZoneIds.Count=1
+[2026-01-08 19:47:06.489] [19:47:06] ✅ PROCESSING: Cluster with 2 sleeves (index=1)
+
+[19:47:06] 🔥 ABOUT TO CALL PlaceClusterForGroup: clusterSize=2, groupKey=Wall/Duct Accessories/Y, index=1
+[19:47:06] 🔥 PlaceClusterForGroup ENTRY: clusterSize=2, groupKey=Wall/Duct Accessories/Y
+[19:47:06] 🔥 BEFORE DetermineRotationAngle
+[2026-01-08 19:47:06.492] [19:47:06] ✅ [SOLID-REFACTORING] Using pre-calculated results: Rotation=0.0°, BBox=(2375.0mm x 1225.0mm x 200.0mm)
+
+[19:47:06] 🔥 AFTER CalculateRotatedBoundingBox: width=7.79, height=4.02, depth=0.66
+[2026-01-08 19:47:06.494] [19:47:06] 📐 Cluster Bounding Box: W=2375.0mm, H=1225.0mm, D=200.0mm, Rotation=0.0°, ClusterSize=2
+
+[2026-01-08 19:47:06.496] [19:47:06]   Sleeve 1272399: W=1550.0mm, H=1200.0mm, Depth=1200.0mm, Diameter=1550.0mm
+
+[2026-01-08 19:47:06.498] [19:47:06]   Sleeve 1272357: W=800.0mm, H=550.0mm, Depth=550.0mm, Diameter=800.0mm
+
+[2026-01-08 19:47:06.499] [19:47:06] 🔄 PROCESSING GROUP: Sleeves=[1272399,1272357], CalcWidth=2375.0mm, CalcHeight=1225.0mm, CalcDepth=200.0mm
+
+[19:47:06] 🔥 ABOUT TO CALL PlaceClusterSleeve: placementPoint=(1.05,33.41,7.76), W=2375.0mm, H=1225.0mm
+[2026-01-08 19:47:06.501] [19:47:06.501] [ClusterPlacementService] Starting cluster sleeve placement:
+  HostType=Wall, SystemType=Duct Accessories, Orientation=Y
+  TargetCategory=Duct Accessories, ClusterSize=2
+  Dimensions: W=2375.0mm, H=1225.0mm, D=200.0mm
+  Rotation Angle: 0.0°
+
+[2026-01-08 19:47:06.503] [19:47:06] 🔥 PlaceClusterSleeve: Starting placement, hostType=Wall, systemType=Duct Accessories
+
+[2026-01-08 19:47:06.506] [19:47:06.506] [ComputeCornerBasedClusterMidpoint] ✅ Y-WALL/FRAMING PLACEMENT POINT (Host: Wall):
+  X (wall centerline, perpendicular to wall): 0.721785
+  Y (cluster width midpoint along wall): 34.027615 (from corner extremities: minY=30.131617, maxY=37.923612)
+  Z (cluster height midpoint): 7.226050 (from corner extremities: minZ=5.216535, maxZ=9.235564)
+  Final PlacementPoint: (0.721785, 34.027615, 7.226050)
+
+[2026-01-08 19:47:06.508] [19:47:06.507] [ClusterPlacementService] 🔥 WALL/FRAMING MIDPOINT OVERRIDE:
+  Original PlacementPoint (from delegate): (1.049869, 33.412457, 7.759186)
+  TheoreticalMid (from stored corners): (0.721785, 34.027615, 7.226050)
+  Delta: X=-100.00mm, Y=187.50mm, Z=-162.50mm, Distance=267.51mm
+  ✅ Using TheoreticalMid for placement (overriding delegate midpoint)
+
+[2026-01-08 19:47:06.510] [19:47:06] 🔥 ABOUT TO CREATE cluster sleeve instance: familyName=RectangularOpeningOnWall, level=Level 0
+
+[2026-01-08 19:47:06.534] 2026-01-08T19:47:06.5335301+05:30	ClusterSleeveId=1272431	Family=RectangularOpeningOnWall	Symbol=ROW	Type=MODERATE_OVERHEAD	TimeMs=21	TimeTicks=219739	GCCollections=0	Level=Level 0	ClusterSize=2
+
+[2026-01-08 19:47:06.535] [19:47:06] ✅✅✅ Cluster sleeve CREATED: ID=1272431
+
+[2026-01-08 19:47:06.537] [19:47:06.536] [ClusterPlacementService] ✅ Cluster sleeve created: ID=1272431
+
+[2026-01-08 19:47:06.539] [19:47:06] 📐 RCS DIMENSIONS: Orientation=Y, RCS W=2375.0mm (X=along wall), H=1225.0mm (Z=vertical), D=200.0mm (Y=through wall)
+
+[2026-01-08 19:47:06.541] [19:47:06] 🔧 RCS WALL DEPTH FIX: Overriding depth from 200.0mm (RCS Y) to wall thickness 200.0mm
+
+[2026-01-08 19:47:06.542] [19:47:06] 📐 AFTER SWAP: Final W=2375.0mm, H=1225.0mm, D=200.0mm
+
+[2026-01-08 19:47:06.544] [19:47:06] 📐 PRE-ROUNDING: Cluster 1272431 - Width=2375.000mm, Height=1225.000mm, RoundingValue=50mm, RoundAlwaysUp=True
+
+[2026-01-08 19:47:06.546] [19:47:06] 🔄 ROUNDING: Cluster 1272431 - Width 2375.000mm → 2400.0mm, Height 1225.000mm → 1250.0mm (Placement point/centroid UNCHANGED at calculated corner centroid)
+
+[2026-01-08 19:47:06.548] [19:47:06.547] [SetSizeParameters] ✅ DEFERRED: Added Width=2400.0mm to deferredParameters for cluster sleeve 1272431
+
+[2026-01-08 19:47:06.550] [19:47:06.549] [SetSizeParameters] ✅ DEFERRED: Added Height=1250.0mm to deferredParameters for cluster sleeve 1272431
+
+[2026-01-08 19:47:06.551] [19:47:06.551] [SetSizeParameters] ✅ DEFERRED: Added Depth=200.0mm to deferredParameters for cluster sleeve 1272431
+
+[2026-01-08 19:47:06.553] [19:47:06] ✅ Y-WALL: No rotation applied (0° matches individual sleeve placement)
+
+[2026-01-08 19:47:06.555] [19:47:06.554] [SetMetadata] ✅ IMMEDIATE (CRITICAL): Set 'Sleeve Instance ID'=-1 for cluster sleeve 1272431
+
+[2026-01-08 19:47:06.557] [19:47:06.556] [SetMetadata] ✅ IMMEDIATE (CRITICAL): Set 'Cluster Sleeve Instance ID'=1272431 for cluster sleeve 1272431
+
+[2026-01-08 19:47:06.561] [19:47:06] ✅ Set Schedule Level and Elevation from Level for cluster sleeve 1272431 from ClashZone 3cec003b-2dd2-dfb1-a929-bba6b642b2e5 (via injected SleeveParameterService)
+
+[2026-01-08 19:47:06.562] [19:47:06.562] [SetBottomOfOpeningForCluster] ✅ Cluster sleeve 1272431: Read Elevation from Level=2202.5mm from parameter (calculated by Revit after Schedule Level was set)
+
+[2026-01-08 19:47:06.564] [19:47:06.564] [SetBottomOfOpeningForCluster] ✅ DEFERRED: Added Bottom of Opening=1577.5mm (Elevation from Level=2202.5mm, Height=1250.0mm) to deferredParameters for cluster sleeve 1272431
+
+[2026-01-08 19:47:06.566] [19:47:06] ✅✅✅ PlaceClusterSleeve RETURNING TRUE: placedClusterSleeve=NOT NULL, capturedId=1272431
+
+[19:47:06] 🔥 PlaceClusterSleeve RETURNED: success=True, placedClusterSleeve=NOT NULL, capturedId=1272431
+[2026-01-08 19:47:06.568] [19:47:06] ✅ PLACEMENT COMPLETE: Cluster 1272431 placed and parameters deferred.
+
+[2026-01-08 19:47:06.569] [19:47:06] 🔍 BEFORE UpdateFlagsForPlacement: ClashZone 3cec003b-2dd2-dfb1-a929-bba6b642b2e5, IsClusterResolved=False, ClusterId=-1, SleeveId=1272399, AfterClusterSleeveId=-1
+
+[2026-01-08 19:47:06.571] [19:47:06] ✅ Set AfterClusterSleevePlacedSleeveInstanceId=1272399 for ClashZone 3cec003b-2dd2-dfb1-a929-bba6b642b2e5 (original individual sleeve ID)
+
+[2026-01-08 19:47:06.573] [19:47:06] 🔥🔥🔥 [FlagManagerService] BatchUpdateFlagsForPlacement CALLED: isCluster=True, category=Duct Accessories, count=1
+
+[2026-01-08 19:47:06.574] [19:47:06] 🔥 [FlagManagerService] SET CLUSTER FLAGS: ClashZone=3cec003b-2dd2-dfb1-a929-bba6b642b2e5 (ID:72), IsClusterResolvedFlag=true, ClusterSleeveId=1272431
+
+[2026-01-08 19:47:06.576] [19:47:06] 🔥 [FlagManagerService] CALLING _repository.BatchUpdateFlagsWithCurrentClash with 1 updates
+
+[2026-01-08 19:47:06.581] [19:47:06] ✅ [FlagManagerService] BatchUpdateFlagsWithCurrentClash COMPLETED for 1 updates
+
+[2026-01-08 19:47:06.583] [19:47:06] ✅ AFTER UpdateFlagsForPlacement: ClashZone 3cec003b-2dd2-dfb1-a929-bba6b642b2e5, IsClusterResolved=True, ClusterId=1272431, SleeveId=-1, AfterClusterSleeveId=1272399, NewClusterId=1272431
+
+[2026-01-08 19:47:06.584] [19:47:06] 🔍 BEFORE UpdateFlagsForPlacement: ClashZone 7a3fc1a5-750b-23ce-c189-6dcb53feaac0, IsClusterResolved=False, ClusterId=-1, SleeveId=1272357, AfterClusterSleeveId=-1
+
+[2026-01-08 19:47:06.586] [19:47:06] ✅ Set AfterClusterSleevePlacedSleeveInstanceId=1272357 for ClashZone 7a3fc1a5-750b-23ce-c189-6dcb53feaac0 (original individual sleeve ID)
+
+[2026-01-08 19:47:06.588] [19:47:06] 🔥🔥🔥 [FlagManagerService] BatchUpdateFlagsForPlacement CALLED: isCluster=True, category=Duct Accessories, count=1
+
+[2026-01-08 19:47:06.589] [19:47:06] 🔥 [FlagManagerService] SET CLUSTER FLAGS: ClashZone=7a3fc1a5-750b-23ce-c189-6dcb53feaac0 (ID:73), IsClusterResolvedFlag=true, ClusterSleeveId=1272431
+
+[2026-01-08 19:47:06.591] [19:47:06] 🔥 [FlagManagerService] CALLING _repository.BatchUpdateFlagsWithCurrentClash with 1 updates
+
+[2026-01-08 19:47:06.596] [19:47:06] ✅ [FlagManagerService] BatchUpdateFlagsWithCurrentClash COMPLETED for 1 updates
+
+[2026-01-08 19:47:06.598] [19:47:06] ✅ AFTER UpdateFlagsForPlacement: ClashZone 7a3fc1a5-750b-23ce-c189-6dcb53feaac0, IsClusterResolved=True, ClusterId=1272431, SleeveId=-1, AfterClusterSleeveId=1272357, NewClusterId=1272431
+
+[2026-01-08 19:47:06.599] [19:47:06] ✅ VERIFY BEFORE DELETE: Cluster sleeve 1272431 EXISTS before deleting 2 individual sleeves
+
+[2026-01-08 19:47:06.601] [19:47:06] 🔍 DELETION PREPARATION: Preparing to delete 2 individual sleeves for cluster 1272431
+
+[2026-01-08 19:47:06.602] [19:47:06] 🗑️ QUEUED for deletion: individual sleeve 1272399 (part of cluster 1272431)
+
+[2026-01-08 19:47:06.605] [19:47:06] 🗑️ QUEUED for deletion: individual sleeve 1272357 (part of cluster 1272431)
+
+[2026-01-08 19:47:06.606] [19:47:06] 🔍 DELETION QUEUE: 2 individual sleeves queued for deletion (out of 2 in cluster)
+
+[2026-01-08 19:47:06.609] [19:47:06] ✅ DELETED individual sleeve 1272399
+
+[2026-01-08 19:47:06.612] [19:47:06] ✅ DELETED individual sleeve 1272357
+
+[2026-01-08 19:47:06.617] [19:47:06] ✅ VERIFY AFTER DELETE: Cluster sleeve 1272431 STILL EXISTS after deleting 2 individual sleeves
+
+[2026-01-08 19:47:06.619] [19:47:06] 📊 Cluster 1272431: Deleted 2 of 2 individual sleeves
+
+[19:47:06] 🔥 PlaceClusterForGroup RETURNED: success=True, placedCount=1, deletedCount=2, capturedId=1272431, placedClusterSleeve=NOT NULL | BUILD: 2026-01-08 18:51:17
+[19:47:06] ✅✅✅ PLACEMENT SUCCESS: Adding to _clusterToClashZoneIds
+[19:47:06] ✅ Adding cluster to placedClusters and _clusterToClashZoneIds: clusterSleeveId=1272431
+[2026-01-08 19:47:06.623] [19:47:06] [FLAG-MANAGER-HELPER] ✅✅✅ REGISTERED recently placed cluster sleeve ID=1272431 (protected from deletion)
+
+[2026-01-08 19:47:06.624] [19:47:06] ✅✅✅ REGISTERED cluster sleeve 1272431 with FlagManagerProtectionHelper (static protection)
+
+[19:47:06] ✅ Adding 2 ClashZoneIds to _clusterToClashZoneIds[1272431]
+[19:47:06] ✅ AFTER ADD: _clusterToClashZoneIds.Count=2
+[2026-01-08 19:47:06.627] [19:47:06] ⏭️ SKIP: Cluster with only 1 sleeve(s) (need >1 to cluster)
+
+[2026-01-08 19:47:06.629] [19:47:06] ⏭️ SKIP: Cluster with only 1 sleeve(s) (need >1 to cluster)
+
+[2026-01-08 19:47:06.630] [19:47:06] ⏭️ SKIP: Cluster with only 1 sleeve(s) (need >1 to cluster)
+
+[2026-01-08 19:47:06.631] [19:47:06] ✅ PROCESSING: Cluster with 2 sleeves (index=5)
+
+[19:47:06] 🔥 ABOUT TO CALL PlaceClusterForGroup: clusterSize=2, groupKey=Wall/Duct Accessories/Y, index=5
+[19:47:06] 🔥 PlaceClusterForGroup ENTRY: clusterSize=2, groupKey=Wall/Duct Accessories/Y
+[19:47:06] 🔥 BEFORE DetermineRotationAngle
+[2026-01-08 19:47:06.635] [19:47:06.634] [PIPE-CATEGORY-DEBUG] Sleeve 1272287: MepElementCategory='Duct Accessories'
+
+[2026-01-08 19:47:06.636] [19:47:06.636] [PIPE-CATEGORY-DEBUG] Sleeve 1272329: MepElementCategory='Duct Accessories'
+
+[2026-01-08 19:47:06.639] [19:47:06] [CLUSTER-ANGLE-DEBUG] Sleeve 1272287 WallDirectionType='', HostOrientation='Y'
+
+[2026-01-08 19:47:06.640] [19:47:06] [CLUSTER-ANGLE-DEBUG] WALL HOST: StructuralType='Wall', WallDirectionType='', HostOrientation='Y', IsCircular=False
+
+[2026-01-08 19:47:06.642] [19:47:06] [CLUSTER-ANGLE] ✅ Y-WALL DETECTED → 0.0° (matches individual sleeve)
+
+[19:47:06] 🔥 AFTER CalculateRotatedBoundingBox: width=3.11, height=1.31, depth=0.66
+[2026-01-08 19:47:06.651] [19:47:06] 📐 Cluster Bounding Box: W=948.8mm, H=400.0mm, D=200.0mm, Rotation=0.0°, ClusterSize=2
+
+[2026-01-08 19:47:06.653] [19:47:06]   Sleeve 1272287: W=600.0mm, H=400.0mm, Depth=400.0mm, Diameter=600.0mm
+
+[2026-01-08 19:47:06.654] [19:47:06]   Sleeve 1272329: W=400.0mm, H=400.0mm, Depth=400.0mm, Diameter=400.0mm
+
+[2026-01-08 19:47:06.656] [19:47:06] 🔄 PROCESSING GROUP: Sleeves=[1272287,1272329], CalcWidth=948.8mm, CalcHeight=400.0mm, CalcDepth=200.0mm
+
+[19:47:06] 🔥 ABOUT TO CALL PlaceClusterSleeve: placementPoint=(0.39,35.84,10.52), W=948.8mm, H=400.0mm
+[2026-01-08 19:47:06.658] [19:47:06.657] [ClusterPlacementService] Starting cluster sleeve placement:
+  HostType=Wall, SystemType=Duct Accessories, Orientation=Y
+  TargetCategory=Duct Accessories, ClusterSize=2
+  Dimensions: W=948.8mm, H=400.0mm, D=200.0mm
+  Rotation Angle: 0.0°
+
+[2026-01-08 19:47:06.659] [19:47:06] 🔥 PlaceClusterSleeve: Starting placement, hostType=Wall, systemType=Duct Accessories
+
+[2026-01-08 19:47:06.663] [19:47:06.662] [ComputeCornerBasedClusterMidpoint] ✅ Y-WALL/FRAMING PLACEMENT POINT (Host: Wall):
+  X (wall centerline, perpendicular to wall): 0.721785
+  Y (cluster width midpoint along wall): 35.673965 (from corner extremities: minY=34.117483, maxY=37.230447)
+  Z (cluster height midpoint): 10.519473 (from corner extremities: minZ=9.863305, maxZ=11.175641)
+  Final PlacementPoint: (0.721785, 35.673965, 10.519473)
+
+[2026-01-08 19:47:06.665] [19:47:06.664] [ClusterPlacementService] 🔥 WALL/FRAMING MIDPOINT OVERRIDE:
+  Original PlacementPoint (from delegate): (0.393701, 35.838007, 10.519473)
+  TheoreticalMid (from stored corners): (0.721785, 35.673965, 10.519473)
+  Delta: X=100.00mm, Y=-50.00mm, Z=0.00mm, Distance=111.80mm
+  ✅ Using TheoreticalMid for placement (overriding delegate midpoint)
+
+[2026-01-08 19:47:06.667] [19:47:06] 🔥 ABOUT TO CREATE cluster sleeve instance: familyName=RectangularOpeningOnWall, level=Level 0
+
+[2026-01-08 19:47:06.690] 2026-01-08T19:47:06.6900213+05:30	ClusterSleeveId=1272438	Family=RectangularOpeningOnWall	Symbol=ROW	Type=MODERATE_OVERHEAD	TimeMs=21	TimeTicks=216014	GCCollections=0	Level=Level 0	ClusterSize=2
+
+[2026-01-08 19:47:06.692] [19:47:06] ✅✅✅ Cluster sleeve CREATED: ID=1272438
+
+[2026-01-08 19:47:06.694] [19:47:06.693] [ClusterPlacementService] ✅ Cluster sleeve created: ID=1272438
+
+[2026-01-08 19:47:06.695] [19:47:06] 📐 RCS DIMENSIONS: Orientation=Y, RCS W=948.8mm (X=along wall), H=400.0mm (Z=vertical), D=200.0mm (Y=through wall)
+
+[2026-01-08 19:47:06.697] [19:47:06] 🔧 RCS WALL DEPTH FIX: Overriding depth from 200.0mm (RCS Y) to wall thickness 200.0mm
+
+[2026-01-08 19:47:06.699] [19:47:06] 📐 AFTER SWAP: Final W=948.8mm, H=400.0mm, D=200.0mm
+
+[2026-01-08 19:47:06.701] [19:47:06] 📐 PRE-ROUNDING: Cluster 1272438 - Width=948.831mm, Height=400.000mm, RoundingValue=50mm, RoundAlwaysUp=True
+
+[2026-01-08 19:47:06.703] [19:47:06] 🔄 ROUNDING: Cluster 1272438 - Width 948.831mm → 950.0mm, Height 400.000mm → 400.0mm (Placement point/centroid UNCHANGED at calculated corner centroid)
+
+[2026-01-08 19:47:06.704] [19:47:06.704] [SetSizeParameters] ✅ DEFERRED: Added Width=950.0mm to deferredParameters for cluster sleeve 1272438
+
+[2026-01-08 19:47:06.706] [19:47:06.705] [SetSizeParameters] ✅ DEFERRED: Added Height=400.0mm to deferredParameters for cluster sleeve 1272438
+
+[2026-01-08 19:47:06.708] [19:47:06.707] [SetSizeParameters] ✅ DEFERRED: Added Depth=200.0mm to deferredParameters for cluster sleeve 1272438
+
+[2026-01-08 19:47:06.709] [19:47:06] ✅ Y-WALL: No rotation applied (0° matches individual sleeve placement)
+
+[2026-01-08 19:47:06.711] [19:47:06.710] [SetMetadata] ✅ IMMEDIATE (CRITICAL): Set 'Sleeve Instance ID'=-1 for cluster sleeve 1272438
+
+[2026-01-08 19:47:06.713] [19:47:06.712] [SetMetadata] ✅ IMMEDIATE (CRITICAL): Set 'Cluster Sleeve Instance ID'=1272438 for cluster sleeve 1272438
+
+[2026-01-08 19:47:06.717] [19:47:06] ✅ Set Schedule Level and Elevation from Level for cluster sleeve 1272438 from ClashZone 26272a4f-9f89-805c-3c95-a1c1e7f340b9 (via injected SleeveParameterService)
+
+[2026-01-08 19:47:06.719] [19:47:06.718] [SetBottomOfOpeningForCluster] ✅ Cluster sleeve 1272438: Read Elevation from Level=3206.3mm from parameter (calculated by Revit after Schedule Level was set)
+
+[2026-01-08 19:47:06.720] [19:47:06.720] [SetBottomOfOpeningForCluster] ✅ DEFERRED: Added Bottom of Opening=3006.3mm (Elevation from Level=3206.3mm, Height=400.0mm) to deferredParameters for cluster sleeve 1272438
+
+[2026-01-08 19:47:06.722] [19:47:06] ✅✅✅ PlaceClusterSleeve RETURNING TRUE: placedClusterSleeve=NOT NULL, capturedId=1272438
+
+[19:47:06] 🔥 PlaceClusterSleeve RETURNED: success=True, placedClusterSleeve=NOT NULL, capturedId=1272438
+[2026-01-08 19:47:06.724] [19:47:06] ✅ PLACEMENT COMPLETE: Cluster 1272438 placed and parameters deferred.
+
+[2026-01-08 19:47:06.726] [19:47:06] 🔍 BEFORE UpdateFlagsForPlacement: ClashZone 26272a4f-9f89-805c-3c95-a1c1e7f340b9, IsClusterResolved=False, ClusterId=-1, SleeveId=1272287, AfterClusterSleeveId=-1
+
+[2026-01-08 19:47:06.728] [19:47:06] ✅ Set AfterClusterSleevePlacedSleeveInstanceId=1272287 for ClashZone 26272a4f-9f89-805c-3c95-a1c1e7f340b9 (original individual sleeve ID)
+
+[2026-01-08 19:47:06.729] [19:47:06] 🔥🔥🔥 [FlagManagerService] BatchUpdateFlagsForPlacement CALLED: isCluster=True, category=Duct Accessories, count=1
+
+[2026-01-08 19:47:06.730] [19:47:06] 🔥 [FlagManagerService] SET CLUSTER FLAGS: ClashZone=26272a4f-9f89-805c-3c95-a1c1e7f340b9 (ID:79), IsClusterResolvedFlag=true, ClusterSleeveId=1272438
+
+[2026-01-08 19:47:06.732] [19:47:06] 🔥 [FlagManagerService] CALLING _repository.BatchUpdateFlagsWithCurrentClash with 1 updates
+
+[2026-01-08 19:47:06.738] [19:47:06] ✅ [FlagManagerService] BatchUpdateFlagsWithCurrentClash COMPLETED for 1 updates
+
+[2026-01-08 19:47:06.739] [19:47:06] ✅ AFTER UpdateFlagsForPlacement: ClashZone 26272a4f-9f89-805c-3c95-a1c1e7f340b9, IsClusterResolved=True, ClusterId=1272438, SleeveId=-1, AfterClusterSleeveId=1272287, NewClusterId=1272438
+
+[2026-01-08 19:47:06.741] [19:47:06] 🔍 BEFORE UpdateFlagsForPlacement: ClashZone b3515ca9-b4dd-c7fc-d6e6-133c2578ecdd, IsClusterResolved=False, ClusterId=-1, SleeveId=1272329, AfterClusterSleeveId=-1
+
+[2026-01-08 19:47:06.742] [19:47:06] ✅ Set AfterClusterSleevePlacedSleeveInstanceId=1272329 for ClashZone b3515ca9-b4dd-c7fc-d6e6-133c2578ecdd (original individual sleeve ID)
+
+[2026-01-08 19:47:06.744] [19:47:06] 🔥🔥🔥 [FlagManagerService] BatchUpdateFlagsForPlacement CALLED: isCluster=True, category=Duct Accessories, count=1
+
+[2026-01-08 19:47:06.745] [19:47:06] 🔥 [FlagManagerService] SET CLUSTER FLAGS: ClashZone=b3515ca9-b4dd-c7fc-d6e6-133c2578ecdd (ID:80), IsClusterResolvedFlag=true, ClusterSleeveId=1272438
+
+[2026-01-08 19:47:06.747] [19:47:06] 🔥 [FlagManagerService] CALLING _repository.BatchUpdateFlagsWithCurrentClash with 1 updates
+
+[2026-01-08 19:47:06.752] [19:47:06] ✅ [FlagManagerService] BatchUpdateFlagsWithCurrentClash COMPLETED for 1 updates
+
+[2026-01-08 19:47:06.754] [19:47:06] ✅ AFTER UpdateFlagsForPlacement: ClashZone b3515ca9-b4dd-c7fc-d6e6-133c2578ecdd, IsClusterResolved=True, ClusterId=1272438, SleeveId=-1, AfterClusterSleeveId=1272329, NewClusterId=1272438
+
+[2026-01-08 19:47:06.756] [19:47:06] ✅ VERIFY BEFORE DELETE: Cluster sleeve 1272438 EXISTS before deleting 2 individual sleeves
+
+[2026-01-08 19:47:06.758] [19:47:06] 🔍 DELETION PREPARATION: Preparing to delete 2 individual sleeves for cluster 1272438
+
+[2026-01-08 19:47:06.759] [19:47:06] 🗑️ QUEUED for deletion: individual sleeve 1272287 (part of cluster 1272438)
+
+[2026-01-08 19:47:06.761] [19:47:06] 🗑️ QUEUED for deletion: individual sleeve 1272329 (part of cluster 1272438)
+
+[2026-01-08 19:47:06.762] [19:47:06] 🔍 DELETION QUEUE: 2 individual sleeves queued for deletion (out of 2 in cluster)
+
+[2026-01-08 19:47:06.765] [19:47:06] ✅ DELETED individual sleeve 1272287
+
+[2026-01-08 19:47:06.768] [19:47:06] ✅ DELETED individual sleeve 1272329
+
+[2026-01-08 19:47:06.769] [19:47:06] ✅ VERIFY AFTER DELETE: Cluster sleeve 1272438 STILL EXISTS after deleting 2 individual sleeves
+
+[2026-01-08 19:47:06.771] [19:47:06] 📊 Cluster 1272438: Deleted 2 of 2 individual sleeves
+
+[19:47:06] 🔥 PlaceClusterForGroup RETURNED: success=True, placedCount=1, deletedCount=2, capturedId=1272438, placedClusterSleeve=NOT NULL | BUILD: 2026-01-08 18:51:17
+[19:47:06] ✅✅✅ PLACEMENT SUCCESS: Adding to _clusterToClashZoneIds
+[19:47:06] ✅ Adding cluster to placedClusters and _clusterToClashZoneIds: clusterSleeveId=1272438
+[2026-01-08 19:47:06.774] [19:47:06] [FLAG-MANAGER-HELPER] ✅✅✅ REGISTERED recently placed cluster sleeve ID=1272438 (protected from deletion)
+
+[2026-01-08 19:47:06.776] [19:47:06] ✅✅✅ REGISTERED cluster sleeve 1272438 with FlagManagerProtectionHelper (static protection)
+
+[19:47:06] ✅ Adding 2 ClashZoneIds to _clusterToClashZoneIds[1272438]
+[19:47:06] ✅ AFTER ADD: _clusterToClashZoneIds.Count=3
+[2026-01-08 19:47:06.779] [19:47:06] ⏭️ SKIP: Cluster with only 1 sleeve(s) (need >1 to cluster)
+
+[2026-01-08 19:47:06.790] [19:47:06] 🔍 PROCESSING: Group Wall/Duct Accessories/X has 8 clusters
+
+[2026-01-08 19:47:06.792] [19:47:06] ✅ PROCESSING: Cluster with 3 sleeves (index=7)
+
+[19:47:06] 🔥 ABOUT TO CALL PlaceClusterForGroup: clusterSize=3, groupKey=Wall/Duct Accessories/X, index=7
+[19:47:06] 🔥 PlaceClusterForGroup ENTRY: clusterSize=3, groupKey=Wall/Duct Accessories/X
+[19:47:06] 🔥 BEFORE DetermineRotationAngle
+[2026-01-08 19:47:06.795] [19:47:06.794] [PIPE-CATEGORY-DEBUG] Sleeve 1272378: MepElementCategory='Duct Accessories'
+
+[2026-01-08 19:47:06.796] [19:47:06.796] [PIPE-CATEGORY-DEBUG] Sleeve 1272364: MepElementCategory='Duct Accessories'
+
+[2026-01-08 19:47:06.798] [19:47:06.797] [PIPE-CATEGORY-DEBUG] Sleeve 1272336: MepElementCategory='Duct Accessories'
+
+[2026-01-08 19:47:06.799] [19:47:06] [CLUSTER-ANGLE-DEBUG] Sleeve 1272378 WallDirectionType='', HostOrientation='X'
+
+[2026-01-08 19:47:06.801] [19:47:06] [CLUSTER-ANGLE-DEBUG] WALL HOST: StructuralType='Wall', WallDirectionType='', HostOrientation='X', IsCircular=False
+
+[2026-01-08 19:47:06.803] [19:47:06] [CLUSTER-ANGLE] ✅ X-WALL DETECTED → 90.0° (matches individual sleeve, applies to circular elements too)
+
+[19:47:06] 🔥 AFTER CalculateRotatedBoundingBox: width=11.32, height=2.46, depth=0.66
+[2026-01-08 19:47:06.806] [19:47:06] 📐 Cluster Bounding Box: W=3450.0mm, H=750.0mm, D=200.0mm, Rotation=90.0°, ClusterSize=3
+
+[2026-01-08 19:47:06.808] [19:47:06]   Sleeve 1272378: W=1150.0mm, H=650.0mm, Depth=650.0mm, Diameter=1150.0mm
+
+[2026-01-08 19:47:06.810] [19:47:06]   Sleeve 1272364: W=1350.0mm, H=750.0mm, Depth=750.0mm, Diameter=1350.0mm
+
+[2026-01-08 19:47:06.811] [19:47:06]   Sleeve 1272336: W=850.0mm, H=450.0mm, Depth=450.0mm, Diameter=850.0mm
+
+[2026-01-08 19:47:06.813] [19:47:06] 🔄 PROCESSING GROUP: Sleeves=[1272378,1272364,1272336], CalcWidth=3450.0mm, CalcHeight=750.0mm, CalcDepth=200.0mm
+
+[19:47:06] 🔥 ABOUT TO CALL PlaceClusterSleeve: placementPoint=(22.92,1.05,7.71), W=3450.0mm, H=750.0mm
+[2026-01-08 19:47:06.815] [19:47:06.814] [ClusterPlacementService] Starting cluster sleeve placement:
+  HostType=Wall, SystemType=Duct Accessories, Orientation=X
+  TargetCategory=Duct Accessories, ClusterSize=3
+  Dimensions: W=3450.0mm, H=750.0mm, D=200.0mm
+  Rotation Angle: 90.0°
+
+[2026-01-08 19:47:06.817] [19:47:06] 🔥 PlaceClusterSleeve: Starting placement, hostType=Wall, systemType=Duct Accessories
+
+[2026-01-08 19:47:06.820] [19:47:06.820] [ComputeCornerBasedClusterMidpoint] ✅ X-WALL/FRAMING PLACEMENT POINT (Host: Wall):
+  X (cluster width midpoint along wall): 22.590543 (from corner extremities: minX=16.931095, maxX=28.249992)
+  Y (wall centerline, perpendicular to wall): 0.721785
+  Z (cluster height midpoint): 7.709974 (from corner extremities: minZ=6.479659, maxZ=8.940289)
+  Final PlacementPoint: (22.590543, 0.721785, 7.709974)
+
+[2026-01-08 19:47:06.822] [19:47:06.821] [ClusterPlacementService] 🔥 WALL/FRAMING MIDPOINT OVERRIDE:
+  Original PlacementPoint (from delegate): (22.918627, 1.049869, 7.709974)
+  TheoreticalMid (from stored corners): (22.590543, 0.721785, 7.709974)
+  Delta: X=-100.00mm, Y=-100.00mm, Z=0.00mm, Distance=141.42mm
+  ✅ Using TheoreticalMid for placement (overriding delegate midpoint)
+
+[2026-01-08 19:47:06.824] [19:47:06] 🔥 ABOUT TO CREATE cluster sleeve instance: familyName=RectangularOpeningOnWall, level=Level 0
+
+[2026-01-08 19:47:06.847] 2026-01-08T19:47:06.8468596+05:30	ClusterSleeveId=1272445	Family=RectangularOpeningOnWall	Symbol=ROW	Type=MODERATE_OVERHEAD	TimeMs=22	TimeTicks=220790	GCCollections=0	Level=Level 0	ClusterSize=3
+
+[2026-01-08 19:47:06.849] [19:47:06] ✅✅✅ Cluster sleeve CREATED: ID=1272445
+
+[2026-01-08 19:47:06.851] [19:47:06.850] [ClusterPlacementService] ✅ Cluster sleeve created: ID=1272445
+
+[2026-01-08 19:47:06.853] [19:47:06] 📐 RCS DIMENSIONS: Orientation=X, RCS W=3450.0mm (X=along wall), H=750.0mm (Z=vertical), D=200.0mm (Y=through wall)
+
+[2026-01-08 19:47:06.854] [19:47:06] 🔧 RCS WALL DEPTH FIX: Overriding depth from 200.0mm (RCS Y) to wall thickness 200.0mm
+
+[2026-01-08 19:47:06.856] [19:47:06] 📐 AFTER SWAP: Final W=3450.0mm, H=750.0mm, D=200.0mm
+
+[2026-01-08 19:47:06.858] [19:47:06] 📐 PRE-ROUNDING: Cluster 1272445 - Width=3450.000mm, Height=750.000mm, RoundingValue=50mm, RoundAlwaysUp=True
+
+[2026-01-08 19:47:06.861] [19:47:06.860] [SetSizeParameters] ✅ DEFERRED: Added Width=3450.0mm to deferredParameters for cluster sleeve 1272445
+
+[2026-01-08 19:47:06.863] [19:47:06.862] [SetSizeParameters] ✅ DEFERRED: Added Height=750.0mm to deferredParameters for cluster sleeve 1272445
+
+[2026-01-08 19:47:06.865] [19:47:06.864] [SetSizeParameters] ✅ DEFERRED: Added Depth=200.0mm to deferredParameters for cluster sleeve 1272445
+
+[2026-01-08 19:47:06.867] [19:47:06] 🔄 APPLYING X-WALL ROTATION: 90.0° for wall-hosted cluster
+
+[2026-01-08 19:47:06.872] [19:47:06] ✅ WALL: Using rotation angle directly: 90.0°
+
+[2026-01-08 19:47:06.882] [19:47:06] 🔄 ROTATION: Applied 90.0° (original: 90.0° (no offset)) to cluster sleeve 1272445
+
+[2026-01-08 19:47:06.884] [19:47:06.883] [SetMetadata] ✅ IMMEDIATE (CRITICAL): Set 'Sleeve Instance ID'=-1 for cluster sleeve 1272445
+
+[2026-01-08 19:47:06.886] [19:47:06.885] [SetMetadata] ✅ IMMEDIATE (CRITICAL): Set 'Cluster Sleeve Instance ID'=1272445 for cluster sleeve 1272445
+
+[2026-01-08 19:47:06.890] [19:47:06] ✅ Set Schedule Level and Elevation from Level for cluster sleeve 1272445 from ClashZone 935ea122-7169-ac0b-1470-76f7a5e9d6d5 (via injected SleeveParameterService)
+
+[2026-01-08 19:47:06.892] [19:47:06.891] [SetBottomOfOpeningForCluster] ✅ Cluster sleeve 1272445: Read Elevation from Level=2350.0mm from parameter (calculated by Revit after Schedule Level was set)
+
+[2026-01-08 19:47:06.893] [19:47:06.893] [SetBottomOfOpeningForCluster] ✅ DEFERRED: Added Bottom of Opening=1975.0mm (Elevation from Level=2350.0mm, Height=750.0mm) to deferredParameters for cluster sleeve 1272445
+
+[2026-01-08 19:47:06.895] [19:47:06] ✅✅✅ PlaceClusterSleeve RETURNING TRUE: placedClusterSleeve=NOT NULL, capturedId=1272445
+
+[19:47:06] 🔥 PlaceClusterSleeve RETURNED: success=True, placedClusterSleeve=NOT NULL, capturedId=1272445
+[2026-01-08 19:47:06.897] [19:47:06] ✅ PLACEMENT COMPLETE: Cluster 1272445 placed and parameters deferred.
+
+[2026-01-08 19:47:06.899] [19:47:06] 🔍 BEFORE UpdateFlagsForPlacement: ClashZone 935ea122-7169-ac0b-1470-76f7a5e9d6d5, IsClusterResolved=False, ClusterId=-1, SleeveId=1272378, AfterClusterSleeveId=-1
+
+[2026-01-08 19:47:06.900] [19:47:06] ✅ Set AfterClusterSleevePlacedSleeveInstanceId=1272378 for ClashZone 935ea122-7169-ac0b-1470-76f7a5e9d6d5 (original individual sleeve ID)
+
+[2026-01-08 19:47:06.902] [19:47:06] 🔥🔥🔥 [FlagManagerService] BatchUpdateFlagsForPlacement CALLED: isCluster=True, category=Duct Accessories, count=1
+
+[2026-01-08 19:47:06.903] [19:47:06] 🔥 [FlagManagerService] SET CLUSTER FLAGS: ClashZone=935ea122-7169-ac0b-1470-76f7a5e9d6d5 (ID:63), IsClusterResolvedFlag=true, ClusterSleeveId=1272445
+
+[2026-01-08 19:47:06.905] [19:47:06] 🔥 [FlagManagerService] CALLING _repository.BatchUpdateFlagsWithCurrentClash with 1 updates
+
+[2026-01-08 19:47:06.911] [19:47:06] ✅ [FlagManagerService] BatchUpdateFlagsWithCurrentClash COMPLETED for 1 updates
+
+[2026-01-08 19:47:06.912] [19:47:06] ✅ AFTER UpdateFlagsForPlacement: ClashZone 935ea122-7169-ac0b-1470-76f7a5e9d6d5, IsClusterResolved=True, ClusterId=1272445, SleeveId=-1, AfterClusterSleeveId=1272378, NewClusterId=1272445
+
+[2026-01-08 19:47:06.913] [19:47:06] 🔍 BEFORE UpdateFlagsForPlacement: ClashZone 9f1747e9-810a-73b0-1926-eb581c142a2a, IsClusterResolved=False, ClusterId=-1, SleeveId=1272364, AfterClusterSleeveId=-1
+
+[2026-01-08 19:47:06.915] [19:47:06] ✅ Set AfterClusterSleevePlacedSleeveInstanceId=1272364 for ClashZone 9f1747e9-810a-73b0-1926-eb581c142a2a (original individual sleeve ID)
+
+[2026-01-08 19:47:06.917] [19:47:06] 🔥🔥🔥 [FlagManagerService] BatchUpdateFlagsForPlacement CALLED: isCluster=True, category=Duct Accessories, count=1
+
+[2026-01-08 19:47:06.919] [19:47:06] 🔥 [FlagManagerService] SET CLUSTER FLAGS: ClashZone=9f1747e9-810a-73b0-1926-eb581c142a2a (ID:64), IsClusterResolvedFlag=true, ClusterSleeveId=1272445
+
+[2026-01-08 19:47:06.920] [19:47:06] 🔥 [FlagManagerService] CALLING _repository.BatchUpdateFlagsWithCurrentClash with 1 updates
+
+[2026-01-08 19:47:06.926] [19:47:06] ✅ [FlagManagerService] BatchUpdateFlagsWithCurrentClash COMPLETED for 1 updates
+
+[2026-01-08 19:47:06.928] [19:47:06] ✅ AFTER UpdateFlagsForPlacement: ClashZone 9f1747e9-810a-73b0-1926-eb581c142a2a, IsClusterResolved=True, ClusterId=1272445, SleeveId=-1, AfterClusterSleeveId=1272364, NewClusterId=1272445
+
+[2026-01-08 19:47:06.929] [19:47:06] 🔍 BEFORE UpdateFlagsForPlacement: ClashZone 8616a0aa-a600-a464-3ebb-8cebd6f83b6a, IsClusterResolved=False, ClusterId=-1, SleeveId=1272336, AfterClusterSleeveId=-1
+
+[2026-01-08 19:47:06.930] [19:47:06] ✅ Set AfterClusterSleevePlacedSleeveInstanceId=1272336 for ClashZone 8616a0aa-a600-a464-3ebb-8cebd6f83b6a (original individual sleeve ID)
+
+[2026-01-08 19:47:06.934] [19:47:06] 🔥🔥🔥 [FlagManagerService] BatchUpdateFlagsForPlacement CALLED: isCluster=True, category=Duct Accessories, count=1
+
+[2026-01-08 19:47:06.935] [19:47:06] 🔥 [FlagManagerService] SET CLUSTER FLAGS: ClashZone=8616a0aa-a600-a464-3ebb-8cebd6f83b6a (ID:65), IsClusterResolvedFlag=true, ClusterSleeveId=1272445
+
+[2026-01-08 19:47:06.937] [19:47:06] 🔥 [FlagManagerService] CALLING _repository.BatchUpdateFlagsWithCurrentClash with 1 updates
+
+[2026-01-08 19:47:06.945] [19:47:06] ✅ [FlagManagerService] BatchUpdateFlagsWithCurrentClash COMPLETED for 1 updates
+
+[2026-01-08 19:47:06.946] [19:47:06] ✅ AFTER UpdateFlagsForPlacement: ClashZone 8616a0aa-a600-a464-3ebb-8cebd6f83b6a, IsClusterResolved=True, ClusterId=1272445, SleeveId=-1, AfterClusterSleeveId=1272336, NewClusterId=1272445
+
+[2026-01-08 19:47:06.948] [19:47:06] ✅ VERIFY BEFORE DELETE: Cluster sleeve 1272445 EXISTS before deleting 3 individual sleeves
+
+[2026-01-08 19:47:06.950] [19:47:06] 🔍 DELETION PREPARATION: Preparing to delete 3 individual sleeves for cluster 1272445
+
+[2026-01-08 19:47:06.951] [19:47:06] 🗑️ QUEUED for deletion: individual sleeve 1272378 (part of cluster 1272445)
+
+[2026-01-08 19:47:06.953] [19:47:06] 🗑️ QUEUED for deletion: individual sleeve 1272364 (part of cluster 1272445)
+
+[2026-01-08 19:47:06.954] [19:47:06] 🗑️ QUEUED for deletion: individual sleeve 1272336 (part of cluster 1272445)
+
+[2026-01-08 19:47:06.956] [19:47:06] 🔍 DELETION QUEUE: 3 individual sleeves queued for deletion (out of 3 in cluster)
+
+[2026-01-08 19:47:06.959] [19:47:06] ✅ DELETED individual sleeve 1272378
+
+[2026-01-08 19:47:06.962] [19:47:06] ✅ DELETED individual sleeve 1272364
+
+[2026-01-08 19:47:06.965] [19:47:06] ✅ DELETED individual sleeve 1272336
+
+[2026-01-08 19:47:06.966] [19:47:06] ✅ VERIFY AFTER DELETE: Cluster sleeve 1272445 STILL EXISTS after deleting 3 individual sleeves
+
+[2026-01-08 19:47:06.968] [19:47:06] 📊 Cluster 1272445: Deleted 3 of 3 individual sleeves
+
+[19:47:06] 🔥 PlaceClusterForGroup RETURNED: success=True, placedCount=1, deletedCount=3, capturedId=1272445, placedClusterSleeve=NOT NULL | BUILD: 2026-01-08 18:51:17
+[19:47:06] ✅✅✅ PLACEMENT SUCCESS: Adding to _clusterToClashZoneIds
+[19:47:06] ✅ Adding cluster to placedClusters and _clusterToClashZoneIds: clusterSleeveId=1272445
+[2026-01-08 19:47:06.971] [19:47:06] [FLAG-MANAGER-HELPER] ✅✅✅ REGISTERED recently placed cluster sleeve ID=1272445 (protected from deletion)
+
+[2026-01-08 19:47:06.973] [19:47:06] ✅✅✅ REGISTERED cluster sleeve 1272445 with FlagManagerProtectionHelper (static protection)
+
+[19:47:06] ✅ Adding 3 ClashZoneIds to _clusterToClashZoneIds[1272445]
+[19:47:06] ✅ AFTER ADD: _clusterToClashZoneIds.Count=4
+[2026-01-08 19:47:06.976] [19:47:06] ⏭️ SKIP: Cluster with only 1 sleeve(s) (need >1 to cluster)
+
+[2026-01-08 19:47:06.978] [19:47:06] ⏭️ SKIP: Cluster with only 1 sleeve(s) (need >1 to cluster)
+
+[2026-01-08 19:47:06.979] [19:47:06] ⏭️ SKIP: Cluster with only 1 sleeve(s) (need >1 to cluster)
+
+[2026-01-08 19:47:06.981] [19:47:06] ⏭️ SKIP: Cluster with only 1 sleeve(s) (need >1 to cluster)
+
+[2026-01-08 19:47:06.982] [19:47:06] ⏭️ SKIP: Cluster with only 1 sleeve(s) (need >1 to cluster)
+
+[2026-01-08 19:47:06.984] [19:47:06] ⏭️ SKIP: Cluster with only 1 sleeve(s) (need >1 to cluster)
+
+[2026-01-08 19:47:06.986] [19:47:06] ⏭️ SKIP: Cluster with only 1 sleeve(s) (need >1 to cluster)
+
+[2026-01-08 19:47:07.108] [19:47:07.107] [BATCH-FLUSH] 🔍 CHECKING: UseBatchedParameterWrites=True, _deferredClusterParameters.Count=4
+
+[2026-01-08 19:47:07.112] [19:47:07.111] [BATCH-FLUSH] 🔍 DETAILS: Flushing 4 cluster sleeves. IDs: 1272422, 1272431, 1272438, 1272445
+
+[2026-01-08 19:47:07.759] [19:47:07] ✅ POST-FLUSH REGENERATION: Regenerated document after flushing 4 cluster sleeve parameters
+
+[2026-01-08 19:47:07.762] [19:47:07] 🔍 PRE-CLEANUP VERIFICATION: Checking 4 cluster sleeves before cleanup...
+
+[2026-01-08 19:47:07.764] [19:47:07] ✅ PRE-CLEANUP: Cluster sleeve 1272422 EXISTS: Name='ROW', IsValid=True
+
+[2026-01-08 19:47:07.766] [19:47:07] ✅ PRE-CLEANUP: Cluster sleeve 1272431 EXISTS: Name='ROW', IsValid=True
+
+[2026-01-08 19:47:07.769] [19:47:07] ✅ PRE-CLEANUP: Cluster sleeve 1272438 EXISTS: Name='ROW', IsValid=True
+
+[2026-01-08 19:47:07.771] [19:47:07] ✅ PRE-CLEANUP: Cluster sleeve 1272445 EXISTS: Name='ROW', IsValid=True
+
+[2026-01-08 19:47:07.773] [19:47:07] 📊 PRE-CLEANUP RESULT: 4 valid, 0 invalid out of 4 cluster sleeves
+
+[2026-01-08 19:47:07.775] [19:47:07] 🧹 CLEANUP: Calling cleanup service with 4 VALID cluster sleeves for protection
+
+[2026-01-08 19:47:07.806] [19:47:07] 🧹 CLEANUP: Starting cleanup with 4 placed clusters (TargetCategory=Duct Accessories)
+
+[2026-01-08 19:47:07.833] [19:47:07] 🧹 CLEANUP: Retrieved 25 category records from DB for 68 potential sleeves
+
+[2026-01-08 19:47:07.965] [19:47:07] 🧹 CLEANUP: Found 54 potential sleeves (Filtered for Category Compatibility)
+
+[2026-01-08 19:47:07.973] [19:47:07] 🧹 CLEANUP: Cluster 1272422 dimensions from REVIT ELEMENT - W=3450.0mm, H=750.0mm, D=200.0mm
+
+[2026-01-08 19:47:07.974] [19:47:07] 🧹 CLEANUP: Cluster 1272422 bbox (CALCULATED from params) - PlacementPoint=(0.722, 46.216, 7.579), Min=(-4.938, 44.985, 7.251), Max=(6.381, 47.446, 7.907), BBoxSize=(3450.0mm x 750.0mm x 200.0mm), Params=(W=3450.0mm, H=750.0mm, D=200.0mm)
+
+[2026-01-08 19:47:07.976] [19:47:07] 🧹 CLEANUP: Cluster 1272431 dimensions from REVIT ELEMENT - W=2400.0mm, H=1250.0mm, D=200.0mm
+
+[2026-01-08 19:47:07.978] [19:47:07] 🧹 CLEANUP: Cluster 1272431 bbox (CALCULATED from params) - PlacementPoint=(0.722, 34.028, 7.226), Min=(-3.215, 31.977, 6.898), Max=(4.659, 36.078, 7.554), BBoxSize=(2400.0mm x 1250.0mm x 200.0mm), Params=(W=2400.0mm, H=1250.0mm, D=200.0mm)
+
+[2026-01-08 19:47:07.979] [19:47:07] 🧹 CLEANUP: Cluster 1272438 dimensions from REVIT ELEMENT - W=950.0mm, H=400.0mm, D=200.0mm
+
+[2026-01-08 19:47:07.981] [19:47:07] 🧹 CLEANUP: Cluster 1272438 bbox (CALCULATED from params) - PlacementPoint=(0.722, 35.674, 10.519), Min=(-0.837, 35.018, 10.191), Max=(2.280, 36.330, 10.848), BBoxSize=(950.0mm x 400.0mm x 200.0mm), Params=(W=950.0mm, H=400.0mm, D=200.0mm)
+
+[2026-01-08 19:47:07.983] [19:47:07] 🧹 CLEANUP: Cluster 1272445 dimensions from REVIT ELEMENT - W=3450.0mm, H=750.0mm, D=200.0mm
+
+[2026-01-08 19:47:07.984] [19:47:07] 🧹 CLEANUP: Cluster 1272445 bbox (CALCULATED from params) - PlacementPoint=(22.591, 0.722, 7.710), Min=(16.931, -0.509, 7.382), Max=(28.250, 1.952, 8.038), BBoxSize=(3450.0mm x 750.0mm x 200.0mm), Params=(W=3450.0mm, H=750.0mm, D=200.0mm)
+
+[2026-01-08 19:47:07.986] [19:47:07] 🧹 CLEANUP: Built 4 cluster bounding boxes from 4 placed clusters
+
+[2026-01-08 19:47:07.987] [19:47:07] 🧹 CLEANUP: Checking individual sleeve 1270723 - PlacementPoint=(73.049, 66.339, 10.598), BBox=(72.557,66.010,10.106) to (73.541,66.667,11.090)
+
+[2026-01-08 19:47:07.989] [19:47:07] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(72.557,66.010,10.106) to (73.541,66.667,11.090), PlacementPoint=(73.049,66.339,10.598), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:07.991] [19:47:07] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(72.557,66.010,10.106) to (73.541,66.667,11.090), PlacementPoint=(73.049,66.339,10.598), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:07.992] [19:47:07] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(72.557,66.010,10.106) to (73.541,66.667,11.090), PlacementPoint=(73.049,66.339,10.598), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:07.994] [19:47:07] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(72.557,66.010,10.106) to (73.541,66.667,11.090), PlacementPoint=(73.049,66.339,10.598), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:07.995] [19:47:07] 🧹 CLEANUP: ❌ Individual sleeve 1270723 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:07.997] [19:47:07] 🧹 CLEANUP: Checking individual sleeve 1270798 - PlacementPoint=(32.136, 66.339, 10.466), BBox=(31.643,66.010,9.974) to (32.628,66.667,10.958)
+
+[2026-01-08 19:47:07.999] [19:47:07] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(31.643,66.010,9.974) to (32.628,66.667,10.958), PlacementPoint=(32.136,66.339,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.000] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(31.643,66.010,9.974) to (32.628,66.667,10.958), PlacementPoint=(32.136,66.339,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.002] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(31.643,66.010,9.974) to (32.628,66.667,10.958), PlacementPoint=(32.136,66.339,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.003] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(31.643,66.010,9.974) to (32.628,66.667,10.958), PlacementPoint=(32.136,66.339,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.006] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1270798 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.007] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1270908 - PlacementPoint=(99.147, 53.156, 10.919), BBox=(98.819,52.746,10.509) to (99.475,53.566,11.329)
+
+[2026-01-08 19:47:08.009] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(98.819,52.746,10.509) to (99.475,53.566,11.329), PlacementPoint=(99.147,53.156,10.919), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.010] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(98.819,52.746,10.509) to (99.475,53.566,11.329), PlacementPoint=(99.147,53.156,10.919), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.012] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(98.819,52.746,10.509) to (99.475,53.566,11.329), PlacementPoint=(99.147,53.156,10.919), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.013] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(98.819,52.746,10.509) to (99.475,53.566,11.329), PlacementPoint=(99.147,53.156,10.919), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.015] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1270908 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.017] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1270923 - PlacementPoint=(36.401, 66.339, 10.400), BBox=(35.991,66.010,9.990) to (36.811,66.667,10.810)
+
+[2026-01-08 19:47:08.018] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(35.991,66.010,9.990) to (36.811,66.667,10.810), PlacementPoint=(36.401,66.339,10.400), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.020] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(35.991,66.010,9.990) to (36.811,66.667,10.810), PlacementPoint=(36.401,66.339,10.400), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.022] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(35.991,66.010,9.990) to (36.811,66.667,10.810), PlacementPoint=(36.401,66.339,10.400), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.024] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(35.991,66.010,9.990) to (36.811,66.667,10.810), PlacementPoint=(36.401,66.339,10.400), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.025] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1270923 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.027] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1270953 - PlacementPoint=(80.929, 66.339, 7.054), BBox=(80.519,66.010,6.644) to (81.339,66.667,7.464)
+
+[2026-01-08 19:47:08.028] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(80.519,66.010,6.644) to (81.339,66.667,7.464), PlacementPoint=(80.929,66.339,7.054), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.030] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(80.519,66.010,6.644) to (81.339,66.667,7.464), PlacementPoint=(80.929,66.339,7.054), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.031] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(80.519,66.010,6.644) to (81.339,66.667,7.464), PlacementPoint=(80.929,66.339,7.054), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.033] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(80.519,66.010,6.644) to (81.339,66.667,7.464), PlacementPoint=(80.929,66.339,7.054), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.037] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1270953 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.039] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1270958 - PlacementPoint=(61.275, 41.191, 10.466), BBox=(60.865,40.703,10.056) to (61.685,41.679,10.876)
+
+[2026-01-08 19:47:08.041] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(60.865,40.703,10.056) to (61.685,41.679,10.876), PlacementPoint=(61.275,41.191,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.042] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(60.865,40.703,10.056) to (61.685,41.679,10.876), PlacementPoint=(61.275,41.191,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.044] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(60.865,40.703,10.056) to (61.685,41.679,10.876), PlacementPoint=(61.275,41.191,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.045] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(60.865,40.703,10.056) to (61.685,41.679,10.876), PlacementPoint=(61.275,41.191,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.047] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1270958 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.049] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1270963 - PlacementPoint=(67.217, 33.671, 10.466), BBox=(66.663,33.261,10.056) to (67.771,34.081,10.876)
+
+[2026-01-08 19:47:08.050] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(66.663,33.261,10.056) to (67.771,34.081,10.876), PlacementPoint=(67.217,33.671,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.052] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(66.663,33.261,10.056) to (67.771,34.081,10.876), PlacementPoint=(67.217,33.671,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.054] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(66.663,33.261,10.056) to (67.771,34.081,10.876), PlacementPoint=(67.217,33.671,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.056] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(66.663,33.261,10.056) to (67.771,34.081,10.876), PlacementPoint=(67.217,33.671,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.058] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1270963 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.060] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1270968 - PlacementPoint=(62.662, 29.486, 10.466), BBox=(62.252,28.998,10.056) to (63.072,29.974,10.876)
+
+[2026-01-08 19:47:08.061] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(62.252,28.998,10.056) to (63.072,29.974,10.876), PlacementPoint=(62.662,29.486,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.063] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(62.252,28.998,10.056) to (63.072,29.974,10.876), PlacementPoint=(62.662,29.486,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.064] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(62.252,28.998,10.056) to (63.072,29.974,10.876), PlacementPoint=(62.662,29.486,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.066] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(62.252,28.998,10.056) to (63.072,29.974,10.876), PlacementPoint=(62.662,29.486,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.067] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1270968 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.069] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1270973 - PlacementPoint=(52.506, 29.539, 10.466), BBox=(52.096,28.998,10.056) to (52.916,30.081,10.876)
+
+[2026-01-08 19:47:08.071] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(52.096,28.998,10.056) to (52.916,30.081,10.876), PlacementPoint=(52.506,29.539,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.072] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(52.096,28.998,10.056) to (52.916,30.081,10.876), PlacementPoint=(52.506,29.539,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.074] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(52.096,28.998,10.056) to (52.916,30.081,10.876), PlacementPoint=(52.506,29.539,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.076] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(52.096,28.998,10.056) to (52.916,30.081,10.876), PlacementPoint=(52.506,29.539,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.077] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1270973 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.079] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1270978 - PlacementPoint=(45.185, 32.878, 10.466), BBox=(45.030,32.468,10.056) to (45.341,33.288,10.876)
+
+[2026-01-08 19:47:08.080] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(45.030,32.468,10.056) to (45.341,33.288,10.876), PlacementPoint=(45.185,32.878,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.082] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(45.030,32.468,10.056) to (45.341,33.288,10.876), PlacementPoint=(45.185,32.878,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.084] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(45.030,32.468,10.056) to (45.341,33.288,10.876), PlacementPoint=(45.185,32.878,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.085] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(45.030,32.468,10.056) to (45.341,33.288,10.876), PlacementPoint=(45.185,32.878,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.087] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1270978 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.088] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1270983 - PlacementPoint=(44.759, 32.878, 10.466), BBox=(44.603,32.468,10.056) to (44.915,33.288,10.876)
+
+[2026-01-08 19:47:08.090] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(44.603,32.468,10.056) to (44.915,33.288,10.876), PlacementPoint=(44.759,32.878,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.092] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(44.603,32.468,10.056) to (44.915,33.288,10.876), PlacementPoint=(44.759,32.878,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.093] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(44.603,32.468,10.056) to (44.915,33.288,10.876), PlacementPoint=(44.759,32.878,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.095] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(44.603,32.468,10.056) to (44.915,33.288,10.876), PlacementPoint=(44.759,32.878,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.097] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1270983 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.098] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1270988 - PlacementPoint=(82.821, 66.339, 9.022), BBox=(82.493,66.010,8.694) to (83.149,66.667,9.350)
+
+[2026-01-08 19:47:08.100] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(82.493,66.010,8.694) to (83.149,66.667,9.350), PlacementPoint=(82.821,66.339,9.022), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.102] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(82.493,66.010,8.694) to (83.149,66.667,9.350), PlacementPoint=(82.821,66.339,9.022), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.103] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(82.493,66.010,8.694) to (83.149,66.667,9.350), PlacementPoint=(82.821,66.339,9.022), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.105] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(82.493,66.010,8.694) to (83.149,66.667,9.350), PlacementPoint=(82.821,66.339,9.022), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.106] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1270988 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.109] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1270993 - PlacementPoint=(82.821, 66.339, 5.085), BBox=(82.493,66.010,4.757) to (83.149,66.667,5.413)
+
+[2026-01-08 19:47:08.110] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(82.493,66.010,4.757) to (83.149,66.667,5.413), PlacementPoint=(82.821,66.339,5.085), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.112] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(82.493,66.010,4.757) to (83.149,66.667,5.413), PlacementPoint=(82.821,66.339,5.085), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.113] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(82.493,66.010,4.757) to (83.149,66.667,5.413), PlacementPoint=(82.821,66.339,5.085), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.114] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(82.493,66.010,4.757) to (83.149,66.667,5.413), PlacementPoint=(82.821,66.339,5.085), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.116] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1270993 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.118] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1270998 - PlacementPoint=(69.248, 66.339, 10.661), BBox=(68.920,66.010,10.333) to (69.576,66.667,10.989)
+
+[2026-01-08 19:47:08.119] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(68.920,66.010,10.333) to (69.576,66.667,10.989), PlacementPoint=(69.248,66.339,10.661), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.121] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(68.920,66.010,10.333) to (69.576,66.667,10.989), PlacementPoint=(69.248,66.339,10.661), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.123] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(68.920,66.010,10.333) to (69.576,66.667,10.989), PlacementPoint=(69.248,66.339,10.661), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.125] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(68.920,66.010,10.333) to (69.576,66.667,10.989), PlacementPoint=(69.248,66.339,10.661), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.126] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1270998 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.128] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271013 - PlacementPoint=(84.713, 66.339, 7.054), BBox=(84.385,66.010,6.726) to (85.041,66.667,7.382)
+
+[2026-01-08 19:47:08.129] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(84.385,66.010,6.726) to (85.041,66.667,7.382), PlacementPoint=(84.713,66.339,7.054), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.131] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(84.385,66.010,6.726) to (85.041,66.667,7.382), PlacementPoint=(84.713,66.339,7.054), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.133] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(84.385,66.010,6.726) to (85.041,66.667,7.382), PlacementPoint=(84.713,66.339,7.054), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.135] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(84.385,66.010,6.726) to (85.041,66.667,7.382), PlacementPoint=(84.713,66.339,7.054), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.136] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271013 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.138] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271018 - PlacementPoint=(86.606, 66.339, 9.022), BBox=(86.277,66.010,8.694) to (86.934,66.667,9.350)
+
+[2026-01-08 19:47:08.139] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(86.277,66.010,8.694) to (86.934,66.667,9.350), PlacementPoint=(86.606,66.339,9.022), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.141] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(86.277,66.010,8.694) to (86.934,66.667,9.350), PlacementPoint=(86.606,66.339,9.022), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.143] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(86.277,66.010,8.694) to (86.934,66.667,9.350), PlacementPoint=(86.606,66.339,9.022), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.144] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(86.277,66.010,8.694) to (86.934,66.667,9.350), PlacementPoint=(86.606,66.339,9.022), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.146] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271018 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.148] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271023 - PlacementPoint=(86.606, 66.339, 5.085), BBox=(86.277,66.010,4.757) to (86.934,66.667,5.413)
+
+[2026-01-08 19:47:08.149] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(86.277,66.010,4.757) to (86.934,66.667,5.413), PlacementPoint=(86.606,66.339,5.085), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.151] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(86.277,66.010,4.757) to (86.934,66.667,5.413), PlacementPoint=(86.606,66.339,5.085), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.153] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(86.277,66.010,4.757) to (86.934,66.667,5.413), PlacementPoint=(86.606,66.339,5.085), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.154] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(86.277,66.010,4.757) to (86.934,66.667,5.413), PlacementPoint=(86.606,66.339,5.085), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.156] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271023 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.157] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271028 - PlacementPoint=(88.498, 66.339, 7.054), BBox=(88.252,66.010,6.808) to (88.744,66.667,7.300)
+
+[2026-01-08 19:47:08.159] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(88.252,66.010,6.808) to (88.744,66.667,7.300), PlacementPoint=(88.498,66.339,7.054), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.160] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(88.252,66.010,6.808) to (88.744,66.667,7.300), PlacementPoint=(88.498,66.339,7.054), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.162] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(88.252,66.010,6.808) to (88.744,66.667,7.300), PlacementPoint=(88.498,66.339,7.054), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.163] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(88.252,66.010,6.808) to (88.744,66.667,7.300), PlacementPoint=(88.498,66.339,7.054), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.165] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271028 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.166] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271033 - PlacementPoint=(99.147, 55.689, 10.400), BBox=(98.819,55.443,10.154) to (99.475,55.935,10.646)
+
+[2026-01-08 19:47:08.169] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(98.819,55.443,10.154) to (99.475,55.935,10.646), PlacementPoint=(99.147,55.689,10.400), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.170] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(98.819,55.443,10.154) to (99.475,55.935,10.646), PlacementPoint=(99.147,55.689,10.400), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.172] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(98.819,55.443,10.154) to (99.475,55.935,10.646), PlacementPoint=(99.147,55.689,10.400), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.173] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(98.819,55.443,10.154) to (99.475,55.935,10.646), PlacementPoint=(99.147,55.689,10.400), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.175] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271033 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.177] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271038 - PlacementPoint=(88.498, 66.339, 10.400), BBox=(88.252,66.010,10.154) to (88.744,66.667,10.646)
+
+[2026-01-08 19:47:08.178] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(88.252,66.010,10.154) to (88.744,66.667,10.646), PlacementPoint=(88.498,66.339,10.400), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.180] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(88.252,66.010,10.154) to (88.744,66.667,10.646), PlacementPoint=(88.498,66.339,10.400), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.181] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(88.252,66.010,10.154) to (88.744,66.667,10.646), PlacementPoint=(88.498,66.339,10.400), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.183] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(88.252,66.010,10.154) to (88.744,66.667,10.646), PlacementPoint=(88.498,66.339,10.400), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.185] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271038 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.186] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271043 - PlacementPoint=(90.390, 66.339, 5.085), BBox=(90.144,66.010,4.839) to (90.636,66.667,5.331)
+
+[2026-01-08 19:47:08.188] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(90.144,66.010,4.839) to (90.636,66.667,5.331), PlacementPoint=(90.390,66.339,5.085), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.189] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(90.144,66.010,4.839) to (90.636,66.667,5.331), PlacementPoint=(90.390,66.339,5.085), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.191] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(90.144,66.010,4.839) to (90.636,66.667,5.331), PlacementPoint=(90.390,66.339,5.085), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.192] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(90.144,66.010,4.839) to (90.636,66.667,5.331), PlacementPoint=(90.390,66.339,5.085), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.194] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271043 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.196] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271048 - PlacementPoint=(99.147, 57.581, 9.022), BBox=(98.819,57.335,8.776) to (99.475,57.828,9.268)
+
+[2026-01-08 19:47:08.198] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(98.819,57.335,8.776) to (99.475,57.828,9.268), PlacementPoint=(99.147,57.581,9.022), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.200] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(98.819,57.335,8.776) to (99.475,57.828,9.268), PlacementPoint=(99.147,57.581,9.022), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.202] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(98.819,57.335,8.776) to (99.475,57.828,9.268), PlacementPoint=(99.147,57.581,9.022), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.203] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(98.819,57.335,8.776) to (99.475,57.828,9.268), PlacementPoint=(99.147,57.581,9.022), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.205] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271048 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.207] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271053 - PlacementPoint=(90.390, 66.339, 9.022), BBox=(90.144,66.010,8.776) to (90.636,66.667,9.268)
+
+[2026-01-08 19:47:08.207] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(90.144,66.010,8.776) to (90.636,66.667,9.268), PlacementPoint=(90.390,66.339,9.022), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.210] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(90.144,66.010,8.776) to (90.636,66.667,9.268), PlacementPoint=(90.390,66.339,9.022), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.211] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(90.144,66.010,8.776) to (90.636,66.667,9.268), PlacementPoint=(90.390,66.339,9.022), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.213] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(90.144,66.010,8.776) to (90.636,66.667,9.268), PlacementPoint=(90.390,66.339,9.022), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.215] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271053 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.216] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271058 - PlacementPoint=(92.282, 66.339, 7.054), BBox=(92.036,66.010,6.808) to (92.528,66.667,7.300)
+
+[2026-01-08 19:47:08.218] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(92.036,66.010,6.808) to (92.528,66.667,7.300), PlacementPoint=(92.282,66.339,7.054), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.219] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(92.036,66.010,6.808) to (92.528,66.667,7.300), PlacementPoint=(92.282,66.339,7.054), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.221] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(92.036,66.010,6.808) to (92.528,66.667,7.300), PlacementPoint=(92.282,66.339,7.054), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.223] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(92.036,66.010,6.808) to (92.528,66.667,7.300), PlacementPoint=(92.282,66.339,7.054), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.225] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271058 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.226] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271063 - PlacementPoint=(94.174, 66.339, 5.085), BBox=(93.928,66.010,4.839) to (94.420,66.667,5.331)
+
+[2026-01-08 19:47:08.227] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(93.928,66.010,4.839) to (94.420,66.667,5.331), PlacementPoint=(94.174,66.339,5.085), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.229] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(93.928,66.010,4.839) to (94.420,66.667,5.331), PlacementPoint=(94.174,66.339,5.085), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.231] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(93.928,66.010,4.839) to (94.420,66.667,5.331), PlacementPoint=(94.174,66.339,5.085), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.232] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(93.928,66.010,4.839) to (94.420,66.667,5.331), PlacementPoint=(94.174,66.339,5.085), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.234] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271063 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.235] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271448 - PlacementPoint=(25.174, 48.578, -0.771), BBox=(24.518,47.922,-1.542) to (25.830,49.234,0.000)
+
+[2026-01-08 19:47:08.237] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(24.518,47.922,-1.542) to (25.830,49.234,0.000), PlacementPoint=(25.174,48.578,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.239] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(24.518,47.922,-1.542) to (25.830,49.234,0.000), PlacementPoint=(25.174,48.578,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.240] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(24.518,47.922,-1.542) to (25.830,49.234,0.000), PlacementPoint=(25.174,48.578,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.242] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(24.518,47.922,-1.542) to (25.830,49.234,0.000), PlacementPoint=(25.174,48.578,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.243] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271448 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.245] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271456 - PlacementPoint=(22.221, 48.578, -0.771), BBox=(21.647,48.004,-1.542) to (22.795,49.152,0.000)
+
+[2026-01-08 19:47:08.247] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(21.647,48.004,-1.542) to (22.795,49.152,0.000), PlacementPoint=(22.221,48.578,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.248] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(21.647,48.004,-1.542) to (22.795,49.152,0.000), PlacementPoint=(22.221,48.578,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.250] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(21.647,48.004,-1.542) to (22.795,49.152,0.000), PlacementPoint=(22.221,48.578,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.252] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(21.647,48.004,-1.542) to (22.795,49.152,0.000), PlacementPoint=(22.221,48.578,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.254] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271456 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.256] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271463 - PlacementPoint=(27.820, 51.635, -0.771), BBox=(27.327,51.143,-1.542) to (28.312,52.127,0.000)
+
+[2026-01-08 19:47:08.257] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(27.327,51.143,-1.542) to (28.312,52.127,0.000), PlacementPoint=(27.820,51.635,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.259] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(27.327,51.143,-1.542) to (28.312,52.127,0.000), PlacementPoint=(27.820,51.635,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.260] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(27.327,51.143,-1.542) to (28.312,52.127,0.000), PlacementPoint=(27.820,51.635,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.262] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(27.327,51.143,-1.542) to (28.312,52.127,0.000), PlacementPoint=(27.820,51.635,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.263] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271463 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.265] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271470 - PlacementPoint=(29.722, 51.635, -0.771), BBox=(29.230,51.143,-1.542) to (30.215,52.127,0.000)
+
+[2026-01-08 19:47:08.267] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(29.230,51.143,-1.542) to (30.215,52.127,0.000), PlacementPoint=(29.722,51.635,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.268] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(29.230,51.143,-1.542) to (30.215,52.127,0.000), PlacementPoint=(29.722,51.635,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.270] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(29.230,51.143,-1.542) to (30.215,52.127,0.000), PlacementPoint=(29.722,51.635,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.272] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(29.230,51.143,-1.542) to (30.215,52.127,0.000), PlacementPoint=(29.722,51.635,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.276] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271470 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.277] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271477 - PlacementPoint=(39.368, 51.635, -0.771), BBox=(38.876,51.143,-1.542) to (39.860,52.127,0.000)
+
+[2026-01-08 19:47:08.279] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(38.876,51.143,-1.542) to (39.860,52.127,0.000), PlacementPoint=(39.368,51.635,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.281] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(38.876,51.143,-1.542) to (39.860,52.127,0.000), PlacementPoint=(39.368,51.635,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.282] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(38.876,51.143,-1.542) to (39.860,52.127,0.000), PlacementPoint=(39.368,51.635,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.284] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(38.876,51.143,-1.542) to (39.860,52.127,0.000), PlacementPoint=(39.368,51.635,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.286] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271477 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.288] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271494 - PlacementPoint=(88.029, 54.075, -0.771), BBox=(87.537,53.583,-1.542) to (88.521,54.567,0.000)
+
+[2026-01-08 19:47:08.289] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(87.537,53.583,-1.542) to (88.521,54.567,0.000), PlacementPoint=(88.029,54.075,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.291] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(87.537,53.583,-1.542) to (88.521,54.567,0.000), PlacementPoint=(88.029,54.075,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.292] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(87.537,53.583,-1.542) to (88.521,54.567,0.000), PlacementPoint=(88.029,54.075,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.294] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(87.537,53.583,-1.542) to (88.521,54.567,0.000), PlacementPoint=(88.029,54.075,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.296] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271494 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.297] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271499 - PlacementPoint=(37.465, 51.635, -0.771), BBox=(36.973,51.143,-1.542) to (37.957,52.127,0.000)
+
+[2026-01-08 19:47:08.299] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(36.973,51.143,-1.542) to (37.957,52.127,0.000), PlacementPoint=(37.465,51.635,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.300] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(36.973,51.143,-1.542) to (37.957,52.127,0.000), PlacementPoint=(37.465,51.635,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.302] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(36.973,51.143,-1.542) to (37.957,52.127,0.000), PlacementPoint=(37.465,51.635,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.304] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(36.973,51.143,-1.542) to (37.957,52.127,0.000), PlacementPoint=(37.465,51.635,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.305] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271499 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.307] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271509 - PlacementPoint=(89.735, 54.075, -0.771), BBox=(89.325,53.665,-1.542) to (90.145,54.485,0.000)
+
+[2026-01-08 19:47:08.308] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(89.325,53.665,-1.542) to (90.145,54.485,0.000), PlacementPoint=(89.735,54.075,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.310] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(89.325,53.665,-1.542) to (90.145,54.485,0.000), PlacementPoint=(89.735,54.075,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.312] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(89.325,53.665,-1.542) to (90.145,54.485,0.000), PlacementPoint=(89.735,54.075,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.313] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(89.325,53.665,-1.542) to (90.145,54.485,0.000), PlacementPoint=(89.735,54.075,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.315] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271509 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.316] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271514 - PlacementPoint=(32.938, 51.635, -0.771), BBox=(32.528,51.225,-1.542) to (33.348,52.045,0.000)
+
+[2026-01-08 19:47:08.318] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(32.528,51.225,-1.542) to (33.348,52.045,0.000), PlacementPoint=(32.938,51.635,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.320] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(32.528,51.225,-1.542) to (33.348,52.045,0.000), PlacementPoint=(32.938,51.635,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.322] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(32.528,51.225,-1.542) to (33.348,52.045,0.000), PlacementPoint=(32.938,51.635,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.323] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(32.528,51.225,-1.542) to (33.348,52.045,0.000), PlacementPoint=(32.938,51.635,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.325] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271514 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.326] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271519 - PlacementPoint=(85.577, 53.674, -0.771), BBox=(85.249,53.346,-1.542) to (85.905,54.003,0.000)
+
+[2026-01-08 19:47:08.328] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(85.249,53.346,-1.542) to (85.905,54.003,0.000), PlacementPoint=(85.577,53.674,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.330] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(85.249,53.346,-1.542) to (85.905,54.003,0.000), PlacementPoint=(85.577,53.674,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.331] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(85.249,53.346,-1.542) to (85.905,54.003,0.000), PlacementPoint=(85.577,53.674,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.333] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(85.249,53.346,-1.542) to (85.905,54.003,0.000), PlacementPoint=(85.577,53.674,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.334] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271519 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.336] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271524 - PlacementPoint=(86.496, 54.823, -0.771), BBox=(86.168,54.495,-1.542) to (86.824,55.151,0.000)
+
+[2026-01-08 19:47:08.337] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(86.168,54.495,-1.542) to (86.824,55.151,0.000), PlacementPoint=(86.496,54.823,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.339] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(86.168,54.495,-1.542) to (86.824,55.151,0.000), PlacementPoint=(86.496,54.823,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.341] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(86.168,54.495,-1.542) to (86.824,55.151,0.000), PlacementPoint=(86.496,54.823,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.342] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(86.168,54.495,-1.542) to (86.824,55.151,0.000), PlacementPoint=(86.496,54.823,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.344] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271524 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.345] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271529 - PlacementPoint=(42.169, 48.381, -0.771), BBox=(41.184,47.397,-1.542) to (43.153,49.365,0.000)
+
+[2026-01-08 19:47:08.347] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(41.184,47.397,-1.542) to (43.153,49.365,0.000), PlacementPoint=(42.169,48.381,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.348] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(41.184,47.397,-1.542) to (43.153,49.365,0.000), PlacementPoint=(42.169,48.381,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.350] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(41.184,47.397,-1.542) to (43.153,49.365,0.000), PlacementPoint=(42.169,48.381,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.352] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(41.184,47.397,-1.542) to (43.153,49.365,0.000), PlacementPoint=(42.169,48.381,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.353] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271529 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.356] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271536 - PlacementPoint=(36.919, 47.790, -0.771), BBox=(36.017,46.888,-1.542) to (37.822,48.693,0.000)
+
+[2026-01-08 19:47:08.357] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(36.017,46.888,-1.542) to (37.822,48.693,0.000), PlacementPoint=(36.919,47.790,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.359] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(36.017,46.888,-1.542) to (37.822,48.693,0.000), PlacementPoint=(36.919,47.790,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.361] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(36.017,46.888,-1.542) to (37.822,48.693,0.000), PlacementPoint=(36.919,47.790,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.362] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(36.017,46.888,-1.542) to (37.822,48.693,0.000), PlacementPoint=(36.919,47.790,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.363] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271536 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.365] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1271543 - PlacementPoint=(33.232, 44.704, -0.771), BBox=(32.084,43.556,-1.542) to (34.380,45.852,0.000)
+
+[2026-01-08 19:47:08.366] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(32.084,43.556,-1.542) to (34.380,45.852,0.000), PlacementPoint=(33.232,44.704,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.368] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(32.084,43.556,-1.542) to (34.380,45.852,0.000), PlacementPoint=(33.232,44.704,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.370] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(32.084,43.556,-1.542) to (34.380,45.852,0.000), PlacementPoint=(33.232,44.704,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.373] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(32.084,43.556,-1.542) to (34.380,45.852,0.000), PlacementPoint=(33.232,44.704,-0.771), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.375] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1271543 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.378] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1272258 - PlacementPoint=(42.034, 0.722, 10.470), BBox=(41.050,0.394,9.814) to (43.018,1.050,11.126)
+
+[2026-01-08 19:47:08.380] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(41.050,0.394,9.814) to (43.018,1.050,11.126), PlacementPoint=(42.034,0.722,10.470), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.382] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(41.050,0.394,9.814) to (43.018,1.050,11.126), PlacementPoint=(42.034,0.722,10.470), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.385] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(41.050,0.394,9.814) to (43.018,1.050,11.126), PlacementPoint=(42.034,0.722,10.470), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.387] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(41.050,0.394,9.814) to (43.018,1.050,11.126), PlacementPoint=(42.034,0.722,10.470), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.389] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1272258 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.391] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1272266 - PlacementPoint=(0.722, 31.989, 10.519), BBox=(0.394,31.004,9.863) to (1.050,32.973,11.176)
+
+[2026-01-08 19:47:08.393] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(0.394,31.004,9.863) to (1.050,32.973,11.176), PlacementPoint=(0.722,31.989,10.519), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.395] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(0.394,31.004,9.863) to (1.050,32.973,11.176), PlacementPoint=(0.722,31.989,10.519), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.397] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(0.394,31.004,9.863) to (1.050,32.973,11.176), PlacementPoint=(0.722,31.989,10.519), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.399] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(0.394,31.004,9.863) to (1.050,32.973,11.176), PlacementPoint=(0.722,31.989,10.519), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.401] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1272266 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.403] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1272273 - PlacementPoint=(0.722, 22.251, 7.787), BBox=(0.394,21.267,7.130) to (1.050,23.236,8.443)
+
+[2026-01-08 19:47:08.405] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(0.394,21.267,7.130) to (1.050,23.236,8.443), PlacementPoint=(0.722,22.251,7.787), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.407] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(0.394,21.267,7.130) to (1.050,23.236,8.443), PlacementPoint=(0.722,22.251,7.787), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.409] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(0.394,21.267,7.130) to (1.050,23.236,8.443), PlacementPoint=(0.722,22.251,7.787), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.411] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(0.394,21.267,7.130) to (1.050,23.236,8.443), PlacementPoint=(0.722,22.251,7.787), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.413] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1272273 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.413] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1272280 - PlacementPoint=(43.783, 0.722, 4.757), BBox=(42.799,0.394,4.101) to (44.767,1.050,5.413)
+
+[2026-01-08 19:47:08.415] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(42.799,0.394,4.101) to (44.767,1.050,5.413), PlacementPoint=(43.783,0.722,4.757), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.416] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(42.799,0.394,4.101) to (44.767,1.050,5.413), PlacementPoint=(43.783,0.722,4.757), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.418] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(42.799,0.394,4.101) to (44.767,1.050,5.413), PlacementPoint=(43.783,0.722,4.757), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.421] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(42.799,0.394,4.101) to (44.767,1.050,5.413), PlacementPoint=(43.783,0.722,4.757), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.422] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1272280 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.424] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1272294 - PlacementPoint=(0.722, 28.281, 10.362), BBox=(0.394,27.297,9.706) to (1.050,29.265,11.018)
+
+[2026-01-08 19:47:08.425] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(0.394,27.297,9.706) to (1.050,29.265,11.018), PlacementPoint=(0.722,28.281,10.362), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.427] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(0.394,27.297,9.706) to (1.050,29.265,11.018), PlacementPoint=(0.722,28.281,10.362), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.429] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(0.394,27.297,9.706) to (1.050,29.265,11.018), PlacementPoint=(0.722,28.281,10.362), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.430] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(0.394,27.297,9.706) to (1.050,29.265,11.018), PlacementPoint=(0.722,28.281,10.362), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.432] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1272294 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.434] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1272301 - PlacementPoint=(60.269, 0.722, 8.705), BBox=(59.284,0.394,8.049) to (61.253,1.050,9.361)
+
+[2026-01-08 19:47:08.435] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(59.284,0.394,8.049) to (61.253,1.050,9.361), PlacementPoint=(60.269,0.722,8.705), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.437] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(59.284,0.394,8.049) to (61.253,1.050,9.361), PlacementPoint=(60.269,0.722,8.705), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.438] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(59.284,0.394,8.049) to (61.253,1.050,9.361), PlacementPoint=(60.269,0.722,8.705), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.440] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(59.284,0.394,8.049) to (61.253,1.050,9.361), PlacementPoint=(60.269,0.722,8.705), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.442] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1272301 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.443] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1272308 - PlacementPoint=(66.314, 0.722, 8.022), BBox=(65.330,0.394,7.365) to (67.299,1.050,8.678)
+
+[2026-01-08 19:47:08.445] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(65.330,0.394,7.365) to (67.299,1.050,8.678), PlacementPoint=(66.314,0.722,8.022), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.446] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(65.330,0.394,7.365) to (67.299,1.050,8.678), PlacementPoint=(66.314,0.722,8.022), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.448] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(65.330,0.394,7.365) to (67.299,1.050,8.678), PlacementPoint=(66.314,0.722,8.022), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.449] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(65.330,0.394,7.365) to (67.299,1.050,8.678), PlacementPoint=(66.314,0.722,8.022), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.451] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1272308 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.452] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1272315 - PlacementPoint=(0.722, 22.979, 10.466), BBox=(0.394,21.995,9.974) to (1.050,23.964,10.958)
+
+[2026-01-08 19:47:08.454] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(0.394,21.995,9.974) to (1.050,23.964,10.958), PlacementPoint=(0.722,22.979,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.456] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(0.394,21.995,9.974) to (1.050,23.964,10.958), PlacementPoint=(0.722,22.979,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.457] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(0.394,21.995,9.974) to (1.050,23.964,10.958), PlacementPoint=(0.722,22.979,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.459] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(0.394,21.995,9.974) to (1.050,23.964,10.958), PlacementPoint=(0.722,22.979,10.466), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.460] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1272315 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.462] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1272322 - PlacementPoint=(41.833, 0.722, 7.035), BBox=(40.849,0.394,6.543) to (42.817,1.050,7.527)
+
+[2026-01-08 19:47:08.464] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(40.849,0.394,6.543) to (42.817,1.050,7.527), PlacementPoint=(41.833,0.722,7.035), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.466] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(40.849,0.394,6.543) to (42.817,1.050,7.527), PlacementPoint=(41.833,0.722,7.035), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.467] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(40.849,0.394,6.543) to (42.817,1.050,7.527), PlacementPoint=(41.833,0.722,7.035), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.469] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(40.849,0.394,6.543) to (42.817,1.050,7.527), PlacementPoint=(41.833,0.722,7.035), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.471] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1272322 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.472] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1272350 - PlacementPoint=(37.625, 0.722, 8.202), BBox=(36.312,0.394,7.300) to (38.937,1.050,9.104)
+
+[2026-01-08 19:47:08.474] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(36.312,0.394,7.300) to (38.937,1.050,9.104), PlacementPoint=(37.625,0.722,8.202), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.475] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(36.312,0.394,7.300) to (38.937,1.050,9.104), PlacementPoint=(37.625,0.722,8.202), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.477] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(36.312,0.394,7.300) to (38.937,1.050,9.104), PlacementPoint=(37.625,0.722,8.202), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.479] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(36.312,0.394,7.300) to (38.937,1.050,9.104), PlacementPoint=(37.625,0.722,8.202), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.480] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1272350 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.482] [19:47:08] 🧹 CLEANUP: Checking individual sleeve 1272392 - PlacementPoint=(32.507, 0.722, 7.579), BBox=(29.964,0.394,5.610) to (35.049,1.050,9.547)
+
+[2026-01-08 19:47:08.483] [19:47:08] 🧹 CLEANUP:   vs Cluster #1 (ID=1272422) bbox - Cluster=(-4.938,44.985,7.251) to (6.381,47.446,7.907), IndividualBBox=(29.964,0.394,5.610) to (35.049,1.050,9.547), PlacementPoint=(32.507,0.722,7.579), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.485] [19:47:08] 🧹 CLEANUP:   vs Cluster #2 (ID=1272431) bbox - Cluster=(-3.215,31.977,6.898) to (4.659,36.078,7.554), IndividualBBox=(29.964,0.394,5.610) to (35.049,1.050,9.547), PlacementPoint=(32.507,0.722,7.579), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.487] [19:47:08] 🧹 CLEANUP:   vs Cluster #3 (ID=1272438) bbox - Cluster=(-0.837,35.018,10.191) to (2.280,36.330,10.848), IndividualBBox=(29.964,0.394,5.610) to (35.049,1.050,9.547), PlacementPoint=(32.507,0.722,7.579), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.489] [19:47:08] 🧹 CLEANUP:   vs Cluster #4 (ID=1272445) bbox - Cluster=(16.931,-0.509,7.382) to (28.250,1.952,8.038), IndividualBBox=(29.964,0.394,5.610) to (35.049,1.050,9.547), PlacementPoint=(32.507,0.722,7.579), bboxOverlaps=False, placementPointInside=False, shouldDelete=False
+
+[2026-01-08 19:47:08.490] [19:47:08] 🧹 CLEANUP: ❌ Individual sleeve 1272392 placement point is NOT inside any cluster bbox - KEEPING
+
+[2026-01-08 19:47:08.491] [19:47:08] 🧹 CLEANUP: Found 0 individual sleeves to delete
+
+[2026-01-08 19:47:08.494] [19:47:08] 🔍 POST-CLEANUP VERIFICATION: Checking 4 cluster sleeves after cleanup...
+
+[2026-01-08 19:47:08.496] [19:47:08] ✅ POST-CLEANUP: Cluster sleeve 1272422 EXISTS: Name='ROW', Location=(0.72, 46.22, 7.58)
+
+[2026-01-08 19:47:08.498] [19:47:08] ✅ POST-CLEANUP: Cluster sleeve 1272431 EXISTS: Name='ROW', Location=(0.72, 34.03, 7.23)
+
+[2026-01-08 19:47:08.499] [19:47:08] ✅ POST-CLEANUP: Cluster sleeve 1272438 EXISTS: Name='ROW', Location=(0.72, 35.67, 10.52)
+
+[2026-01-08 19:47:08.501] [19:47:08] ✅ POST-CLEANUP: Cluster sleeve 1272445 EXISTS: Name='ROW', Location=(22.59, 0.72, 7.71)
+
+[2026-01-08 19:47:08.503] [19:47:08] 📊 POST-CLEANUP RESULT: 4 valid, 0 invalid (deleted) out of 4 cluster sleeves
+
+[19:47:08] 🔄 REGENERATING document before collecting corners for 4 clusters
+[19:47:08] ✅ REGENERATION COMPLETE - Now calling BatchSaveClusterDataToDatabase
+[2026-01-08 19:47:08.522] [19:47:08] 🔥🔥🔥 BatchSaveClusterDataToDatabase ENTERED: 4 clusters
+
+[2026-01-08 19:47:08.546] [19:47:08] 📏 CONSTITUENT ENVELOPE (Cluster 1272422): Based on 3 zones. Min=(0.722,40.556,6.348) Max=(0.722,51.875,8.809) -> Size: W=0.0mm, H=3450.0mm
+
+[2026-01-08 19:47:08.547] [19:47:08] 📦 PREPARE SAVE: Cluster 1272422 - BBoxMin=(0.393701, 40.556163, 6.348425), BBoxMax=(1.049869, 51.875060, 8.809055), Placement=(0.721785, 46.215612, 7.578740) [ACTUAL]
+
+[2026-01-08 19:47:08.558] [19:47:08] 📏 CONSTITUENT ENVELOPE (Cluster 1272431): Based on 2 zones. Min=(0.722,30.132,5.217) Max=(0.722,37.924,9.236) -> Size: W=0.0mm, H=2375.0mm
+
+[2026-01-08 19:47:08.560] [19:47:08] 📦 PREPARE SAVE: Cluster 1272431 - BBoxMin=(0.393701, 30.090607, 5.175525), BBoxMax=(1.049869, 37.964623, 9.276575), Placement=(0.721785, 34.027615, 7.226050) [ACTUAL]
+
+[2026-01-08 19:47:08.570] [19:47:08] 📏 CONSTITUENT ENVELOPE (Cluster 1272438): Based on 2 zones. Min=(0.722,34.117,9.863) Max=(0.722,37.230,11.176) -> Size: W=0.0mm, H=948.8mm
+
+[2026-01-08 19:47:08.572] [19:47:08] 📦 PREPARE SAVE: Cluster 1272438 - BBoxMin=(0.393701, 34.115566, 9.863305), BBoxMax=(1.049869, 37.232364, 11.175641), Placement=(0.721785, 35.673965, 10.519473) [ACTUAL]
+
+[2026-01-08 19:47:08.586] [19:47:08] 📏 CONSTITUENT ENVELOPE (Cluster 1272445): Based on 3 zones. Min=(16.931,0.722,6.480) Max=(28.250,0.722,8.940) -> Size: W=3450.0mm, H=0.0mm
+
+[2026-01-08 19:47:08.588] [19:47:08] 📦 PREPARE SAVE: Cluster 1272445 - BBoxMin=(-0.721785, 16.931095, 6.479659), BBoxMax=(-0.721785, 28.249992, 8.940289), Placement=(22.590543, 0.721785, 7.709974) [ACTUAL]
+
+[19:47:08] 💾 EXECUTING INSERT OR REPLACE for ClusterInstanceId=1272422, Corner1X=0.72, Corner1Y=40.56
+[19:47:08] ✅ INSERT OR REPLACE COMPLETED: rowsAffected=1
+[19:47:08] 💾 EXECUTING INSERT OR REPLACE for ClusterInstanceId=1272431, Corner1X=0.72, Corner1Y=30.13
+[19:47:08] ✅ INSERT OR REPLACE COMPLETED: rowsAffected=1
+[19:47:08] 💾 EXECUTING INSERT OR REPLACE for ClusterInstanceId=1272438, Corner1X=0.72, Corner1Y=34.12
+[19:47:08] ✅ INSERT OR REPLACE COMPLETED: rowsAffected=1
+[19:47:08] 💾 EXECUTING INSERT OR REPLACE for ClusterInstanceId=1272445, Corner1X=16.93, Corner1Y=0.72
+[19:47:08] ✅ INSERT OR REPLACE COMPLETED: rowsAffected=1
+[2026-01-08 19:47:08.627] [19:47:08] ✅ BATCH SAVED 4 clusters to ClusterSleeves table in single transaction (Skipped: 0)
+
+[19:47:08] ✅ BatchSaveClusterDataToDatabase COMPLETED
+[2026-01-08 19:47:08.630] [19:47:08] 🔥🔥🔥 ENTERED IF BLOCK - About to batch save
+
+[2026-01-08 19:47:08.632] [19:47:08] ✅ BATCH SAVING cluster data to database: 4 clusters
+
+[2026-01-08 19:47:08.634] [19:47:08] 🔥🔥🔥 BatchSaveClusterDataToDatabase ENTERED: 4 clusters
+
+[2026-01-08 19:47:08.655] [19:47:08] 📏 CONSTITUENT ENVELOPE (Cluster 1272422): Based on 3 zones. Min=(0.722,40.556,6.348) Max=(0.722,51.875,8.809) -> Size: W=0.0mm, H=3450.0mm
+
+[2026-01-08 19:47:08.657] [19:47:08] 📦 PREPARE SAVE: Cluster 1272422 - BBoxMin=(0.393701, 40.556163, 6.348425), BBoxMax=(1.049869, 51.875060, 8.809055), Placement=(0.721785, 46.215612, 7.578740) [ACTUAL]
+
+[2026-01-08 19:47:08.670] [19:47:08] 📏 CONSTITUENT ENVELOPE (Cluster 1272431): Based on 2 zones. Min=(0.722,30.132,5.217) Max=(0.722,37.924,9.236) -> Size: W=0.0mm, H=2375.0mm
+
+[2026-01-08 19:47:08.672] [19:47:08] 📦 PREPARE SAVE: Cluster 1272431 - BBoxMin=(0.393701, 30.090607, 5.175525), BBoxMax=(1.049869, 37.964623, 9.276575), Placement=(0.721785, 34.027615, 7.226050) [ACTUAL]
+
+[2026-01-08 19:47:08.687] [19:47:08] 📏 CONSTITUENT ENVELOPE (Cluster 1272438): Based on 2 zones. Min=(0.722,34.117,9.863) Max=(0.722,37.230,11.176) -> Size: W=0.0mm, H=948.8mm
+
+[2026-01-08 19:47:08.689] [19:47:08] 📦 PREPARE SAVE: Cluster 1272438 - BBoxMin=(0.393701, 34.115566, 9.863305), BBoxMax=(1.049869, 37.232364, 11.175641), Placement=(0.721785, 35.673965, 10.519473) [ACTUAL]
+
+[2026-01-08 19:47:08.702] [19:47:08] 📏 CONSTITUENT ENVELOPE (Cluster 1272445): Based on 3 zones. Min=(16.931,0.722,6.480) Max=(28.250,0.722,8.940) -> Size: W=3450.0mm, H=0.0mm
+
+[2026-01-08 19:47:08.705] [19:47:08] 📦 PREPARE SAVE: Cluster 1272445 - BBoxMin=(-0.721785, 16.931095, 6.479659), BBoxMax=(-0.721785, 28.249992, 8.940289), Placement=(22.590543, 0.721785, 7.709974) [ACTUAL]
+
+[19:47:08] 💾 EXECUTING INSERT OR REPLACE for ClusterInstanceId=1272422, Corner1X=0.72, Corner1Y=40.56
+[19:47:08] ✅ INSERT OR REPLACE COMPLETED: rowsAffected=1
+[19:47:08] 💾 EXECUTING INSERT OR REPLACE for ClusterInstanceId=1272431, Corner1X=0.72, Corner1Y=30.13
+[19:47:08] ✅ INSERT OR REPLACE COMPLETED: rowsAffected=1
+[19:47:08] 💾 EXECUTING INSERT OR REPLACE for ClusterInstanceId=1272438, Corner1X=0.72, Corner1Y=34.12
+[19:47:08] ✅ INSERT OR REPLACE COMPLETED: rowsAffected=1
+[19:47:08] 💾 EXECUTING INSERT OR REPLACE for ClusterInstanceId=1272445, Corner1X=16.93, Corner1Y=0.72
+[19:47:08] ✅ INSERT OR REPLACE COMPLETED: rowsAffected=1
+[2026-01-08 19:47:08.724] [19:47:08] ✅ BATCH SAVED 4 clusters to ClusterSleeves table in single transaction (Skipped: 0)
+
+[2026-01-08 19:47:08.742] [19:47:08] 🔍 Cluster 1272422: Loading 3 clash zones for parameter aggregation
+
+[2026-01-08 19:47:08.756] [19:47:08] ✅ Cluster 1272422: Loaded 3 clash zones, aggregating parameters
+
+[2026-01-08 19:47:08.758] [19:47:08] ✅ Cluster 1272422: Added Size='1000x500-1000x500' from MepElementSizeParameterValue for ClashZoneGuid=7bf0a81d-7f23-7b16-d366-ab8b9a4b8c39 (replaced any existing Size parameter)
+
+[2026-01-08 19:47:08.760] [19:47:08] ✅ Cluster 1272422: Added Size='1200x600-1200x600' from MepElementSizeParameterValue for ClashZoneGuid=df577d30-6424-a37a-4833-fe0825bb05bf (replaced any existing Size parameter)
+
+[2026-01-08 19:47:08.761] [19:47:08] ✅ Cluster 1272422: Added Size='700x300-700x300' from MepElementSizeParameterValue for ClashZoneGuid=a3145e45-b097-445f-2065-0863c3c137b6 (replaced any existing Size parameter)
+
+[2026-01-08 19:47:08.764] [19:47:08] ✅ Cluster 1272422: Aggregated 10 MEP params, 0 Host params. Size parameter: FOUND='1000x500-1000x500, 1200x600-1200x600, 700x300-700x300'
+
+[2026-01-08 19:47:08.766] [19:47:08] 🔍 Cluster 1272431: Loading 2 clash zones for parameter aggregation
+
+[2026-01-08 19:47:08.777] [19:47:08] ✅ Cluster 1272431: Loaded 2 clash zones, aggregating parameters
+
+[2026-01-08 19:47:08.778] [19:47:08] ✅ Cluster 1272431: Added Size='1350x1000-1350x1000' from MepElementSizeParameterValue for ClashZoneGuid=3cec003b-2dd2-dfb1-a929-bba6b642b2e5 (replaced any existing Size parameter)
+
+[2026-01-08 19:47:08.780] [19:47:08] ✅ Cluster 1272431: Added Size='600x300-600x300' from MepElementSizeParameterValue for ClashZoneGuid=7a3fc1a5-750b-23ce-c189-6dcb53feaac0 (replaced any existing Size parameter)
+
+[2026-01-08 19:47:08.781] [19:47:08] ✅ Cluster 1272431: Aggregated 10 MEP params, 0 Host params. Size parameter: FOUND='1350x1000-1350x1000, 600x300-600x300'
+
+[2026-01-08 19:47:08.783] [19:47:08] 🔍 Cluster 1272438: Loading 2 clash zones for parameter aggregation
+
+[2026-01-08 19:47:08.793] [19:47:08] ✅ Cluster 1272438: Loaded 2 clash zones, aggregating parameters
+
+[2026-01-08 19:47:08.795] [19:47:08] ✅ Cluster 1272438: Added Size='400x200-400x200' from MepElementSizeParameterValue for ClashZoneGuid=26272a4f-9f89-805c-3c95-a1c1e7f340b9 (replaced any existing Size parameter)
+
+[2026-01-08 19:47:08.797] [19:47:08] ✅ Cluster 1272438: Added Size='200x200-200x200' from MepElementSizeParameterValue for ClashZoneGuid=b3515ca9-b4dd-c7fc-d6e6-133c2578ecdd (replaced any existing Size parameter)
+
+[2026-01-08 19:47:08.798] [19:47:08] ✅ Cluster 1272438: Aggregated 10 MEP params, 0 Host params. Size parameter: FOUND='400x200-400x200, 200x200-200x200'
+
+[2026-01-08 19:47:08.799] [19:47:08] 🔍 Cluster 1272445: Loading 3 clash zones for parameter aggregation
+
+[2026-01-08 19:47:08.815] [19:47:08] ✅ Cluster 1272445: Loaded 3 clash zones, aggregating parameters
+
+[2026-01-08 19:47:08.817] [19:47:08] ✅ Cluster 1272445: Added Size='1000x500-1000x500' from MepElementSizeParameterValue for ClashZoneGuid=935ea122-7169-ac0b-1470-76f7a5e9d6d5 (replaced any existing Size parameter)
+
+[2026-01-08 19:47:08.818] [19:47:08] ✅ Cluster 1272445: Added Size='1200x600-1200x600' from MepElementSizeParameterValue for ClashZoneGuid=9f1747e9-810a-73b0-1926-eb581c142a2a (replaced any existing Size parameter)
+
+[2026-01-08 19:47:08.820] [19:47:08] ✅ Cluster 1272445: Added Size='700x300-700x300' from MepElementSizeParameterValue for ClashZoneGuid=8616a0aa-a600-a464-3ebb-8cebd6f83b6a (replaced any existing Size parameter)
+
+[2026-01-08 19:47:08.821] [19:47:08] ✅ Cluster 1272445: Aggregated 10 MEP params, 0 Host params. Size parameter: FOUND='1000x500-1000x500, 1200x600-1200x600, 700x300-700x300'
+
+[2026-01-08 19:47:08.823] [19:47:08] ✅ SAVING sleeve snapshots for 4 cluster sleeves (with aggregated comma-separated parameters)
+
+[2026-01-08 19:47:08.834] [19:47:08] ✅ COMPLETED saving sleeve snapshots for 4 cluster sleeves to SleeveSnapshots table
+
+[2026-01-08 19:47:08.836] [19:47:08] 🔍 FINAL VERIFICATION: Checking if all 4 cluster sleeves still exist in Revit...
+
+[2026-01-08 19:47:08.839] [19:47:08] ✅ Cluster sleeve 1272422 EXISTS: Name='ROW', Location=(0.72, 46.22, 7.58), Category='Generic Models, Document='Shared Test Model -00001', IsActiveDocument=True, IsLinked=False, IsValid=True
+
+[2026-01-08 19:47:08.840] [19:47:08] ✅ Cluster sleeve 1272431 EXISTS: Name='ROW', Location=(0.72, 34.03, 7.23), Category='Generic Models, Document='Shared Test Model -00001', IsActiveDocument=True, IsLinked=False, IsValid=True
+
+[2026-01-08 19:47:08.842] [19:47:08] ✅ Cluster sleeve 1272438 EXISTS: Name='ROW', Location=(0.72, 35.67, 10.52), Category='Generic Models, Document='Shared Test Model -00001', IsActiveDocument=True, IsLinked=False, IsValid=True
+
+[2026-01-08 19:47:08.844] [19:47:08] ✅ Cluster sleeve 1272445 EXISTS: Name='ROW', Location=(22.59, 0.72, 7.71), Category='Generic Models, Document='Shared Test Model -00001', IsActiveDocument=True, IsLinked=False, IsValid=True
+
+[2026-01-08 19:47:08.845] [19:47:08] 📊 FINAL VERIFICATION RESULT: 4 found, 0 missing out of 4 cluster sleeves
+
+[2026-01-08 19:47:08.847] [19:47:08.846] [BATCH-FLUSH] 🔍 CHECKING: UseBatchedParameterWrites=True, _deferredClusterParameters.Count=0
+
+[2026-01-08 19:47:08.848] [19:47:08.848] [BATCH-FLUSH] ⚠️⚠️⚠️ WARNING: _deferredClusterParameters is EMPTY! No parameters to flush. This may cause cluster sleeves to be misidentified!
+  ⚠️ This means parameters were NOT added to deferred dictionary, OR dictionary was cleared before flush.
+  ⚠️ Cleanup service will read from Revit element parameters (may be stale if not regenerated).
+
+[2026-01-08 19:47:08.850] [19:47:08] ✅ BATCH-FLUSH: Flushed parameters for 0 cluster sleeves
+
+[19:47:08] 
+========== REFACTORED CLUSTER SERVICE COMPLETED ==========
+[19:47:08] ✅✅✅ FINAL RESULT: Placed 4 clusters, Deleted 10 individual sleeves
+[2026-01-08 19:47:08.856] [19:47:08] 
+========== REFACTORED CLUSTER SERVICE COMPLETED ==========
+
+[2026-01-08 19:47:08.858] [19:47:08] ✅ Placed 4 clusters, Deleted 10 individual sleeves
+
+[2026-01-08 19:47:08.859] [19:47:08] 🔍🔍🔍 FINAL VISIBILITY CHECK: Verifying 4 cluster sleeves are visible in Revit...
+
+[2026-01-08 19:47:08.861] [19:47:08] ✅ VISIBILITY: Cluster sleeve 1272422 EXISTS:
+  Name='ROW', Family='RectangularOpeningOnWall',
+  Location=(0.722, 46.216, 7.579),
+  Level='Unknown',
+  Category='Generic Models',
+  BBox=(0.394,40.556,6.348) to (1.050,51.875,8.809),
+  IsValid=True, Document='Shared Test Model -00001'
+
+[2026-01-08 19:47:08.862] [19:47:08] ✅ VISIBILITY: Cluster sleeve 1272431 EXISTS:
+  Name='ROW', Family='RectangularOpeningOnWall',
+  Location=(0.722, 34.028, 7.226),
+  Level='Unknown',
+  Category='Generic Models',
+  BBox=(0.394,30.091,5.176) to (1.050,37.965,9.277),
+  IsValid=True, Document='Shared Test Model -00001'
+
+[2026-01-08 19:47:08.864] [19:47:08] ✅ VISIBILITY: Cluster sleeve 1272438 EXISTS:
+  Name='ROW', Family='RectangularOpeningOnWall',
+  Location=(0.722, 35.674, 10.519),
+  Level='Unknown',
+  Category='Generic Models',
+  BBox=(0.394,34.116,9.863) to (1.050,37.232,11.176),
+  IsValid=True, Document='Shared Test Model -00001'
+
+[2026-01-08 19:47:08.866] [19:47:08] ✅ VISIBILITY: Cluster sleeve 1272445 EXISTS:
+  Name='ROW', Family='RectangularOpeningOnWall',
+  Location=(22.591, 0.722, 7.710),
+  Level='Unknown',
+  Category='Generic Models',
+  BBox=(16.931,0.394,6.480) to (28.250,1.050,8.940),
+  IsValid=True, Document='Shared Test Model -00001'
+
+[2026-01-08 19:47:08.905] [19:47:08] 🔍 POST-COMMIT VERIFICATION: Checking 4 cluster sleeves after transaction commit...
+
+[2026-01-08 19:47:08.907] [19:47:08] ✅ POST-COMMIT: Cluster sleeve 1272422 EXISTS: Name='ROW', Location=(0.72, 46.22, 7.58), Category='Generic Models', Document='Shared Test Model -00001', IsValid=True, ExistsById=True
+
+[2026-01-08 19:47:08.908] [19:47:08] ✅ POST-COMMIT: Cluster sleeve 1272431 EXISTS: Name='ROW', Location=(0.72, 34.03, 7.23), Category='Generic Models', Document='Shared Test Model -00001', IsValid=True, ExistsById=True
+
+[2026-01-08 19:47:08.910] [19:47:08] ✅ POST-COMMIT: Cluster sleeve 1272438 EXISTS: Name='ROW', Location=(0.72, 35.67, 10.52), Category='Generic Models', Document='Shared Test Model -00001', IsValid=True, ExistsById=True
+
+[2026-01-08 19:47:08.912] [19:47:08] ✅ POST-COMMIT: Cluster sleeve 1272445 EXISTS: Name='ROW', Location=(22.59, 0.72, 7.71), Category='Generic Models', Document='Shared Test Model -00001', IsValid=True, ExistsById=True
+
+[2026-01-08 19:47:08.913] [19:47:08] 📊 POST-COMMIT RESULT: 4 found, 0 missing out of 4 cluster sleeves
+
+[2026-01-08 19:47:09.015] [19:47:09] 🔍 POST-COMMIT+100ms VERIFICATION: Re-checking 4 cluster sleeves after delay...
+
+[2026-01-08 19:47:09.017] [19:47:09] ✅ POST-COMMIT+100ms: Cluster sleeve 1272422 STILL EXISTS: Name='ROW', Document='Shared Test Model -00001', IsActiveDoc=True, Location=(0.72, 46.22, 7.58)
+
+[2026-01-08 19:47:09.019] [19:47:09] ✅ POST-COMMIT+100ms: Cluster sleeve 1272431 STILL EXISTS: Name='ROW', Document='Shared Test Model -00001', IsActiveDoc=True, Location=(0.72, 34.03, 7.23)
+
+[2026-01-08 19:47:09.020] [19:47:09] ✅ POST-COMMIT+100ms: Cluster sleeve 1272438 STILL EXISTS: Name='ROW', Document='Shared Test Model -00001', IsActiveDoc=True, Location=(0.72, 35.67, 10.52)
+
+[2026-01-08 19:47:09.021] [19:47:09] ✅ POST-COMMIT+100ms: Cluster sleeve 1272445 STILL EXISTS: Name='ROW', Document='Shared Test Model -00001', IsActiveDoc=True, Location=(22.59, 0.72, 7.71)
+
+[2026-01-08 19:47:09.024] [19:47:09] 📊 POST-COMMIT+100ms RESULT: 4 found, 0 missing out of 4 cluster sleeves
+
+[2026-01-08 19:47:09.026] [19:47:09] ExecuteClusteringForCategory completed: Status=Succeeded, Placed=4, Deleted=10
+
+[2026-01-08 19:47:09.027] [19:47:09] 🔍 POST-RETURN VERIFICATION: Checking 4 cluster sleeves after ExecuteClusteringForCategory returns...
+
+[2026-01-08 19:47:09.029] [19:47:09] ✅ POST-RETURN: Cluster sleeve 1272422 STILL EXISTS: Location=(0.72, 46.22, 7.58)
+
+[2026-01-08 19:47:09.030] [19:47:09] ✅ POST-RETURN: Cluster sleeve 1272431 STILL EXISTS: Location=(0.72, 34.03, 7.23)
+
+[2026-01-08 19:47:09.032] [19:47:09] ✅ POST-RETURN: Cluster sleeve 1272438 STILL EXISTS: Location=(0.72, 35.67, 10.52)
+
+[2026-01-08 19:47:09.033] [19:47:09] ✅ POST-RETURN: Cluster sleeve 1272445 STILL EXISTS: Location=(22.59, 0.72, 7.71)
+
+[2026-01-08 19:47:09.035] [19:47:09] 📊 POST-RETURN RESULT: 4 found, 0 missing out of 4 cluster sleeves
+

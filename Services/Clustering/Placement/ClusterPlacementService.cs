@@ -838,10 +838,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                             var firstClashZone = firstSleeve?.ClashZone as Models.ClashZone;
                             if (firstClashZone != null)
                             {
-                                // Get wall thickness (prefer WallThickness over StructuralElementThickness)
-                                wallThickness = firstClashZone.WallThickness > 0 
-                                    ? firstClashZone.WallThickness 
-                                    : firstClashZone.StructuralElementThickness;
+                                // Get wall thickness (prefer WallThickness over StructuralElementThickness for walls)
+                                // ✅ CRITICAL FIX: For Floors, ALWAYS use StructuralElementThickness.
+                                bool isFloorElement = !string.IsNullOrEmpty(firstClashZone.StructuralElementType) && 
+                                                     firstClashZone.StructuralElementType.IndexOf("Floor", StringComparison.OrdinalIgnoreCase) >= 0;
+
+                                if (isFloorElement)
+                                {
+                                    wallThickness = firstClashZone.StructuralElementThickness;
+                                }
+                                else
+                                {
+                                    wallThickness = firstClashZone.WallThickness > 0 
+                                        ? firstClashZone.WallThickness 
+                                        : firstClashZone.StructuralElementThickness;
+                                }
                             }
                         }
                     }

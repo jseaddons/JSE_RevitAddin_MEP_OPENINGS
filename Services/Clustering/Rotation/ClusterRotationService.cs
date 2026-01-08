@@ -584,8 +584,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             if (cz.SleeveDiameter > maxSleeveDiameter)
                                 maxSleeveDiameter = cz.SleeveDiameter;
                             
-                            // Get structural thickness for depth (prefer WallThickness)
-                            double currentThickness = cz.WallThickness > 0 ? cz.WallThickness : cz.StructuralElementThickness;
+                            // Get structural thickness for depth
+                            // ✅ CRITICAL FIX: For Floors, ALWAYS use StructuralElementThickness (actual slab thickness). 
+                            // WallThickness often contains default garbage (0.1) for floors.
+                            // For Walls, prefer WallThickness if present.
+                            bool isFloorElement = false;
+                            if (!string.IsNullOrEmpty(cz.StructuralElementType))
+                            {
+                                isFloorElement = cz.StructuralElementType.IndexOf("Floor", StringComparison.OrdinalIgnoreCase) >= 0;
+                            }
+
+                            double currentThickness;
+                            if (isFloorElement)
+                            {
+                                currentThickness = cz.StructuralElementThickness;
+                            }
+                            else
+                            {
+                                currentThickness = cz.WallThickness > 0 ? cz.WallThickness : cz.StructuralElementThickness;
+                            }
+
                             if (currentThickness > maxStructuralThickness)
                                 maxStructuralThickness = currentThickness;
                             
@@ -600,8 +618,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 // Do NOT guess based on aspect ratio (Math.Abs(dY) > Math.Abs(dX)) because for square grids or combined clusters it fails.
                 bool isYWall = false;
                 bool isXWall = false;
+                bool isFloor = false; // ✅ DETECT FLOORS
                 
-                // Inspect first few elements to find authoritative wall direction
+                // Inspect first few elements to find authoritative wall direction / host type
                 foreach (var sleeveData in cluster)
                 {
                     if (sleeveData == null) continue;
@@ -613,6 +632,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                         {
                             string wDir = cz.WallDirectionType ?? "";
                             string hOri = cz.HostOrientation ?? "";
+                            string structType = cz.StructuralElementType ?? "";
+
+                            // Check for Floor
+                            if (structType.Equals("Floor", StringComparison.OrdinalIgnoreCase) || 
+                                structType.Equals("Floors", StringComparison.OrdinalIgnoreCase))
+                            {
+                                isFloor = true;
+                                break;
+                            }
                             
                             // Check explicit flags first
                             isXWall = wDir.Contains("X-WALL", StringComparison.OrdinalIgnoreCase) || hOri.Equals("X", StringComparison.OrdinalIgnoreCase);
@@ -645,9 +673,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 // If Z-range is larger than max diameter (vertical stack), use Z-range.
                 // Otherwise use MaxDiameter (for precision on horizontal runs).
                 // Factor 1.05 provides a 5% tolerance.
-                circularHeight = rawHeightZ > (maxSleeveDiameter * 1.05) ? rawHeightZ : maxSleeveDiameter;
-                // Safety clamp
-                if (circularHeight < maxSleeveDiameter) circularHeight = maxSleeveDiameter;
+                // ✅ CRITICAL FIX: For Floors, Height is Plan Y (or X), not Z. Only use this Z-logic for WALLS.
+                if (!isFloor)
+                {
+                    circularHeight = rawHeightZ > (maxSleeveDiameter * 1.05) ? rawHeightZ : maxSleeveDiameter;
+                    // Safety clamp
+                    if (circularHeight < maxSleeveDiameter) circularHeight = maxSleeveDiameter;
+                }
 
                 if (isXWall)
                 {
@@ -659,6 +691,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     // Depth logic: Use structural thickness if valid, else fallback to BBox Y-depth
                     double bboxDepth = rawWidthY;
                     circularDepth = maxStructuralThickness > 0 ? maxStructuralThickness : bboxDepth;
+                }
+
+                else if (isFloor)
+                {
+                    // ✅ FLOOR LOGIC:
+                    // Width = Plan X (rawWidthX)
+                    // Height = Plan Y (rawWidthY)
+                    // Depth = Thickness (maxStructuralThickness or rawHeightZ)
+                    
+                    circularWidth = rawWidthX;
+                    circularHeight = rawWidthY; // Plan Y
+                    
+                    // Depth logic (Thickness)
+                    // Use maxStructuralThickness if valid (preferred), else Z-bbox (likely pipe stick-out, be careful)
+                    // For floors, Z-bbox might be the pipe length. We strictly want slab thickness.
+                    circularDepth = maxStructuralThickness > 0 ? maxStructuralThickness : rawHeightZ;
+
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ FLOOR HOST: Mapped Width=X ({circularWidth*304.8:F1}), Height=Y ({circularHeight*304.8:F1}, Depth=Z/Thick ({circularDepth*304.8:F1})\n");
                 }
                 else
                 {
@@ -720,6 +771,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 calcStopwatch.Stop();
                 return (circularWidth, circularHeight, circularDepth, placementPoint, circularMinX, circularMinY, circularMinZ, circularMaxX, circularMaxY, circularMaxZ);
             }
+
+
 
             // ✅ CRITICAL FIX: Use corner-based calculation for ALL clusters (not just rotated ones)
             // Corners are always saved and are the authoritative source for accurate sizing
@@ -1454,10 +1507,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                     // ✅ WALL/FRAMING: Depth will be set from wall thickness
                                     // Retrieve max thickness from constituent clash zones
                                     double maxWallThickness = 0.0;
+                                    bool isFloorElement = false;
+                                    
+                                    // Check if any element is a floor (just in case isWallOrFraming flag is misleading)
                                     foreach (var cz in clashZonesForHeight)
                                     {
                                         if (cz == null) continue;
-                                        double t = cz.WallThickness > 0 ? cz.WallThickness : cz.StructuralElementThickness;
+                                        if (!string.IsNullOrEmpty(cz.StructuralElementType) && 
+                                            cz.StructuralElementType.IndexOf("Floor", StringComparison.OrdinalIgnoreCase) >= 0)
+                                        {
+                                            isFloorElement = true;
+                                            break;
+                                        }
+                                    }
+
+                                    foreach (var cz in clashZonesForHeight)
+                                    {
+                                        if (cz == null) continue;
+                                        
+                                        double t = 0.0;
+                                        if (isFloorElement)
+                                        {
+                                            // ✅ FIXED: For floors, use StructuralElementThickness
+                                            t = cz.StructuralElementThickness;
+                                        }
+                                        else
+                                        {
+                                            // For walls, prefer WallThickness
+                                            t = cz.WallThickness > 0 ? cz.WallThickness : cz.StructuralElementThickness;
+                                        }
+                                        
                                         if (t > maxWallThickness) maxWallThickness = t;
                                     }
                                     
@@ -1465,8 +1544,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                     
                                     if (!DeploymentConfiguration.DeploymentMode)
                                     {
+                                        string depthType = isFloorElement ? "FLOOR (Structural)" : "WALL/FRAMING (WallThick)";
                                         SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                            $"[{DateTime.Now:HH:mm:ss}]   ✅ WALL/FRAMING DEPTH: Using max thickness={cornerDepth * 304.8:F1}mm (calculated from {clashZonesForHeight.Count} clash zones)\n");
+                                            $"[{DateTime.Now:HH:mm:ss}]   ✅ {depthType} DEPTH: Using max thickness={cornerDepth * 304.8:F1}mm (calculated from {clashZonesForHeight.Count} clash zones)\n");
                                     }
                                 }
                                 else
@@ -2360,6 +2440,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         /// Individual sleeves are placed at intersection points, so cluster should be at average of intersection points
         /// This ensures the cluster sleeve is placed correctly relative to the individual intersection points
         /// </summary>
+
+
         private XYZ CalculatePlacementPointFromIntersections(List<dynamic> cluster, string? xmlFilePath)
         {
             if (cluster == null || cluster.Count == 0)

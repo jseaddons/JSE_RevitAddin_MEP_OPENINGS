@@ -1,0 +1,26 @@
+[2026-01-08 19:47:06.131] [19:47:06.131] ========== STRATEGY SELECTION ==========
+
+[2026-01-08 19:47:06.133] [19:47:06.133] HostType=Wall, SystemType=Duct Accessories, Orientation=Y
+
+[2026-01-08 19:47:06.135] [19:47:06.134] Sleeve count: 3
+
+[2026-01-08 19:47:06.141] [19:47:06.140] IsCircular: False, HasRotated: False
+
+[2026-01-08 19:47:06.142] [19:47:06.142] ✅ SELECTED: WallAxisAlignedStrategy (2D Y-Z plane)
+
+[2026-01-08 19:47:06.144] [19:47:06.143] ========== END STRATEGY SELECTION ==========
+
+
+[2026-01-08 19:47:06.780] [19:47:06.780] ========== STRATEGY SELECTION ==========
+
+[2026-01-08 19:47:06.782] [19:47:06.782] HostType=Wall, SystemType=Duct Accessories, Orientation=X
+
+[2026-01-08 19:47:06.784] [19:47:06.783] Sleeve count: 3
+
+[2026-01-08 19:47:06.785] [19:47:06.785] IsCircular: False, HasRotated: False
+
+[2026-01-08 19:47:06.787] [19:47:06.786] ✅ SELECTED: WallAxisAlignedStrategy (2D X-Z plane)
+
+[2026-01-08 19:47:06.788] [19:47:06.788] ========== END STRATEGY SELECTION ==========
+
+

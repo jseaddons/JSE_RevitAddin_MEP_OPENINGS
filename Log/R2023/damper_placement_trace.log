@@ -1,0 +1,294 @@
+[2026-01-08 19:47:00.820] [19:47:00.815] [TRACE] Zone 55033bc9-ee4f-b7ba-ff0e-6c7a5b521493: StructId=321070, Not in HostDoc, checking Links... Found in Link 'AR-00001', HostFound=True, HostType=Wall, 
+
+[2026-01-08 19:47:00.827] [19:47:00.826] [TRACE] Found damper element in linked document: ME-00001, storing link transform
+
+[2026-01-08 19:47:00.831] [19:47:00.829] [TRACE] SOURCE POINT: Using LocationPoint (Body Center) + LinkTransform: (42.034, 0.722, 10.470)
+
+[2026-01-08 19:47:00.832] [19:47:00.832] [TRACE] 👉 ENTERING LOCATION CURVE LOGIC
+
+[2026-01-08 19:47:00.835] [19:47:00.835] [TRACE] Found Link Transform: AR-00001.rvt : 17 : location <Not Shared>
+
+[2026-01-08 19:47:00.839] [19:47:00.839] [TRACE] X-WALL: Keeping source X=42.034, using projected Y=0.722, Z=10.470
+
+[2026-01-08 19:47:00.841] [19:47:00.840] [TRACE] ✅ CURVE PROJECTION SUCCESS: Source=(42.034, 0.722, 10.470) -> Projected=(42.034, 0.722, 0.000) -> Final=(42.034, 0.722, 10.470), WallRunsAlongY=False
+
+[2026-01-08 19:47:00.995] [19:47:00.992] [TRACE] Zone 33ae96d6-7dff-e1cc-48b0-2365508afaa6: StructId=321069, Not in HostDoc, checking Links... Found in Link 'AR-00001', HostFound=True, HostType=Wall, 
+
+[2026-01-08 19:47:00.997] [19:47:00.997] [TRACE] Found damper element in linked document: ME-00001, storing link transform
+
+[2026-01-08 19:47:00.999] [19:47:00.999] [TRACE] SOURCE POINT: Using LocationPoint (Body Center) + LinkTransform: (0.722, 31.989, 10.519)
+
+[2026-01-08 19:47:01.001] [19:47:01.000] [TRACE] 👉 ENTERING LOCATION CURVE LOGIC
+
+[2026-01-08 19:47:01.004] [19:47:01.003] [TRACE] Found Link Transform: AR-00001.rvt : 17 : location <Not Shared>
+
+[2026-01-08 19:47:01.006] [19:47:01.005] [TRACE] Y-WALL: Using projected X=0.722, keeping source Y=31.989, Z=10.519
+
+[2026-01-08 19:47:01.007] [19:47:01.007] [TRACE] ✅ CURVE PROJECTION SUCCESS: Source=(0.722, 31.989, 10.519) -> Projected=(0.722, 31.989, 0.000) -> Final=(0.722, 31.989, 10.519), WallRunsAlongY=True
+
+[2026-01-08 19:47:01.094] [19:47:01.092] [TRACE] Zone cf8ae4bc-437c-d894-d4e0-2a9b22c220a2: StructId=321069, Not in HostDoc, checking Links... Found in Link 'AR-00001', HostFound=True, HostType=Wall, 
+
+[2026-01-08 19:47:01.097] [19:47:01.096] [TRACE] Found damper element in linked document: ME-00001, storing link transform
+
+[2026-01-08 19:47:01.099] [19:47:01.098] [TRACE] SOURCE POINT: Using LocationPoint (Body Center) + LinkTransform: (0.681, 22.251, 7.787)
+
+[2026-01-08 19:47:01.100] [19:47:01.100] [TRACE] 👉 ENTERING LOCATION CURVE LOGIC
+
+[2026-01-08 19:47:01.103] [19:47:01.102] [TRACE] Found Link Transform: AR-00001.rvt : 17 : location <Not Shared>
+
+[2026-01-08 19:47:01.105] [19:47:01.104] [TRACE] Y-WALL: Using projected X=0.722, keeping source Y=22.251, Z=7.787
+
+[2026-01-08 19:47:01.106] [19:47:01.106] [TRACE] ✅ CURVE PROJECTION SUCCESS: Source=(0.681, 22.251, 7.787) -> Projected=(0.722, 22.251, 0.000) -> Final=(0.722, 22.251, 7.787), WallRunsAlongY=True
+
+[2026-01-08 19:47:01.206] [19:47:01.203] [TRACE] Zone 8abcb5eb-fa43-1dd6-0735-d8cf977ff6cb: StructId=321070, Not in HostDoc, checking Links... Found in Link 'AR-00001', HostFound=True, HostType=Wall, 
+
+[2026-01-08 19:47:01.208] [19:47:01.208] [TRACE] Found damper element in linked document: ME-00001, storing link transform
+
+[2026-01-08 19:47:01.210] [19:47:01.209] [TRACE] SOURCE POINT: Using LocationPoint (Body Center) + LinkTransform: (43.783, 0.722, 4.757)
+
+[2026-01-08 19:47:01.212] [19:47:01.211] [TRACE] 👉 ENTERING LOCATION CURVE LOGIC
+
+[2026-01-08 19:47:01.215] [19:47:01.214] [TRACE] Found Link Transform: AR-00001.rvt : 17 : location <Not Shared>
+
+[2026-01-08 19:47:01.216] [19:47:01.216] [TRACE] X-WALL: Keeping source X=43.783, using projected Y=0.722, Z=4.757
+
+[2026-01-08 19:47:01.218] [19:47:01.217] [TRACE] ✅ CURVE PROJECTION SUCCESS: Source=(43.783, 0.722, 4.757) -> Projected=(43.783, 0.722, 0.000) -> Final=(43.783, 0.722, 4.757), WallRunsAlongY=False
+
+[2026-01-08 19:47:01.315] [19:47:01.310] [TRACE] Zone 26272a4f-9f89-805c-3c95-a1c1e7f340b9: StructId=321069, Not in HostDoc, checking Links... Found in Link 'AR-00001', HostFound=True, HostType=Wall, 
+
+[2026-01-08 19:47:01.321] [19:47:01.320] [TRACE] Found damper element in linked document: ME-00001, storing link transform
+
+[2026-01-08 19:47:01.325] [19:47:01.323] [TRACE] SOURCE POINT: Using LocationPoint (Body Center) + LinkTransform: (0.722, 35.102, 10.519)
+
+[2026-01-08 19:47:01.328] [19:47:01.326] [TRACE] 👉 ENTERING LOCATION CURVE LOGIC
+
+[2026-01-08 19:47:01.332] [19:47:01.331] [TRACE] Found Link Transform: AR-00001.rvt : 17 : location <Not Shared>
+
+[2026-01-08 19:47:01.334] [19:47:01.333] [TRACE] Y-WALL: Using projected X=0.722, keeping source Y=35.102, Z=10.519
+
+[2026-01-08 19:47:01.336] [19:47:01.335] [TRACE] ✅ CURVE PROJECTION SUCCESS: Source=(0.722, 35.102, 10.519) -> Projected=(0.722, 35.102, 0.000) -> Final=(0.722, 35.102, 10.519), WallRunsAlongY=True
+
+[2026-01-08 19:47:01.421] [19:47:01.419] [TRACE] Zone 6564c781-c6cb-2232-2fa0-8b701e4909d3: StructId=321069, Not in HostDoc, checking Links... Found in Link 'AR-00001', HostFound=True, HostType=Wall, 
+
+[2026-01-08 19:47:01.424] [19:47:01.423] [TRACE] Found damper element in linked document: ME-00001, storing link transform
+
+[2026-01-08 19:47:01.426] [19:47:01.425] [TRACE] SOURCE POINT: Using LocationPoint (Body Center) + LinkTransform: (0.722, 28.281, 10.362)
+
+[2026-01-08 19:47:01.427] [19:47:01.427] [TRACE] 👉 ENTERING LOCATION CURVE LOGIC
+
+[2026-01-08 19:47:01.430] [19:47:01.430] [TRACE] Found Link Transform: AR-00001.rvt : 17 : location <Not Shared>
+
+[2026-01-08 19:47:01.431] [19:47:01.431] [TRACE] Y-WALL: Using projected X=0.722, keeping source Y=28.281, Z=10.362
+
+[2026-01-08 19:47:01.433] [19:47:01.432] [TRACE] ✅ CURVE PROJECTION SUCCESS: Source=(0.722, 28.281, 10.362) -> Projected=(0.722, 28.281, 0.000) -> Final=(0.722, 28.281, 10.362), WallRunsAlongY=True
+
+[2026-01-08 19:47:01.522] [19:47:01.519] [TRACE] Zone 50e781f3-5ff7-bb4b-d74f-d42c9551aac7: StructId=321070, Not in HostDoc, checking Links... Found in Link 'AR-00001', HostFound=True, HostType=Wall, 
+
+[2026-01-08 19:47:01.525] [19:47:01.524] [TRACE] Found damper element in linked document: ME-00001, storing link transform
+
+[2026-01-08 19:47:01.527] [19:47:01.526] [TRACE] SOURCE POINT: Using LocationPoint (Body Center) + LinkTransform: (60.269, 0.681, 8.705)
+
+[2026-01-08 19:47:01.528] [19:47:01.527] [TRACE] 👉 ENTERING LOCATION CURVE LOGIC
+
+[2026-01-08 19:47:01.531] [19:47:01.531] [TRACE] Found Link Transform: AR-00001.rvt : 17 : location <Not Shared>
+
+[2026-01-08 19:47:01.533] [19:47:01.532] [TRACE] X-WALL: Keeping source X=60.269, using projected Y=0.722, Z=8.705
+
+[2026-01-08 19:47:01.535] [19:47:01.534] [TRACE] ✅ CURVE PROJECTION SUCCESS: Source=(60.269, 0.681, 8.705) -> Projected=(60.269, 0.722, 0.000) -> Final=(60.269, 0.722, 8.705), WallRunsAlongY=False
+
+[2026-01-08 19:47:01.632] [19:47:01.629] [TRACE] Zone bcf58f2f-9a96-94a2-476d-3c39f15331b6: StructId=321070, Not in HostDoc, checking Links... Found in Link 'AR-00001', HostFound=True, HostType=Wall, 
+
+[2026-01-08 19:47:01.635] [19:47:01.635] [TRACE] Found damper element in linked document: ME-00001, storing link transform
+
+[2026-01-08 19:47:01.638] [19:47:01.636] [TRACE] SOURCE POINT: Using LocationPoint (Body Center) + LinkTransform: (66.314, 0.681, 8.022)
+
+[2026-01-08 19:47:01.639] [19:47:01.638] [TRACE] 👉 ENTERING LOCATION CURVE LOGIC
+
+[2026-01-08 19:47:01.643] [19:47:01.641] [TRACE] Found Link Transform: AR-00001.rvt : 17 : location <Not Shared>
+
+[2026-01-08 19:47:01.644] [19:47:01.643] [TRACE] X-WALL: Keeping source X=66.314, using projected Y=0.722, Z=8.022
+
+[2026-01-08 19:47:01.645] [19:47:01.645] [TRACE] ✅ CURVE PROJECTION SUCCESS: Source=(66.314, 0.681, 8.022) -> Projected=(66.314, 0.722, 0.000) -> Final=(66.314, 0.722, 8.022), WallRunsAlongY=False
+
+[2026-01-08 19:47:01.738] [19:47:01.736] [TRACE] Zone b46b82d4-41cf-708b-b85c-f30fd2f0bf1d: StructId=321069, Not in HostDoc, checking Links... Found in Link 'AR-00001', HostFound=True, HostType=Wall, 
+
+[2026-01-08 19:47:01.741] [19:47:01.740] [TRACE] Found damper element in linked document: ME-00001, storing link transform
+
+[2026-01-08 19:47:01.743] [19:47:01.742] [TRACE] SOURCE POINT: Using LocationPoint (Body Center) + LinkTransform: (0.722, 22.979, 10.466)
+
+[2026-01-08 19:47:01.744] [19:47:01.744] [TRACE] 👉 ENTERING LOCATION CURVE LOGIC
+
+[2026-01-08 19:47:01.748] [19:47:01.747] [TRACE] Found Link Transform: AR-00001.rvt : 17 : location <Not Shared>
+
+[2026-01-08 19:47:01.749] [19:47:01.749] [TRACE] Y-WALL: Using projected X=0.722, keeping source Y=22.979, Z=10.466
+
+[2026-01-08 19:47:01.751] [19:47:01.751] [TRACE] ✅ CURVE PROJECTION SUCCESS: Source=(0.722, 22.979, 10.466) -> Projected=(0.722, 22.979, 0.000) -> Final=(0.722, 22.979, 10.466), WallRunsAlongY=True
+
+[2026-01-08 19:47:01.838] [19:47:01.836] [TRACE] Zone 634a2b88-42f3-169c-6829-b1f5bcc0b8c1: StructId=321070, Not in HostDoc, checking Links... Found in Link 'AR-00001', HostFound=True, HostType=Wall, 
+
+[2026-01-08 19:47:01.841] [19:47:01.840] [TRACE] Found damper element in linked document: ME-00001, storing link transform
+
+[2026-01-08 19:47:01.843] [19:47:01.842] [TRACE] SOURCE POINT: Using LocationPoint (Body Center) + LinkTransform: (41.833, 0.722, 7.035)
+
+[2026-01-08 19:47:01.844] [19:47:01.844] [TRACE] 👉 ENTERING LOCATION CURVE LOGIC
+
+[2026-01-08 19:47:01.847] [19:47:01.846] [TRACE] Found Link Transform: AR-00001.rvt : 17 : location <Not Shared>
+
+[2026-01-08 19:47:01.848] [19:47:01.848] [TRACE] X-WALL: Keeping source X=41.833, using projected Y=0.722, Z=7.035
+
+[2026-01-08 19:47:01.850] [19:47:01.849] [TRACE] ✅ CURVE PROJECTION SUCCESS: Source=(41.833, 0.722, 7.035) -> Projected=(41.833, 0.722, 0.000) -> Final=(41.833, 0.722, 7.035), WallRunsAlongY=False
+
+[2026-01-08 19:47:01.949] [19:47:01.946] [TRACE] Zone b3515ca9-b4dd-c7fc-d6e6-133c2578ecdd: StructId=321069, Not in HostDoc, checking Links... Found in Link 'AR-00001', HostFound=True, HostType=Wall, 
+
+[2026-01-08 19:47:01.952] [19:47:01.951] [TRACE] Found damper element in linked document: ME-00001, storing link transform
+
+[2026-01-08 19:47:01.954] [19:47:01.953] [TRACE] SOURCE POINT: Using LocationPoint (Body Center) + LinkTransform: (0.722, 36.574, 10.519)
+
+[2026-01-08 19:47:01.956] [19:47:01.955] [TRACE] 👉 ENTERING LOCATION CURVE LOGIC
+
+[2026-01-08 19:47:01.960] [19:47:01.959] [TRACE] Found Link Transform: AR-00001.rvt : 17 : location <Not Shared>
+
+[2026-01-08 19:47:01.961] [19:47:01.960] [TRACE] Y-WALL: Using projected X=0.722, keeping source Y=36.574, Z=10.519
+
+[2026-01-08 19:47:01.963] [19:47:01.962] [TRACE] ✅ CURVE PROJECTION SUCCESS: Source=(0.722, 36.574, 10.519) -> Projected=(0.722, 36.574, 0.000) -> Final=(0.722, 36.574, 10.519), WallRunsAlongY=True
+
+[2026-01-08 19:47:02.064] [19:47:02.061] [TRACE] Zone 8616a0aa-a600-a464-3ebb-8cebd6f83b6a: StructId=321070, Not in HostDoc, checking Links... Found in Link 'AR-00001', HostFound=True, HostType=Wall, 
+
+[2026-01-08 19:47:02.067] [19:47:02.066] [TRACE] Found damper element in linked document: ME-00001, storing link transform
+
+[2026-01-08 19:47:02.069] [19:47:02.068] [TRACE] SOURCE POINT: Using LocationPoint (Body Center) + LinkTransform: (26.856, 0.722, 7.710)
+
+[2026-01-08 19:47:02.071] [19:47:02.070] [TRACE] 👉 ENTERING LOCATION CURVE LOGIC
+
+[2026-01-08 19:47:02.074] [19:47:02.074] [TRACE] Found Link Transform: AR-00001.rvt : 17 : location <Not Shared>
+
+[2026-01-08 19:47:02.076] [19:47:02.075] [TRACE] X-WALL: Keeping source X=26.856, using projected Y=0.722, Z=7.710
+
+[2026-01-08 19:47:02.078] [19:47:02.077] [TRACE] ✅ CURVE PROJECTION SUCCESS: Source=(26.856, 0.722, 7.710) -> Projected=(26.856, 0.722, 0.000) -> Final=(26.856, 0.722, 7.710), WallRunsAlongY=False
+
+[2026-01-08 19:47:02.169] [19:47:02.167] [TRACE] Zone a3145e45-b097-445f-2065-0863c3c137b6: StructId=321069, Not in HostDoc, checking Links... Found in Link 'AR-00001', HostFound=True, HostType=Wall, 
+
+[2026-01-08 19:47:02.172] [19:47:02.172] [TRACE] Found damper element in linked document: ME-00001, storing link transform
+
+[2026-01-08 19:47:02.174] [19:47:02.173] [TRACE] SOURCE POINT: Using LocationPoint (Body Center) + LinkTransform: (0.722, 41.951, 7.579)
+
+[2026-01-08 19:47:02.175] [19:47:02.175] [TRACE] 👉 ENTERING LOCATION CURVE LOGIC
+
+[2026-01-08 19:47:02.179] [19:47:02.178] [TRACE] Found Link Transform: AR-00001.rvt : 17 : location <Not Shared>
+
+[2026-01-08 19:47:02.180] [19:47:02.180] [TRACE] Y-WALL: Using projected X=0.722, keeping source Y=41.951, Z=7.579
+
+[2026-01-08 19:47:02.182] [19:47:02.181] [TRACE] ✅ CURVE PROJECTION SUCCESS: Source=(0.722, 41.951, 7.579) -> Projected=(0.722, 41.951, 0.000) -> Final=(0.722, 41.951, 7.579), WallRunsAlongY=True
+
+[2026-01-08 19:47:02.274] [19:47:02.272] [TRACE] Zone 2632bbf0-c167-cc8c-b3e2-e941990e41de: StructId=321070, Not in HostDoc, checking Links... Found in Link 'AR-00001', HostFound=True, HostType=Wall, 
+
+[2026-01-08 19:47:02.277] [19:47:02.276] [TRACE] Found damper element in linked document: ME-00001, storing link transform
+
+[2026-01-08 19:47:02.278] [19:47:02.278] [TRACE] SOURCE POINT: Using LocationPoint (Body Center) + LinkTransform: (37.625, 0.722, 8.202)
+
+[2026-01-08 19:47:02.280] [19:47:02.279] [TRACE] 👉 ENTERING LOCATION CURVE LOGIC
+
+[2026-01-08 19:47:02.283] [19:47:02.282] [TRACE] Found Link Transform: AR-00001.rvt : 17 : location <Not Shared>
+
+[2026-01-08 19:47:02.287] [19:47:02.286] [TRACE] X-WALL: Keeping source X=37.625, using projected Y=0.722, Z=8.202
+
+[2026-01-08 19:47:02.289] [19:47:02.288] [TRACE] ✅ CURVE PROJECTION SUCCESS: Source=(37.625, 0.722, 8.202) -> Projected=(37.625, 0.722, 0.000) -> Final=(37.625, 0.722, 8.202), WallRunsAlongY=False
+
+[2026-01-08 19:47:02.383] [19:47:02.380] [TRACE] Zone 7a3fc1a5-750b-23ce-c189-6dcb53feaac0: StructId=321069, Not in HostDoc, checking Links... Found in Link 'AR-00001', HostFound=True, HostType=Wall, 
+
+[2026-01-08 19:47:02.385] [19:47:02.385] [TRACE] Found damper element in linked document: ME-00001, storing link transform
+
+[2026-01-08 19:47:02.388] [19:47:02.387] [TRACE] SOURCE POINT: Using LocationPoint (Body Center) + LinkTransform: (0.722, 31.444, 8.333)
+
+[2026-01-08 19:47:02.389] [19:47:02.389] [TRACE] 👉 ENTERING LOCATION CURVE LOGIC
+
+[2026-01-08 19:47:02.392] [19:47:02.391] [TRACE] Found Link Transform: AR-00001.rvt : 17 : location <Not Shared>
+
+[2026-01-08 19:47:02.394] [19:47:02.393] [TRACE] Y-WALL: Using projected X=0.722, keeping source Y=31.444, Z=8.333
+
+[2026-01-08 19:47:02.395] [19:47:02.395] [TRACE] ✅ CURVE PROJECTION SUCCESS: Source=(0.722, 31.444, 8.333) -> Projected=(0.722, 31.444, 0.000) -> Final=(0.722, 31.444, 8.333), WallRunsAlongY=True
+
+[2026-01-08 19:47:02.483] [19:47:02.480] [TRACE] Zone 9f1747e9-810a-73b0-1926-eb581c142a2a: StructId=321070, Not in HostDoc, checking Links... Found in Link 'AR-00001', HostFound=True, HostType=Wall, 
+
+[2026-01-08 19:47:02.485] [19:47:02.485] [TRACE] Found damper element in linked document: ME-00001, storing link transform
+
+[2026-01-08 19:47:02.487] [19:47:02.486] [TRACE] SOURCE POINT: Using LocationPoint (Body Center) + LinkTransform: (23.083, 0.722, 7.710)
+
+[2026-01-08 19:47:02.488] [19:47:02.488] [TRACE] 👉 ENTERING LOCATION CURVE LOGIC
+
+[2026-01-08 19:47:02.491] [19:47:02.491] [TRACE] Found Link Transform: AR-00001.rvt : 17 : location <Not Shared>
+
+[2026-01-08 19:47:02.493] [19:47:02.492] [TRACE] X-WALL: Keeping source X=23.083, using projected Y=0.722, Z=7.710
+
+[2026-01-08 19:47:02.494] [19:47:02.494] [TRACE] ✅ CURVE PROJECTION SUCCESS: Source=(23.083, 0.722, 7.710) -> Projected=(23.083, 0.722, 0.000) -> Final=(23.083, 0.722, 7.710), WallRunsAlongY=False
+
+[2026-01-08 19:47:02.589] [19:47:02.586] [TRACE] Zone df577d30-6424-a37a-4833-fe0825bb05bf: StructId=321069, Not in HostDoc, checking Links... Found in Link 'AR-00001', HostFound=True, HostType=Wall, 
+
+[2026-01-08 19:47:02.591] [19:47:02.591] [TRACE] Found damper element in linked document: ME-00001, storing link transform
+
+[2026-01-08 19:47:02.593] [19:47:02.592] [TRACE] SOURCE POINT: Using LocationPoint (Body Center) + LinkTransform: (0.722, 45.723, 7.579)
+
+[2026-01-08 19:47:02.595] [19:47:02.594] [TRACE] 👉 ENTERING LOCATION CURVE LOGIC
+
+[2026-01-08 19:47:02.598] [19:47:02.597] [TRACE] Found Link Transform: AR-00001.rvt : 17 : location <Not Shared>
+
+[2026-01-08 19:47:02.599] [19:47:02.599] [TRACE] Y-WALL: Using projected X=0.722, keeping source Y=45.723, Z=7.579
+
+[2026-01-08 19:47:02.601] [19:47:02.601] [TRACE] ✅ CURVE PROJECTION SUCCESS: Source=(0.722, 45.723, 7.579) -> Projected=(0.722, 45.723, 0.000) -> Final=(0.722, 45.723, 7.579), WallRunsAlongY=True
+
+[2026-01-08 19:47:02.688] [19:47:02.686] [TRACE] Zone 935ea122-7169-ac0b-1470-76f7a5e9d6d5: StructId=321070, Not in HostDoc, checking Links... Found in Link 'AR-00001', HostFound=True, HostType=Wall, 
+
+[2026-01-08 19:47:02.692] [19:47:02.690] [TRACE] Found damper element in linked document: ME-00001, storing link transform
+
+[2026-01-08 19:47:02.693] [19:47:02.693] [TRACE] SOURCE POINT: Using LocationPoint (Body Center) + LinkTransform: (18.818, 0.722, 7.710)
+
+[2026-01-08 19:47:02.695] [19:47:02.694] [TRACE] 👉 ENTERING LOCATION CURVE LOGIC
+
+[2026-01-08 19:47:02.698] [19:47:02.697] [TRACE] Found Link Transform: AR-00001.rvt : 17 : location <Not Shared>
+
+[2026-01-08 19:47:02.700] [19:47:02.699] [TRACE] X-WALL: Keeping source X=18.818, using projected Y=0.722, Z=7.710
+
+[2026-01-08 19:47:02.701] [19:47:02.701] [TRACE] ✅ CURVE PROJECTION SUCCESS: Source=(18.818, 0.722, 7.710) -> Projected=(18.818, 0.722, 0.000) -> Final=(18.818, 0.722, 7.710), WallRunsAlongY=False
+
+[2026-01-08 19:47:02.792] [19:47:02.790] [TRACE] Zone 7bf0a81d-7f23-7b16-d366-ab8b9a4b8c39: StructId=321069, Not in HostDoc, checking Links... Found in Link 'AR-00001', HostFound=True, HostType=Wall, 
+
+[2026-01-08 19:47:02.795] [19:47:02.795] [TRACE] Found damper element in linked document: ME-00001, storing link transform
+
+[2026-01-08 19:47:02.798] [19:47:02.796] [TRACE] SOURCE POINT: Using LocationPoint (Body Center) + LinkTransform: (0.722, 49.989, 7.579)
+
+[2026-01-08 19:47:02.798] [19:47:02.798] [TRACE] 👉 ENTERING LOCATION CURVE LOGIC
+
+[2026-01-08 19:47:02.804] [19:47:02.802] [TRACE] Found Link Transform: AR-00001.rvt : 17 : location <Not Shared>
+
+[2026-01-08 19:47:02.806] [19:47:02.805] [TRACE] Y-WALL: Using projected X=0.722, keeping source Y=49.989, Z=7.579
+
+[2026-01-08 19:47:02.807] [19:47:02.807] [TRACE] ✅ CURVE PROJECTION SUCCESS: Source=(0.722, 49.989, 7.579) -> Projected=(0.722, 49.989, 0.000) -> Final=(0.722, 49.989, 7.579), WallRunsAlongY=True
+
+[2026-01-08 19:47:02.904] [19:47:02.901] [TRACE] Zone 8487ee2c-d3f2-23cf-75b8-f5527727ab3d: StructId=321070, Not in HostDoc, checking Links... Found in Link 'AR-00001', HostFound=True, HostType=Wall, 
+
+[2026-01-08 19:47:02.907] [19:47:02.906] [TRACE] Found damper element in linked document: ME-00001, storing link transform
+
+[2026-01-08 19:47:02.909] [19:47:02.908] [TRACE] SOURCE POINT: Using LocationPoint (Body Center) + LinkTransform: (32.507, 0.722, 7.579)
+
+[2026-01-08 19:47:02.911] [19:47:02.910] [TRACE] 👉 ENTERING LOCATION CURVE LOGIC
+
+[2026-01-08 19:47:02.915] [19:47:02.914] [TRACE] Found Link Transform: AR-00001.rvt : 17 : location <Not Shared>
+
+[2026-01-08 19:47:02.917] [19:47:02.916] [TRACE] X-WALL: Keeping source X=32.507, using projected Y=0.722, Z=7.579
+
+[2026-01-08 19:47:02.919] [19:47:02.918] [TRACE] ✅ CURVE PROJECTION SUCCESS: Source=(32.507, 0.722, 7.579) -> Projected=(32.507, 0.722, 0.000) -> Final=(32.507, 0.722, 7.579), WallRunsAlongY=False
+
+[2026-01-08 19:47:03.028] [19:47:03.025] [TRACE] Zone 3cec003b-2dd2-dfb1-a929-bba6b642b2e5: StructId=321069, Not in HostDoc, checking Links... Found in Link 'AR-00001', HostFound=True, HostType=Wall, 
+
+[2026-01-08 19:47:03.031] [19:47:03.031] [TRACE] Found damper element in linked document: ME-00001, storing link transform
+
+[2026-01-08 19:47:03.033] [19:47:03.032] [TRACE] SOURCE POINT: Using LocationPoint (Body Center) + LinkTransform: (0.722, 35.381, 7.185)
+
+[2026-01-08 19:47:03.034] [19:47:03.034] [TRACE] 👉 ENTERING LOCATION CURVE LOGIC
+
+[2026-01-08 19:47:03.038] [19:47:03.037] [TRACE] Found Link Transform: AR-00001.rvt : 17 : location <Not Shared>
+
+[2026-01-08 19:47:03.039] [19:47:03.039] [TRACE] Y-WALL: Using projected X=0.722, keeping source Y=35.381, Z=7.185
+
+[2026-01-08 19:47:03.041] [19:47:03.040] [TRACE] ✅ CURVE PROJECTION SUCCESS: Source=(0.722, 35.381, 7.185) -> Projected=(0.722, 35.381, 0.000) -> Final=(0.722, 35.381, 7.185), WallRunsAlongY=True
+

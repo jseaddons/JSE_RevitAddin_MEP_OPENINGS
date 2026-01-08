@@ -1,0 +1,22 @@
+[2026-01-08 19:47:00.708] [19:47:00.707] PLAN ClashZone=8487ee2c-d3f2-23cf-75b8-f5527727ab3d Host=Wall RawSizeFt=4.757 TargetFt=5.085 ClearanceFt=0.164 DepthFt=0.820 Risk=Critical Skip=False Reason=
+[19:47:00.707] PLAN ClashZone=3cec003b-2dd2-dfb1-a929-bba6b642b2e5 Host=Wall RawSizeFt=4.757 TargetFt=5.085 ClearanceFt=0.164 DepthFt=0.820 Risk=Critical Skip=False Reason=
+[19:47:00.707] PLAN ClashZone=df577d30-6424-a37a-4833-fe0825bb05bf Host=Wall RawSizeFt=3.970 TargetFt=4.298 ClearanceFt=0.164 DepthFt=0.820 Risk=Critical Skip=False Reason=
+[19:47:00.707] PLAN ClashZone=9f1747e9-810a-73b0-1926-eb581c142a2a Host=Wall RawSizeFt=3.970 TargetFt=4.298 ClearanceFt=0.164 DepthFt=0.820 Risk=Critical Skip=False Reason=
+[19:47:00.707] PLAN ClashZone=935ea122-7169-ac0b-1470-76f7a5e9d6d5 Host=Wall RawSizeFt=3.314 TargetFt=3.642 ClearanceFt=0.164 DepthFt=0.820 Risk=Critical Skip=False Reason=
+[19:47:00.707] PLAN ClashZone=7bf0a81d-7f23-7b16-d366-ab8b9a4b8c39 Host=Wall RawSizeFt=3.314 TargetFt=3.642 ClearanceFt=0.164 DepthFt=0.820 Risk=Critical Skip=False Reason=
+[19:47:00.707] PLAN ClashZone=a3145e45-b097-445f-2065-0863c3c137b6 Host=Wall RawSizeFt=2.329 TargetFt=2.657 ClearanceFt=0.164 DepthFt=0.820 Risk=Critical Skip=False Reason=
+[19:47:00.707] PLAN ClashZone=8616a0aa-a600-a464-3ebb-8cebd6f83b6a Host=Wall RawSizeFt=2.329 TargetFt=2.657 ClearanceFt=0.164 DepthFt=0.820 Risk=Critical Skip=False Reason=
+[19:47:00.707] PLAN ClashZone=2632bbf0-c167-cc8c-b3e2-e941990e41de Host=Wall RawSizeFt=2.297 TargetFt=2.625 ClearanceFt=0.164 DepthFt=0.820 Risk=Critical Skip=False Reason=
+[19:47:00.707] PLAN ClashZone=7a3fc1a5-750b-23ce-c189-6dcb53feaac0 Host=Wall RawSizeFt=2.297 TargetFt=2.625 ClearanceFt=0.164 DepthFt=0.820 Risk=Critical Skip=False Reason=
+[19:47:00.707] PLAN ClashZone=6564c781-c6cb-2232-2fa0-8b701e4909d3 Host=Wall RawSizeFt=1.640 TargetFt=1.969 ClearanceFt=0.164 DepthFt=0.820 Risk=Medium Skip=False Reason=
+[19:47:00.707] PLAN ClashZone=8abcb5eb-fa43-1dd6-0735-d8cf977ff6cb Host=Wall RawSizeFt=1.640 TargetFt=1.969 ClearanceFt=0.164 DepthFt=0.820 Risk=Medium Skip=False Reason=
+[19:47:00.707] PLAN ClashZone=55033bc9-ee4f-b7ba-ff0e-6c7a5b521493 Host=Wall RawSizeFt=1.640 TargetFt=1.969 ClearanceFt=0.164 DepthFt=0.820 Risk=Medium Skip=False Reason=
+[19:47:00.707] PLAN ClashZone=33ae96d6-7dff-e1cc-48b0-2365508afaa6 Host=Wall RawSizeFt=1.640 TargetFt=1.969 ClearanceFt=0.164 DepthFt=0.820 Risk=Medium Skip=False Reason=
+[19:47:00.707] PLAN ClashZone=cf8ae4bc-437c-d894-d4e0-2a9b22c220a2 Host=Wall RawSizeFt=1.640 TargetFt=1.969 ClearanceFt=0.164 DepthFt=0.820 Risk=Medium Skip=False Reason=
+[19:47:00.707] PLAN ClashZone=50e781f3-5ff7-bb4b-d74f-d42c9551aac7 Host=Wall RawSizeFt=1.640 TargetFt=1.969 ClearanceFt=0.164 DepthFt=0.820 Risk=Medium Skip=False Reason=
+[19:47:00.707] PLAN ClashZone=bcf58f2f-9a96-94a2-476d-3c39f15331b6 Host=Wall RawSizeFt=1.640 TargetFt=1.969 ClearanceFt=0.164 DepthFt=0.820 Risk=Medium Skip=False Reason=
+[19:47:00.707] PLAN ClashZone=26272a4f-9f89-805c-3c95-a1c1e7f340b9 Host=Wall RawSizeFt=1.640 TargetFt=1.969 ClearanceFt=0.164 DepthFt=0.820 Risk=Medium Skip=False Reason=
+[19:47:00.707] PLAN ClashZone=634a2b88-42f3-169c-6829-b1f5bcc0b8c1 Host=Wall RawSizeFt=1.558 TargetFt=1.886 ClearanceFt=0.164 DepthFt=0.820 Risk=Medium Skip=False Reason=
+[19:47:00.707] PLAN ClashZone=b46b82d4-41cf-708b-b85c-f30fd2f0bf1d Host=Wall RawSizeFt=1.558 TargetFt=1.886 ClearanceFt=0.164 DepthFt=0.820 Risk=Medium Skip=False Reason=
+[19:47:00.707] PLAN ClashZone=b3515ca9-b4dd-c7fc-d6e6-133c2578ecdd Host=Wall RawSizeFt=0.984 TargetFt=1.312 ClearanceFt=0.164 DepthFt=0.820 Risk=Low Skip=False Reason=
+

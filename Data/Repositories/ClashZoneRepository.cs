@@ -1356,6 +1356,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     cmd.Parameters.AddWithValue($"@MepElementLevelName{i}", (object)zone.MepElementLevelName ?? DBNull.Value);
                     // ✅ REFERENCE LEVEL ELEVATION: Add MEP element Reference Level elevation (critical for Elevation from Level and Bottom of Opening calculation)
                     cmd.Parameters.AddWithValue($"@MepElementLevelElevation{i}", zone.MepElementLevelElevation);
+                    // ✅ CRITICAL FIX: Add ElevationFromLevel for legacy batch updates
+                    cmd.Parameters.AddWithValue($"@ElevationFromLevel{i}", zone.ElevationFromLevel);
                     // ✅ WALL CENTERLINE POINT: Pre-calculated during refresh (enables multi-threaded placement)
                     cmd.Parameters.AddWithValue($"@WallCenterlinePointX{i}", zone.WallCenterlinePointX);
                     cmd.Parameters.AddWithValue($"@WallCenterlinePointY{i}", zone.WallCenterlinePointY);
@@ -1519,6 +1521,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     sql.AppendLine($"    WHEN @ZoneId{i} THEN @StructuralThickness{i}");
                 }
                 sql.AppendLine("    ELSE StructuralThickness END,");
+
+                sql.AppendLine("  ElevationFromLevel = CASE ClashZoneId");
+                for (int i = 0; i < validZones.Count; i++)
+                {
+                    sql.AppendLine($"    WHEN @ZoneId{i} THEN @ElevationFromLevel{i}");
+                }
+                sql.AppendLine("    ELSE ElevationFromLevel END,");
 
                 sql.AppendLine("  HostOrientation = CASE ClashZoneId");
                 for (int i = 0; i < validZones.Count; i++)

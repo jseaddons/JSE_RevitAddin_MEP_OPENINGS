@@ -1,0 +1,210 @@
+[2026-01-08 19:47:00.768] [19:47:00.767] [NON-DAMPER-PRE-CLEARANCE] Zone 55033bc9-ee4f-b7ba-ff0e-6c7a5b521493, Category=Duct Accessories, Raw W=1.640420ft (500.0mm), H=0.984252ft (300.0mm), D=0.000000ft (0.0mm), IsInsulated=False
+
+[2026-01-08 19:47:00.777] [19:47:00.776] [CLEARANCE-DB] Zone 55033bc9-ee4f-b7ba-ff0e-6c7a5b521493, Category=Duct Accessories, IsInsulated=False, ClearanceMm=50mm, DuctAccessoryMepNormal=100mm, DuctAccessoryMepInsulated=100mm, DuctAccessoryOtherNormal=50mm, DuctAccessoryOtherInsulated=50mm
+
+[2026-01-08 19:47:00.778] [19:47:00.778] [CLEARANCE-USED] Zone 55033bc9-ee4f-b7ba-ff0e-6c7a5b521493: 50mm (0.164042ft) from DATABASE
+
+[2026-01-08 19:47:00.780] [19:47:00.779] [NON-DAMPER-CLEARANCE] Zone 55033bc9-ee4f-b7ba-ff0e-6c7a5b521493, Clearance=0.164042ft (50.0mm)
+
+[2026-01-08 19:47:00.783] [19:47:00.782] [NON-DAMPER-POST-SIZING] Zone 55033bc9-ee4f-b7ba-ff0e-6c7a5b521493, Final W=1.968504ft (600.0mm), H=1.312336ft (400.0mm), D=1.968504ft (600.0mm), ClearanceApplied W=100.0mm, H=100.0mm
+
+[2026-01-08 19:47:00.977] [19:47:00.976] [NON-DAMPER-PRE-CLEARANCE] Zone 33ae96d6-7dff-e1cc-48b0-2365508afaa6, Category=Duct Accessories, Raw W=1.640420ft (500.0mm), H=0.984252ft (300.0mm), D=0.000000ft (0.0mm), IsInsulated=False
+
+[2026-01-08 19:47:00.978] [19:47:00.978] [CLEARANCE-DB] Zone 33ae96d6-7dff-e1cc-48b0-2365508afaa6, Category=Duct Accessories, IsInsulated=False, ClearanceMm=50mm, DuctAccessoryMepNormal=100mm, DuctAccessoryMepInsulated=100mm, DuctAccessoryOtherNormal=50mm, DuctAccessoryOtherInsulated=50mm
+
+[2026-01-08 19:47:00.980] [19:47:00.979] [CLEARANCE-USED] Zone 33ae96d6-7dff-e1cc-48b0-2365508afaa6: 50mm (0.164042ft) from DATABASE
+
+[2026-01-08 19:47:00.981] [19:47:00.981] [NON-DAMPER-CLEARANCE] Zone 33ae96d6-7dff-e1cc-48b0-2365508afaa6, Clearance=0.164042ft (50.0mm)
+
+[2026-01-08 19:47:00.983] [19:47:00.982] [NON-DAMPER-POST-SIZING] Zone 33ae96d6-7dff-e1cc-48b0-2365508afaa6, Final W=1.968504ft (600.0mm), H=1.312336ft (400.0mm), D=1.968504ft (600.0mm), ClearanceApplied W=100.0mm, H=100.0mm
+
+[2026-01-08 19:47:01.075] [19:47:01.075] [NON-DAMPER-PRE-CLEARANCE] Zone cf8ae4bc-437c-d894-d4e0-2a9b22c220a2, Category=Duct Accessories, Raw W=1.640420ft (500.0mm), H=0.984252ft (300.0mm), D=0.000000ft (0.0mm), IsInsulated=False
+
+[2026-01-08 19:47:01.077] [19:47:01.076] [CLEARANCE-DB] Zone cf8ae4bc-437c-d894-d4e0-2a9b22c220a2, Category=Duct Accessories, IsInsulated=False, ClearanceMm=50mm, DuctAccessoryMepNormal=100mm, DuctAccessoryMepInsulated=100mm, DuctAccessoryOtherNormal=50mm, DuctAccessoryOtherInsulated=50mm
+
+[2026-01-08 19:47:01.079] [19:47:01.078] [CLEARANCE-USED] Zone cf8ae4bc-437c-d894-d4e0-2a9b22c220a2: 50mm (0.164042ft) from DATABASE
+
+[2026-01-08 19:47:01.081] [19:47:01.080] [NON-DAMPER-CLEARANCE] Zone cf8ae4bc-437c-d894-d4e0-2a9b22c220a2, Clearance=0.164042ft (50.0mm)
+
+[2026-01-08 19:47:01.082] [19:47:01.081] [NON-DAMPER-POST-SIZING] Zone cf8ae4bc-437c-d894-d4e0-2a9b22c220a2, Final W=1.968504ft (600.0mm), H=1.312336ft (400.0mm), D=1.968504ft (600.0mm), ClearanceApplied W=100.0mm, H=100.0mm
+
+[2026-01-08 19:47:01.187] [19:47:01.187] [NON-DAMPER-PRE-CLEARANCE] Zone 8abcb5eb-fa43-1dd6-0735-d8cf977ff6cb, Category=Duct Accessories, Raw W=1.640420ft (500.0mm), H=0.984252ft (300.0mm), D=0.000000ft (0.0mm), IsInsulated=False
+
+[2026-01-08 19:47:01.189] [19:47:01.188] [CLEARANCE-DB] Zone 8abcb5eb-fa43-1dd6-0735-d8cf977ff6cb, Category=Duct Accessories, IsInsulated=False, ClearanceMm=50mm, DuctAccessoryMepNormal=100mm, DuctAccessoryMepInsulated=100mm, DuctAccessoryOtherNormal=50mm, DuctAccessoryOtherInsulated=50mm
+
+[2026-01-08 19:47:01.190] [19:47:01.190] [CLEARANCE-USED] Zone 8abcb5eb-fa43-1dd6-0735-d8cf977ff6cb: 50mm (0.164042ft) from DATABASE
+
+[2026-01-08 19:47:01.192] [19:47:01.191] [NON-DAMPER-CLEARANCE] Zone 8abcb5eb-fa43-1dd6-0735-d8cf977ff6cb, Clearance=0.164042ft (50.0mm)
+
+[2026-01-08 19:47:01.194] [19:47:01.193] [NON-DAMPER-POST-SIZING] Zone 8abcb5eb-fa43-1dd6-0735-d8cf977ff6cb, Final W=1.968504ft (600.0mm), H=1.312336ft (400.0mm), D=1.968504ft (600.0mm), ClearanceApplied W=100.0mm, H=100.0mm
+
+[2026-01-08 19:47:01.290] [19:47:01.289] [NON-DAMPER-PRE-CLEARANCE] Zone 26272a4f-9f89-805c-3c95-a1c1e7f340b9, Category=Duct Accessories, Raw W=1.640420ft (500.0mm), H=0.984252ft (300.0mm), D=0.000000ft (0.0mm), IsInsulated=False
+
+[2026-01-08 19:47:01.292] [19:47:01.291] [CLEARANCE-DB] Zone 26272a4f-9f89-805c-3c95-a1c1e7f340b9, Category=Duct Accessories, IsInsulated=False, ClearanceMm=50mm, DuctAccessoryMepNormal=100mm, DuctAccessoryMepInsulated=100mm, DuctAccessoryOtherNormal=50mm, DuctAccessoryOtherInsulated=50mm
+
+[2026-01-08 19:47:01.293] [19:47:01.293] [CLEARANCE-USED] Zone 26272a4f-9f89-805c-3c95-a1c1e7f340b9: 50mm (0.164042ft) from DATABASE
+
+[2026-01-08 19:47:01.295] [19:47:01.294] [NON-DAMPER-CLEARANCE] Zone 26272a4f-9f89-805c-3c95-a1c1e7f340b9, Clearance=0.164042ft (50.0mm)
+
+[2026-01-08 19:47:01.297] [19:47:01.296] [NON-DAMPER-POST-SIZING] Zone 26272a4f-9f89-805c-3c95-a1c1e7f340b9, Final W=1.968504ft (600.0mm), H=1.312336ft (400.0mm), D=1.968504ft (600.0mm), ClearanceApplied W=100.0mm, H=100.0mm
+
+[2026-01-08 19:47:01.402] [19:47:01.401] [NON-DAMPER-PRE-CLEARANCE] Zone 6564c781-c6cb-2232-2fa0-8b701e4909d3, Category=Duct Accessories, Raw W=1.640420ft (500.0mm), H=0.984252ft (300.0mm), D=0.000000ft (0.0mm), IsInsulated=False
+
+[2026-01-08 19:47:01.404] [19:47:01.403] [CLEARANCE-DB] Zone 6564c781-c6cb-2232-2fa0-8b701e4909d3, Category=Duct Accessories, IsInsulated=False, ClearanceMm=50mm, DuctAccessoryMepNormal=100mm, DuctAccessoryMepInsulated=100mm, DuctAccessoryOtherNormal=50mm, DuctAccessoryOtherInsulated=50mm
+
+[2026-01-08 19:47:01.405] [19:47:01.405] [CLEARANCE-USED] Zone 6564c781-c6cb-2232-2fa0-8b701e4909d3: 50mm (0.164042ft) from DATABASE
+
+[2026-01-08 19:47:01.407] [19:47:01.406] [NON-DAMPER-CLEARANCE] Zone 6564c781-c6cb-2232-2fa0-8b701e4909d3, Clearance=0.164042ft (50.0mm)
+
+[2026-01-08 19:47:01.409] [19:47:01.408] [NON-DAMPER-POST-SIZING] Zone 6564c781-c6cb-2232-2fa0-8b701e4909d3, Final W=1.968504ft (600.0mm), H=1.312336ft (400.0mm), D=1.968504ft (600.0mm), ClearanceApplied W=100.0mm, H=100.0mm
+
+[2026-01-08 19:47:01.500] [19:47:01.499] [NON-DAMPER-PRE-CLEARANCE] Zone 50e781f3-5ff7-bb4b-d74f-d42c9551aac7, Category=Duct Accessories, Raw W=1.640420ft (500.0mm), H=0.984252ft (300.0mm), D=0.000000ft (0.0mm), IsInsulated=False
+
+[2026-01-08 19:47:01.502] [19:47:01.501] [CLEARANCE-DB] Zone 50e781f3-5ff7-bb4b-d74f-d42c9551aac7, Category=Duct Accessories, IsInsulated=False, ClearanceMm=50mm, DuctAccessoryMepNormal=100mm, DuctAccessoryMepInsulated=100mm, DuctAccessoryOtherNormal=50mm, DuctAccessoryOtherInsulated=50mm
+
+[2026-01-08 19:47:01.506] [19:47:01.503] [CLEARANCE-USED] Zone 50e781f3-5ff7-bb4b-d74f-d42c9551aac7: 50mm (0.164042ft) from DATABASE
+
+[2026-01-08 19:47:01.508] [19:47:01.507] [NON-DAMPER-CLEARANCE] Zone 50e781f3-5ff7-bb4b-d74f-d42c9551aac7, Clearance=0.164042ft (50.0mm)
+
+[2026-01-08 19:47:01.510] [19:47:01.510] [NON-DAMPER-POST-SIZING] Zone 50e781f3-5ff7-bb4b-d74f-d42c9551aac7, Final W=1.968504ft (600.0mm), H=1.312336ft (400.0mm), D=1.968504ft (600.0mm), ClearanceApplied W=100.0mm, H=100.0mm
+
+[2026-01-08 19:47:01.610] [19:47:01.610] [NON-DAMPER-PRE-CLEARANCE] Zone bcf58f2f-9a96-94a2-476d-3c39f15331b6, Category=Duct Accessories, Raw W=1.640420ft (500.0mm), H=0.984252ft (300.0mm), D=0.000000ft (0.0mm), IsInsulated=False
+
+[2026-01-08 19:47:01.612] [19:47:01.612] [CLEARANCE-DB] Zone bcf58f2f-9a96-94a2-476d-3c39f15331b6, Category=Duct Accessories, IsInsulated=False, ClearanceMm=50mm, DuctAccessoryMepNormal=100mm, DuctAccessoryMepInsulated=100mm, DuctAccessoryOtherNormal=50mm, DuctAccessoryOtherInsulated=50mm
+
+[2026-01-08 19:47:01.614] [19:47:01.614] [CLEARANCE-USED] Zone bcf58f2f-9a96-94a2-476d-3c39f15331b6: 50mm (0.164042ft) from DATABASE
+
+[2026-01-08 19:47:01.616] [19:47:01.616] [NON-DAMPER-CLEARANCE] Zone bcf58f2f-9a96-94a2-476d-3c39f15331b6, Clearance=0.164042ft (50.0mm)
+
+[2026-01-08 19:47:01.618] [19:47:01.618] [NON-DAMPER-POST-SIZING] Zone bcf58f2f-9a96-94a2-476d-3c39f15331b6, Final W=1.968504ft (600.0mm), H=1.312336ft (400.0mm), D=1.968504ft (600.0mm), ClearanceApplied W=100.0mm, H=100.0mm
+
+[2026-01-08 19:47:01.720] [19:47:01.720] [NON-DAMPER-PRE-CLEARANCE] Zone b46b82d4-41cf-708b-b85c-f30fd2f0bf1d, Category=Duct Accessories, Raw W=1.558399ft (475.0mm), H=0.656168ft (200.0mm), D=0.000000ft (0.0mm), IsInsulated=False
+
+[2026-01-08 19:47:01.722] [19:47:01.721] [CLEARANCE-DB] Zone b46b82d4-41cf-708b-b85c-f30fd2f0bf1d, Category=Duct Accessories, IsInsulated=False, ClearanceMm=50mm, DuctAccessoryMepNormal=100mm, DuctAccessoryMepInsulated=100mm, DuctAccessoryOtherNormal=50mm, DuctAccessoryOtherInsulated=50mm
+
+[2026-01-08 19:47:01.723] [19:47:01.723] [CLEARANCE-USED] Zone b46b82d4-41cf-708b-b85c-f30fd2f0bf1d: 50mm (0.164042ft) from DATABASE
+
+[2026-01-08 19:47:01.725] [19:47:01.724] [NON-DAMPER-CLEARANCE] Zone b46b82d4-41cf-708b-b85c-f30fd2f0bf1d, Clearance=0.164042ft (50.0mm)
+
+[2026-01-08 19:47:01.727] [19:47:01.726] [NON-DAMPER-POST-SIZING] Zone b46b82d4-41cf-708b-b85c-f30fd2f0bf1d, Final W=1.968504ft (600.0mm), H=0.984252ft (300.0mm), D=1.968504ft (600.0mm), ClearanceApplied W=125.0mm, H=100.0mm
+
+[2026-01-08 19:47:01.819] [19:47:01.818] [NON-DAMPER-PRE-CLEARANCE] Zone 634a2b88-42f3-169c-6829-b1f5bcc0b8c1, Category=Duct Accessories, Raw W=1.558399ft (475.0mm), H=0.656168ft (200.0mm), D=0.000000ft (0.0mm), IsInsulated=False
+
+[2026-01-08 19:47:01.821] [19:47:01.820] [CLEARANCE-DB] Zone 634a2b88-42f3-169c-6829-b1f5bcc0b8c1, Category=Duct Accessories, IsInsulated=False, ClearanceMm=50mm, DuctAccessoryMepNormal=100mm, DuctAccessoryMepInsulated=100mm, DuctAccessoryOtherNormal=50mm, DuctAccessoryOtherInsulated=50mm
+
+[2026-01-08 19:47:01.823] [19:47:01.822] [CLEARANCE-USED] Zone 634a2b88-42f3-169c-6829-b1f5bcc0b8c1: 50mm (0.164042ft) from DATABASE
+
+[2026-01-08 19:47:01.824] [19:47:01.824] [NON-DAMPER-CLEARANCE] Zone 634a2b88-42f3-169c-6829-b1f5bcc0b8c1, Clearance=0.164042ft (50.0mm)
+
+[2026-01-08 19:47:01.826] [19:47:01.826] [NON-DAMPER-POST-SIZING] Zone 634a2b88-42f3-169c-6829-b1f5bcc0b8c1, Final W=1.968504ft (600.0mm), H=0.984252ft (300.0mm), D=1.968504ft (600.0mm), ClearanceApplied W=125.0mm, H=100.0mm
+
+[2026-01-08 19:47:01.928] [19:47:01.927] [NON-DAMPER-PRE-CLEARANCE] Zone b3515ca9-b4dd-c7fc-d6e6-133c2578ecdd, Category=Duct Accessories, Raw W=0.984252ft (300.0mm), H=0.984252ft (300.0mm), D=0.000000ft (0.0mm), IsInsulated=False
+
+[2026-01-08 19:47:01.929] [19:47:01.929] [CLEARANCE-DB] Zone b3515ca9-b4dd-c7fc-d6e6-133c2578ecdd, Category=Duct Accessories, IsInsulated=False, ClearanceMm=50mm, DuctAccessoryMepNormal=100mm, DuctAccessoryMepInsulated=100mm, DuctAccessoryOtherNormal=50mm, DuctAccessoryOtherInsulated=50mm
+
+[2026-01-08 19:47:01.931] [19:47:01.930] [CLEARANCE-USED] Zone b3515ca9-b4dd-c7fc-d6e6-133c2578ecdd: 50mm (0.164042ft) from DATABASE
+
+[2026-01-08 19:47:01.934] [19:47:01.933] [NON-DAMPER-CLEARANCE] Zone b3515ca9-b4dd-c7fc-d6e6-133c2578ecdd, Clearance=0.164042ft (50.0mm)
+
+[2026-01-08 19:47:01.936] [19:47:01.935] [NON-DAMPER-POST-SIZING] Zone b3515ca9-b4dd-c7fc-d6e6-133c2578ecdd, Final W=1.312336ft (400.0mm), H=1.312336ft (400.0mm), D=1.312336ft (400.0mm), ClearanceApplied W=100.0mm, H=100.0mm
+
+[2026-01-08 19:47:02.039] [19:47:02.038] [NON-DAMPER-PRE-CLEARANCE] Zone 8616a0aa-a600-a464-3ebb-8cebd6f83b6a, Category=Duct Accessories, Raw W=2.329396ft (710.0mm), H=1.017060ft (310.0mm), D=0.000000ft (0.0mm), IsInsulated=False
+
+[2026-01-08 19:47:02.040] [19:47:02.040] [CLEARANCE-DB] Zone 8616a0aa-a600-a464-3ebb-8cebd6f83b6a, Category=Duct Accessories, IsInsulated=False, ClearanceMm=50mm, DuctAccessoryMepNormal=100mm, DuctAccessoryMepInsulated=100mm, DuctAccessoryOtherNormal=50mm, DuctAccessoryOtherInsulated=50mm
+
+[2026-01-08 19:47:02.042] [19:47:02.041] [CLEARANCE-USED] Zone 8616a0aa-a600-a464-3ebb-8cebd6f83b6a: 50mm (0.164042ft) from DATABASE
+
+[2026-01-08 19:47:02.044] [19:47:02.043] [NON-DAMPER-CLEARANCE] Zone 8616a0aa-a600-a464-3ebb-8cebd6f83b6a, Clearance=0.164042ft (50.0mm)
+
+[2026-01-08 19:47:02.046] [19:47:02.045] [NON-DAMPER-POST-SIZING] Zone 8616a0aa-a600-a464-3ebb-8cebd6f83b6a, Final W=2.788714ft (850.0mm), H=1.476378ft (450.0mm), D=2.788714ft (850.0mm), ClearanceApplied W=140.0mm, H=140.0mm
+
+[2026-01-08 19:47:02.152] [19:47:02.151] [NON-DAMPER-PRE-CLEARANCE] Zone a3145e45-b097-445f-2065-0863c3c137b6, Category=Duct Accessories, Raw W=2.329396ft (710.0mm), H=1.017060ft (310.0mm), D=0.000000ft (0.0mm), IsInsulated=False
+
+[2026-01-08 19:47:02.153] [19:47:02.153] [CLEARANCE-DB] Zone a3145e45-b097-445f-2065-0863c3c137b6, Category=Duct Accessories, IsInsulated=False, ClearanceMm=50mm, DuctAccessoryMepNormal=100mm, DuctAccessoryMepInsulated=100mm, DuctAccessoryOtherNormal=50mm, DuctAccessoryOtherInsulated=50mm
+
+[2026-01-08 19:47:02.154] [19:47:02.154] [CLEARANCE-USED] Zone a3145e45-b097-445f-2065-0863c3c137b6: 50mm (0.164042ft) from DATABASE
+
+[2026-01-08 19:47:02.157] [19:47:02.155] [NON-DAMPER-CLEARANCE] Zone a3145e45-b097-445f-2065-0863c3c137b6, Clearance=0.164042ft (50.0mm)
+
+[2026-01-08 19:47:02.158] [19:47:02.157] [NON-DAMPER-POST-SIZING] Zone a3145e45-b097-445f-2065-0863c3c137b6, Final W=2.788714ft (850.0mm), H=1.476378ft (450.0mm), D=2.788714ft (850.0mm), ClearanceApplied W=140.0mm, H=140.0mm
+
+[2026-01-08 19:47:02.256] [19:47:02.255] [NON-DAMPER-PRE-CLEARANCE] Zone 2632bbf0-c167-cc8c-b3e2-e941990e41de, Category=Duct Accessories, Raw W=2.296588ft (700.0mm), H=1.312336ft (400.0mm), D=0.000000ft (0.0mm), IsInsulated=False
+
+[2026-01-08 19:47:02.258] [19:47:02.257] [CLEARANCE-DB] Zone 2632bbf0-c167-cc8c-b3e2-e941990e41de, Category=Duct Accessories, IsInsulated=False, ClearanceMm=50mm, DuctAccessoryMepNormal=100mm, DuctAccessoryMepInsulated=100mm, DuctAccessoryOtherNormal=50mm, DuctAccessoryOtherInsulated=50mm
+
+[2026-01-08 19:47:02.259] [19:47:02.259] [CLEARANCE-USED] Zone 2632bbf0-c167-cc8c-b3e2-e941990e41de: 50mm (0.164042ft) from DATABASE
+
+[2026-01-08 19:47:02.261] [19:47:02.260] [NON-DAMPER-CLEARANCE] Zone 2632bbf0-c167-cc8c-b3e2-e941990e41de, Clearance=0.164042ft (50.0mm)
+
+[2026-01-08 19:47:02.263] [19:47:02.262] [NON-DAMPER-POST-SIZING] Zone 2632bbf0-c167-cc8c-b3e2-e941990e41de, Final W=2.624672ft (800.0mm), H=1.804462ft (550.0mm), D=2.624672ft (800.0mm), ClearanceApplied W=100.0mm, H=150.0mm
+
+[2026-01-08 19:47:02.365] [19:47:02.364] [NON-DAMPER-PRE-CLEARANCE] Zone 7a3fc1a5-750b-23ce-c189-6dcb53feaac0, Category=Duct Accessories, Raw W=2.296588ft (700.0mm), H=1.312336ft (400.0mm), D=0.000000ft (0.0mm), IsInsulated=False
+
+[2026-01-08 19:47:02.366] [19:47:02.366] [CLEARANCE-DB] Zone 7a3fc1a5-750b-23ce-c189-6dcb53feaac0, Category=Duct Accessories, IsInsulated=False, ClearanceMm=50mm, DuctAccessoryMepNormal=100mm, DuctAccessoryMepInsulated=100mm, DuctAccessoryOtherNormal=50mm, DuctAccessoryOtherInsulated=50mm
+
+[2026-01-08 19:47:02.368] [19:47:02.367] [CLEARANCE-USED] Zone 7a3fc1a5-750b-23ce-c189-6dcb53feaac0: 50mm (0.164042ft) from DATABASE
+
+[2026-01-08 19:47:02.369] [19:47:02.369] [NON-DAMPER-CLEARANCE] Zone 7a3fc1a5-750b-23ce-c189-6dcb53feaac0, Clearance=0.164042ft (50.0mm)
+
+[2026-01-08 19:47:02.371] [19:47:02.371] [NON-DAMPER-POST-SIZING] Zone 7a3fc1a5-750b-23ce-c189-6dcb53feaac0, Final W=2.624672ft (800.0mm), H=1.804462ft (550.0mm), D=2.624672ft (800.0mm), ClearanceApplied W=100.0mm, H=150.0mm
+
+[2026-01-08 19:47:02.464] [19:47:02.464] [NON-DAMPER-PRE-CLEARANCE] Zone 9f1747e9-810a-73b0-1926-eb581c142a2a, Category=Duct Accessories, Raw W=3.969816ft (1210.0mm), H=2.001312ft (610.0mm), D=0.000000ft (0.0mm), IsInsulated=False
+
+[2026-01-08 19:47:02.466] [19:47:02.466] [CLEARANCE-DB] Zone 9f1747e9-810a-73b0-1926-eb581c142a2a, Category=Duct Accessories, IsInsulated=False, ClearanceMm=50mm, DuctAccessoryMepNormal=100mm, DuctAccessoryMepInsulated=100mm, DuctAccessoryOtherNormal=50mm, DuctAccessoryOtherInsulated=50mm
+
+[2026-01-08 19:47:02.467] [19:47:02.467] [CLEARANCE-USED] Zone 9f1747e9-810a-73b0-1926-eb581c142a2a: 50mm (0.164042ft) from DATABASE
+
+[2026-01-08 19:47:02.469] [19:47:02.468] [NON-DAMPER-CLEARANCE] Zone 9f1747e9-810a-73b0-1926-eb581c142a2a, Clearance=0.164042ft (50.0mm)
+
+[2026-01-08 19:47:02.471] [19:47:02.470] [NON-DAMPER-POST-SIZING] Zone 9f1747e9-810a-73b0-1926-eb581c142a2a, Final W=4.429134ft (1350.0mm), H=2.460630ft (750.0mm), D=4.429134ft (1350.0mm), ClearanceApplied W=140.0mm, H=140.0mm
+
+[2026-01-08 19:47:02.569] [19:47:02.569] [NON-DAMPER-PRE-CLEARANCE] Zone df577d30-6424-a37a-4833-fe0825bb05bf, Category=Duct Accessories, Raw W=3.969816ft (1210.0mm), H=2.001312ft (610.0mm), D=0.000000ft (0.0mm), IsInsulated=False
+
+[2026-01-08 19:47:02.571] [19:47:02.570] [CLEARANCE-DB] Zone df577d30-6424-a37a-4833-fe0825bb05bf, Category=Duct Accessories, IsInsulated=False, ClearanceMm=50mm, DuctAccessoryMepNormal=100mm, DuctAccessoryMepInsulated=100mm, DuctAccessoryOtherNormal=50mm, DuctAccessoryOtherInsulated=50mm
+
+[2026-01-08 19:47:02.573] [19:47:02.572] [CLEARANCE-USED] Zone df577d30-6424-a37a-4833-fe0825bb05bf: 50mm (0.164042ft) from DATABASE
+
+[2026-01-08 19:47:02.574] [19:47:02.574] [NON-DAMPER-CLEARANCE] Zone df577d30-6424-a37a-4833-fe0825bb05bf, Clearance=0.164042ft (50.0mm)
+
+[2026-01-08 19:47:02.576] [19:47:02.576] [NON-DAMPER-POST-SIZING] Zone df577d30-6424-a37a-4833-fe0825bb05bf, Final W=4.429134ft (1350.0mm), H=2.460630ft (750.0mm), D=4.429134ft (1350.0mm), ClearanceApplied W=140.0mm, H=140.0mm
+
+[2026-01-08 19:47:02.668] [19:47:02.668] [NON-DAMPER-PRE-CLEARANCE] Zone 935ea122-7169-ac0b-1470-76f7a5e9d6d5, Category=Duct Accessories, Raw W=3.313648ft (1010.0mm), H=1.673228ft (510.0mm), D=0.000000ft (0.0mm), IsInsulated=False
+
+[2026-01-08 19:47:02.672] [19:47:02.671] [CLEARANCE-DB] Zone 935ea122-7169-ac0b-1470-76f7a5e9d6d5, Category=Duct Accessories, IsInsulated=False, ClearanceMm=50mm, DuctAccessoryMepNormal=100mm, DuctAccessoryMepInsulated=100mm, DuctAccessoryOtherNormal=50mm, DuctAccessoryOtherInsulated=50mm
+
+[2026-01-08 19:47:02.674] [19:47:02.673] [CLEARANCE-USED] Zone 935ea122-7169-ac0b-1470-76f7a5e9d6d5: 50mm (0.164042ft) from DATABASE
+
+[2026-01-08 19:47:02.675] [19:47:02.674] [NON-DAMPER-CLEARANCE] Zone 935ea122-7169-ac0b-1470-76f7a5e9d6d5, Clearance=0.164042ft (50.0mm)
+
+[2026-01-08 19:47:02.677] [19:47:02.676] [NON-DAMPER-POST-SIZING] Zone 935ea122-7169-ac0b-1470-76f7a5e9d6d5, Final W=3.772966ft (1150.0mm), H=2.132546ft (650.0mm), D=3.772966ft (1150.0mm), ClearanceApplied W=140.0mm, H=140.0mm
+
+[2026-01-08 19:47:02.775] [19:47:02.774] [NON-DAMPER-PRE-CLEARANCE] Zone 7bf0a81d-7f23-7b16-d366-ab8b9a4b8c39, Category=Duct Accessories, Raw W=3.313648ft (1010.0mm), H=1.673228ft (510.0mm), D=0.000000ft (0.0mm), IsInsulated=False
+
+[2026-01-08 19:47:02.777] [19:47:02.776] [CLEARANCE-DB] Zone 7bf0a81d-7f23-7b16-d366-ab8b9a4b8c39, Category=Duct Accessories, IsInsulated=False, ClearanceMm=50mm, DuctAccessoryMepNormal=100mm, DuctAccessoryMepInsulated=100mm, DuctAccessoryOtherNormal=50mm, DuctAccessoryOtherInsulated=50mm
+
+[2026-01-08 19:47:02.778] [19:47:02.778] [CLEARANCE-USED] Zone 7bf0a81d-7f23-7b16-d366-ab8b9a4b8c39: 50mm (0.164042ft) from DATABASE
+
+[2026-01-08 19:47:02.780] [19:47:02.779] [NON-DAMPER-CLEARANCE] Zone 7bf0a81d-7f23-7b16-d366-ab8b9a4b8c39, Clearance=0.164042ft (50.0mm)
+
+[2026-01-08 19:47:02.782] [19:47:02.781] [NON-DAMPER-POST-SIZING] Zone 7bf0a81d-7f23-7b16-d366-ab8b9a4b8c39, Final W=3.772966ft (1150.0mm), H=2.132546ft (650.0mm), D=3.772966ft (1150.0mm), ClearanceApplied W=140.0mm, H=140.0mm
+
+[2026-01-08 19:47:02.882] [19:47:02.881] [NON-DAMPER-PRE-CLEARANCE] Zone 8487ee2c-d3f2-23cf-75b8-f5527727ab3d, Category=Duct Accessories, Raw W=4.757218ft (1450.0mm), H=3.608924ft (1100.0mm), D=0.000000ft (0.0mm), IsInsulated=False
+
+[2026-01-08 19:47:02.884] [19:47:02.883] [CLEARANCE-DB] Zone 8487ee2c-d3f2-23cf-75b8-f5527727ab3d, Category=Duct Accessories, IsInsulated=False, ClearanceMm=50mm, DuctAccessoryMepNormal=100mm, DuctAccessoryMepInsulated=100mm, DuctAccessoryOtherNormal=50mm, DuctAccessoryOtherInsulated=50mm
+
+[2026-01-08 19:47:02.886] [19:47:02.885] [CLEARANCE-USED] Zone 8487ee2c-d3f2-23cf-75b8-f5527727ab3d: 50mm (0.164042ft) from DATABASE
+
+[2026-01-08 19:47:02.888] [19:47:02.887] [NON-DAMPER-CLEARANCE] Zone 8487ee2c-d3f2-23cf-75b8-f5527727ab3d, Clearance=0.164042ft (50.0mm)
+
+[2026-01-08 19:47:02.890] [19:47:02.889] [NON-DAMPER-POST-SIZING] Zone 8487ee2c-d3f2-23cf-75b8-f5527727ab3d, Final W=5.085302ft (1550.0mm), H=3.937008ft (1200.0mm), D=5.085302ft (1550.0mm), ClearanceApplied W=100.0mm, H=100.0mm
+
+[2026-01-08 19:47:03.009] [19:47:03.008] [NON-DAMPER-PRE-CLEARANCE] Zone 3cec003b-2dd2-dfb1-a929-bba6b642b2e5, Category=Duct Accessories, Raw W=4.757218ft (1450.0mm), H=3.608924ft (1100.0mm), D=0.000000ft (0.0mm), IsInsulated=False
+
+[2026-01-08 19:47:03.011] [19:47:03.010] [CLEARANCE-DB] Zone 3cec003b-2dd2-dfb1-a929-bba6b642b2e5, Category=Duct Accessories, IsInsulated=False, ClearanceMm=50mm, DuctAccessoryMepNormal=100mm, DuctAccessoryMepInsulated=100mm, DuctAccessoryOtherNormal=50mm, DuctAccessoryOtherInsulated=50mm
+
+[2026-01-08 19:47:03.012] [19:47:03.012] [CLEARANCE-USED] Zone 3cec003b-2dd2-dfb1-a929-bba6b642b2e5: 50mm (0.164042ft) from DATABASE
+
+[2026-01-08 19:47:03.014] [19:47:03.013] [NON-DAMPER-CLEARANCE] Zone 3cec003b-2dd2-dfb1-a929-bba6b642b2e5, Clearance=0.164042ft (50.0mm)
+
+[2026-01-08 19:47:03.016] [19:47:03.015] [NON-DAMPER-POST-SIZING] Zone 3cec003b-2dd2-dfb1-a929-bba6b642b2e5, Final W=5.085302ft (1550.0mm), H=3.937008ft (1200.0mm), D=5.085302ft (1550.0mm), ClearanceApplied W=100.0mm, H=100.0mm
+

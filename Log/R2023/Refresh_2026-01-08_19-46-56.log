@@ -1,0 +1,1136 @@
+[2026-01-08 19:46:56.213] [08-01-2026 19:46:56] ===== REFRESH LOG STARTED =====
+
+[2026-01-08 19:46:56.214] [08-01-2026 19:46:56] 🔨 BUILD TIMESTAMP: 2026-01-08 18:51:17 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+
+[2026-01-08 19:46:56.216] [08-01-2026 19:46:56] Filters (1): Ventilation
+
+[2026-01-08 19:46:56.217] [08-01-2026 19:46:56] MEP Categories (1): Duct Accessories
+
+[2026-01-08 19:46:56.219] [08-01-2026 19:46:56] Reference Files (1): ME-00001
+
+[2026-01-08 19:46:56.221] [08-01-2026 19:46:56] Host Files (1): AR-00001
+
+[2026-01-08 19:46:56.223] [08-01-2026 19:46:56] ============================================
+
+
+[2026-01-08 19:46:56.235] [08-01-2026 19:46:56] ===== ExecuteRefreshInternal STARTED =====
+
+[2026-01-08 19:46:56.724] [08-01-2026 19:46:56] [HIERARCHICAL-RESET] ✅ Reset flags for 48 zones
+
+[2026-01-08 19:46:56.734] [08-01-2026 19:46:56] [SESSION-CONTEXT] ✅ Applied section box context. Marked 0 zones
+
+[2026-01-08 19:46:56.764] [08-01-2026 19:46:56] [XML-CACHE] ⚡ OPTIMIZATION: Skipping XML cache loading (database-only mode)
+
+[2026-01-08 19:46:56.773] [08-01-2026 19:46:56] [SQLite] [SQLite] Assembly directory: C:\Users\jse2084\AppData\Local\Temp\RevitAddins\JSE_RevitAddin_MEP_OPENINGS-Executing-20260108_194557_4528
+
+[2026-01-08 19:46:56.778] [08-01-2026 19:46:56] [SQLite] [SQLite] ✅ Found dependency: System.Data.SQLite.dll
+
+[2026-01-08 19:46:56.781] [08-01-2026 19:46:56] [SQLite] [SQLite] ✅ Found dependency: x64\SQLite.Interop.dll
+
+[2026-01-08 19:46:56.783] [08-01-2026 19:46:56] [SQLite] [SQLite] Filters directory: C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model -00001\Filters
+
+[2026-01-08 19:46:56.785] [08-01-2026 19:46:56] [SQLite] [SQLite] Database path: C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model -00001\Filters\Shared_Test_Model_-00001_SleevePersistence.db
+
+[2026-01-08 19:46:56.789] [08-01-2026 19:46:56] [SQLite] [SQLite] ✅ Connection opened successfully
+
+[2026-01-08 19:46:56.790] [08-01-2026 19:46:56] [SQLite] [SQLite] ⏭️ Skipping schema verification (session-cached)
+
+[2026-01-08 19:46:56.791] [08-01-2026 19:46:56] [SQLite] [SQLite] ✅ Database ready (1916928 bytes)
+
+[2026-01-08 19:46:56.797] [08-01-2026 19:46:56] [SECTION-BOX] Capturing section box bounds for caching...
+
+[2026-01-08 19:46:56.802] [08-01-2026 19:46:56] [SECTION-BOX] ✅ Section box bounds captured and stored successfully
+
+[2026-01-08 19:46:56.827] [08-01-2026 19:46:56] [INTERSECTION-PROCESSOR] Phase 1: Preparing existing zones from XML cache...
+
+[2026-01-08 19:46:56.832] [08-01-2026 19:46:56] [CLASHZONE-CACHE] Loading data from database for reuse...
+
+[2026-01-08 19:46:56.840] [08-01-2026 19:46:56] [CLASHZONE-CACHE] ✅ Cache loaded: 0 filters in 6ms
+
+[2026-01-08 19:46:56.841] [08-01-2026 19:46:56] [XML-CACHE] Loaded 0 existing clash zones from cache
+
+[2026-01-08 19:46:56.843] [08-01-2026 19:46:56] [INTERSECTION-PROCESSOR] Using 0 existing clash zones from context
+
+[2026-01-08 19:46:56.851] [08-01-2026 19:46:56] [DB-COMBO-CHECK] Combo not found: Filter='Ventilation', Category='Duct Accessories', Linked='ME-00001', Host='AR-00001' → not processed
+
+[2026-01-08 19:46:56.853] [08-01-2026 19:46:56] [INTERSECTION-PROCESSOR] Decision Factors: EnableThreePointValidation=True, allCombosProcessed=False, hasUnresolvedZones=False, DeploymentMode=False
+
+[2026-01-08 19:46:56.854] [08-01-2026 19:46:56] [INTERSECTION-PROCESSOR] ⚠️ FULL DETECTION MODE: FullDetection: DeploymentMode OFF (testing mode) - always run detection to populate database (EnableThreePointValidation=True, allCombosProcessed=False)
+
+[2026-01-08 19:46:56.856] [08-01-2026 19:46:56] [INTERSECTION-PROCESSOR] ✅ FINAL DECISION: Mode=FullDetection, ShouldRunDetection=True, Reason='FullDetection: DeploymentMode OFF (testing mode) - always run detection to populate database (EnableThreePointValidation=True, allCombosProcessed=False)'
+
+[2026-01-08 19:46:56.858] [08-01-2026 19:46:56] [INTERSECTION-PROCESSOR] Decision: Mode=FullDetection, ShouldRunDetection=True, Reason='FullDetection: DeploymentMode OFF (testing mode) - always run detection to populate database (EnableThreePointValidation=True, allCombosProcessed=False)'
+
+[2026-01-08 19:46:56.860] [08-01-2026 19:46:56] [REFRESH-REFACTORED] ✅ Duct Accessories category selected → Routing to DamperProcessingService
+
+[2026-01-08 19:46:56.884] [08-01-2026 19:46:56] [DamperProcessing] Starting separate damper processing...
+
+[2026-01-08 19:46:56.893] [08-01-2026 19:46:56] [DamperProcessing] Found 6 total link instances in document
+
+[2026-01-08 19:46:56.895] [08-01-2026 19:46:56] [DamperProcessing] ✅ Matched linked file: Name='ME-00001.rvt : 9 : location Shared', Title='ME-00001', PathName='ME-00001'
+
+[2026-01-08 19:46:56.896] [08-01-2026 19:46:56] [DamperProcessing] Matched 1 linked files for damper collection
+
+[2026-01-08 19:46:56.898] [08-01-2026 19:46:56] [DamperProcessing] Collecting dampers from linked document: ME-00001
+
+[2026-01-08 19:46:56.904] [08-01-2026 19:46:56] [DamperProcessing] ✅ Applied section box filter at collector level for document: ME-00001
+
+[2026-01-08 19:46:56.908] [08-01-2026 19:46:56] [DamperProcessing] Found 24 total Duct Accessories in document: ME-00001 (before damper filter)
+
+[2026-01-08 19:46:56.912] [08-01-2026 19:46:56] [DamperProcessing] ⏭️ SKIP: Damper 724318 - FamilyName='Volume Control Damper', TypeName='Standard' contains VCD/VOLUME
+
+[2026-01-08 19:46:56.914] [08-01-2026 19:46:56] [DamperProcessing] ⏭️ SKIP: Damper 724335 - FamilyName='Volume Control Damper', TypeName='Standard' contains VCD/VOLUME
+
+[2026-01-08 19:46:56.916] [08-01-2026 19:46:56] [DamperProcessing] ⏭️ SKIP: Damper 724419 - FamilyName='Volume Control Damper', TypeName='Standard' contains VCD/VOLUME
+
+[2026-01-08 19:46:56.918] [08-01-2026 19:46:56] [DamperProcessing] ✅ PROCESS: Damper 726106 - FamilyName='Motorized Damper - Rectangular', TypeName='MD'
+
+[2026-01-08 19:46:56.919] [08-01-2026 19:46:56] [DamperProcessing] ✅ PROCESS: Damper 726137 - FamilyName='Motorized Damper - Rectangular', TypeName='MD'
+
+[2026-01-08 19:46:56.921] [08-01-2026 19:46:56] [DamperProcessing] ✅ PROCESS: Damper 726176 - FamilyName='Motorized Damper - Rectangular', TypeName='MD'
+
+[2026-01-08 19:46:56.923] [08-01-2026 19:46:56] [DamperProcessing] ✅ PROCESS: Damper 727667 - FamilyName='Motorised Smoke Damper', TypeName='MSD'
+
+[2026-01-08 19:46:56.925] [08-01-2026 19:46:56] [DamperProcessing] ✅ PROCESS: Damper 727730 - FamilyName='Motorised Smoke Damper', TypeName='MSD'
+
+[2026-01-08 19:46:56.927] [08-01-2026 19:46:56] [DamperProcessing] ✅ PROCESS: Damper 727783 - FamilyName='Motorised Smoke Damper', TypeName='MSD'
+
+[2026-01-08 19:46:56.930] [08-01-2026 19:46:56] [DamperProcessing] ✅ PROCESS: Damper 732134 - FamilyName='Motorized Damper - Rectangular', TypeName='MD'
+
+[2026-01-08 19:46:56.932] [08-01-2026 19:46:56] [DamperProcessing] ✅ PROCESS: Damper 732136 - FamilyName='Motorized Damper - Rectangular', TypeName='MD'
+
+[2026-01-08 19:46:56.934] [08-01-2026 19:46:56] [DamperProcessing] ✅ PROCESS: Damper 732138 - FamilyName='Motorized Damper - Rectangular', TypeName='MD'
+
+[2026-01-08 19:46:56.935] [08-01-2026 19:46:56] [DamperProcessing] ✅ PROCESS: Damper 732140 - FamilyName='Motorised Smoke Damper', TypeName='MSD'
+
+[2026-01-08 19:46:56.937] [08-01-2026 19:46:56] [DamperProcessing] ✅ PROCESS: Damper 732142 - FamilyName='Motorised Smoke Damper', TypeName='MSD'
+
+[2026-01-08 19:46:56.939] [08-01-2026 19:46:56] [DamperProcessing] ✅ PROCESS: Damper 732144 - FamilyName='Motorised Smoke Damper', TypeName='MSD'
+
+[2026-01-08 19:46:56.940] [08-01-2026 19:46:56] [DamperProcessing] ✅ PROCESS: Damper 732146 - FamilyName='Motorised Smoke Fire Damper', TypeName='Motorized'
+
+[2026-01-08 19:46:56.942] [08-01-2026 19:46:56] [DamperProcessing] ✅ PROCESS: Damper 732148 - FamilyName='Motorised Smoke Fire Damper', TypeName='Motorized'
+
+[2026-01-08 19:46:56.944] [08-01-2026 19:46:56] [DamperProcessing] ✅ PROCESS: Damper 733265 - FamilyName='Motorised Smoke Fire Damper', TypeName='Motorized'
+
+[2026-01-08 19:46:56.945] [08-01-2026 19:46:56] [DamperProcessing] ✅ PROCESS: Damper 733294 - FamilyName='Motorised Smoke Damper', TypeName='MSD'
+
+[2026-01-08 19:46:56.947] [08-01-2026 19:46:56] [DamperProcessing] ✅ PROCESS: Damper 733631 - FamilyName='Motorised Smoke Damper', TypeName='MSD'
+
+[2026-01-08 19:46:56.948] [08-01-2026 19:46:56] [DamperProcessing] ✅ PROCESS: Damper 733651 - FamilyName='Motorised Smoke Damper', TypeName='MSD'
+
+[2026-01-08 19:46:56.950] [08-01-2026 19:46:56] [DamperProcessing] ✅ PROCESS: Damper 733736 - FamilyName='Motorised Smoke Damper', TypeName='MSD'
+
+[2026-01-08 19:46:56.952] [08-01-2026 19:46:56] [DamperProcessing] ✅ PROCESS: Damper 733825 - FamilyName='Motorised Smoke Fire Damper', TypeName='Motorized'
+
+[2026-01-08 19:46:56.953] [08-01-2026 19:46:56] [DamperProcessing] ✅ PROCESS: Damper 733847 - FamilyName='Motorised Smoke Fire Damper', TypeName='Motorized'
+
+[2026-01-08 19:46:56.955] [08-01-2026 19:46:56] [DamperProcessing] ✅ Filtered to 21 Standard/Motorized dampers in document: ME-00001 (after damper type filter)
+
+[2026-01-08 19:46:56.973] [08-01-2026 19:46:56] [DamperProcessing] ✅ Collected 21 dampers from linked document: ME-00001
+
+[2026-01-08 19:46:56.974] [08-01-2026 19:46:56] [DamperProcessing] ========== DAMPER COLLECTION COMPLETE: 21 total dampers ==========
+
+[2026-01-08 19:46:56.976] [08-01-2026 19:46:56] [DamperProcessing] ✅ Collected 21 dampers from selected reference files (VCD/VOLUME excluded)
+
+[2026-01-08 19:46:56.992] [08-01-2026 19:46:56] [DamperProcessing] ✅ Collected 11 walls for intersection checking
+
+[2026-01-08 19:46:57.025] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found 'Reference Level' for MEP element 726106 - using Reference Level + essential params
+
+[2026-01-08 19:46:57.032] [08-01-2026 19:46:57] [DamperProcessing] 📋 CAPTURED PARAMS for MEP 726106: [System Type, System Name, System Abbreviation, Reference Level, Size, Service Type, System Classification, Mark]
+
+[2026-01-08 19:46:57.035] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found 'Reference Level' for MEP element 726137 - using Reference Level + essential params
+
+[2026-01-08 19:46:57.040] [08-01-2026 19:46:57] [DamperProcessing] 📋 CAPTURED PARAMS for MEP 726137: [System Type, System Name, System Abbreviation, Reference Level, Size, Service Type, System Classification, Mark]
+
+[2026-01-08 19:46:57.043] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found 'Reference Level' for MEP element 726176 - using Reference Level + essential params
+
+[2026-01-08 19:46:57.049] [08-01-2026 19:46:57] [DamperProcessing] 📋 CAPTURED PARAMS for MEP 726176: [System Type, System Name, System Abbreviation, Reference Level, Size, Service Type, System Classification, Mark]
+
+[2026-01-08 19:46:57.052] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found 'Reference Level' for MEP element 727667 - using Reference Level + essential params
+
+[2026-01-08 19:46:57.057] [08-01-2026 19:46:57] [DamperProcessing] 📋 CAPTURED PARAMS for MEP 727667: [System Type, System Name, System Abbreviation, Reference Level, Size, Service Type, System Classification, Mark]
+
+[2026-01-08 19:46:57.059] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found 'Reference Level' for MEP element 727730 - using Reference Level + essential params
+
+[2026-01-08 19:46:57.064] [08-01-2026 19:46:57] [DamperProcessing] 📋 CAPTURED PARAMS for MEP 727730: [System Type, System Name, System Abbreviation, Reference Level, Size, Service Type, System Classification, Mark]
+
+[2026-01-08 19:46:57.066] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found 'Reference Level' for MEP element 727783 - using Reference Level + essential params
+
+[2026-01-08 19:46:57.071] [08-01-2026 19:46:57] [DamperProcessing] 📋 CAPTURED PARAMS for MEP 727783: [System Type, System Name, System Abbreviation, Reference Level, Size, Service Type, System Classification, Mark]
+
+[2026-01-08 19:46:57.074] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found 'Reference Level' for MEP element 732134 - using Reference Level + essential params
+
+[2026-01-08 19:46:57.080] [08-01-2026 19:46:57] [DamperProcessing] 📋 CAPTURED PARAMS for MEP 732134: [System Type, System Name, System Abbreviation, Reference Level, Size, Service Type, System Classification, Mark]
+
+[2026-01-08 19:46:57.126] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found 'Reference Level' for MEP element 732136 - using Reference Level + essential params
+
+[2026-01-08 19:46:57.131] [08-01-2026 19:46:57] [DamperProcessing] 📋 CAPTURED PARAMS for MEP 732136: [System Type, System Name, System Abbreviation, Reference Level, Size, Service Type, System Classification, Mark]
+
+[2026-01-08 19:46:57.135] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found 'Reference Level' for MEP element 732138 - using Reference Level + essential params
+
+[2026-01-08 19:46:57.140] [08-01-2026 19:46:57] [DamperProcessing] 📋 CAPTURED PARAMS for MEP 732138: [System Type, System Name, System Abbreviation, Reference Level, Size, Service Type, System Classification, Mark]
+
+[2026-01-08 19:46:57.142] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found 'Reference Level' for MEP element 732140 - using Reference Level + essential params
+
+[2026-01-08 19:46:57.148] [08-01-2026 19:46:57] [DamperProcessing] 📋 CAPTURED PARAMS for MEP 732140: [System Type, System Name, System Abbreviation, Reference Level, Size, Service Type, System Classification, Mark]
+
+[2026-01-08 19:46:57.150] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found 'Reference Level' for MEP element 732142 - using Reference Level + essential params
+
+[2026-01-08 19:46:57.155] [08-01-2026 19:46:57] [DamperProcessing] 📋 CAPTURED PARAMS for MEP 732142: [System Type, System Name, System Abbreviation, Reference Level, Size, Service Type, System Classification, Mark]
+
+[2026-01-08 19:46:57.157] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found 'Reference Level' for MEP element 732144 - using Reference Level + essential params
+
+[2026-01-08 19:46:57.162] [08-01-2026 19:46:57] [DamperProcessing] 📋 CAPTURED PARAMS for MEP 732144: [System Type, System Name, System Abbreviation, Reference Level, Size, Service Type, System Classification, Mark]
+
+[2026-01-08 19:46:57.164] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found 'Reference Level' for MEP element 732146 - using Reference Level + essential params
+
+[2026-01-08 19:46:57.169] [08-01-2026 19:46:57] [DamperProcessing] 📋 CAPTURED PARAMS for MEP 732146: [System Type, System Name, System Abbreviation, Reference Level, Size, Service Type, Width, Height, System Classification, Mark]
+
+[2026-01-08 19:46:57.172] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found 'Reference Level' for MEP element 732148 - using Reference Level + essential params
+
+[2026-01-08 19:46:57.177] [08-01-2026 19:46:57] [DamperProcessing] 📋 CAPTURED PARAMS for MEP 732148: [System Type, System Name, System Abbreviation, Reference Level, Size, Service Type, Width, Height, System Classification, Mark]
+
+[2026-01-08 19:46:57.179] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found 'Reference Level' for MEP element 733265 - using Reference Level + essential params
+
+[2026-01-08 19:46:57.184] [08-01-2026 19:46:57] [DamperProcessing] 📋 CAPTURED PARAMS for MEP 733265: [System Type, System Name, System Abbreviation, Reference Level, Size, Service Type, Width, Height, System Classification, Mark]
+
+[2026-01-08 19:46:57.187] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found 'Reference Level' for MEP element 733294 - using Reference Level + essential params
+
+[2026-01-08 19:46:57.191] [08-01-2026 19:46:57] [DamperProcessing] 📋 CAPTURED PARAMS for MEP 733294: [System Type, System Name, System Abbreviation, Reference Level, Size, Service Type, System Classification, Mark]
+
+[2026-01-08 19:46:57.194] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found 'Reference Level' for MEP element 733631 - using Reference Level + essential params
+
+[2026-01-08 19:46:57.198] [08-01-2026 19:46:57] [DamperProcessing] 📋 CAPTURED PARAMS for MEP 733631: [System Type, System Name, System Abbreviation, Reference Level, Size, Service Type, System Classification, Mark]
+
+[2026-01-08 19:46:57.201] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found 'Reference Level' for MEP element 733651 - using Reference Level + essential params
+
+[2026-01-08 19:46:57.205] [08-01-2026 19:46:57] [DamperProcessing] 📋 CAPTURED PARAMS for MEP 733651: [System Type, System Name, System Abbreviation, Reference Level, Size, Service Type, System Classification, Mark]
+
+[2026-01-08 19:46:57.208] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found 'Reference Level' for MEP element 733736 - using Reference Level + essential params
+
+[2026-01-08 19:46:57.212] [08-01-2026 19:46:57] [DamperProcessing] 📋 CAPTURED PARAMS for MEP 733736: [System Type, System Name, System Abbreviation, Reference Level, Size, Service Type, System Classification, Mark]
+
+[2026-01-08 19:46:57.215] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found 'Reference Level' for MEP element 733825 - using Reference Level + essential params
+
+[2026-01-08 19:46:57.219] [08-01-2026 19:46:57] [DamperProcessing] 📋 CAPTURED PARAMS for MEP 733825: [System Type, System Name, System Abbreviation, Reference Level, Size, Service Type, Width, Height, System Classification, Mark]
+
+[2026-01-08 19:46:57.222] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found 'Reference Level' for MEP element 733847 - using Reference Level + essential params
+
+[2026-01-08 19:46:57.227] [08-01-2026 19:46:57] [DamperProcessing] 📋 CAPTURED PARAMS for MEP 733847: [System Type, System Name, System Abbreviation, Reference Level, Size, Service Type, Width, Height, System Classification, Mark]
+
+[2026-01-08 19:46:57.236] [08-01-2026 19:46:57] [DamperProcessing] [BATCH-PARAMS] ✅ Pre-captured parameters for 21 dampers and 11 walls
+
+[2026-01-08 19:46:57.240] [08-01-2026 19:46:57] [DamperProcessing] [BATCH-LEVELS] ✅ Pre-cached 2 levels
+
+[2026-01-08 19:46:57.251] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found HOST wall 321070 for damper 726106 - placement point is INSIDE wall bbox
+
+[2026-01-08 19:46:57.274] [08-01-2026 19:46:57] [DamperProcessing] ✅ Transformed wall 321070 bounding box to host coordinates
+
+[2026-01-08 19:46:57.280] [08-01-2026 19:46:57] [DamperProcessing] 🔍 GetStructuralElementType: Element=321070, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2026-01-08 19:46:57.281] [08-01-2026 19:46:57] [DamperProcessing] ✅ Element 321070 is Wall - returning 'Wall'
+
+[2026-01-08 19:46:57.283] [08-01-2026 19:46:57] [DamperProcessing] ⚠️⚠️⚠️ WARNING: Could not extract MEP Element Level Elevation for damper 726106, level 'Level 0' - Elevation from Level and Bottom of Opening may use 0 elevation!
+
+[2026-01-08 19:46:57.293] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (18.818, 0.722, 7.710) for damper 726106, wall 321070
+
+[2026-01-08 19:46:57.295] [08-01-2026 19:46:57] [DamperProcessing] 🔍 StructuralElementType for wall 321070: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2026-01-08 19:46:57.297] [08-01-2026 19:46:57] [DamperProcessing] 🔍 HostOrientation: 'X', MepElementOrientationDirection: ''
+
+[2026-01-08 19:46:57.299] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (18.818, 0.722, 7.710) for damper 726106, wall 321070, orientation 'X'
+
+[2026-01-08 19:46:57.300] [08-01-2026 19:46:57] [DamperProcessing]   - Damper Placement Point: (18.818, 1.050, 7.710)
+
+[2026-01-08 19:46:57.302] [08-01-2026 19:46:57] [DamperProcessing]   - Wall Centerline Point: (18.818, 0.722, 7.710)
+
+[2026-01-08 19:46:57.304] [08-01-2026 19:46:57] [DamperProcessing] ✅ Extracted damper type/family: TypeName='MD', FamilyName='Motorized Damper - Rectangular' for damper 726106
+
+[2026-01-08 19:46:57.305] [08-01-2026 19:46:57] [DamperProcessing] ✅ Damper 726106 has MEP connector: HasMepConnector=true, DamperConnectorSide='+X' - will use asymmetric clearance
+
+[2026-01-08 19:46:57.315] [08-01-2026 19:46:57] [DamperProcessing] ✅ Generated deterministic GUID 935ea122-7169-ac0b-1470-76f7a5e9d6d5 for MEP=726106, Host=321070, PlacementPoint=(18.818,1.050,7.710), Tolerance=30.5mm (using damper centroid, stable)
+
+[2026-01-08 19:46:57.317] [08-01-2026 19:46:57] [DAMPER-PERF] CreateClashZoneForDamper called with 39 opening keys
+
+[2026-01-08 19:46:57.323] [08-01-2026 19:46:57] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='1000x500-1000x500'
+
+[2026-01-08 19:46:57.325] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found HOST wall 321070 for damper 726137 - placement point is INSIDE wall bbox
+
+[2026-01-08 19:46:57.326] [08-01-2026 19:46:57] [DamperProcessing] ✅ Transformed wall 321070 bounding box to host coordinates
+
+[2026-01-08 19:46:57.329] [08-01-2026 19:46:57] [DamperProcessing] 🔍 GetStructuralElementType: Element=321070, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2026-01-08 19:46:57.331] [08-01-2026 19:46:57] [DamperProcessing] ✅ Element 321070 is Wall - returning 'Wall'
+
+[2026-01-08 19:46:57.332] [08-01-2026 19:46:57] [DamperProcessing] ⚠️⚠️⚠️ WARNING: Could not extract MEP Element Level Elevation for damper 726137, level 'Level 0' - Elevation from Level and Bottom of Opening may use 0 elevation!
+
+[2026-01-08 19:46:57.336] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (23.083, 0.722, 7.710) for damper 726137, wall 321070
+
+[2026-01-08 19:46:57.338] [08-01-2026 19:46:57] [DamperProcessing] 🔍 StructuralElementType for wall 321070: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2026-01-08 19:46:57.339] [08-01-2026 19:46:57] [DamperProcessing] 🔍 HostOrientation: 'X', MepElementOrientationDirection: ''
+
+[2026-01-08 19:46:57.341] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (23.083, 0.722, 7.710) for damper 726137, wall 321070, orientation 'X'
+
+[2026-01-08 19:46:57.342] [08-01-2026 19:46:57] [DamperProcessing]   - Damper Placement Point: (23.083, 1.050, 7.710)
+
+[2026-01-08 19:46:57.344] [08-01-2026 19:46:57] [DamperProcessing]   - Wall Centerline Point: (23.083, 0.722, 7.710)
+
+[2026-01-08 19:46:57.346] [08-01-2026 19:46:57] [DamperProcessing] ✅ Extracted damper type/family: TypeName='MD', FamilyName='Motorized Damper - Rectangular' for damper 726137
+
+[2026-01-08 19:46:57.347] [08-01-2026 19:46:57] [DamperProcessing] ✅ Damper 726137 has MEP connector: HasMepConnector=true, DamperConnectorSide='+X' - will use asymmetric clearance
+
+[2026-01-08 19:46:57.352] [08-01-2026 19:46:57] [DamperProcessing] ✅ Generated deterministic GUID 9f1747e9-810a-73b0-1926-eb581c142a2a for MEP=726137, Host=321070, PlacementPoint=(23.083,1.050,7.710), Tolerance=30.5mm (using damper centroid, stable)
+
+[2026-01-08 19:46:57.354] [08-01-2026 19:46:57] [DAMPER-PERF] CreateClashZoneForDamper called with 39 opening keys
+
+[2026-01-08 19:46:57.356] [08-01-2026 19:46:57] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='1200x600-1200x600'
+
+[2026-01-08 19:46:57.358] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found HOST wall 321070 for damper 726176 - placement point is INSIDE wall bbox
+
+[2026-01-08 19:46:57.359] [08-01-2026 19:46:57] [DamperProcessing] ✅ Transformed wall 321070 bounding box to host coordinates
+
+[2026-01-08 19:46:57.362] [08-01-2026 19:46:57] [DamperProcessing] 🔍 GetStructuralElementType: Element=321070, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2026-01-08 19:46:57.363] [08-01-2026 19:46:57] [DamperProcessing] ✅ Element 321070 is Wall - returning 'Wall'
+
+[2026-01-08 19:46:57.365] [08-01-2026 19:46:57] [DamperProcessing] ⚠️⚠️⚠️ WARNING: Could not extract MEP Element Level Elevation for damper 726176, level 'Level 0' - Elevation from Level and Bottom of Opening may use 0 elevation!
+
+[2026-01-08 19:46:57.368] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (26.856, 0.722, 7.710) for damper 726176, wall 321070
+
+[2026-01-08 19:46:57.370] [08-01-2026 19:46:57] [DamperProcessing] 🔍 StructuralElementType for wall 321070: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2026-01-08 19:46:57.371] [08-01-2026 19:46:57] [DamperProcessing] 🔍 HostOrientation: 'X', MepElementOrientationDirection: ''
+
+[2026-01-08 19:46:57.373] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (26.856, 0.722, 7.710) for damper 726176, wall 321070, orientation 'X'
+
+[2026-01-08 19:46:57.374] [08-01-2026 19:46:57] [DamperProcessing]   - Damper Placement Point: (26.856, 1.050, 7.710)
+
+[2026-01-08 19:46:57.376] [08-01-2026 19:46:57] [DamperProcessing]   - Wall Centerline Point: (26.856, 0.722, 7.710)
+
+[2026-01-08 19:46:57.378] [08-01-2026 19:46:57] [DamperProcessing] ✅ Extracted damper type/family: TypeName='MD', FamilyName='Motorized Damper - Rectangular' for damper 726176
+
+[2026-01-08 19:46:57.380] [08-01-2026 19:46:57] [DamperProcessing] ✅ Damper 726176 has MEP connector: HasMepConnector=true, DamperConnectorSide='+X' - will use asymmetric clearance
+
+[2026-01-08 19:46:57.389] [08-01-2026 19:46:57] [DamperProcessing] ✅ Generated deterministic GUID 8616a0aa-a600-a464-3ebb-8cebd6f83b6a for MEP=726176, Host=321070, PlacementPoint=(26.856,1.050,7.710), Tolerance=30.5mm (using damper centroid, stable)
+
+[2026-01-08 19:46:57.391] [08-01-2026 19:46:57] [DAMPER-PERF] CreateClashZoneForDamper called with 39 opening keys
+
+[2026-01-08 19:46:57.393] [08-01-2026 19:46:57] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='700x300-700x300'
+
+[2026-01-08 19:46:57.394] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found HOST wall 321070 for damper 727667 - placement point is INSIDE wall bbox
+
+[2026-01-08 19:46:57.396] [08-01-2026 19:46:57] [DamperProcessing] ✅ Transformed wall 321070 bounding box to host coordinates
+
+[2026-01-08 19:46:57.398] [08-01-2026 19:46:57] [DamperProcessing] 🔍 GetStructuralElementType: Element=321070, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2026-01-08 19:46:57.400] [08-01-2026 19:46:57] [DamperProcessing] ✅ Element 321070 is Wall - returning 'Wall'
+
+[2026-01-08 19:46:57.401] [08-01-2026 19:46:57] [DamperProcessing] ⚠️⚠️⚠️ WARNING: Could not extract MEP Element Level Elevation for damper 727667, level 'Level 0' - Elevation from Level and Bottom of Opening may use 0 elevation!
+
+[2026-01-08 19:46:57.405] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (32.507, 0.722, 7.579) for damper 727667, wall 321070
+
+[2026-01-08 19:46:57.407] [08-01-2026 19:46:57] [DamperProcessing] 🔍 StructuralElementType for wall 321070: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2026-01-08 19:46:57.408] [08-01-2026 19:46:57] [DamperProcessing] 🔍 HostOrientation: 'X', MepElementOrientationDirection: ''
+
+[2026-01-08 19:46:57.410] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (32.507, 0.722, 7.579) for damper 727667, wall 321070, orientation 'X'
+
+[2026-01-08 19:46:57.412] [08-01-2026 19:46:57] [DamperProcessing]   - Damper Placement Point: (32.507, 1.050, 7.579)
+
+[2026-01-08 19:46:57.413] [08-01-2026 19:46:57] [DamperProcessing]   - Wall Centerline Point: (32.507, 0.722, 7.579)
+
+[2026-01-08 19:46:57.414] [08-01-2026 19:46:57] [DamperProcessing] ✅ Extracted damper type/family: TypeName='MSD', FamilyName='Motorised Smoke Damper' for damper 727667
+
+[2026-01-08 19:46:57.416] [08-01-2026 19:46:57] [DamperProcessing] ✅ Damper 727667 has MEP connector: HasMepConnector=true, DamperConnectorSide='+X' - will use asymmetric clearance
+
+[2026-01-08 19:46:57.421] [08-01-2026 19:46:57] [DamperProcessing] ✅ Generated deterministic GUID 8487ee2c-d3f2-23cf-75b8-f5527727ab3d for MEP=727667, Host=321070, PlacementPoint=(32.507,1.050,7.579), Tolerance=30.5mm (using damper centroid, stable)
+
+[2026-01-08 19:46:57.423] [08-01-2026 19:46:57] [DAMPER-PERF] CreateClashZoneForDamper called with 39 opening keys
+
+[2026-01-08 19:46:57.425] [08-01-2026 19:46:57] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='1350x1000-1350x1000'
+
+[2026-01-08 19:46:57.426] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found HOST wall 321070 for damper 727730 - placement point is INSIDE wall bbox
+
+[2026-01-08 19:46:57.428] [08-01-2026 19:46:57] [DamperProcessing] ✅ Transformed wall 321070 bounding box to host coordinates
+
+[2026-01-08 19:46:57.430] [08-01-2026 19:46:57] [DamperProcessing] 🔍 GetStructuralElementType: Element=321070, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2026-01-08 19:46:57.432] [08-01-2026 19:46:57] [DamperProcessing] ✅ Element 321070 is Wall - returning 'Wall'
+
+[2026-01-08 19:46:57.434] [08-01-2026 19:46:57] [DamperProcessing] ⚠️⚠️⚠️ WARNING: Could not extract MEP Element Level Elevation for damper 727730, level 'Level 0' - Elevation from Level and Bottom of Opening may use 0 elevation!
+
+[2026-01-08 19:46:57.436] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (37.625, 0.722, 8.202) for damper 727730, wall 321070
+
+[2026-01-08 19:46:57.438] [08-01-2026 19:46:57] [DamperProcessing] 🔍 StructuralElementType for wall 321070: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2026-01-08 19:46:57.439] [08-01-2026 19:46:57] [DamperProcessing] 🔍 HostOrientation: 'X', MepElementOrientationDirection: ''
+
+[2026-01-08 19:46:57.442] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (37.625, 0.722, 8.202) for damper 727730, wall 321070, orientation 'X'
+
+[2026-01-08 19:46:57.443] [08-01-2026 19:46:57] [DamperProcessing]   - Damper Placement Point: (37.625, 1.050, 8.202)
+
+[2026-01-08 19:46:57.445] [08-01-2026 19:46:57] [DamperProcessing]   - Wall Centerline Point: (37.625, 0.722, 8.202)
+
+[2026-01-08 19:46:57.447] [08-01-2026 19:46:57] [DamperProcessing] ✅ Extracted damper type/family: TypeName='MSD', FamilyName='Motorised Smoke Damper' for damper 727730
+
+[2026-01-08 19:46:57.448] [08-01-2026 19:46:57] [DamperProcessing] ✅ Damper 727730 has MEP connector: HasMepConnector=true, DamperConnectorSide='+X' - will use asymmetric clearance
+
+[2026-01-08 19:46:57.453] [08-01-2026 19:46:57] [DamperProcessing] ✅ Generated deterministic GUID 2632bbf0-c167-cc8c-b3e2-e941990e41de for MEP=727730, Host=321070, PlacementPoint=(37.625,1.050,8.202), Tolerance=30.5mm (using damper centroid, stable)
+
+[2026-01-08 19:46:57.455] [08-01-2026 19:46:57] [DAMPER-PERF] CreateClashZoneForDamper called with 39 opening keys
+
+[2026-01-08 19:46:57.456] [08-01-2026 19:46:57] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='600x300-600x300'
+
+[2026-01-08 19:46:57.458] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found HOST wall 321070 for damper 727783 - placement point is INSIDE wall bbox
+
+[2026-01-08 19:46:57.460] [08-01-2026 19:46:57] [DamperProcessing] ✅ Transformed wall 321070 bounding box to host coordinates
+
+[2026-01-08 19:46:57.462] [08-01-2026 19:46:57] [DamperProcessing] 🔍 GetStructuralElementType: Element=321070, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2026-01-08 19:46:57.464] [08-01-2026 19:46:57] [DamperProcessing] ✅ Element 321070 is Wall - returning 'Wall'
+
+[2026-01-08 19:46:57.466] [08-01-2026 19:46:57] [DamperProcessing] ⚠️⚠️⚠️ WARNING: Could not extract MEP Element Level Elevation for damper 727783, level 'Level 0' - Elevation from Level and Bottom of Opening may use 0 elevation!
+
+[2026-01-08 19:46:57.469] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (42.034, 0.722, 10.470) for damper 727783, wall 321070
+
+[2026-01-08 19:46:57.470] [08-01-2026 19:46:57] [DamperProcessing] 🔍 StructuralElementType for wall 321070: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2026-01-08 19:46:57.472] [08-01-2026 19:46:57] [DamperProcessing] 🔍 HostOrientation: 'X', MepElementOrientationDirection: ''
+
+[2026-01-08 19:46:57.474] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (42.034, 0.722, 10.470) for damper 727783, wall 321070, orientation 'X'
+
+[2026-01-08 19:46:57.476] [08-01-2026 19:46:57] [DamperProcessing]   - Damper Placement Point: (42.034, 1.050, 10.470)
+
+[2026-01-08 19:46:57.477] [08-01-2026 19:46:57] [DamperProcessing]   - Wall Centerline Point: (42.034, 0.722, 10.470)
+
+[2026-01-08 19:46:57.479] [08-01-2026 19:46:57] [DamperProcessing] ✅ Extracted damper type/family: TypeName='MSD', FamilyName='Motorised Smoke Damper' for damper 727783
+
+[2026-01-08 19:46:57.480] [08-01-2026 19:46:57] [DamperProcessing] ✅ Damper 727783 has MEP connector: HasMepConnector=true, DamperConnectorSide='+X' - will use asymmetric clearance
+
+[2026-01-08 19:46:57.485] [08-01-2026 19:46:57] [DamperProcessing] ✅ Generated deterministic GUID 55033bc9-ee4f-b7ba-ff0e-6c7a5b521493 for MEP=727783, Host=321070, PlacementPoint=(42.034,1.050,10.470), Tolerance=30.5mm (using damper centroid, stable)
+
+[2026-01-08 19:46:57.487] [08-01-2026 19:46:57] [DAMPER-PERF] CreateClashZoneForDamper called with 39 opening keys
+
+[2026-01-08 19:46:57.489] [08-01-2026 19:46:57] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='400x200-400x200'
+
+[2026-01-08 19:46:57.490] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found HOST wall 321069 for damper 732134 - placement point is INSIDE wall bbox
+
+[2026-01-08 19:46:57.492] [08-01-2026 19:46:57] [DamperProcessing] ✅ Transformed wall 321069 bounding box to host coordinates
+
+[2026-01-08 19:46:57.494] [08-01-2026 19:46:57] [DamperProcessing] 🔍 GetStructuralElementType: Element=321069, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2026-01-08 19:46:57.496] [08-01-2026 19:46:57] [DamperProcessing] ✅ Element 321069 is Wall - returning 'Wall'
+
+[2026-01-08 19:46:57.498] [08-01-2026 19:46:57] [DamperProcessing] ⚠️⚠️⚠️ WARNING: Could not extract MEP Element Level Elevation for damper 732134, level 'Level 0' - Elevation from Level and Bottom of Opening may use 0 elevation!
+
+[2026-01-08 19:46:57.501] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (0.722, 49.989, 7.579) for damper 732134, wall 321069
+
+[2026-01-08 19:46:57.503] [08-01-2026 19:46:57] [DamperProcessing] 🔍 StructuralElementType for wall 321069: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2026-01-08 19:46:57.504] [08-01-2026 19:46:57] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: ''
+
+[2026-01-08 19:46:57.506] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (0.722, 49.989, 7.579) for damper 732134, wall 321069, orientation 'Y'
+
+[2026-01-08 19:46:57.507] [08-01-2026 19:46:57] [DamperProcessing]   - Damper Placement Point: (1.050, 49.989, 7.579)
+
+[2026-01-08 19:46:57.509] [08-01-2026 19:46:57] [DamperProcessing]   - Wall Centerline Point: (0.722, 49.989, 7.579)
+
+[2026-01-08 19:46:57.511] [08-01-2026 19:46:57] [DamperProcessing] ✅ Extracted damper type/family: TypeName='MD', FamilyName='Motorized Damper - Rectangular' for damper 732134
+
+[2026-01-08 19:46:57.512] [08-01-2026 19:46:57] [DamperProcessing] ✅ Damper 732134 has MEP connector: HasMepConnector=true, DamperConnectorSide='-Y' - will use asymmetric clearance
+
+[2026-01-08 19:46:57.518] [08-01-2026 19:46:57] [DamperProcessing] ✅ Generated deterministic GUID 7bf0a81d-7f23-7b16-d366-ab8b9a4b8c39 for MEP=732134, Host=321069, PlacementPoint=(1.050,49.989,7.579), Tolerance=30.5mm (using damper centroid, stable)
+
+[2026-01-08 19:46:57.519] [08-01-2026 19:46:57] [DAMPER-PERF] CreateClashZoneForDamper called with 39 opening keys
+
+[2026-01-08 19:46:57.521] [08-01-2026 19:46:57] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='1000x500-1000x500'
+
+[2026-01-08 19:46:57.523] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found HOST wall 321069 for damper 732136 - placement point is INSIDE wall bbox
+
+[2026-01-08 19:46:57.525] [08-01-2026 19:46:57] [DamperProcessing] ✅ Transformed wall 321069 bounding box to host coordinates
+
+[2026-01-08 19:46:57.527] [08-01-2026 19:46:57] [DamperProcessing] 🔍 GetStructuralElementType: Element=321069, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2026-01-08 19:46:57.529] [08-01-2026 19:46:57] [DamperProcessing] ✅ Element 321069 is Wall - returning 'Wall'
+
+[2026-01-08 19:46:57.530] [08-01-2026 19:46:57] [DamperProcessing] ⚠️⚠️⚠️ WARNING: Could not extract MEP Element Level Elevation for damper 732136, level 'Level 0' - Elevation from Level and Bottom of Opening may use 0 elevation!
+
+[2026-01-08 19:46:57.534] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (0.722, 45.723, 7.579) for damper 732136, wall 321069
+
+[2026-01-08 19:46:57.535] [08-01-2026 19:46:57] [DamperProcessing] 🔍 StructuralElementType for wall 321069: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2026-01-08 19:46:57.536] [08-01-2026 19:46:57] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: ''
+
+[2026-01-08 19:46:57.538] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (0.722, 45.723, 7.579) for damper 732136, wall 321069, orientation 'Y'
+
+[2026-01-08 19:46:57.541] [08-01-2026 19:46:57] [DamperProcessing]   - Damper Placement Point: (1.050, 45.723, 7.579)
+
+[2026-01-08 19:46:57.541] [08-01-2026 19:46:57] [DamperProcessing]   - Wall Centerline Point: (0.722, 45.723, 7.579)
+
+[2026-01-08 19:46:57.543] [08-01-2026 19:46:57] [DamperProcessing] ✅ Extracted damper type/family: TypeName='MD', FamilyName='Motorized Damper - Rectangular' for damper 732136
+
+[2026-01-08 19:46:57.546] [08-01-2026 19:46:57] [DamperProcessing] ✅ Damper 732136 has MEP connector: HasMepConnector=true, DamperConnectorSide='-Y' - will use asymmetric clearance
+
+[2026-01-08 19:46:57.550] [08-01-2026 19:46:57] [DamperProcessing] ✅ Generated deterministic GUID df577d30-6424-a37a-4833-fe0825bb05bf for MEP=732136, Host=321069, PlacementPoint=(1.050,45.723,7.579), Tolerance=30.5mm (using damper centroid, stable)
+
+[2026-01-08 19:46:57.552] [08-01-2026 19:46:57] [DAMPER-PERF] CreateClashZoneForDamper called with 39 opening keys
+
+[2026-01-08 19:46:57.554] [08-01-2026 19:46:57] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='1200x600-1200x600'
+
+[2026-01-08 19:46:57.556] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found HOST wall 321069 for damper 732138 - placement point is INSIDE wall bbox
+
+[2026-01-08 19:46:57.557] [08-01-2026 19:46:57] [DamperProcessing] ✅ Transformed wall 321069 bounding box to host coordinates
+
+[2026-01-08 19:46:57.559] [08-01-2026 19:46:57] [DamperProcessing] 🔍 GetStructuralElementType: Element=321069, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2026-01-08 19:46:57.561] [08-01-2026 19:46:57] [DamperProcessing] ✅ Element 321069 is Wall - returning 'Wall'
+
+[2026-01-08 19:46:57.562] [08-01-2026 19:46:57] [DamperProcessing] ⚠️⚠️⚠️ WARNING: Could not extract MEP Element Level Elevation for damper 732138, level 'Level 0' - Elevation from Level and Bottom of Opening may use 0 elevation!
+
+[2026-01-08 19:46:57.566] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (0.722, 41.951, 7.579) for damper 732138, wall 321069
+
+[2026-01-08 19:46:57.567] [08-01-2026 19:46:57] [DamperProcessing] 🔍 StructuralElementType for wall 321069: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2026-01-08 19:46:57.569] [08-01-2026 19:46:57] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: ''
+
+[2026-01-08 19:46:57.571] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (0.722, 41.951, 7.579) for damper 732138, wall 321069, orientation 'Y'
+
+[2026-01-08 19:46:57.572] [08-01-2026 19:46:57] [DamperProcessing]   - Damper Placement Point: (1.050, 41.951, 7.579)
+
+[2026-01-08 19:46:57.574] [08-01-2026 19:46:57] [DamperProcessing]   - Wall Centerline Point: (0.722, 41.951, 7.579)
+
+[2026-01-08 19:46:57.575] [08-01-2026 19:46:57] [DamperProcessing] ✅ Extracted damper type/family: TypeName='MD', FamilyName='Motorized Damper - Rectangular' for damper 732138
+
+[2026-01-08 19:46:57.577] [08-01-2026 19:46:57] [DamperProcessing] ✅ Damper 732138 has MEP connector: HasMepConnector=true, DamperConnectorSide='-Y' - will use asymmetric clearance
+
+[2026-01-08 19:46:57.583] [08-01-2026 19:46:57] [DamperProcessing] ✅ Generated deterministic GUID a3145e45-b097-445f-2065-0863c3c137b6 for MEP=732138, Host=321069, PlacementPoint=(1.050,41.951,7.579), Tolerance=30.5mm (using damper centroid, stable)
+
+[2026-01-08 19:46:57.584] [08-01-2026 19:46:57] [DAMPER-PERF] CreateClashZoneForDamper called with 39 opening keys
+
+[2026-01-08 19:46:57.586] [08-01-2026 19:46:57] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='700x300-700x300'
+
+[2026-01-08 19:46:57.588] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found HOST wall 321069 for damper 732140 - placement point is INSIDE wall bbox
+
+[2026-01-08 19:46:57.589] [08-01-2026 19:46:57] [DamperProcessing] ✅ Transformed wall 321069 bounding box to host coordinates
+
+[2026-01-08 19:46:57.591] [08-01-2026 19:46:57] [DamperProcessing] 🔍 GetStructuralElementType: Element=321069, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2026-01-08 19:46:57.593] [08-01-2026 19:46:57] [DamperProcessing] ✅ Element 321069 is Wall - returning 'Wall'
+
+[2026-01-08 19:46:57.595] [08-01-2026 19:46:57] [DamperProcessing] ⚠️⚠️⚠️ WARNING: Could not extract MEP Element Level Elevation for damper 732140, level 'Level 0' - Elevation from Level and Bottom of Opening may use 0 elevation!
+
+[2026-01-08 19:46:57.598] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (0.722, 35.381, 7.185) for damper 732140, wall 321069
+
+[2026-01-08 19:46:57.600] [08-01-2026 19:46:57] [DamperProcessing] 🔍 StructuralElementType for wall 321069: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2026-01-08 19:46:57.601] [08-01-2026 19:46:57] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: ''
+
+[2026-01-08 19:46:57.603] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (0.722, 35.381, 7.185) for damper 732140, wall 321069, orientation 'Y'
+
+[2026-01-08 19:46:57.604] [08-01-2026 19:46:57] [DamperProcessing]   - Damper Placement Point: (1.050, 35.381, 7.185)
+
+[2026-01-08 19:46:57.607] [08-01-2026 19:46:57] [DamperProcessing]   - Wall Centerline Point: (0.722, 35.381, 7.185)
+
+[2026-01-08 19:46:57.608] [08-01-2026 19:46:57] [DamperProcessing] ✅ Extracted damper type/family: TypeName='MSD', FamilyName='Motorised Smoke Damper' for damper 732140
+
+[2026-01-08 19:46:57.610] [08-01-2026 19:46:57] [DamperProcessing] ✅ Damper 732140 has MEP connector: HasMepConnector=true, DamperConnectorSide='-Y' - will use asymmetric clearance
+
+[2026-01-08 19:46:57.614] [08-01-2026 19:46:57] [DamperProcessing] ✅ Generated deterministic GUID 3cec003b-2dd2-dfb1-a929-bba6b642b2e5 for MEP=732140, Host=321069, PlacementPoint=(1.050,35.381,7.185), Tolerance=30.5mm (using damper centroid, stable)
+
+[2026-01-08 19:46:57.616] [08-01-2026 19:46:57] [DAMPER-PERF] CreateClashZoneForDamper called with 39 opening keys
+
+[2026-01-08 19:46:57.618] [08-01-2026 19:46:57] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='1350x1000-1350x1000'
+
+[2026-01-08 19:46:57.620] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found HOST wall 321069 for damper 732142 - placement point is INSIDE wall bbox
+
+[2026-01-08 19:46:57.622] [08-01-2026 19:46:57] [DamperProcessing] ✅ Transformed wall 321069 bounding box to host coordinates
+
+[2026-01-08 19:46:57.624] [08-01-2026 19:46:57] [DamperProcessing] 🔍 GetStructuralElementType: Element=321069, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2026-01-08 19:46:57.625] [08-01-2026 19:46:57] [DamperProcessing] ✅ Element 321069 is Wall - returning 'Wall'
+
+[2026-01-08 19:46:57.627] [08-01-2026 19:46:57] [DamperProcessing] ⚠️⚠️⚠️ WARNING: Could not extract MEP Element Level Elevation for damper 732142, level 'Level 0' - Elevation from Level and Bottom of Opening may use 0 elevation!
+
+[2026-01-08 19:46:57.630] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (0.722, 31.444, 8.333) for damper 732142, wall 321069
+
+[2026-01-08 19:46:57.632] [08-01-2026 19:46:57] [DamperProcessing] 🔍 StructuralElementType for wall 321069: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2026-01-08 19:46:57.634] [08-01-2026 19:46:57] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: ''
+
+[2026-01-08 19:46:57.636] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (0.722, 31.444, 8.333) for damper 732142, wall 321069, orientation 'Y'
+
+[2026-01-08 19:46:57.637] [08-01-2026 19:46:57] [DamperProcessing]   - Damper Placement Point: (1.050, 31.444, 8.333)
+
+[2026-01-08 19:46:57.639] [08-01-2026 19:46:57] [DamperProcessing]   - Wall Centerline Point: (0.722, 31.444, 8.333)
+
+[2026-01-08 19:46:57.640] [08-01-2026 19:46:57] [DamperProcessing] ✅ Extracted damper type/family: TypeName='MSD', FamilyName='Motorised Smoke Damper' for damper 732142
+
+[2026-01-08 19:46:57.642] [08-01-2026 19:46:57] [DamperProcessing] ✅ Damper 732142 has MEP connector: HasMepConnector=true, DamperConnectorSide='-Y' - will use asymmetric clearance
+
+[2026-01-08 19:46:57.649] [08-01-2026 19:46:57] [DamperProcessing] ✅ Generated deterministic GUID 7a3fc1a5-750b-23ce-c189-6dcb53feaac0 for MEP=732142, Host=321069, PlacementPoint=(1.050,31.444,8.333), Tolerance=30.5mm (using damper centroid, stable)
+
+[2026-01-08 19:46:57.651] [08-01-2026 19:46:57] [DAMPER-PERF] CreateClashZoneForDamper called with 39 opening keys
+
+[2026-01-08 19:46:57.652] [08-01-2026 19:46:57] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='600x300-600x300'
+
+[2026-01-08 19:46:57.654] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found HOST wall 321069 for damper 732144 - placement point is INSIDE wall bbox
+
+[2026-01-08 19:46:57.656] [08-01-2026 19:46:57] [DamperProcessing] ✅ Transformed wall 321069 bounding box to host coordinates
+
+[2026-01-08 19:46:57.658] [08-01-2026 19:46:57] [DamperProcessing] 🔍 GetStructuralElementType: Element=321069, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2026-01-08 19:46:57.659] [08-01-2026 19:46:57] [DamperProcessing] ✅ Element 321069 is Wall - returning 'Wall'
+
+[2026-01-08 19:46:57.661] [08-01-2026 19:46:57] [DamperProcessing] ⚠️⚠️⚠️ WARNING: Could not extract MEP Element Level Elevation for damper 732144, level 'Level 0' - Elevation from Level and Bottom of Opening may use 0 elevation!
+
+[2026-01-08 19:46:57.664] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (0.722, 31.989, 10.519) for damper 732144, wall 321069
+
+[2026-01-08 19:46:57.666] [08-01-2026 19:46:57] [DamperProcessing] 🔍 StructuralElementType for wall 321069: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2026-01-08 19:46:57.667] [08-01-2026 19:46:57] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: ''
+
+[2026-01-08 19:46:57.670] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (0.722, 31.989, 10.519) for damper 732144, wall 321069, orientation 'Y'
+
+[2026-01-08 19:46:57.671] [08-01-2026 19:46:57] [DamperProcessing]   - Damper Placement Point: (1.050, 31.989, 10.519)
+
+[2026-01-08 19:46:57.673] [08-01-2026 19:46:57] [DamperProcessing]   - Wall Centerline Point: (0.722, 31.989, 10.519)
+
+[2026-01-08 19:46:57.675] [08-01-2026 19:46:57] [DamperProcessing] ✅ Extracted damper type/family: TypeName='MSD', FamilyName='Motorised Smoke Damper' for damper 732144
+
+[2026-01-08 19:46:57.676] [08-01-2026 19:46:57] [DamperProcessing] ✅ Damper 732144 has MEP connector: HasMepConnector=true, DamperConnectorSide='-Y' - will use asymmetric clearance
+
+[2026-01-08 19:46:57.681] [08-01-2026 19:46:57] [DamperProcessing] ✅ Generated deterministic GUID 33ae96d6-7dff-e1cc-48b0-2365508afaa6 for MEP=732144, Host=321069, PlacementPoint=(1.050,31.989,10.519), Tolerance=30.5mm (using damper centroid, stable)
+
+[2026-01-08 19:46:57.683] [08-01-2026 19:46:57] [DAMPER-PERF] CreateClashZoneForDamper called with 39 opening keys
+
+[2026-01-08 19:46:57.685] [08-01-2026 19:46:57] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='400x200-400x200'
+
+[2026-01-08 19:46:57.686] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found HOST wall 321069 for damper 732146 - placement point is INSIDE wall bbox
+
+[2026-01-08 19:46:57.688] [08-01-2026 19:46:57] [DamperProcessing] ✅ Transformed wall 321069 bounding box to host coordinates
+
+[2026-01-08 19:46:57.689] [08-01-2026 19:46:57] [DamperProcessing] 🔍 GetStructuralElementType: Element=321069, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2026-01-08 19:46:57.691] [08-01-2026 19:46:57] [DamperProcessing] ✅ Element 321069 is Wall - returning 'Wall'
+
+[2026-01-08 19:46:57.694] [08-01-2026 19:46:57] [DamperProcessing] ⚠️⚠️⚠️ WARNING: Could not extract MEP Element Level Elevation for damper 732146, level 'Level 0' - Elevation from Level and Bottom of Opening may use 0 elevation!
+
+[2026-01-08 19:46:57.696] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (0.722, 22.979, 10.466) for damper 732146, wall 321069
+
+[2026-01-08 19:46:57.698] [08-01-2026 19:46:57] [DamperProcessing] 🔍 StructuralElementType for wall 321069: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2026-01-08 19:46:57.699] [08-01-2026 19:46:57] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: ''
+
+[2026-01-08 19:46:57.701] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (0.722, 22.979, 10.466) for damper 732146, wall 321069, orientation 'Y'
+
+[2026-01-08 19:46:57.703] [08-01-2026 19:46:57] [DamperProcessing]   - Damper Placement Point: (0.476, 22.979, 10.466)
+
+[2026-01-08 19:46:57.705] [08-01-2026 19:46:57] [DamperProcessing]   - Wall Centerline Point: (0.722, 22.979, 10.466)
+
+[2026-01-08 19:46:57.706] [08-01-2026 19:46:57] [DamperProcessing] ✅ Extracted damper type/family: TypeName='Motorized', FamilyName='Motorised Smoke Fire Damper' for damper 732146
+
+[2026-01-08 19:46:57.707] [08-01-2026 19:46:57] [DamperProcessing] ✅ Damper 732146 has MEP connector: HasMepConnector=true, DamperConnectorSide='-Y' - will use asymmetric clearance
+
+[2026-01-08 19:46:57.713] [08-01-2026 19:46:57] [DamperProcessing] ✅ Generated deterministic GUID b46b82d4-41cf-708b-b85c-f30fd2f0bf1d for MEP=732146, Host=321069, PlacementPoint=(0.476,22.979,10.466), Tolerance=30.5mm (using damper centroid, stable)
+
+[2026-01-08 19:46:57.714] [08-01-2026 19:46:57] [DAMPER-PERF] CreateClashZoneForDamper called with 39 opening keys
+
+[2026-01-08 19:46:57.716] [08-01-2026 19:46:57] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='475x200-475x200'
+
+[2026-01-08 19:46:57.719] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found HOST wall 321069 for damper 732148 - placement point is INSIDE wall bbox
+
+[2026-01-08 19:46:57.720] [08-01-2026 19:46:57] [DamperProcessing] ✅ Transformed wall 321069 bounding box to host coordinates
+
+[2026-01-08 19:46:57.722] [08-01-2026 19:46:57] [DamperProcessing] 🔍 GetStructuralElementType: Element=321069, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2026-01-08 19:46:57.723] [08-01-2026 19:46:57] [DamperProcessing] ✅ Element 321069 is Wall - returning 'Wall'
+
+[2026-01-08 19:46:57.725] [08-01-2026 19:46:57] [DamperProcessing] ⚠️⚠️⚠️ WARNING: Could not extract MEP Element Level Elevation for damper 732148, level 'Level 0' - Elevation from Level and Bottom of Opening may use 0 elevation!
+
+[2026-01-08 19:46:57.728] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (0.722, 22.251, 7.787) for damper 732148, wall 321069
+
+[2026-01-08 19:46:57.730] [08-01-2026 19:46:57] [DamperProcessing] 🔍 StructuralElementType for wall 321069: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2026-01-08 19:46:57.732] [08-01-2026 19:46:57] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: ''
+
+[2026-01-08 19:46:57.733] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (0.722, 22.251, 7.787) for damper 732148, wall 321069, orientation 'Y'
+
+[2026-01-08 19:46:57.738] [08-01-2026 19:46:57] [DamperProcessing]   - Damper Placement Point: (0.435, 22.251, 7.787)
+
+[2026-01-08 19:46:57.739] [08-01-2026 19:46:57] [DamperProcessing]   - Wall Centerline Point: (0.722, 22.251, 7.787)
+
+[2026-01-08 19:46:57.741] [08-01-2026 19:46:57] [DamperProcessing] ✅ Extracted damper type/family: TypeName='Motorized', FamilyName='Motorised Smoke Fire Damper' for damper 732148
+
+[2026-01-08 19:46:57.743] [08-01-2026 19:46:57] [DamperProcessing] ✅ Damper 732148 has MEP connector: HasMepConnector=true, DamperConnectorSide='-Y' - will use asymmetric clearance
+
+[2026-01-08 19:46:57.748] [08-01-2026 19:46:57] [DamperProcessing] ✅ Generated deterministic GUID cf8ae4bc-437c-d894-d4e0-2a9b22c220a2 for MEP=732148, Host=321069, PlacementPoint=(0.435,22.251,7.787), Tolerance=30.5mm (using damper centroid, stable)
+
+[2026-01-08 19:46:57.750] [08-01-2026 19:46:57] [DAMPER-PERF] CreateClashZoneForDamper called with 39 opening keys
+
+[2026-01-08 19:46:57.751] [08-01-2026 19:46:57] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='500x300-500x300'
+
+[2026-01-08 19:46:57.753] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found HOST wall 321070 for damper 733265 - placement point is INSIDE wall bbox
+
+[2026-01-08 19:46:57.754] [08-01-2026 19:46:57] [DamperProcessing] ✅ Transformed wall 321070 bounding box to host coordinates
+
+[2026-01-08 19:46:57.756] [08-01-2026 19:46:57] [DamperProcessing] 🔍 GetStructuralElementType: Element=321070, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2026-01-08 19:46:57.758] [08-01-2026 19:46:57] [DamperProcessing] ✅ Element 321070 is Wall - returning 'Wall'
+
+[2026-01-08 19:46:57.759] [08-01-2026 19:46:57] [DamperProcessing] ⚠️⚠️⚠️ WARNING: Could not extract MEP Element Level Elevation for damper 733265, level 'Level 0' - Elevation from Level and Bottom of Opening may use 0 elevation!
+
+[2026-01-08 19:46:57.763] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (41.833, 0.722, 7.035) for damper 733265, wall 321070
+
+[2026-01-08 19:46:57.765] [08-01-2026 19:46:57] [DamperProcessing] 🔍 StructuralElementType for wall 321070: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2026-01-08 19:46:57.766] [08-01-2026 19:46:57] [DamperProcessing] 🔍 HostOrientation: 'X', MepElementOrientationDirection: ''
+
+[2026-01-08 19:46:57.768] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (41.833, 0.722, 7.035) for damper 733265, wall 321070, orientation 'X'
+
+[2026-01-08 19:46:57.770] [08-01-2026 19:46:57] [DamperProcessing]   - Damper Placement Point: (41.833, 0.476, 7.035)
+
+[2026-01-08 19:46:57.772] [08-01-2026 19:46:57] [DamperProcessing]   - Wall Centerline Point: (41.833, 0.722, 7.035)
+
+[2026-01-08 19:46:57.774] [08-01-2026 19:46:57] [DamperProcessing] ✅ Extracted damper type/family: TypeName='Motorized', FamilyName='Motorised Smoke Fire Damper' for damper 733265
+
+[2026-01-08 19:46:57.775] [08-01-2026 19:46:57] [DamperProcessing] ✅ Damper 733265 has MEP connector: HasMepConnector=true, DamperConnectorSide='+X' - will use asymmetric clearance
+
+[2026-01-08 19:46:57.781] [08-01-2026 19:46:57] [DamperProcessing] ✅ Generated deterministic GUID 634a2b88-42f3-169c-6829-b1f5bcc0b8c1 for MEP=733265, Host=321070, PlacementPoint=(41.833,0.476,7.035), Tolerance=30.5mm (using damper centroid, stable)
+
+[2026-01-08 19:46:57.782] [08-01-2026 19:46:57] [DAMPER-PERF] CreateClashZoneForDamper called with 39 opening keys
+
+[2026-01-08 19:46:57.784] [08-01-2026 19:46:57] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='475x200-475x200'
+
+[2026-01-08 19:46:57.785] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found HOST wall 321070 for damper 733294 - placement point is INSIDE wall bbox
+
+[2026-01-08 19:46:57.787] [08-01-2026 19:46:57] [DamperProcessing] ✅ Transformed wall 321070 bounding box to host coordinates
+
+[2026-01-08 19:46:57.789] [08-01-2026 19:46:57] [DamperProcessing] 🔍 GetStructuralElementType: Element=321070, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2026-01-08 19:46:57.791] [08-01-2026 19:46:57] [DamperProcessing] ✅ Element 321070 is Wall - returning 'Wall'
+
+[2026-01-08 19:46:57.792] [08-01-2026 19:46:57] [DamperProcessing] ⚠️⚠️⚠️ WARNING: Could not extract MEP Element Level Elevation for damper 733294, level 'Level 0' - Elevation from Level and Bottom of Opening may use 0 elevation!
+
+[2026-01-08 19:46:57.796] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (43.783, 0.722, 4.757) for damper 733294, wall 321070
+
+[2026-01-08 19:46:57.797] [08-01-2026 19:46:57] [DamperProcessing] 🔍 StructuralElementType for wall 321070: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2026-01-08 19:46:57.799] [08-01-2026 19:46:57] [DamperProcessing] 🔍 HostOrientation: 'X', MepElementOrientationDirection: ''
+
+[2026-01-08 19:46:57.801] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (43.783, 0.722, 4.757) for damper 733294, wall 321070, orientation 'X'
+
+[2026-01-08 19:46:57.803] [08-01-2026 19:46:57] [DamperProcessing]   - Damper Placement Point: (43.783, 1.050, 4.757)
+
+[2026-01-08 19:46:57.804] [08-01-2026 19:46:57] [DamperProcessing]   - Wall Centerline Point: (43.783, 0.722, 4.757)
+
+[2026-01-08 19:46:57.806] [08-01-2026 19:46:57] [DamperProcessing] ✅ Extracted damper type/family: TypeName='MSD', FamilyName='Motorised Smoke Damper' for damper 733294
+
+[2026-01-08 19:46:57.808] [08-01-2026 19:46:57] [DamperProcessing] ✅ Damper 733294 has MEP connector: HasMepConnector=true, DamperConnectorSide='+X' - will use asymmetric clearance
+
+[2026-01-08 19:46:57.813] [08-01-2026 19:46:57] [DamperProcessing] ✅ Generated deterministic GUID 8abcb5eb-fa43-1dd6-0735-d8cf977ff6cb for MEP=733294, Host=321070, PlacementPoint=(43.783,1.050,4.757), Tolerance=30.5mm (using damper centroid, stable)
+
+[2026-01-08 19:46:57.814] [08-01-2026 19:46:57] [DAMPER-PERF] CreateClashZoneForDamper called with 39 opening keys
+
+[2026-01-08 19:46:57.817] [08-01-2026 19:46:57] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='400x200-400x200'
+
+[2026-01-08 19:46:57.819] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found HOST wall 321069 for damper 733631 - placement point is INSIDE wall bbox
+
+[2026-01-08 19:46:57.821] [08-01-2026 19:46:57] [DamperProcessing] ✅ Transformed wall 321069 bounding box to host coordinates
+
+[2026-01-08 19:46:57.822] [08-01-2026 19:46:57] [DamperProcessing] 🔍 GetStructuralElementType: Element=321069, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2026-01-08 19:46:57.824] [08-01-2026 19:46:57] [DamperProcessing] ✅ Element 321069 is Wall - returning 'Wall'
+
+[2026-01-08 19:46:57.826] [08-01-2026 19:46:57] [DamperProcessing] ⚠️⚠️⚠️ WARNING: Could not extract MEP Element Level Elevation for damper 733631, level 'Level 0' - Elevation from Level and Bottom of Opening may use 0 elevation!
+
+[2026-01-08 19:46:57.829] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (0.722, 35.102, 10.519) for damper 733631, wall 321069
+
+[2026-01-08 19:46:57.831] [08-01-2026 19:46:57] [DamperProcessing] 🔍 StructuralElementType for wall 321069: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2026-01-08 19:46:57.832] [08-01-2026 19:46:57] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: ''
+
+[2026-01-08 19:46:57.834] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (0.722, 35.102, 10.519) for damper 733631, wall 321069, orientation 'Y'
+
+[2026-01-08 19:46:57.836] [08-01-2026 19:46:57] [DamperProcessing]   - Damper Placement Point: (0.394, 35.102, 10.519)
+
+[2026-01-08 19:46:57.837] [08-01-2026 19:46:57] [DamperProcessing]   - Wall Centerline Point: (0.722, 35.102, 10.519)
+
+[2026-01-08 19:46:57.839] [08-01-2026 19:46:57] [DamperProcessing] ✅ Extracted damper type/family: TypeName='MSD', FamilyName='Motorised Smoke Damper' for damper 733631
+
+[2026-01-08 19:46:57.841] [08-01-2026 19:46:57] [DamperProcessing] ✅ Damper 733631 has MEP connector: HasMepConnector=true, DamperConnectorSide='-Y' - will use asymmetric clearance
+
+[2026-01-08 19:46:57.846] [08-01-2026 19:46:57] [DamperProcessing] ✅ Generated deterministic GUID 26272a4f-9f89-805c-3c95-a1c1e7f340b9 for MEP=733631, Host=321069, PlacementPoint=(0.394,35.102,10.519), Tolerance=30.5mm (using damper centroid, stable)
+
+[2026-01-08 19:46:57.848] [08-01-2026 19:46:57] [DAMPER-PERF] CreateClashZoneForDamper called with 39 opening keys
+
+[2026-01-08 19:46:57.849] [08-01-2026 19:46:57] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='400x200-400x200'
+
+[2026-01-08 19:46:57.851] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found HOST wall 321069 for damper 733651 - placement point is INSIDE wall bbox
+
+[2026-01-08 19:46:57.853] [08-01-2026 19:46:57] [DamperProcessing] ✅ Transformed wall 321069 bounding box to host coordinates
+
+[2026-01-08 19:46:57.856] [08-01-2026 19:46:57] [DamperProcessing] 🔍 GetStructuralElementType: Element=321069, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2026-01-08 19:46:57.858] [08-01-2026 19:46:57] [DamperProcessing] ✅ Element 321069 is Wall - returning 'Wall'
+
+[2026-01-08 19:46:57.860] [08-01-2026 19:46:57] [DamperProcessing] ⚠️⚠️⚠️ WARNING: Could not extract MEP Element Level Elevation for damper 733651, level 'Level 0' - Elevation from Level and Bottom of Opening may use 0 elevation!
+
+[2026-01-08 19:46:57.864] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (0.722, 36.574, 10.519) for damper 733651, wall 321069
+
+[2026-01-08 19:46:57.866] [08-01-2026 19:46:57] [DamperProcessing] 🔍 StructuralElementType for wall 321069: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2026-01-08 19:46:57.868] [08-01-2026 19:46:57] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: ''
+
+[2026-01-08 19:46:57.869] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (0.722, 36.574, 10.519) for damper 733651, wall 321069, orientation 'Y'
+
+[2026-01-08 19:46:57.872] [08-01-2026 19:46:57] [DamperProcessing]   - Damper Placement Point: (0.394, 36.574, 10.519)
+
+[2026-01-08 19:46:57.873] [08-01-2026 19:46:57] [DamperProcessing]   - Wall Centerline Point: (0.722, 36.574, 10.519)
+
+[2026-01-08 19:46:57.876] [08-01-2026 19:46:57] [DamperProcessing] ✅ Extracted damper type/family: TypeName='MSD', FamilyName='Motorised Smoke Damper' for damper 733651
+
+[2026-01-08 19:46:57.877] [08-01-2026 19:46:57] [DamperProcessing] ✅ Damper 733651 has MEP connector: HasMepConnector=true, DamperConnectorSide='+Y' - will use asymmetric clearance
+
+[2026-01-08 19:46:57.884] [08-01-2026 19:46:57] [DamperProcessing] ✅ Generated deterministic GUID b3515ca9-b4dd-c7fc-d6e6-133c2578ecdd for MEP=733651, Host=321069, PlacementPoint=(0.394,36.574,10.519), Tolerance=30.5mm (using damper centroid, stable)
+
+[2026-01-08 19:46:57.886] [08-01-2026 19:46:57] [DAMPER-PERF] CreateClashZoneForDamper called with 39 opening keys
+
+[2026-01-08 19:46:57.887] [08-01-2026 19:46:57] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='200x200-200x200'
+
+[2026-01-08 19:46:57.889] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found HOST wall 321069 for damper 733736 - placement point is INSIDE wall bbox
+
+[2026-01-08 19:46:57.891] [08-01-2026 19:46:57] [DamperProcessing] ✅ Transformed wall 321069 bounding box to host coordinates
+
+[2026-01-08 19:46:57.894] [08-01-2026 19:46:57] [DamperProcessing] 🔍 GetStructuralElementType: Element=321069, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2026-01-08 19:46:57.896] [08-01-2026 19:46:57] [DamperProcessing] ✅ Element 321069 is Wall - returning 'Wall'
+
+[2026-01-08 19:46:57.898] [08-01-2026 19:46:57] [DamperProcessing] ⚠️⚠️⚠️ WARNING: Could not extract MEP Element Level Elevation for damper 733736, level 'Level 0' - Elevation from Level and Bottom of Opening may use 0 elevation!
+
+[2026-01-08 19:46:57.901] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (0.722, 28.281, 10.362) for damper 733736, wall 321069
+
+[2026-01-08 19:46:57.903] [08-01-2026 19:46:57] [DamperProcessing] 🔍 StructuralElementType for wall 321069: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2026-01-08 19:46:57.905] [08-01-2026 19:46:57] [DamperProcessing] 🔍 HostOrientation: 'Y', MepElementOrientationDirection: ''
+
+[2026-01-08 19:46:57.906] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (0.722, 28.281, 10.362) for damper 733736, wall 321069, orientation 'Y'
+
+[2026-01-08 19:46:57.908] [08-01-2026 19:46:57] [DamperProcessing]   - Damper Placement Point: (0.394, 28.281, 10.362)
+
+[2026-01-08 19:46:57.910] [08-01-2026 19:46:57] [DamperProcessing]   - Wall Centerline Point: (0.722, 28.281, 10.362)
+
+[2026-01-08 19:46:57.912] [08-01-2026 19:46:57] [DamperProcessing] ✅ Extracted damper type/family: TypeName='MSD', FamilyName='Motorised Smoke Damper' for damper 733736
+
+[2026-01-08 19:46:57.915] [08-01-2026 19:46:57] [DamperProcessing] ✅ Damper 733736 has MEP connector: HasMepConnector=true, DamperConnectorSide='+Y' - will use asymmetric clearance
+
+[2026-01-08 19:46:57.924] [08-01-2026 19:46:57] [DamperProcessing] ✅ Generated deterministic GUID 6564c781-c6cb-2232-2fa0-8b701e4909d3 for MEP=733736, Host=321069, PlacementPoint=(0.394,28.281,10.362), Tolerance=30.5mm (using damper centroid, stable)
+
+[2026-01-08 19:46:57.926] [08-01-2026 19:46:57] [DAMPER-PERF] CreateClashZoneForDamper called with 39 opening keys
+
+[2026-01-08 19:46:57.928] [08-01-2026 19:46:57] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='400x200-400x200'
+
+[2026-01-08 19:46:57.930] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found HOST wall 321070 for damper 733825 - placement point is INSIDE wall bbox
+
+[2026-01-08 19:46:57.931] [08-01-2026 19:46:57] [DamperProcessing] ✅ Transformed wall 321070 bounding box to host coordinates
+
+[2026-01-08 19:46:57.934] [08-01-2026 19:46:57] [DamperProcessing] 🔍 GetStructuralElementType: Element=321070, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2026-01-08 19:46:57.935] [08-01-2026 19:46:57] [DamperProcessing] ✅ Element 321070 is Wall - returning 'Wall'
+
+[2026-01-08 19:46:57.937] [08-01-2026 19:46:57] [DamperProcessing] ⚠️⚠️⚠️ WARNING: Could not extract MEP Element Level Elevation for damper 733825, level 'Level 0' - Elevation from Level and Bottom of Opening may use 0 elevation!
+
+[2026-01-08 19:46:57.940] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (60.269, 0.722, 8.705) for damper 733825, wall 321070
+
+[2026-01-08 19:46:57.942] [08-01-2026 19:46:57] [DamperProcessing] 🔍 StructuralElementType for wall 321070: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2026-01-08 19:46:57.943] [08-01-2026 19:46:57] [DamperProcessing] 🔍 HostOrientation: 'X', MepElementOrientationDirection: ''
+
+[2026-01-08 19:46:57.945] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (60.269, 0.722, 8.705) for damper 733825, wall 321070, orientation 'X'
+
+[2026-01-08 19:46:57.947] [08-01-2026 19:46:57] [DamperProcessing]   - Damper Placement Point: (60.269, 0.435, 8.705)
+
+[2026-01-08 19:46:57.948] [08-01-2026 19:46:57] [DamperProcessing]   - Wall Centerline Point: (60.269, 0.722, 8.705)
+
+[2026-01-08 19:46:57.950] [08-01-2026 19:46:57] [DamperProcessing] ✅ Extracted damper type/family: TypeName='Motorized', FamilyName='Motorised Smoke Fire Damper' for damper 733825
+
+[2026-01-08 19:46:57.952] [08-01-2026 19:46:57] [DamperProcessing] ✅ Damper 733825 has MEP connector: HasMepConnector=true, DamperConnectorSide='+X' - will use asymmetric clearance
+
+[2026-01-08 19:46:57.957] [08-01-2026 19:46:57] [DamperProcessing] ✅ Generated deterministic GUID 50e781f3-5ff7-bb4b-d74f-d42c9551aac7 for MEP=733825, Host=321070, PlacementPoint=(60.269,0.435,8.705), Tolerance=30.5mm (using damper centroid, stable)
+
+[2026-01-08 19:46:57.959] [08-01-2026 19:46:57] [DAMPER-PERF] CreateClashZoneForDamper called with 39 opening keys
+
+[2026-01-08 19:46:57.960] [08-01-2026 19:46:57] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='500x300-500x300'
+
+[2026-01-08 19:46:57.962] [08-01-2026 19:46:57] [DamperProcessing] ✅ Found HOST wall 321070 for damper 733847 - placement point is INSIDE wall bbox
+
+[2026-01-08 19:46:57.964] [08-01-2026 19:46:57] [DamperProcessing] ✅ Transformed wall 321070 bounding box to host coordinates
+
+[2026-01-08 19:46:57.966] [08-01-2026 19:46:57] [DamperProcessing] 🔍 GetStructuralElementType: Element=321070, Type=Wall, Category=Walls, CategoryId=-2000011
+
+[2026-01-08 19:46:57.967] [08-01-2026 19:46:57] [DamperProcessing] ✅ Element 321070 is Wall - returning 'Wall'
+
+[2026-01-08 19:46:57.969] [08-01-2026 19:46:57] [DamperProcessing] ⚠️⚠️⚠️ WARNING: Could not extract MEP Element Level Elevation for damper 733847, level 'Level 0' - Elevation from Level and Bottom of Opening may use 0 elevation!
+
+[2026-01-08 19:46:57.972] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Wall/Framing Centerline Point: (66.314, 0.722, 8.022) for damper 733847, wall 321070
+
+[2026-01-08 19:46:57.974] [08-01-2026 19:46:57] [DamperProcessing] 🔍 StructuralElementType for wall 321070: 'Wall' (Wall type: Wall, Category: Walls)
+
+[2026-01-08 19:46:57.976] [08-01-2026 19:46:57] [DamperProcessing] 🔍 HostOrientation: 'X', MepElementOrientationDirection: ''
+
+[2026-01-08 19:46:57.978] [08-01-2026 19:46:57] [DamperProcessing] ✅ Calculated Sleeve Placement Point: (66.314, 0.722, 8.022) for damper 733847, wall 321070, orientation 'X'
+
+[2026-01-08 19:46:57.979] [08-01-2026 19:46:57] [DamperProcessing]   - Damper Placement Point: (66.314, 0.435, 8.022)
+
+[2026-01-08 19:46:57.981] [08-01-2026 19:46:57] [DamperProcessing]   - Wall Centerline Point: (66.314, 0.722, 8.022)
+
+[2026-01-08 19:46:57.983] [08-01-2026 19:46:57] [DamperProcessing] ✅ Extracted damper type/family: TypeName='Motorized', FamilyName='Motorised Smoke Fire Damper' for damper 733847
+
+[2026-01-08 19:46:57.986] [08-01-2026 19:46:57] [DamperProcessing] ✅ Damper 733847 has MEP connector: HasMepConnector=true, DamperConnectorSide='+X' - will use asymmetric clearance
+
+[2026-01-08 19:46:57.991] [08-01-2026 19:46:57] [DamperProcessing] ✅ Generated deterministic GUID bcf58f2f-9a96-94a2-476d-3c39f15331b6 for MEP=733847, Host=321070, PlacementPoint=(66.314,0.435,8.022), Tolerance=30.5mm (using damper centroid, stable)
+
+[2026-01-08 19:46:57.992] [08-01-2026 19:46:57] [DAMPER-PERF] CreateClashZoneForDamper called with 39 opening keys
+
+[2026-01-08 19:46:57.994] [08-01-2026 19:46:57] [DamperProcessing] ✅ GetSizeParameterValue: Found 'Size'='500x300-500x300'
+
+[2026-01-08 19:46:57.998] [08-01-2026 19:46:57] [DamperProcessing] ✅ Bulk processing complete: 21 ClashZones created from 21 dampers
+
+[2026-01-08 19:46:58.000] [08-01-2026 19:46:58] [REFRESH-REFACTORED] ✅ Damper processing complete: 21 ClashZones created
+
+[2026-01-08 19:46:58.003] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] Phase 2: Running detection (Mode=FullDetection)...
+
+[2026-01-08 19:46:58.017] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] 🔴 Running detection with FULL collector-level multi-filter optimization...
+
+[2026-01-08 19:46:58.023] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] View3D: Name='{3D}', IsSectionBoxActive=True
+
+[2026-01-08 19:46:58.025] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] ✅ Section box outline: Min=(-181.81, -393.72, -103.80), Max=(170.10, 510.37, 111.56)
+
+[2026-01-08 19:46:58.028] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] Building MEP category filters for 1 categories: Duct Accessories
+
+[2026-01-08 19:46:58.030] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] ⏭️ Skipping Duct Accessories category - handled separately by DamperProcessingService
+
+[2026-01-08 19:46:58.031] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] ⚠️ No valid MEP category filters built - check category names
+
+[2026-01-08 19:46:58.035] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] ✅ Added host category filter: Walls -> OST_Walls
+
+[2026-01-08 19:46:58.037] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] ========== 5-STEP FILTER CONFIGURATION ==========
+
+[2026-01-08 19:46:58.038] [08-01-2026 19:46:58] [5-STEP-FILTER] Filter 1 (Section Box): ✅ ACTIVE
+
+[2026-01-08 19:46:58.040] [08-01-2026 19:46:58] [5-STEP-FILTER] Filter 2 (Reference File): 1 file(s) selected
+
+[2026-01-08 19:46:58.042] [08-01-2026 19:46:58] [5-STEP-FILTER] Filter 3 (MEP Categories): 1 category/categories selected
+
+[2026-01-08 19:46:58.043] [08-01-2026 19:46:58] [5-STEP-FILTER] Filter 4 (Host File): 1 file(s) selected
+
+[2026-01-08 19:46:58.045] [08-01-2026 19:46:58] [5-STEP-FILTER] Filter 5 (Host Categories): 1 type(s) selected
+
+[2026-01-08 19:46:58.047] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] =================================================
+
+[2026-01-08 19:46:58.048] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] Collecting MEP elements with collector-level filters...
+
+[2026-01-08 19:46:58.059] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] ========== MEP ELEMENT COLLECTION: 5-STEP FILTER VERIFICATION ==========
+
+[2026-01-08 19:46:58.061] [08-01-2026 19:46:58] [5-STEP-FILTER] ✅ Filter 1 (Section Box): Applied at collector level - BoundingBoxIntersectsFilter
+
+[2026-01-08 19:46:58.063] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] ⚠️ No MEP category filters provided - returning empty list
+
+[2026-01-08 19:46:58.065] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] ✅ Collected 0 MEP elements (pre-filtered at collector level)
+
+[2026-01-08 19:46:58.066] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] Collecting host elements with collector-level filters...
+
+[2026-01-08 19:46:58.078] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] ========== HOST ELEMENT COLLECTION: 5-STEP FILTER VERIFICATION ==========
+
+[2026-01-08 19:46:58.079] [08-01-2026 19:46:58] [5-STEP-FILTER] ✅ Filter 1 (Section Box): Applied at collector level - BoundingBoxIntersectsFilter
+
+[2026-01-08 19:46:58.081] [08-01-2026 19:46:58] [5-STEP-FILTER] ✅ Filter 5 (Host Categories): Category filter applied at collector level - 1 category filter(s)
+
+[2026-01-08 19:46:58.082] [08-01-2026 19:46:58] [5-STEP-FILTER] ⚠️ Filter 5 (Host Categories): Property filters (wall thickness, structural floors) applied AFTER collection (Revit API limitation)
+
+[2026-01-08 19:46:58.084] [08-01-2026 19:46:58] [5-STEP-FILTER] ✅ Combined 2 filters into compound filter (LogicalAndFilter) - ALL applied at collector level BEFORE element loading
+
+[2026-01-08 19:46:58.085] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] Collecting host elements from 1 linked files: AR-00001
+
+[2026-01-08 19:46:58.086] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] ⚠️ Host elements are ALWAYS in linked documents (skipping active document)
+
+[2026-01-08 19:46:58.088] [08-01-2026 19:46:58] [5-STEP-FILTER] ✅ Filter 4 (Host File): 1 linked file(s) selected - collector-level filters applied per file
+
+[2026-01-08 19:46:58.092] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] Found 6 total link instances in document
+
+[2026-01-08 19:46:58.094] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR]   Available link: Name='ME-00001.rvt : 9 : location Shared', Title='ME-00001', PathName='ME-00001'
+
+[2026-01-08 19:46:58.096] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR]   Available link: Name='PH-00001.rvt : 12 : location Shared', Title='PH-00001', PathName='PH-00001'
+
+[2026-01-08 19:46:58.097] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR]   Available link: Name='FP-00001.rvt : 13 : location Shared', Title='FP-00001', PathName='FP-00001'
+
+[2026-01-08 19:46:58.099] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR]   Available link: Name='EL-00001.rvt : 14 : location Shared', Title='EL-00001', PathName='EL-00001'
+
+[2026-01-08 19:46:58.101] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR]   Available link: Name='ST-00001.rvt : 15 : location Shared', Title='ST-00001', PathName='ST-00001'
+
+[2026-01-08 19:46:58.103] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR]   Available link: Name='AR-00001.rvt : 17 : location <Not Shared>', Title='AR-00001', PathName='AR-00001'
+
+[2026-01-08 19:46:58.105] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] ✅ Matched linked file: Name='AR-00001.rvt : 17 : location <Not Shared>', Title='AR-00001'
+
+[2026-01-08 19:46:58.107] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] Matched 1 linked files for host element collection
+
+[2026-01-08 19:46:58.109] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] Collecting host elements from linked document: AR-00001
+
+[2026-01-08 19:46:58.114] [08-01-2026 19:46:58] [5-STEP-FILTER] ✅ Collected 11 elements from AR-00001 (pre-filtered by Filters 1+5 at collector level)
+
+[2026-01-08 19:46:58.117] [08-01-2026 19:46:58] [PROPERTY-FILTER] MinWallThickness setting loaded: 7mm (will filter walls thinner than this)
+
+[2026-01-08 19:46:58.120] [08-01-2026 19:46:58] [5-STEP-FILTER] ✅ Filter 5 (Property Filters): Applied post-collection - 11 elements remaining after property filters
+
+[2026-01-08 19:46:58.122] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] ✅ Collected 11 host elements from linked document: AR-00001
+
+[2026-01-08 19:46:58.124] [08-01-2026 19:46:58] [5-STEP-FILTER] ========== HOST COLLECTION COMPLETE: 11 total elements (Filters 1+4+5 applied: 1+4+5(category) at collector level, 5(property) post-collection) ==========
+
+[2026-01-08 19:46:58.125] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] ✅ Collected 11 host elements (pre-filtered at collector level)
+
+[2026-01-08 19:46:58.127] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] ⚠️ No elements collected - returning empty list
+
+[2026-01-08 19:46:58.131] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] Detection complete: 0 new zones, 0 total (duct accessories handled separately)
+
+[2026-01-08 19:46:58.133] [08-01-2026 19:46:58] [REFRESH-REFACTORED] ✅ Merged results: 0 from intersections + 21 from dampers = 21 total
+
+[2026-01-08 19:46:58.135] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] Phase 3: Post-processing results...
+
+[2026-01-08 19:46:58.140] [08-01-2026 19:46:58] [XML-CACHE] Updated cache with 21 clash zones
+
+[2026-01-08 19:46:58.141] [08-01-2026 19:46:58] [INTERSECTION-PROCESSOR] Post-processing complete
+
+[2026-01-08 19:46:58.176] [08-01-2026 19:46:58] [PARAM-CAPTURE-BATCH] Starting batch parameter capture for 21 zones...
+
+[2026-01-08 19:46:58.178] [08-01-2026 19:46:58] [PARAM-CAPTURE-BATCH] Collected 21 unique MEP elements and 2 unique host elements
+
+[2026-01-08 19:46:58.208] [08-01-2026 19:46:58] [PARAM-CAPTURE-BATCH] Element retrieval: 27ms (23 elements)
+
+[2026-01-08 19:46:58.249] [08-01-2026 19:46:58] [PARAM-CAPTURE-BATCH] Parameter processing: 39ms
+
+[2026-01-08 19:46:58.254] [08-01-2026 19:46:58] [PARAM-CAPTURE-BATCH] Parameter mapping: 2ms
+
+[2026-01-08 19:46:58.256] [08-01-2026 19:46:58] [PARAM-CAPTURE-BATCH] ✅ Batch capture complete: 21 zones in 78ms
+
+[2026-01-08 19:46:58.258] [08-01-2026 19:46:58] [PARAM-CAPTURE-BATCH] Total params: 178 → 220 (✅ NO LOSS)
+
+[2026-01-08 19:46:58.259] [08-01-2026 19:46:58] [PARAM-CAPTURE-BATCH] Average: 10.5 params/zone
+
+[2026-01-08 19:46:58.261] [08-01-2026 19:46:58] [PARAM-CAPTURE-BATCH] String pool size: 85 unique strings
+
+[2026-01-08 19:46:58.337] [08-01-2026 19:46:58] [MERGE-SAVE] Starting MergeAndSave - AllClashZones: 21, NewClashZones: 21
+
+[2026-01-08 19:46:58.339] [08-01-2026 19:46:58] [MERGE-SAVE] Loading enabled filter from: Ventilation
+
+[2026-01-08 19:46:58.346] [08-01-2026 19:46:58] [MERGE-SAVE] ✅ Enabled filter found: 'Ventilation'
+
+[2026-01-08 19:46:58.350] [08-01-2026 19:46:58] [SQLite] [SQLite] Assembly directory: C:\Users\jse2084\AppData\Local\Temp\RevitAddins\JSE_RevitAddin_MEP_OPENINGS-Executing-20260108_194557_4528
+
+[2026-01-08 19:46:58.352] [08-01-2026 19:46:58] [SQLite] [SQLite] ✅ Found dependency: System.Data.SQLite.dll
+
+[2026-01-08 19:46:58.353] [08-01-2026 19:46:58] [SQLite] [SQLite] ✅ Found dependency: x64\SQLite.Interop.dll
+
+[2026-01-08 19:46:58.355] [08-01-2026 19:46:58] [SQLite] [SQLite] Filters directory: C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model -00001\Filters
+
+[2026-01-08 19:46:58.357] [08-01-2026 19:46:58] [SQLite] [SQLite] Database path: C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model -00001\Filters\Shared_Test_Model_-00001_SleevePersistence.db
+
+[2026-01-08 19:46:58.360] [08-01-2026 19:46:58] [SQLite] [SQLite] ✅ Connection opened successfully
+
+[2026-01-08 19:46:58.362] [08-01-2026 19:46:58] [SQLite] [SQLite] ⏭️ Skipping schema verification (session-cached)
+
+[2026-01-08 19:46:58.364] [08-01-2026 19:46:58] [SQLite] [SQLite] ✅ Database ready (1916928 bytes)
+
+[2026-01-08 19:46:58.366] [08-01-2026 19:46:58] [CLASH-ZONE-PERSISTENCE] ✅ SQLite dual-write enabled: C:\Users\jse2084\AppData\Roaming\JSE_MEP_Openings\Projects\Shared Test Model -00001\Filters\Shared_Test_Model_-00001_SleevePersistence.db
+
+[2026-01-08 19:46:58.368] [08-01-2026 19:46:58] [PERSIST-NAME] Saving ALL clash zones: Raw='Ventilation', Normalized='Ventilation', TotalZones=21
+
+[2026-01-08 19:46:58.369] [08-01-2026 19:46:58] [MERGE-SAVE] Calling SaveClashZones with 21 zones
+
+[2026-01-08 19:46:58.382] [08-01-2026 19:46:58] [CLASH-ZONE-PERSISTENCE] SaveClashZones CALLED: Zones=21, Filter='Ventilation', TargetFilter=Ventilation, SQLiteRepo=EXISTS
+
+[2026-01-08 19:46:58.389] [08-01-2026 19:46:58] [CLASH-ZONE-PERSISTENCE] Saving 21 clash zones across 1 categories
+
+[2026-01-08 19:46:58.391] [08-01-2026 19:46:58] [CLASH-ZONE-PERSISTENCE] Enriched 0/21 zones with MEP orientation\n
+[2026-01-08 19:46:58.395] [08-01-2026 19:46:58] [SQLite] [SQLite][BULK-OPTIMIZED] ⚡ Starting multi-category bulk save for 21 zones
+
+[2026-01-08 19:46:58.416] [08-01-2026 19:46:58] [SQLite] [SQLite][BATCH] Extracted 1 unique file combos from 21 zones
+
+[2026-01-08 19:46:58.418] [08-01-2026 19:46:58] [SQLite] [SQLite][BATCH] Found 0/1 existing file combos
+
+[2026-01-08 19:46:58.420] [08-01-2026 19:46:58] [SQLite] [SQLite][BATCH-DEBUG] New combos to insert: 1
+
+[2026-01-08 19:46:58.422] [08-01-2026 19:46:58] [SQLite] [SQLite][BATCH-DEBUG] Sample new combo: Linked='ME-00001', Host='AR-00001', Cat='Duct Accessories'
+
+[2026-01-08 19:46:58.424] [08-01-2026 19:46:58] [SQLite] [SQLite][BATCH-DEBUG] INSERT executed, rows affected: 1
+
+[2026-01-08 19:46:58.426] [08-01-2026 19:46:58] [SQLite] [SQLite][BATCH] Created 1 new file combos
+
+[2026-01-08 19:46:58.427] [08-01-2026 19:46:58] [SQLite] [SQLite][BATCH-DEBUG] Mapped 21/21 zones to ComboIds
+
+[2026-01-08 19:46:58.429] [08-01-2026 19:46:58] [SQLite] [SQLite][BATCH] ⚡ BatchGetOrCreateFileCombos completed in 11ms for 21 zones (0.5ms per zone)
+
+[2026-01-08 19:46:58.614] [08-01-2026 19:46:58] [SQLite] [SQLite] ✅ Bulk R-tree index updated for 21 zones
+
+[2026-01-08 19:46:58.640] [08-01-2026 19:46:58] [SQLite] [SQLite] ⚠️ InsertOrUpdateSleeveSnapshotsInternal: No valid zones! Total=21, Null=0, NoIds=21, WithSleeveId=0, WithClusterId=0
+
+[2026-01-08 19:46:58.643] [08-01-2026 19:46:58] [SQLite] [SQLite][BULK-OPTIMIZED] ✅ Completed multi-category save in 247ms
+
+[2026-01-08 19:46:58.646] [08-01-2026 19:46:58] [CLASH-ZONE-PERSISTENCE] Processing category 'Duct Accessories' (XML/Logging) with 21 zones
+
+[2026-01-08 19:46:58.669] [08-01-2026 19:46:58] [PERSIST-DEBUG] Analyzing 21 valid zones for file combo grouping
+
+[2026-01-08 19:46:58.701] [08-01-2026 19:46:58] [PERSIST-DEBUG]   Sample combo key: Linked='ME-00001.rvt : 9 : location Shared', Host='AR-00001.rvt : 17 : location <Not Shared>'
+
+[2026-01-08 19:46:58.702] [08-01-2026 19:46:58] [PERSIST-DEBUG]   Sample combo key: Linked='ME-00001.rvt : 9 : location Shared', Host='AR-00001.rvt : 17 : location <Not Shared>'
+
+[2026-01-08 19:46:58.704] [08-01-2026 19:46:58] [PERSIST-DEBUG]   Sample combo key: Linked='ME-00001.rvt : 9 : location Shared', Host='AR-00001.rvt : 17 : location <Not Shared>'
+
+[2026-01-08 19:46:58.706] [08-01-2026 19:46:58] [PERSIST-DEBUG]   Sample combo key: Linked='ME-00001.rvt : 9 : location Shared', Host='AR-00001.rvt : 17 : location <Not Shared>'
+
+[2026-01-08 19:46:58.707] [08-01-2026 19:46:58] [PERSIST-DEBUG]   Sample combo key: Linked='ME-00001.rvt : 9 : location Shared', Host='AR-00001.rvt : 17 : location <Not Shared>'
+
+[2026-01-08 19:46:58.709] [08-01-2026 19:46:58] [PERSIST-DEBUG]   Sample combo key: Linked='ME-00001.rvt : 9 : location Shared', Host='AR-00001.rvt : 17 : location <Not Shared>'
+
+[2026-01-08 19:46:58.711] [08-01-2026 19:46:58] [PERSIST-DEBUG]   Sample combo key: Linked='ME-00001.rvt : 9 : location Shared', Host='AR-00001.rvt : 17 : location <Not Shared>'
+
+[2026-01-08 19:46:58.711] [08-01-2026 19:46:58] [PERSIST-DEBUG]   Sample combo key: Linked='ME-00001.rvt : 9 : location Shared', Host='AR-00001.rvt : 17 : location <Not Shared>'
+
+[2026-01-08 19:46:58.714] [08-01-2026 19:46:58] [PERSIST-DEBUG]   Sample combo key: Linked='ME-00001.rvt : 9 : location Shared', Host='AR-00001.rvt : 17 : location <Not Shared>'
+
+[2026-01-08 19:46:58.716] [08-01-2026 19:46:58] [PERSIST-DEBUG]   Sample combo key: Linked='ME-00001.rvt : 9 : location Shared', Host='AR-00001.rvt : 17 : location <Not Shared>'
+
+[2026-01-08 19:46:58.777] [08-01-2026 19:46:58] [PERSIST-DEBUG] Valid combos to persist for 'Duct Accessories': 1
+
+[2026-01-08 19:46:58.779] [08-01-2026 19:46:58] [PERSIST-DEBUG]   Combo: Linked='ME-00001.rvt : 9 : location Shared', Host='AR-00001.rvt : 17 : location <Not Shared>', Zones=21
+
+[2026-01-08 19:46:58.780] [08-01-2026 19:46:58] [MERGE-SAVE] ✅ SaveClashZones completed successfully
+
+[2026-01-08 19:46:58.797] [08-01-2026 19:46:58] [REFRESH-REFACTORED] [FORCE-DETECTION] ⚡ Force Detection Mode enabled - resetting all flags (preserving GUIDs)
+
+[2026-01-08 19:46:58.804] [08-01-2026 19:46:58] [REFRESH-REFACTORED] [FORCE-DETECTION] ✅ Reset all flags for 0 zones - GUIDs preserved
+
+[2026-01-08 19:46:58.806] [08-01-2026 19:46:58] [MERGE-SAVE] ✅ SECTION BOX ACTIVE: Min=(-181.81, -393.72, -103.80), Max=(170.10, 510.37, 111.56)
+
+[2026-01-08 19:46:58.807] 
+[08-01-2026 19:46:58] ========== IsCurrentClashFlag TRACING ==========
+
+[2026-01-08 19:46:58.809] [08-01-2026 19:46:58] UseBatchReadyForPlacementUpdate = True
+
+[2026-01-08 19:46:58.811] [08-01-2026 19:46:58] FilterNames: [Ventilation]
+
+[2026-01-08 19:46:58.812] [08-01-2026 19:46:58] Categories: [Duct Accessories]
+
+[2026-01-08 19:46:58.814] [08-01-2026 19:46:58] SectionBox: Present
+
+[2026-01-08 19:46:58.816] [08-01-2026 19:46:58] RESULT: markedCount = 21
+
+[2026-01-08 19:46:58.822] [08-01-2026 19:46:58] DB FLAG STATS: Total=0, IsCurrentClash=1: 0, ReadyForPlacement=1: 0, IsResolved=1: 0
+
+[2026-01-08 19:46:58.823] [08-01-2026 19:46:58] ========== END IsCurrentClashFlag TRACING ==========
+
+
+[2026-01-08 19:46:58.825] [08-01-2026 19:46:58] [MERGE-SAVE] [SECTION-BOX-FILTER] ✅ Set ReadyForPlacementFlag=1 for 21 zones
+
+[2026-01-08 19:46:58.827] [08-01-2026 19:46:58] [MERGE-SAVE] ⚠️ XML creation disabled - skipping base filter XML save (database only mode)
+

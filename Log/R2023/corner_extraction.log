@@ -1,0 +1,154 @@
+[2026-01-08 19:47:05.056] [19:47:05] [START] BATCH EXTRACTION: Processing 35 zones...
+
+[2026-01-08 19:47:05.069] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1271651
+   -> C1=(86.168,54.495,-0.771), C2=(86.824,54.495,-0.771)
+   -> C3=(86.168,55.151,-0.771), C4=(86.824,55.151,-0.771)
+
+[2026-01-08 19:47:05.071] [19:47:05] [SUCCESS] Extracted corners for 1271651
+
+[2026-01-08 19:47:05.074] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1271656
+   -> C1=(41.184,47.397,-0.771), C2=(43.153,47.397,-0.771)
+   -> C3=(41.184,49.365,-0.771), C4=(43.153,49.365,-0.771)
+
+[2026-01-08 19:47:05.076] [19:47:05] [SUCCESS] Extracted corners for 1271656
+
+[2026-01-08 19:47:05.078] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1271663
+   -> C1=(36.017,46.888,-0.771), C2=(37.822,46.888,-0.771)
+   -> C3=(36.017,48.693,-0.771), C4=(37.822,48.693,-0.771)
+
+[2026-01-08 19:47:05.079] [19:47:05] [SUCCESS] Extracted corners for 1271663
+
+[2026-01-08 19:47:05.082] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1271626
+   -> C1=(36.973,51.143,-0.771), C2=(37.957,51.143,-0.771)
+   -> C3=(36.973,52.127,-0.771), C4=(37.957,52.127,-0.771)
+
+[2026-01-08 19:47:05.084] [19:47:05] [SUCCESS] Extracted corners for 1271626
+
+[2026-01-08 19:47:05.086] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1271641
+   -> C1=(32.528,51.225,-0.771), C2=(33.348,51.225,-0.771)
+   -> C3=(32.528,52.045,-0.771), C4=(33.348,52.045,-0.771)
+
+[2026-01-08 19:47:05.087] [19:47:05] [SUCCESS] Extracted corners for 1271641
+
+[2026-01-08 19:47:05.090] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1271636
+   -> C1=(89.325,53.665,-0.771), C2=(90.145,53.665,-0.771)
+   -> C3=(89.325,54.485,-0.771), C4=(90.145,54.485,-0.771)
+
+[2026-01-08 19:47:05.092] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1271575
+   -> C1=(24.518,47.922,-0.771), C2=(25.830,47.922,-0.771)
+   -> C3=(24.518,49.234,-0.771), C4=(25.830,49.234,-0.771)
+
+[2026-01-08 19:47:05.094] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1271583
+   -> C1=(21.647,48.004,-0.771), C2=(22.795,48.004,-0.771)
+   -> C3=(21.647,49.152,-0.771), C4=(22.795,49.152,-0.771)
+
+[2026-01-08 19:47:05.096] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1271597
+   -> C1=(29.230,51.143,-0.771), C2=(30.215,51.143,-0.771)
+   -> C3=(29.230,52.127,-0.771), C4=(30.215,52.127,-0.771)
+
+[2026-01-08 19:47:05.098] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1271590
+   -> C1=(27.327,51.143,-0.771), C2=(28.312,51.143,-0.771)
+   -> C3=(27.327,52.127,-0.771), C4=(28.312,52.127,-0.771)
+
+[2026-01-08 19:47:05.100] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1271670
+   -> C1=(32.084,43.556,-0.771), C2=(34.380,43.556,-0.771)
+   -> C3=(32.084,45.852,-0.771), C4=(34.380,45.852,-0.771)
+
+[2026-01-08 19:47:05.102] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1271604
+   -> C1=(38.876,51.143,-0.771), C2=(39.860,51.143,-0.771)
+   -> C3=(38.876,52.127,-0.771), C4=(39.860,52.127,-0.771)
+
+[2026-01-08 19:47:05.104] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1271646
+   -> C1=(85.249,53.346,-0.771), C2=(85.905,53.346,-0.771)
+   -> C3=(85.249,54.003,-0.771), C4=(85.905,54.003,-0.771)
+
+[2026-01-08 19:47:05.107] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1271621
+   -> C1=(87.537,53.583,-0.771), C2=(88.521,53.583,-0.771)
+   -> C3=(87.537,54.567,-0.771), C4=(88.521,54.567,-0.771)
+
+[2026-01-08 19:47:05.109] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1272378
+   -> C1=(16.931,0.722,6.644), C2=(20.704,0.722,6.644)
+   -> C3=(16.931,0.722,8.776), C4=(20.704,0.722,8.776)
+
+[2026-01-08 19:47:05.111] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1272364
+   -> C1=(20.868,0.722,6.480), C2=(25.297,0.722,6.480)
+   -> C3=(20.868,0.722,8.940), C4=(25.297,0.722,8.940)
+
+[2026-01-08 19:47:05.113] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1272336
+   -> C1=(25.461,0.722,6.972), C2=(28.250,0.722,6.972)
+   -> C3=(25.461,0.722,8.448), C4=(28.250,0.722,8.448)
+
+[2026-01-08 19:47:05.115] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1272392
+   -> C1=(29.964,0.722,5.610), C2=(35.049,0.722,5.610)
+   -> C3=(29.964,0.722,9.547), C4=(35.049,0.722,9.547)
+
+[2026-01-08 19:47:05.117] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1272350
+   -> C1=(36.312,0.722,7.300), C2=(38.937,0.722,7.300)
+   -> C3=(36.312,0.722,9.104), C4=(38.937,0.722,9.104)
+
+[2026-01-08 19:47:05.119] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1272258
+   -> C1=(41.050,0.722,9.814), C2=(43.018,0.722,9.814)
+   -> C3=(41.050,0.722,11.126), C4=(43.018,0.722,11.126)
+
+[2026-01-08 19:47:05.121] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1272385
+   -> C1=(0.722,48.102,6.512), C2=(0.722,51.875,6.512)
+   -> C3=(0.722,48.102,8.645), C4=(0.722,51.875,8.645)
+
+[2026-01-08 19:47:05.123] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1272371
+   -> C1=(0.722,43.509,6.348), C2=(0.722,47.938,6.348)
+   -> C3=(0.722,43.509,8.809), C4=(0.722,47.938,8.809)
+
+[2026-01-08 19:47:05.125] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1272343
+   -> C1=(0.722,40.556,6.841), C2=(0.722,43.345,6.841)
+   -> C3=(0.722,40.556,8.317), C4=(0.722,43.345,8.317)
+
+[2026-01-08 19:47:05.127] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1272399
+   -> C1=(0.722,32.838,5.217), C2=(0.722,37.924,5.217)
+   -> C3=(0.722,32.838,9.154), C4=(0.722,37.924,9.154)
+
+[2026-01-08 19:47:05.129] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1272357
+   -> C1=(0.722,30.132,7.431), C2=(0.722,32.756,7.431)
+   -> C3=(0.722,30.132,9.236), C4=(0.722,32.756,9.236)
+
+[2026-01-08 19:47:05.131] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1272266
+   -> C1=(0.722,31.004,9.863), C2=(0.722,32.973,9.863)
+   -> C3=(0.722,31.004,11.176), C4=(0.722,32.973,11.176)
+
+[2026-01-08 19:47:05.133] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1272315
+   -> C1=(0.722,21.995,9.974), C2=(0.722,23.964,9.974)
+   -> C3=(0.722,21.995,10.958), C4=(0.722,23.964,10.958)
+
+[2026-01-08 19:47:05.136] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1272273
+   -> C1=(0.722,21.267,7.130), C2=(0.722,23.236,7.130)
+   -> C3=(0.722,21.267,8.443), C4=(0.722,23.236,8.443)
+
+[2026-01-08 19:47:05.138] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1272322
+   -> C1=(40.849,0.722,6.543), C2=(42.817,0.722,6.543)
+   -> C3=(40.849,0.722,7.527), C4=(42.817,0.722,7.527)
+
+[2026-01-08 19:47:05.140] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1272280
+   -> C1=(42.799,0.722,4.101), C2=(44.767,0.722,4.101)
+   -> C3=(42.799,0.722,5.413), C4=(44.767,0.722,5.413)
+
+[2026-01-08 19:47:05.142] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1272287
+   -> C1=(0.722,34.117,9.863), C2=(0.722,36.086,9.863)
+   -> C3=(0.722,34.117,11.176), C4=(0.722,36.086,11.176)
+
+[2026-01-08 19:47:05.144] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1272329
+   -> C1=(0.722,35.918,9.863), C2=(0.722,37.230,9.863)
+   -> C3=(0.722,35.918,11.176), C4=(0.722,37.230,11.176)
+
+[2026-01-08 19:47:05.146] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1272294
+   -> C1=(0.722,27.297,9.706), C2=(0.722,29.265,9.706)
+   -> C3=(0.722,27.297,11.018), C4=(0.722,29.265,11.018)
+
+[2026-01-08 19:47:05.148] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1272301
+   -> C1=(59.284,0.722,8.049), C2=(61.253,0.722,8.049)
+   -> C3=(59.284,0.722,9.361), C4=(61.253,0.722,9.361)
+
+[2026-01-08 19:47:05.150] [19:47:05] [SUCCESS] Extracted corners using SleeveCornerCalculationService for 1272308
+   -> C1=(65.330,0.722,7.365), C2=(67.299,0.722,7.365)
+   -> C3=(65.330,0.722,8.678), C4=(67.299,0.722,8.678)
+
+[2026-01-08 19:47:05.152] [19:47:05] [SUCCESS] BATCH EXTRACTION FINISHED: 35 extracted, 0 failed
+

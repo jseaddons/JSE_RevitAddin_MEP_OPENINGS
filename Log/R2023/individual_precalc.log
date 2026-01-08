@@ -1,0 +1,8 @@
+[2026-01-08 19:47:00.718] [19:47:00] [IndividualPreCalc] 🔀 TIER 1 - CATEGORY PARTITIONING: 1 categories, 21 total zones
+
+[2026-01-08 19:47:00.720] [19:47:00] [IndividualPreCalc]   - Duct Accessories: 21 zones
+
+[2026-01-08 19:47:00.726] [19:47:00] [IndividualPreCalc]   📍 TIER 2 - Category 'Duct Accessories': 11 spatial cells
+
+[2026-01-08 19:47:00.737] [19:47:00] [IndividualPreCalc] ✅ Completed 3-tier parallel pre-calculation: Valid=21, Invalid=0, Skipped=0, Time=17ms (0.81ms per zone)
+

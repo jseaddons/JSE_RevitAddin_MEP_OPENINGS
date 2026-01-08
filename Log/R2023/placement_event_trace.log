@@ -1,0 +1,120 @@
+[2026-01-08 18:56:13.956] [18:56:13] CLICK_OK: handler entered
+
+[2026-01-08 18:56:14.105] [18:56:14] CLICK_OK: raising external event
+
+[2026-01-08 18:56:14.134] [18:56:14] CLICK_OK: external event raised
+
+[18:56:14] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: 2026-01-08 18:56:14 🔥🔥🔥
+[18:56:14] STEP 1: Execute method started
+[18:56:14] STEP 2: Categories null=False, Count=4
+[18:56:14] STEP 3: MarkPrefixes null=False
+[18:56:14] STEP 9: ✅ Document is not linked, continuing
+[18:56:14] STEP 9.5: Categories count: 4, Categories: Ducts, Duct Accessories, Cable Trays, Pipes
+[18:56:14] STEP 10: About to create orchestrator
+[18:56:14] STEP 10.5: Clearance settings count: 15
+[18:56:14] STEP 11: Orchestrator created successfully
+[18:56:14] STEP 12.5: About to convert 4 categories to filters
+[18:56:15] STEP 13: Converted to 4 filters
+[18:56:15] STEP 13.5: Filter names: Ventilation, Ventilation, Ventilation, Ventilation
+[18:56:15] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: 4
+[2026-01-08 18:56:15.271] [18:56:15] 🔥 FLAG CHECK: UseUnifiedAllCategoryPlacement = True
+
+[2026-01-08 18:56:15.273] [18:56:15] 🔥 ENTERING UNIFIED PATH
+
+[18:57:04] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully
+[2026-01-08 19:02:35.407] [19:02:35] CLICK_OK: handler entered
+
+[2026-01-08 19:02:35.502] [19:02:35] CLICK_OK: raising external event
+
+[2026-01-08 19:02:35.538] [19:02:35] CLICK_OK: external event raised
+
+[19:02:35] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: 2026-01-08 19:02:35 🔥🔥🔥
+[19:02:35] STEP 1: Execute method started
+[19:02:35] STEP 2: Categories null=False, Count=1
+[19:02:35] STEP 3: MarkPrefixes null=False
+[19:02:35] STEP 9: ✅ Document is not linked, continuing
+[19:02:35] STEP 9.5: Categories count: 1, Categories: Pipes
+[19:02:35] STEP 10: About to create orchestrator
+[19:02:35] STEP 10.5: Clearance settings count: 4
+[19:02:35] STEP 11: Orchestrator created successfully
+[19:02:35] STEP 12.5: About to convert 1 categories to filters
+[19:02:36] STEP 13: Converted to 1 filters
+[19:02:36] STEP 13.5: Filter names: Plumbing
+[19:02:36] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: 1
+[2026-01-08 19:02:36.077] [19:02:36] 🔥 FLAG CHECK: UseUnifiedAllCategoryPlacement = True
+
+[2026-01-08 19:02:36.079] [19:02:36] 🔥 ENTERING UNIFIED PATH
+
+[19:02:42] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully
+[2026-01-08 19:34:07.104] [19:34:07] CLICK_OK: handler entered
+
+[2026-01-08 19:34:07.188] [19:34:07] CLICK_OK: raising external event
+
+[2026-01-08 19:34:07.230] [19:34:07] CLICK_OK: external event raised
+
+[19:34:07] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: 2026-01-08 19:34:07 🔥🔥🔥
+[19:34:07] STEP 1: Execute method started
+[19:34:07] STEP 2: Categories null=False, Count=1
+[19:34:07] STEP 3: MarkPrefixes null=False
+[19:34:07] STEP 9: ✅ Document is not linked, continuing
+[19:34:07] STEP 9.5: Categories count: 1, Categories: Pipes
+[19:34:07] STEP 10: About to create orchestrator
+[19:34:07] STEP 10.5: Clearance settings count: 4
+[19:34:07] STEP 11: Orchestrator created successfully
+[19:34:07] STEP 12.5: About to convert 1 categories to filters
+[19:34:07] STEP 13: Converted to 1 filters
+[19:34:07] STEP 13.5: Filter names: Plumbing
+[19:34:07] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: 1
+[2026-01-08 19:34:07.885] [19:34:07] 🔥 FLAG CHECK: UseUnifiedAllCategoryPlacement = True
+
+[2026-01-08 19:34:07.887] [19:34:07] 🔥 ENTERING UNIFIED PATH
+
+[19:34:13] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully
+[2026-01-08 19:40:28.995] [19:40:28] CLICK_OK: handler entered
+
+[2026-01-08 19:40:29.083] [19:40:29] CLICK_OK: raising external event
+
+[2026-01-08 19:40:29.122] [19:40:29] CLICK_OK: external event raised
+
+[19:40:29] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: 2026-01-08 19:40:29 🔥🔥🔥
+[19:40:29] STEP 1: Execute method started
+[19:40:29] STEP 2: Categories null=False, Count=1
+[19:40:29] STEP 3: MarkPrefixes null=False
+[19:40:29] STEP 9: ✅ Document is not linked, continuing
+[19:40:29] STEP 9.5: Categories count: 1, Categories: Cable Trays
+[19:40:29] STEP 10: About to create orchestrator
+[19:40:29] STEP 10.5: Clearance settings count: 7
+[19:40:29] STEP 11: Orchestrator created successfully
+[19:40:29] STEP 12.5: About to convert 1 categories to filters
+[19:40:29] STEP 13: Converted to 1 filters
+[19:40:29] STEP 13.5: Filter names: Electrical
+[19:40:29] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: 1
+[2026-01-08 19:40:29.828] [19:40:29] 🔥 FLAG CHECK: UseUnifiedAllCategoryPlacement = True
+
+[2026-01-08 19:40:29.830] [19:40:29] 🔥 ENTERING UNIFIED PATH
+
+[19:40:45] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully
+[2026-01-08 19:46:59.768] [19:46:59] CLICK_OK: handler entered
+
+[2026-01-08 19:46:59.834] [19:46:59] CLICK_OK: raising external event
+
+[2026-01-08 19:46:59.870] [19:46:59] CLICK_OK: external event raised
+
+[19:47:00] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: 2026-01-08 19:47:00 🔥🔥🔥
+[19:47:00] STEP 1: Execute method started
+[19:47:00] STEP 2: Categories null=False, Count=1
+[19:47:00] STEP 3: MarkPrefixes null=False
+[19:47:00] STEP 9: ✅ Document is not linked, continuing
+[19:47:00] STEP 9.5: Categories count: 1, Categories: Duct Accessories
+[19:47:00] STEP 10: About to create orchestrator
+[19:47:00] STEP 10.5: Clearance settings count: 6
+[19:47:00] STEP 11: Orchestrator created successfully
+[19:47:00] STEP 12.5: About to convert 1 categories to filters
+[19:47:00] STEP 13: Converted to 1 filters
+[19:47:00] STEP 13.5: Filter names: Ventilation
+[19:47:00] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: 1
+[2026-01-08 19:47:00.457] [19:47:00] 🔥 FLAG CHECK: UseUnifiedAllCategoryPlacement = True
+
+[2026-01-08 19:47:00.459] [19:47:00] 🔥 ENTERING UNIFIED PATH
+
+[19:47:09] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully

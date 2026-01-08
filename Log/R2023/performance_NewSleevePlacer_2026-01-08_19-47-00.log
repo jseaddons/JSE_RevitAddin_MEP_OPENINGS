@@ -1,0 +1,251 @@
+[2026-01-08 19:47:00.628] === PLACEMENT PERFORMANCE MONITOR STARTED ===
+Timestamp: 2026-01-08 19:47:00
+Log File: NewSleevePlacer_2026-01-08_19-47-00.log
+Start Memory: 253.80 MB
+
+
+[2026-01-08 19:47:00.680] [19:47:00.679] Load Family Symbol: 6ms, Memory: 40.00 KB, Items: 1
+
+[2026-01-08 19:47:00.710] [19:47:00.709] Parallel Sleeve Placement Planning: 24ms, Memory: 279.52 KB, Items: 21
+
+[2026-01-08 19:47:00.743] [19:47:00.742] 3-Tier Individual PreCalculation: 31ms, Memory: 239.63 KB, Items: 21
+
+[2026-01-08 19:47:00.788] [19:47:00.787] Calculate Sleeve Dimensions: 19ms, Memory: 216.05 KB, Items: 1
+
+[2026-01-08 19:47:00.792] [19:47:00.791] Load Family Symbol: 0ms, Memory: 0.00 KB, Items: 0
+
+[2026-01-08 19:47:00.845] [19:47:00.844] Adjust Placement Point: 48ms, Memory: 336.00 KB, Items: 1
+
+[2026-01-08 19:47:00.898] [19:47:00.897] Place Sleeve Instance: 45ms, Memory: 0.00 KB, Items: 1
+
+[2026-01-08 19:47:00.957] [19:47:00.957] Set Sleeve Parameters: 53ms, Memory: 440.00 KB, Items: 0
+
+[2026-01-08 19:47:00.984] [19:47:00.984] Calculate Sleeve Dimensions: 8ms, Memory: 216.05 KB, Items: 1
+
+[2026-01-08 19:47:00.990] [19:47:00.989] Load Family Symbol: 0ms, Memory: 0.00 KB, Items: 0
+
+[2026-01-08 19:47:01.010] [19:47:01.010] Adjust Placement Point: 19ms, Memory: 336.00 KB, Items: 1
+
+[2026-01-08 19:47:01.036] [19:47:01.035] Place Sleeve Instance: 22ms, Memory: 0.00 KB, Items: 1
+
+[2026-01-08 19:47:01.062] [19:47:01.062] Set Sleeve Parameters: 22ms, Memory: 448.00 KB, Items: 0
+
+[2026-01-08 19:47:01.084] [19:47:01.084] Calculate Sleeve Dimensions: 8ms, Memory: 216.05 KB, Items: 1
+
+[2026-01-08 19:47:01.089] [19:47:01.089] Load Family Symbol: 0ms, Memory: 0.00 KB, Items: 0
+
+[2026-01-08 19:47:01.123] [19:47:01.123] Adjust Placement Point: 32ms, Memory: -6922.18 KB, Items: 1
+
+[2026-01-08 19:47:01.150] [19:47:01.149] Place Sleeve Instance: 22ms, Memory: 0.00 KB, Items: 1
+
+[2026-01-08 19:47:01.173] [19:47:01.173] Set Sleeve Parameters: 20ms, Memory: 440.00 KB, Items: 0
+
+[2026-01-08 19:47:01.195] [19:47:01.195] Calculate Sleeve Dimensions: 8ms, Memory: 224.05 KB, Items: 1
+
+[2026-01-08 19:47:01.200] [19:47:01.199] Load Family Symbol: 0ms, Memory: 0.00 KB, Items: 0
+
+[2026-01-08 19:47:01.221] [19:47:01.220] Adjust Placement Point: 19ms, Memory: 344.00 KB, Items: 1
+
+[2026-01-08 19:47:01.253] [19:47:01.252] Place Sleeve Instance: 28ms, Memory: 8.00 KB, Items: 1
+
+[2026-01-08 19:47:01.277] [19:47:01.276] Set Sleeve Parameters: 20ms, Memory: 448.00 KB, Items: 0
+
+[2026-01-08 19:47:01.298] [19:47:01.298] Calculate Sleeve Dimensions: 8ms, Memory: 224.05 KB, Items: 1
+
+[2026-01-08 19:47:01.304] [19:47:01.303] Load Family Symbol: 0ms, Memory: 0.00 KB, Items: 0
+
+[2026-01-08 19:47:01.339] [19:47:01.338] Adjust Placement Point: 31ms, Memory: 344.00 KB, Items: 1
+
+[2026-01-08 19:47:01.365] [19:47:01.364] Place Sleeve Instance: 22ms, Memory: 8.00 KB, Items: 1
+
+[2026-01-08 19:47:01.389] [19:47:01.388] Set Sleeve Parameters: 20ms, Memory: 448.00 KB, Items: 0
+
+[2026-01-08 19:47:01.410] [19:47:01.410] Calculate Sleeve Dimensions: 8ms, Memory: 216.05 KB, Items: 1
+
+[2026-01-08 19:47:01.415] [19:47:01.415] Load Family Symbol: 0ms, Memory: 0.00 KB, Items: 0
+
+[2026-01-08 19:47:01.436] [19:47:01.435] Adjust Placement Point: 19ms, Memory: 344.00 KB, Items: 1
+
+[2026-01-08 19:47:01.463] [19:47:01.462] Place Sleeve Instance: 22ms, Memory: 0.00 KB, Items: 1
+
+[2026-01-08 19:47:01.486] [19:47:01.485] Set Sleeve Parameters: 20ms, Memory: 440.00 KB, Items: 0
+
+[2026-01-08 19:47:01.512] [19:47:01.511] Calculate Sleeve Dimensions: 11ms, Memory: -5859.60 KB, Items: 1
+
+[2026-01-08 19:47:01.517] [19:47:01.516] Load Family Symbol: 0ms, Memory: 0.00 KB, Items: 0
+
+[2026-01-08 19:47:01.538] [19:47:01.537] Adjust Placement Point: 19ms, Memory: 336.00 KB, Items: 1
+
+[2026-01-08 19:47:01.570] [19:47:01.569] Place Sleeve Instance: 29ms, Memory: 0.00 KB, Items: 1
+
+[2026-01-08 19:47:01.594] [19:47:01.593] Set Sleeve Parameters: 20ms, Memory: 448.00 KB, Items: 0
+
+[2026-01-08 19:47:01.620] [19:47:01.620] Calculate Sleeve Dimensions: 10ms, Memory: 216.05 KB, Items: 1
+
+[2026-01-08 19:47:01.626] [19:47:01.625] Load Family Symbol: 0ms, Memory: 0.00 KB, Items: 0
+
+[2026-01-08 19:47:01.649] [19:47:01.648] Adjust Placement Point: 21ms, Memory: 344.00 KB, Items: 1
+
+[2026-01-08 19:47:01.683] [19:47:01.682] Place Sleeve Instance: 29ms, Memory: 8.00 KB, Items: 1
+
+[2026-01-08 19:47:01.706] [19:47:01.706] Set Sleeve Parameters: 20ms, Memory: 448.00 KB, Items: 0
+
+[2026-01-08 19:47:01.728] [19:47:01.728] Calculate Sleeve Dimensions: 8ms, Memory: 216.05 KB, Items: 1
+
+[2026-01-08 19:47:01.733] [19:47:01.733] Load Family Symbol: 0ms, Memory: 0.00 KB, Items: 0
+
+[2026-01-08 19:47:01.754] [19:47:01.754] Adjust Placement Point: 19ms, Memory: 344.00 KB, Items: 1
+
+[2026-01-08 19:47:01.781] [19:47:01.780] Place Sleeve Instance: 22ms, Memory: 0.00 KB, Items: 1
+
+[2026-01-08 19:47:01.805] [19:47:01.805] Set Sleeve Parameters: 21ms, Memory: 446.61 KB, Items: 0
+
+[2026-01-08 19:47:01.828] [19:47:01.827] Calculate Sleeve Dimensions: 8ms, Memory: 216.05 KB, Items: 1
+
+[2026-01-08 19:47:01.833] [19:47:01.832] Load Family Symbol: 0ms, Memory: 0.00 KB, Items: 0
+
+[2026-01-08 19:47:01.853] [19:47:01.852] Adjust Placement Point: 18ms, Memory: 344.00 KB, Items: 1
+
+[2026-01-08 19:47:01.886] [19:47:01.886] Place Sleeve Instance: 29ms, Memory: 0.00 KB, Items: 1
+
+[2026-01-08 19:47:01.913] [19:47:01.912] Set Sleeve Parameters: 23ms, Memory: -5736.33 KB, Items: 0
+
+[2026-01-08 19:47:01.938] [19:47:01.937] Calculate Sleeve Dimensions: 9ms, Memory: 224.05 KB, Items: 1
+
+[2026-01-08 19:47:01.943] [19:47:01.942] Load Family Symbol: 0ms, Memory: 0.00 KB, Items: 0
+
+[2026-01-08 19:47:01.967] [19:47:01.966] Adjust Placement Point: 21ms, Memory: 344.00 KB, Items: 1
+
+[2026-01-08 19:47:01.997] [19:47:01.996] Place Sleeve Instance: 26ms, Memory: 8.00 KB, Items: 1
+
+[2026-01-08 19:47:02.025] [19:47:02.024] Set Sleeve Parameters: 23ms, Memory: 448.00 KB, Items: 0
+
+[2026-01-08 19:47:02.047] [19:47:02.047] Calculate Sleeve Dimensions: 8ms, Memory: 224.05 KB, Items: 1
+
+[2026-01-08 19:47:02.057] [19:47:02.056] Load Family Symbol: 0ms, Memory: 0.00 KB, Items: 0
+
+[2026-01-08 19:47:02.081] [19:47:02.080] Adjust Placement Point: 21ms, Memory: 344.00 KB, Items: 1
+
+[2026-01-08 19:47:02.114] [19:47:02.112] Place Sleeve Instance: 29ms, Memory: 8.00 KB, Items: 1
+
+[2026-01-08 19:47:02.137] [19:47:02.136] Set Sleeve Parameters: 20ms, Memory: 448.00 KB, Items: 0
+
+[2026-01-08 19:47:02.159] [19:47:02.158] Calculate Sleeve Dimensions: 8ms, Memory: 216.05 KB, Items: 1
+
+[2026-01-08 19:47:02.165] [19:47:02.164] Load Family Symbol: 0ms, Memory: 0.00 KB, Items: 0
+
+[2026-01-08 19:47:02.185] [19:47:02.184] Adjust Placement Point: 18ms, Memory: 344.00 KB, Items: 1
+
+[2026-01-08 19:47:02.211] [19:47:02.210] Place Sleeve Instance: 23ms, Memory: 0.00 KB, Items: 1
+
+[2026-01-08 19:47:02.242] [19:47:02.241] Set Sleeve Parameters: 27ms, Memory: 448.00 KB, Items: 0
+
+[2026-01-08 19:47:02.264] [19:47:02.264] Calculate Sleeve Dimensions: 8ms, Memory: 216.05 KB, Items: 1
+
+[2026-01-08 19:47:02.269] [19:47:02.268] Load Family Symbol: 0ms, Memory: 0.00 KB, Items: 0
+
+[2026-01-08 19:47:02.292] [19:47:02.291] Adjust Placement Point: 21ms, Memory: -5730.97 KB, Items: 1
+
+[2026-01-08 19:47:02.326] [19:47:02.325] Place Sleeve Instance: 29ms, Memory: 8.00 KB, Items: 1
+
+[2026-01-08 19:47:02.349] [19:47:02.349] Set Sleeve Parameters: 20ms, Memory: 448.00 KB, Items: 0
+
+[2026-01-08 19:47:02.373] [19:47:02.372] Calculate Sleeve Dimensions: 8ms, Memory: 216.05 KB, Items: 1
+
+[2026-01-08 19:47:02.378] [19:47:02.377] Load Family Symbol: 0ms, Memory: 0.00 KB, Items: 0
+
+[2026-01-08 19:47:02.398] [19:47:02.398] Adjust Placement Point: 19ms, Memory: 344.00 KB, Items: 1
+
+[2026-01-08 19:47:02.426] [19:47:02.426] Place Sleeve Instance: 24ms, Memory: 8.00 KB, Items: 1
+
+[2026-01-08 19:47:02.450] [19:47:02.450] Set Sleeve Parameters: 20ms, Memory: 448.00 KB, Items: 0
+
+[2026-01-08 19:47:02.473] [19:47:02.472] Calculate Sleeve Dimensions: 8ms, Memory: 224.05 KB, Items: 1
+
+[2026-01-08 19:47:02.478] [19:47:02.477] Load Family Symbol: 0ms, Memory: 0.00 KB, Items: 0
+
+[2026-01-08 19:47:02.498] [19:47:02.497] Adjust Placement Point: 18ms, Memory: 344.00 KB, Items: 1
+
+[2026-01-08 19:47:02.531] [19:47:02.531] Place Sleeve Instance: 30ms, Memory: 8.00 KB, Items: 1
+
+[2026-01-08 19:47:02.555] [19:47:02.554] Set Sleeve Parameters: 20ms, Memory: 448.00 KB, Items: 0
+
+[2026-01-08 19:47:02.577] [19:47:02.577] Calculate Sleeve Dimensions: 8ms, Memory: 216.05 KB, Items: 1
+
+[2026-01-08 19:47:02.584] [19:47:02.583] Load Family Symbol: 0ms, Memory: 0.00 KB, Items: 0
+
+[2026-01-08 19:47:02.603] [19:47:02.603] Adjust Placement Point: 18ms, Memory: 344.00 KB, Items: 1
+
+[2026-01-08 19:47:02.631] [19:47:02.630] Place Sleeve Instance: 23ms, Memory: 0.00 KB, Items: 1
+
+[2026-01-08 19:47:02.654] [19:47:02.654] Set Sleeve Parameters: 20ms, Memory: 440.00 KB, Items: 0
+
+[2026-01-08 19:47:02.679] [19:47:02.678] Calculate Sleeve Dimensions: 10ms, Memory: -5852.70 KB, Items: 1
+
+[2026-01-08 19:47:02.683] [19:47:02.683] Load Family Symbol: 0ms, Memory: 0.00 KB, Items: 0
+
+[2026-01-08 19:47:02.704] [19:47:02.704] Adjust Placement Point: 18ms, Memory: 344.00 KB, Items: 1
+
+[2026-01-08 19:47:02.737] [19:47:02.736] Place Sleeve Instance: 30ms, Memory: 8.00 KB, Items: 1
+
+[2026-01-08 19:47:02.761] [19:47:02.760] Set Sleeve Parameters: 20ms, Memory: 448.00 KB, Items: 0
+
+[2026-01-08 19:47:02.783] [19:47:02.782] Calculate Sleeve Dimensions: 8ms, Memory: 216.05 KB, Items: 1
+
+[2026-01-08 19:47:02.787] [19:47:02.787] Load Family Symbol: 0ms, Memory: 0.00 KB, Items: 0
+
+[2026-01-08 19:47:02.810] [19:47:02.810] Adjust Placement Point: 20ms, Memory: 351.51 KB, Items: 1
+
+[2026-01-08 19:47:02.838] [19:47:02.837] Place Sleeve Instance: 24ms, Memory: 0.00 KB, Items: 1
+
+[2026-01-08 19:47:02.865] [19:47:02.864] Set Sleeve Parameters: 23ms, Memory: 440.00 KB, Items: 0
+
+[2026-01-08 19:47:02.892] [19:47:02.891] Calculate Sleeve Dimensions: 10ms, Memory: 216.05 KB, Items: 1
+
+[2026-01-08 19:47:02.898] [19:47:02.897] Load Family Symbol: 0ms, Memory: 0.00 KB, Items: 0
+
+[2026-01-08 19:47:02.923] [19:47:02.922] Adjust Placement Point: 23ms, Memory: 336.00 KB, Items: 1
+
+[2026-01-08 19:47:02.964] [19:47:02.963] Place Sleeve Instance: 36ms, Memory: 8.00 KB, Items: 1
+
+[2026-01-08 19:47:02.995] [19:47:02.994] Set Sleeve Parameters: 27ms, Memory: 448.00 KB, Items: 0
+
+[2026-01-08 19:47:03.018] [19:47:03.017] Calculate Sleeve Dimensions: 8ms, Memory: 216.05 KB, Items: 1
+
+[2026-01-08 19:47:03.023] [19:47:03.023] Load Family Symbol: 0ms, Memory: 0.00 KB, Items: 0
+
+[2026-01-08 19:47:03.044] [19:47:03.043] Adjust Placement Point: 19ms, Memory: 344.00 KB, Items: 1
+
+[2026-01-08 19:47:03.071] [19:47:03.070] Place Sleeve Instance: 24ms, Memory: 8.00 KB, Items: 1
+
+[2026-01-08 19:47:03.098] [19:47:03.098] Set Sleeve Parameters: 23ms, Memory: -5616.57 KB, Items: 0
+
+[2026-01-08 19:47:03.927] === PLACEMENT PERFORMANCE REPORT ===
+Generated: 2026-01-08 19:47:03
+Total Time: 3298ms (00:03)
+Total Individual Sleeves: 21
+Total Clusters: 0
+
+=== MEMORY USAGE ===
+Start: 253.80 MB
+End: 255.23 MB
+Delta: 1.43 MB
+Memory per Item: 69.79 KB
+
+=== OPERATION BREAKDOWN ===
+Operation                                   Calls        Total        Avg        Min        Max      Items    Items/s
+--------------------------------------------------------------------------------------------------------------
+Place Sleeve Instance                          21          568ms      27.0ms        22ms        45ms         21        37/s
+Set Sleeve Parameters                          21          482ms      23.0ms        20ms        53ms          0         0/s
+Adjust Placement Point                         21          461ms      22.0ms        18ms        48ms         21        46/s
+Calculate Sleeve Dimensions                    21          189ms       9.0ms         8ms        19ms         21       111/s
+3-Tier Individual PreCalculation                1           31ms      31.0ms        31ms        31ms         21       677/s
+Parallel Sleeve Placement Planning              1           24ms      24.0ms        24ms        24ms         21       875/s
+Load Family Symbol                             22            6ms       0.3ms         0ms         6ms          1       167/s
+
+=== PERFORMANCE TARGETS ===
+Individual Sleeves/Second: 6 (target: 50+)
+Status: ⚠️ BELOW TARGET
+
+=== END OF REPORT ===
+

@@ -1,0 +1,220 @@
+[2026-01-08 19:47:05.870] [19:47:05] 💾 CACHE MISS: Rotated bounding box for 3 sleeves, rotation=0.0°, cacheKey=RBB_1272343_1272371_1272385_0.000000, cacheSize=0
+
+[2026-01-08 19:47:05.876] [19:47:05] ✅ PLACEMENT POINT: Calculated from 3/3 intersection points: (1.049869, 45.887528, 7.578740)
+
+[2026-01-08 19:47:05.878] [19:47:05]   ✅ Initial placement point from intersections: (1.049869, 45.887528, 7.578740)
+
+[2026-01-08 19:47:05.894] [19:47:05] 🔍 WALL/FRAMING DETECTED: Will use corner-based calculation with RCS transformation (straight or rotated axis)
+
+[2026-01-08 19:47:05.899] [19:47:05] 📊 Sleeve 1272385 DATA CHECK: HasRotatedBbox=False, HasCorners=True, HasCosSin=True, HasAxisAligned=True, Rotation=0.0°
+
+[2026-01-08 19:47:05.901] [19:47:05]   Sleeve 1272385: HasRotatedBbox=False, HasAxisAlignedBbox=True
+
+[2026-01-08 19:47:05.903] [19:47:05]     ⚠️ RotatedBbox values: MinX=False, MinY=False, MaxX=False, MaxY=False
+
+[2026-01-08 19:47:05.906] [19:47:05] 📊 Sleeve 1272371 DATA CHECK: HasRotatedBbox=False, HasCorners=True, HasCosSin=True, HasAxisAligned=True, Rotation=0.0°
+
+[2026-01-08 19:47:05.907] [19:47:05]   Sleeve 1272371: HasRotatedBbox=False, HasAxisAlignedBbox=True
+
+[2026-01-08 19:47:05.909] [19:47:05]     ⚠️ RotatedBbox values: MinX=False, MinY=False, MaxX=False, MaxY=False
+
+[2026-01-08 19:47:05.911] [19:47:05] 📊 Sleeve 1272343 DATA CHECK: HasRotatedBbox=False, HasCorners=True, HasCosSin=True, HasAxisAligned=True, Rotation=0.0°
+
+[2026-01-08 19:47:05.914] [19:47:05]   Sleeve 1272343: HasRotatedBbox=False, HasAxisAlignedBbox=True
+
+[2026-01-08 19:47:05.914] [19:47:05]     ⚠️ RotatedBbox values: MinX=False, MinY=False, MaxX=False, MaxY=False
+
+[2026-01-08 19:47:05.916] [19:47:05] 📊 Collected rotatedBboxes: 0 out of 3 sleeves
+
+[2026-01-08 19:47:05.919] [19:47:05] 🔍 ATTEMPTING corner-based calculation: rotation=0.0°, hostType=Wall/Framing, clusterSize=3, rotatedBboxesCount=0
+
+[2026-01-08 19:47:05.921] [19:47:05]   ✅ Sleeve 1272385: Corner Z coordinates found in database! Corner1Z=6.512467, Corner2Z=6.512467, Corner3Z=8.645013, Corner4Z=8.645013, PlacementPointZ=0.000000, BBoxMinZ=6.512467
+
+[2026-01-08 19:47:05.922] [19:47:05]   ✅ Sleeve 1272385: Has corners, Rotation=0.0°
+
+[2026-01-08 19:47:05.924] [19:47:05]   ✅ Sleeve 1272371: Corner Z coordinates found in database! Corner1Z=6.348425, Corner2Z=6.348425, Corner3Z=8.809055, Corner4Z=8.809055, PlacementPointZ=0.000000, BBoxMinZ=6.348425
+
+[2026-01-08 19:47:05.926] [19:47:05]   ✅ Sleeve 1272371: Has corners, Rotation=0.0°
+
+[2026-01-08 19:47:05.927] [19:47:05]   ✅ Sleeve 1272343: Corner Z coordinates found in database! Corner1Z=6.840551, Corner2Z=6.840551, Corner3Z=8.316929, Corner4Z=8.316929, PlacementPointZ=0.000000, BBoxMinZ=6.840551
+
+[2026-01-08 19:47:05.929] [19:47:05]   ✅ Sleeve 1272343: Has corners, Rotation=0.0°
+
+[2026-01-08 19:47:05.931] [19:47:05] 📊 Corner check: 3/3 sleeves have corners
+
+[2026-01-08 19:47:05.932] [19:47:05]   ✅ Added 4 corners for sleeve 1272385: C1=(0.721785,48.102095,6.512467), C2=(0.721785,51.875060,6.512467), C3=(0.721785,48.102095,8.645013), C4=(0.721785,51.875060,8.645013) [UsingStoredZ=True]
+
+[2026-01-08 19:47:05.934] [19:47:05]   ✅ Added 4 corners for sleeve 1272371: C1=(0.721785,43.508919,6.348425), C2=(0.721785,47.938053,6.348425), C3=(0.721785,43.508919,8.809055), C4=(0.721785,47.938053,8.809055) [UsingStoredZ=True]
+
+[2026-01-08 19:47:05.936] [19:47:05]   ✅ Added 4 corners for sleeve 1272343: C1=(0.721785,40.556163,6.840551), C2=(0.721785,43.344877,6.840551), C3=(0.721785,40.556163,8.316929), C4=(0.721785,43.344877,8.316929) [UsingStoredZ=True]
+
+[2026-01-08 19:47:05.937] [19:47:05] 🔧 Starting corner-based calculation with 12 corners, rotation=0.0°, isWallOrFraming=True
+
+[2026-01-08 19:47:05.940] [19:47:05]   ✅ STRAIGHT AXIS WALL: Using world-space corners directly (no RCS, no rotation). WallType=Y-wall, minX=0.721785, maxX=0.721785, minY=40.556163, maxY=51.875060, Width=11.318898
+
+[2026-01-08 19:47:05.942] [19:47:05]   ✅ WALL/FRAMING DEPTH: Using max thickness=200.0mm (calculated from 3 clash zones)
+
+[2026-01-08 19:47:05.944] [19:47:05] ✅ CORNER-BASED SUCCESS: W=3450.0mm, H=750.0mm, D=200.0mm (from 12 corners)
+
+[2026-01-08 19:47:05.950] [19:47:05] ✅ CACHE STORED: Rotated bounding box calculated in 84ms for 3 sleeves, rotation=0.0°
+
+[2026-01-08 19:47:05.964] [19:47:05] 💾 CACHE MISS: Rotated bounding box for 2 sleeves, rotation=0.0°, cacheKey=RBB_1272357_1272399_0.000000, cacheSize=1
+
+[2026-01-08 19:47:05.966] [19:47:05] ✅ PLACEMENT POINT: Calculated from 2/2 intersection points: (1.049869, 33.412457, 7.759186)
+
+[2026-01-08 19:47:05.967] [19:47:05]   ✅ Initial placement point from intersections: (1.049869, 33.412457, 7.759186)
+
+[2026-01-08 19:47:05.969] [19:47:05] 🔍 WALL/FRAMING DETECTED: Will use corner-based calculation with RCS transformation (straight or rotated axis)
+
+[2026-01-08 19:47:05.971] [19:47:05] 📊 Sleeve 1272399 DATA CHECK: HasRotatedBbox=False, HasCorners=True, HasCosSin=True, HasAxisAligned=True, Rotation=0.0°
+
+[2026-01-08 19:47:05.972] [19:47:05]   Sleeve 1272399: HasRotatedBbox=False, HasAxisAlignedBbox=True
+
+[2026-01-08 19:47:05.974] [19:47:05]     ⚠️ RotatedBbox values: MinX=False, MinY=False, MaxX=False, MaxY=False
+
+[2026-01-08 19:47:05.975] [19:47:05] 📊 Sleeve 1272357 DATA CHECK: HasRotatedBbox=False, HasCorners=True, HasCosSin=True, HasAxisAligned=True, Rotation=0.0°
+
+[2026-01-08 19:47:05.977] [19:47:05]   Sleeve 1272357: HasRotatedBbox=False, HasAxisAlignedBbox=True
+
+[2026-01-08 19:47:05.978] [19:47:05]     ⚠️ RotatedBbox values: MinX=False, MinY=False, MaxX=False, MaxY=False
+
+[2026-01-08 19:47:05.980] [19:47:05] 📊 Collected rotatedBboxes: 0 out of 2 sleeves
+
+[2026-01-08 19:47:05.982] [19:47:05] 🔍 ATTEMPTING corner-based calculation: rotation=0.0°, hostType=Wall/Framing, clusterSize=2, rotatedBboxesCount=0
+
+[2026-01-08 19:47:05.984] [19:47:05]   ✅ Sleeve 1272399: Corner Z coordinates found in database! Corner1Z=5.216535, Corner2Z=5.216535, Corner3Z=9.153543, Corner4Z=9.153543, PlacementPointZ=0.000000, BBoxMinZ=5.216535
+
+[2026-01-08 19:47:05.985] [19:47:05]   ✅ Sleeve 1272399: Has corners, Rotation=0.0°
+
+[2026-01-08 19:47:05.986] [19:47:05]   ✅ Sleeve 1272357: Corner Z coordinates found in database! Corner1Z=7.431102, Corner2Z=7.431102, Corner3Z=9.235564, Corner4Z=9.235564, PlacementPointZ=0.000000, BBoxMinZ=7.431102
+
+[2026-01-08 19:47:05.988] [19:47:05]   ✅ Sleeve 1272357: Has corners, Rotation=0.0°
+
+[2026-01-08 19:47:05.989] [19:47:05] 📊 Corner check: 2/2 sleeves have corners
+
+[2026-01-08 19:47:05.992] [19:47:05]   ✅ Added 4 corners for sleeve 1272399: C1=(0.721785,32.838310,5.216535), C2=(0.721785,37.923612,5.216535), C3=(0.721785,32.838310,9.153543), C4=(0.721785,37.923612,9.153543) [UsingStoredZ=True]
+
+[2026-01-08 19:47:05.993] [19:47:05]   ✅ Added 4 corners for sleeve 1272357: C1=(0.721785,30.131617,7.431102), C2=(0.721785,32.756289,7.431102), C3=(0.721785,30.131617,9.235564), C4=(0.721785,32.756289,9.235564) [UsingStoredZ=True]
+
+[2026-01-08 19:47:05.994] [19:47:05] 🔧 Starting corner-based calculation with 8 corners, rotation=0.0°, isWallOrFraming=True
+
+[2026-01-08 19:47:05.996] [19:47:05]   ✅ STRAIGHT AXIS WALL: Using world-space corners directly (no RCS, no rotation). WallType=Y-wall, minX=0.721785, maxX=0.721785, minY=30.131617, maxY=37.923612, Width=7.791995
+
+[2026-01-08 19:47:05.997] [19:47:05]   ✅ WALL/FRAMING DEPTH: Using max thickness=200.0mm (calculated from 2 clash zones)
+
+[2026-01-08 19:47:05.999] [19:47:05] ✅ CORNER-BASED SUCCESS: W=2375.0mm, H=1225.0mm, D=200.0mm (from 8 corners)
+
+[2026-01-08 19:47:06.001] [19:47:06] ✅ CACHE STORED: Rotated bounding box calculated in 36ms for 2 sleeves, rotation=0.0°
+
+[2026-01-08 19:47:06.013] [19:47:06] 💾 CACHE MISS: Rotated bounding box for 2 sleeves, rotation=0.0°, cacheKey=RBB_1272287_1272329_0.000000, cacheSize=2
+
+[2026-01-08 19:47:06.015] [19:47:06] ✅ PLACEMENT POINT: Calculated from 2/2 intersection points: (0.393701, 35.838007, 10.519473)
+
+[2026-01-08 19:47:06.017] [19:47:06]   ✅ Initial placement point from intersections: (0.393701, 35.838007, 10.519473)
+
+[2026-01-08 19:47:06.018] [19:47:06] 🔍 WALL/FRAMING DETECTED: Will use corner-based calculation with RCS transformation (straight or rotated axis)
+
+[2026-01-08 19:47:06.020] [19:47:06] 📊 Sleeve 1272287 DATA CHECK: HasRotatedBbox=False, HasCorners=True, HasCosSin=True, HasAxisAligned=True, Rotation=0.0°
+
+[2026-01-08 19:47:06.022] [19:47:06]   Sleeve 1272287: HasRotatedBbox=False, HasAxisAlignedBbox=True
+
+[2026-01-08 19:47:06.023] [19:47:06]     ⚠️ RotatedBbox values: MinX=False, MinY=False, MaxX=False, MaxY=False
+
+[2026-01-08 19:47:06.025] [19:47:06] 📊 Sleeve 1272329 DATA CHECK: HasRotatedBbox=False, HasCorners=True, HasCosSin=True, HasAxisAligned=True, Rotation=0.0°
+
+[2026-01-08 19:47:06.026] [19:47:06]   Sleeve 1272329: HasRotatedBbox=False, HasAxisAlignedBbox=True
+
+[2026-01-08 19:47:06.028] [19:47:06]     ⚠️ RotatedBbox values: MinX=False, MinY=False, MaxX=False, MaxY=False
+
+[2026-01-08 19:47:06.030] [19:47:06] 📊 Collected rotatedBboxes: 0 out of 2 sleeves
+
+[2026-01-08 19:47:06.031] [19:47:06] 🔍 ATTEMPTING corner-based calculation: rotation=0.0°, hostType=Wall/Framing, clusterSize=2, rotatedBboxesCount=0
+
+[2026-01-08 19:47:06.033] [19:47:06]   ✅ Sleeve 1272287: Corner Z coordinates found in database! Corner1Z=9.863305, Corner2Z=9.863305, Corner3Z=11.175641, Corner4Z=11.175641, PlacementPointZ=0.000000, BBoxMinZ=9.863305
+
+[2026-01-08 19:47:06.034] [19:47:06]   ✅ Sleeve 1272287: Has corners, Rotation=0.0°
+
+[2026-01-08 19:47:06.036] [19:47:06]   ✅ Sleeve 1272329: Corner Z coordinates found in database! Corner1Z=9.863305, Corner2Z=9.863305, Corner3Z=11.175641, Corner4Z=11.175641, PlacementPointZ=0.000000, BBoxMinZ=9.863305
+
+[2026-01-08 19:47:06.038] [19:47:06]   ✅ Sleeve 1272329: Has corners, Rotation=0.0°
+
+[2026-01-08 19:47:06.039] [19:47:06] 📊 Corner check: 2/2 sleeves have corners
+
+[2026-01-08 19:47:06.041] [19:47:06]   ✅ Added 4 corners for sleeve 1272287: C1=(0.721785,34.117483,9.863305), C2=(0.721785,36.085987,9.863305), C3=(0.721785,34.117483,11.175641), C4=(0.721785,36.085987,11.175641) [UsingStoredZ=True]
+
+[2026-01-08 19:47:06.044] [19:47:06]   ✅ Added 4 corners for sleeve 1272329: C1=(0.721785,35.918111,9.863305), C2=(0.721785,37.230447,9.863305), C3=(0.721785,35.918111,11.175641), C4=(0.721785,37.230447,11.175641) [UsingStoredZ=True]
+
+[2026-01-08 19:47:06.048] [19:47:06] 🔧 Starting corner-based calculation with 8 corners, rotation=0.0°, isWallOrFraming=True
+
+[2026-01-08 19:47:06.050] [19:47:06]   ✅ STRAIGHT AXIS WALL: Using world-space corners directly (no RCS, no rotation). WallType=Y-wall, minX=0.721785, maxX=0.721785, minY=34.117483, maxY=37.230447, Width=3.112964
+
+[2026-01-08 19:47:06.051] [19:47:06]   ✅ WALL/FRAMING DEPTH: Using max thickness=200.0mm (calculated from 2 clash zones)
+
+[2026-01-08 19:47:06.053] [19:47:06] ✅ CORNER-BASED SUCCESS: W=948.8mm, H=400.0mm, D=200.0mm (from 8 corners)
+
+[2026-01-08 19:47:06.054] [19:47:06] ✅ CACHE STORED: Rotated bounding box calculated in 41ms for 2 sleeves, rotation=0.0°
+
+[2026-01-08 19:47:06.069] [19:47:06] 💾 CACHE MISS: Rotated bounding box for 3 sleeves, rotation=90.0°, cacheKey=RBB_1272336_1272364_1272378_1.570796, cacheSize=3
+
+[2026-01-08 19:47:06.071] [19:47:06] ✅ PLACEMENT POINT: Calculated from 3/3 intersection points: (22.918627, 1.049869, 7.709974)
+
+[2026-01-08 19:47:06.073] [19:47:06]   ✅ Initial placement point from intersections: (22.918627, 1.049869, 7.709974)
+
+[2026-01-08 19:47:06.074] [19:47:06] 🔍 WALL/FRAMING DETECTED: Will use corner-based calculation with RCS transformation (straight or rotated axis)
+
+[2026-01-08 19:47:06.075] [19:47:06] 📊 Sleeve 1272378 DATA CHECK: HasRotatedBbox=False, HasCorners=True, HasCosSin=True, HasAxisAligned=True, Rotation=0.0°
+
+[2026-01-08 19:47:06.077] [19:47:06]   Sleeve 1272378: HasRotatedBbox=False, HasAxisAlignedBbox=True
+
+[2026-01-08 19:47:06.079] [19:47:06]     ⚠️ RotatedBbox values: MinX=False, MinY=False, MaxX=False, MaxY=False
+
+[2026-01-08 19:47:06.080] [19:47:06] 📊 Sleeve 1272364 DATA CHECK: HasRotatedBbox=False, HasCorners=True, HasCosSin=True, HasAxisAligned=True, Rotation=0.0°
+
+[2026-01-08 19:47:06.082] [19:47:06]   Sleeve 1272364: HasRotatedBbox=False, HasAxisAlignedBbox=True
+
+[2026-01-08 19:47:06.084] [19:47:06]     ⚠️ RotatedBbox values: MinX=False, MinY=False, MaxX=False, MaxY=False
+
+[2026-01-08 19:47:06.085] [19:47:06] 📊 Sleeve 1272336 DATA CHECK: HasRotatedBbox=False, HasCorners=True, HasCosSin=True, HasAxisAligned=True, Rotation=0.0°
+
+[2026-01-08 19:47:06.087] [19:47:06]   Sleeve 1272336: HasRotatedBbox=False, HasAxisAlignedBbox=True
+
+[2026-01-08 19:47:06.089] [19:47:06]     ⚠️ RotatedBbox values: MinX=False, MinY=False, MaxX=False, MaxY=False
+
+[2026-01-08 19:47:06.090] [19:47:06] 📊 Collected rotatedBboxes: 0 out of 3 sleeves
+
+[2026-01-08 19:47:06.092] [19:47:06] 🔍 ATTEMPTING corner-based calculation: rotation=90.0°, hostType=Wall/Framing, clusterSize=3, rotatedBboxesCount=0
+
+[2026-01-08 19:47:06.093] [19:47:06]   ✅ Sleeve 1272378: Corner Z coordinates found in database! Corner1Z=6.643701, Corner2Z=6.643701, Corner3Z=8.776247, Corner4Z=8.776247, PlacementPointZ=0.000000, BBoxMinZ=6.643701
+
+[2026-01-08 19:47:06.095] [19:47:06]   ✅ Sleeve 1272378: Has corners, Rotation=0.0°
+
+[2026-01-08 19:47:06.096] [19:47:06]   ✅ Sleeve 1272364: Corner Z coordinates found in database! Corner1Z=6.479659, Corner2Z=6.479659, Corner3Z=8.940289, Corner4Z=8.940289, PlacementPointZ=0.000000, BBoxMinZ=6.479659
+
+[2026-01-08 19:47:06.098] [19:47:06]   ✅ Sleeve 1272364: Has corners, Rotation=0.0°
+
+[2026-01-08 19:47:06.100] [19:47:06]   ✅ Sleeve 1272336: Corner Z coordinates found in database! Corner1Z=6.971785, Corner2Z=6.971785, Corner3Z=8.448163, Corner4Z=8.448163, PlacementPointZ=0.000000, BBoxMinZ=6.971785
+
+[2026-01-08 19:47:06.101] [19:47:06]   ✅ Sleeve 1272336: Has corners, Rotation=0.0°
+
+[2026-01-08 19:47:06.103] [19:47:06] 📊 Corner check: 3/3 sleeves have corners
+
+[2026-01-08 19:47:06.105] [19:47:06]   ✅ Added 4 corners for sleeve 1272378: C1=(16.931095,0.721785,6.643701), C2=(20.704060,0.721785,6.643701), C3=(16.931095,0.721785,8.776247), C4=(20.704060,0.721785,8.776247) [UsingStoredZ=True]
+
+[2026-01-08 19:47:06.106] [19:47:06]   ✅ Added 4 corners for sleeve 1272364: C1=(20.868102,0.721785,6.479659), C2=(25.297236,0.721785,6.479659), C3=(20.868102,0.721785,8.940289), C4=(25.297236,0.721785,8.940289) [UsingStoredZ=True]
+
+[2026-01-08 19:47:06.108] [19:47:06]   ✅ Added 4 corners for sleeve 1272336: C1=(25.461278,0.721785,6.971785), C2=(28.249992,0.721785,6.971785), C3=(25.461278,0.721785,8.448163), C4=(28.249992,0.721785,8.448163) [UsingStoredZ=True]
+
+[2026-01-08 19:47:06.110] [19:47:06] 🔧 Starting corner-based calculation with 12 corners, rotation=90.0°, isWallOrFraming=True
+
+[2026-01-08 19:47:06.112] [19:47:06]   ✅ ROTATED AXIS WALL: Transformed 12 corners to cluster's rotated coordinate system. Rotation=90.0°, WallType=X-wall, minRotX=-0.721785, maxRotX=-0.721785, minRotY=16.931095, maxRotY=28.249992, Width=11.318898 (from Y range in rotated space)
+
+[2026-01-08 19:47:06.113] [19:47:06]   ✅ WALL/FRAMING DEPTH: Using max thickness=200.0mm (calculated from 3 clash zones)
+
+[2026-01-08 19:47:06.115] [19:47:06] ✅ CORNER-BASED SUCCESS: W=3450.0mm, H=750.0mm, D=200.0mm (from 12 corners)
+
+[2026-01-08 19:47:06.117] [19:47:06] ✅ CACHE STORED: Rotated bounding box calculated in 47ms for 3 sleeves, rotation=90.0°
+
+[2026-01-08 19:47:06.649] [19:47:06] ✅ CACHE HIT: Rotated bounding box for 2 sleeves, rotation=0.0° (saved 0ms), cacheKey=RBB_1272287_1272329_0.000000
+
+[2026-01-08 19:47:06.804] [19:47:06] ✅ CACHE HIT: Rotated bounding box for 3 sleeves, rotation=90.0° (saved 0ms), cacheKey=RBB_1272336_1272364_1272378_1.570796
+

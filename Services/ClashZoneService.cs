@@ -5477,16 +5477,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 // ✅ CAPTURE RELATIVE ELEVATION: Capture Elevation from Level directly from the MEP element
                 // This is the source of truth used for Bottom of Opening calculations.
-                // Prioritize "Elevation from Level" as per user feedback.
+                // Prioritize "Elevation from Level" parameter if it exists (user visible).
                 Parameter elParam = mepElement.LookupParameter("Elevation from Level") ?? 
                                     mepElement.LookupParameter("Offset") ??
                                     mepElement.LookupParameter("Middle Elevation");
                                     
+                // ✅ ROBUST FALLBACKS (Use BuiltInParameters for reliability)
+                // 1. For Duct Accessories (Dampers): "Elevation from Level" (INSTANCE_ELEVATION_PARAM)
+                if (elParam == null) elParam = mepElement.get_Parameter(BuiltInParameter.INSTANCE_ELEVATION_PARAM);
+                
+                // 2. For Ducts/Pipes: "Middle Elevation" or "Offset"
+                if (elParam == null) elParam = mepElement.get_Parameter(BuiltInParameter.RBS_OFFSET_PARAM); // General Offset covers most cases
+
                 if (elParam != null && elParam.StorageType == StorageType.Double)
                 {
                     elevationFromLevel = elParam.AsDouble();
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[ClashZoneService] MEP Element {mepElement.Id}: Captured ElevationFromLevel={elevationFromLevel * 304.8:F1}mm from parameter '{elParam.Definition.Name}'");
                 }
 
                 // Use HostLevelHelper to get the immediate reference level (same logic as sleeve placement)

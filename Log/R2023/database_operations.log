@@ -1,0 +1,1390 @@
+[2026-01-08 19:46:38.181] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: Filters
+Parameters:
+  FilterId = 1
+  SelectedHostCategories = Floors
+  AdoptToDocumentFlag = 1
+Info: Saving UI state for FilterId=1
+---
+
+[2026-01-08 19:46:38.215] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: Filters
+Parameters:
+  FilterId = 1
+  SelectedHostCategories = Floors
+  AdoptToDocumentFlag = 1
+Rows Affected: 1
+Info: ✅ Saved UI state - HostCategories: 1, AdoptToDocumentFlag: 1
+---
+
+[2026-01-08 19:46:38.240] === DATABASE SELECT ===
+Table: Filters
+WHERE: FilterName='Plumbing' AND Category='Pipes'
+---
+
+[2026-01-08 19:46:38.241] === DATABASE SELECT ===
+Table: Filters
+WHERE: FilterName='Plumbing' AND Category='Pipes'
+Results: 1 row(s)
+Sample Row:
+  FilterId = 1
+---
+
+[2026-01-08 19:46:38.246] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: Filters
+Parameters:
+  FilterId = 1
+  SelectedHostCategories = Floors
+  AdoptToDocumentFlag = 1
+Info: Saving UI state for FilterId=1
+---
+
+[2026-01-08 19:46:38.247] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: Filters
+Parameters:
+  FilterId = 1
+  SelectedHostCategories = Floors
+  AdoptToDocumentFlag = 1
+Rows Affected: 1
+Info: ✅ Saved UI state - HostCategories: 1, AdoptToDocumentFlag: 1
+---
+
+[2026-01-08 19:46:51.836] === DATABASE SELECT ===
+Table: Filters
+WHERE: FilterName='Ventilation' AND Category='Duct Accessories'
+---
+
+[2026-01-08 19:46:51.837] === DATABASE OPERATION ===
+Operation: INSERT
+Table: Filters
+Parameters:
+  FilterName = Ventilation
+  Category = Duct Accessories
+  IsFilterComboNew = 0
+Info: Creating new filter
+---
+
+[2026-01-08 19:46:51.837] === DATABASE OPERATION ===
+Operation: INSERT
+Table: Filters
+Parameters:
+  FilterName = Ventilation
+  Category = Duct Accessories
+  IsFilterComboNew = 0
+Rows Affected: 1
+Info: ✅ Created FilterId=3
+---
+
+[2026-01-08 19:46:51.851] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: Filters
+Parameters:
+  FilterId = 3
+  SelectedHostCategories = Walls
+  AdoptToDocumentFlag = 1
+Info: Saving UI state for FilterId=3
+---
+
+[2026-01-08 19:46:51.852] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: Filters
+Parameters:
+  FilterId = 3
+  SelectedHostCategories = Walls
+  AdoptToDocumentFlag = 1
+Rows Affected: 1
+Info: ✅ Saved UI state - HostCategories: 1, AdoptToDocumentFlag: 1
+---
+
+[2026-01-08 19:46:59.796] === DATABASE SELECT ===
+Table: Filters
+WHERE: FilterName='Ventilation' AND Category='Duct Accessories'
+---
+
+[2026-01-08 19:46:59.797] === DATABASE SELECT ===
+Table: Filters
+WHERE: FilterName='Ventilation' AND Category='Duct Accessories'
+Results: 1 row(s)
+Sample Row:
+  FilterId = 3
+---
+
+[2026-01-08 19:47:00.969] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 55033bc9-ee4f-b7ba-ff0e-6c7a5b521493
+  SleeveInstanceId = 1272258
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272258 for zone 55033bc9-ee4f-b7ba-ff0e-6c7a5b521493
+---
+
+[2026-01-08 19:47:01.069] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 33ae96d6-7dff-e1cc-48b0-2365508afaa6
+  SleeveInstanceId = 1272266
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272266 for zone 33ae96d6-7dff-e1cc-48b0-2365508afaa6
+---
+
+[2026-01-08 19:47:01.180] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = cf8ae4bc-437c-d894-d4e0-2a9b22c220a2
+  SleeveInstanceId = 1272273
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272273 for zone cf8ae4bc-437c-d894-d4e0-2a9b22c220a2
+---
+
+[2026-01-08 19:47:01.284] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 8abcb5eb-fa43-1dd6-0735-d8cf977ff6cb
+  SleeveInstanceId = 1272280
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272280 for zone 8abcb5eb-fa43-1dd6-0735-d8cf977ff6cb
+---
+
+[2026-01-08 19:47:01.395] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 26272a4f-9f89-805c-3c95-a1c1e7f340b9
+  SleeveInstanceId = 1272287
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272287 for zone 26272a4f-9f89-805c-3c95-a1c1e7f340b9
+---
+
+[2026-01-08 19:47:01.493] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 6564c781-c6cb-2232-2fa0-8b701e4909d3
+  SleeveInstanceId = 1272294
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272294 for zone 6564c781-c6cb-2232-2fa0-8b701e4909d3
+---
+
+[2026-01-08 19:47:01.603] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 50e781f3-5ff7-bb4b-d74f-d42c9551aac7
+  SleeveInstanceId = 1272301
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272301 for zone 50e781f3-5ff7-bb4b-d74f-d42c9551aac7
+---
+
+[2026-01-08 19:47:01.714] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = bcf58f2f-9a96-94a2-476d-3c39f15331b6
+  SleeveInstanceId = 1272308
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272308 for zone bcf58f2f-9a96-94a2-476d-3c39f15331b6
+---
+
+[2026-01-08 19:47:01.813] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = b46b82d4-41cf-708b-b85c-f30fd2f0bf1d
+  SleeveInstanceId = 1272315
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272315 for zone b46b82d4-41cf-708b-b85c-f30fd2f0bf1d
+---
+
+[2026-01-08 19:47:01.921] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 634a2b88-42f3-169c-6829-b1f5bcc0b8c1
+  SleeveInstanceId = 1272322
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272322 for zone 634a2b88-42f3-169c-6829-b1f5bcc0b8c1
+---
+
+[2026-01-08 19:47:02.032] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = b3515ca9-b4dd-c7fc-d6e6-133c2578ecdd
+  SleeveInstanceId = 1272329
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272329 for zone b3515ca9-b4dd-c7fc-d6e6-133c2578ecdd
+---
+
+[2026-01-08 19:47:02.144] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 8616a0aa-a600-a464-3ebb-8cebd6f83b6a
+  SleeveInstanceId = 1272336
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272336 for zone 8616a0aa-a600-a464-3ebb-8cebd6f83b6a
+---
+
+[2026-01-08 19:47:02.250] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = a3145e45-b097-445f-2065-0863c3c137b6
+  SleeveInstanceId = 1272343
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272343 for zone a3145e45-b097-445f-2065-0863c3c137b6
+---
+
+[2026-01-08 19:47:02.357] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 2632bbf0-c167-cc8c-b3e2-e941990e41de
+  SleeveInstanceId = 1272350
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272350 for zone 2632bbf0-c167-cc8c-b3e2-e941990e41de
+---
+
+[2026-01-08 19:47:02.458] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 7a3fc1a5-750b-23ce-c189-6dcb53feaac0
+  SleeveInstanceId = 1272357
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272357 for zone 7a3fc1a5-750b-23ce-c189-6dcb53feaac0
+---
+
+[2026-01-08 19:47:02.562] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 9f1747e9-810a-73b0-1926-eb581c142a2a
+  SleeveInstanceId = 1272364
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272364 for zone 9f1747e9-810a-73b0-1926-eb581c142a2a
+---
+
+[2026-01-08 19:47:02.662] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = df577d30-6424-a37a-4833-fe0825bb05bf
+  SleeveInstanceId = 1272371
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272371 for zone df577d30-6424-a37a-4833-fe0825bb05bf
+---
+
+[2026-01-08 19:47:02.768] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 935ea122-7169-ac0b-1470-76f7a5e9d6d5
+  SleeveInstanceId = 1272378
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272378 for zone 935ea122-7169-ac0b-1470-76f7a5e9d6d5
+---
+
+[2026-01-08 19:47:02.874] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 7bf0a81d-7f23-7b16-d366-ab8b9a4b8c39
+  SleeveInstanceId = 1272385
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272385 for zone 7bf0a81d-7f23-7b16-d366-ab8b9a4b8c39
+---
+
+[2026-01-08 19:47:03.003] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 8487ee2c-d3f2-23cf-75b8-f5527727ab3d
+  SleeveInstanceId = 1272392
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272392 for zone 8487ee2c-d3f2-23cf-75b8-f5527727ab3d
+---
+
+[2026-01-08 19:47:03.106] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 3cec003b-2dd2-dfb1-a929-bba6b642b2e5
+  SleeveInstanceId = 1272399
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272399 for zone 3cec003b-2dd2-dfb1-a929-bba6b642b2e5
+---
+
+[2026-01-08 19:47:03.203] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 55033bc9-ee4f-b7ba-ff0e-6c7a5b521493
+  SleeveInstanceId = 1272258
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272258 for zone 55033bc9-ee4f-b7ba-ff0e-6c7a5b521493
+---
+
+[2026-01-08 19:47:03.212] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 33ae96d6-7dff-e1cc-48b0-2365508afaa6
+  SleeveInstanceId = 1272266
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272266 for zone 33ae96d6-7dff-e1cc-48b0-2365508afaa6
+---
+
+[2026-01-08 19:47:03.214] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = cf8ae4bc-437c-d894-d4e0-2a9b22c220a2
+  SleeveInstanceId = 1272273
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272273 for zone cf8ae4bc-437c-d894-d4e0-2a9b22c220a2
+---
+
+[2026-01-08 19:47:03.216] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 8abcb5eb-fa43-1dd6-0735-d8cf977ff6cb
+  SleeveInstanceId = 1272280
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272280 for zone 8abcb5eb-fa43-1dd6-0735-d8cf977ff6cb
+---
+
+[2026-01-08 19:47:03.217] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 26272a4f-9f89-805c-3c95-a1c1e7f340b9
+  SleeveInstanceId = 1272287
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272287 for zone 26272a4f-9f89-805c-3c95-a1c1e7f340b9
+---
+
+[2026-01-08 19:47:03.219] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 6564c781-c6cb-2232-2fa0-8b701e4909d3
+  SleeveInstanceId = 1272294
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272294 for zone 6564c781-c6cb-2232-2fa0-8b701e4909d3
+---
+
+[2026-01-08 19:47:03.221] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 50e781f3-5ff7-bb4b-d74f-d42c9551aac7
+  SleeveInstanceId = 1272301
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272301 for zone 50e781f3-5ff7-bb4b-d74f-d42c9551aac7
+---
+
+[2026-01-08 19:47:03.222] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = bcf58f2f-9a96-94a2-476d-3c39f15331b6
+  SleeveInstanceId = 1272308
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272308 for zone bcf58f2f-9a96-94a2-476d-3c39f15331b6
+---
+
+[2026-01-08 19:47:03.224] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = b46b82d4-41cf-708b-b85c-f30fd2f0bf1d
+  SleeveInstanceId = 1272315
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272315 for zone b46b82d4-41cf-708b-b85c-f30fd2f0bf1d
+---
+
+[2026-01-08 19:47:03.227] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 634a2b88-42f3-169c-6829-b1f5bcc0b8c1
+  SleeveInstanceId = 1272322
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272322 for zone 634a2b88-42f3-169c-6829-b1f5bcc0b8c1
+---
+
+[2026-01-08 19:47:03.228] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = b3515ca9-b4dd-c7fc-d6e6-133c2578ecdd
+  SleeveInstanceId = 1272329
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272329 for zone b3515ca9-b4dd-c7fc-d6e6-133c2578ecdd
+---
+
+[2026-01-08 19:47:03.230] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 8616a0aa-a600-a464-3ebb-8cebd6f83b6a
+  SleeveInstanceId = 1272336
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272336 for zone 8616a0aa-a600-a464-3ebb-8cebd6f83b6a
+---
+
+[2026-01-08 19:47:03.231] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = a3145e45-b097-445f-2065-0863c3c137b6
+  SleeveInstanceId = 1272343
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272343 for zone a3145e45-b097-445f-2065-0863c3c137b6
+---
+
+[2026-01-08 19:47:03.233] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 2632bbf0-c167-cc8c-b3e2-e941990e41de
+  SleeveInstanceId = 1272350
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272350 for zone 2632bbf0-c167-cc8c-b3e2-e941990e41de
+---
+
+[2026-01-08 19:47:03.235] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 7a3fc1a5-750b-23ce-c189-6dcb53feaac0
+  SleeveInstanceId = 1272357
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272357 for zone 7a3fc1a5-750b-23ce-c189-6dcb53feaac0
+---
+
+[2026-01-08 19:47:03.236] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 9f1747e9-810a-73b0-1926-eb581c142a2a
+  SleeveInstanceId = 1272364
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272364 for zone 9f1747e9-810a-73b0-1926-eb581c142a2a
+---
+
+[2026-01-08 19:47:03.238] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = df577d30-6424-a37a-4833-fe0825bb05bf
+  SleeveInstanceId = 1272371
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272371 for zone df577d30-6424-a37a-4833-fe0825bb05bf
+---
+
+[2026-01-08 19:47:03.240] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 935ea122-7169-ac0b-1470-76f7a5e9d6d5
+  SleeveInstanceId = 1272378
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272378 for zone 935ea122-7169-ac0b-1470-76f7a5e9d6d5
+---
+
+[2026-01-08 19:47:03.242] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 7bf0a81d-7f23-7b16-d366-ab8b9a4b8c39
+  SleeveInstanceId = 1272385
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272385 for zone 7bf0a81d-7f23-7b16-d366-ab8b9a4b8c39
+---
+
+[2026-01-08 19:47:03.243] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 8487ee2c-d3f2-23cf-75b8-f5527727ab3d
+  SleeveInstanceId = 1272392
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272392 for zone 8487ee2c-d3f2-23cf-75b8-f5527727ab3d
+---
+
+[2026-01-08 19:47:03.244] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 3cec003b-2dd2-dfb1-a929-bba6b642b2e5
+  SleeveInstanceId = 1272399
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272399 for zone 3cec003b-2dd2-dfb1-a929-bba6b642b2e5
+---
+
+[2026-01-08 19:47:03.335] === DATABASE OPERATION ===
+Operation: INSERT
+Table: SleeveSnapshots
+Parameters:
+  SleeveInstanceId = 1272258
+  ClusterInstanceId = NULL
+  SourceType = Individual
+  FilterId = 3
+  ComboId = 4
+  MepElementIdsJson = [727783]
+  HostElementIdsJson = [321070]
+  MepParametersJson = {"System Type":"Exhaust Air","System Name":"Mechanical Exhaust Air 4","System Abbreviation":"EAD","R...
+  HostParametersJson = {}
+  SourceDocKeysJson = ["ME-00001"]
+  HostDocKeysJson = ["AR-00001"]
+  ClashZoneGuid = 55033BC9-EE4F-B7BA-FF0E-6C7A5B521493
+Rows Affected: 1
+Info: ✅ Inserted NEW snapshot for SleeveId=1272258, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more))
+---
+
+[2026-01-08 19:47:03.337] === DATABASE OPERATION ===
+Operation: INSERT
+Table: SleeveSnapshots
+Parameters:
+  SleeveInstanceId = 1272266
+  ClusterInstanceId = NULL
+  SourceType = Individual
+  FilterId = 3
+  ComboId = 4
+  MepElementIdsJson = [732144]
+  HostElementIdsJson = [321069]
+  MepParametersJson = {"System Type":"Supply Air","System Name":"Mechanical Supply Air 62","System Abbreviation":"SAD","Re...
+  HostParametersJson = {}
+  SourceDocKeysJson = ["ME-00001"]
+  HostDocKeysJson = ["AR-00001"]
+  ClashZoneGuid = 33AE96D6-7DFF-E1CC-48B0-2365508AFAA6
+Rows Affected: 1
+Info: ✅ Inserted NEW snapshot for SleeveId=1272266, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more))
+---
+
+[2026-01-08 19:47:03.338] === DATABASE OPERATION ===
+Operation: INSERT
+Table: SleeveSnapshots
+Parameters:
+  SleeveInstanceId = 1272273
+  ClusterInstanceId = NULL
+  SourceType = Individual
+  FilterId = 3
+  ComboId = 4
+  MepElementIdsJson = [732148]
+  HostElementIdsJson = [321069]
+  MepParametersJson = {"System Type":"Return Air","System Name":"Mechanical Return Air 5","System Abbreviation":"RAD","Ref...
+  HostParametersJson = {}
+  SourceDocKeysJson = ["ME-00001"]
+  HostDocKeysJson = ["AR-00001"]
+  ClashZoneGuid = CF8AE4BC-437C-D894-D4E0-2A9B22C220A2
+Rows Affected: 1
+Info: ✅ Inserted NEW snapshot for SleeveId=1272273, ClusterId=, MEP params: 14 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+9 more))
+---
+
+[2026-01-08 19:47:03.338] === DATABASE OPERATION ===
+Operation: INSERT
+Table: SleeveSnapshots
+Parameters:
+  SleeveInstanceId = 1272280
+  ClusterInstanceId = NULL
+  SourceType = Individual
+  FilterId = 3
+  ComboId = 4
+  MepElementIdsJson = [733294]
+  HostElementIdsJson = [321070]
+  MepParametersJson = {"System Type":"Supply Air","System Name":"Mechanical Supply Air 21","System Abbreviation":"SAD","Re...
+  HostParametersJson = {}
+  SourceDocKeysJson = ["ME-00001"]
+  HostDocKeysJson = ["AR-00001"]
+  ClashZoneGuid = 8ABCB5EB-FA43-1DD6-0735-D8CF977FF6CB
+Rows Affected: 1
+Info: ✅ Inserted NEW snapshot for SleeveId=1272280, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more))
+---
+
+[2026-01-08 19:47:03.339] === DATABASE OPERATION ===
+Operation: INSERT
+Table: SleeveSnapshots
+Parameters:
+  SleeveInstanceId = 1272287
+  ClusterInstanceId = NULL
+  SourceType = Individual
+  FilterId = 3
+  ComboId = 4
+  MepElementIdsJson = [733631]
+  HostElementIdsJson = [321069]
+  MepParametersJson = {"System Type":"Return Air","System Name":"Mechanical Return Air 2","System Abbreviation":"RAD","Ref...
+  HostParametersJson = {}
+  SourceDocKeysJson = ["ME-00001"]
+  HostDocKeysJson = ["AR-00001"]
+  ClashZoneGuid = 26272A4F-9F89-805C-3C95-A1C1E7F340B9
+Rows Affected: 1
+Info: ✅ Inserted NEW snapshot for SleeveId=1272287, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more))
+---
+
+[2026-01-08 19:47:03.340] === DATABASE OPERATION ===
+Operation: INSERT
+Table: SleeveSnapshots
+Parameters:
+  SleeveInstanceId = 1272294
+  ClusterInstanceId = NULL
+  SourceType = Individual
+  FilterId = 3
+  ComboId = 4
+  MepElementIdsJson = [733736]
+  HostElementIdsJson = [321069]
+  MepParametersJson = {"System Type":"Supply Air","System Name":"Mechanical Supply Air 22","System Abbreviation":"SAD","Re...
+  HostParametersJson = {}
+  SourceDocKeysJson = ["ME-00001"]
+  HostDocKeysJson = ["AR-00001"]
+  ClashZoneGuid = 6564C781-C6CB-2232-2FA0-8B701E4909D3
+Rows Affected: 1
+Info: ✅ Inserted NEW snapshot for SleeveId=1272294, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more))
+---
+
+[2026-01-08 19:47:03.341] === DATABASE OPERATION ===
+Operation: INSERT
+Table: SleeveSnapshots
+Parameters:
+  SleeveInstanceId = 1272301
+  ClusterInstanceId = NULL
+  SourceType = Individual
+  FilterId = 3
+  ComboId = 4
+  MepElementIdsJson = [733825]
+  HostElementIdsJson = [321070]
+  MepParametersJson = {"System Type":"Return Air","System Name":"Mechanical Return Air 12","System Abbreviation":"RAD","Re...
+  HostParametersJson = {}
+  SourceDocKeysJson = ["ME-00001"]
+  HostDocKeysJson = ["AR-00001"]
+  ClashZoneGuid = 50E781F3-5FF7-BB4B-D74F-D42C9551AAC7
+Rows Affected: 1
+Info: ✅ Inserted NEW snapshot for SleeveId=1272301, ClusterId=, MEP params: 14 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+9 more))
+---
+
+[2026-01-08 19:47:03.342] === DATABASE OPERATION ===
+Operation: INSERT
+Table: SleeveSnapshots
+Parameters:
+  SleeveInstanceId = 1272308
+  ClusterInstanceId = NULL
+  SourceType = Individual
+  FilterId = 3
+  ComboId = 4
+  MepElementIdsJson = [733847]
+  HostElementIdsJson = [321070]
+  MepParametersJson = {"System Type":"Return Air","System Name":"Mechanical Return Air 13","System Abbreviation":"RAD","Re...
+  HostParametersJson = {}
+  SourceDocKeysJson = ["ME-00001"]
+  HostDocKeysJson = ["AR-00001"]
+  ClashZoneGuid = BCF58F2F-9A96-94A2-476D-3C39F15331B6
+Rows Affected: 1
+Info: ✅ Inserted NEW snapshot for SleeveId=1272308, ClusterId=, MEP params: 14 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+9 more))
+---
+
+[2026-01-08 19:47:03.343] === DATABASE OPERATION ===
+Operation: INSERT
+Table: SleeveSnapshots
+Parameters:
+  SleeveInstanceId = 1272315
+  ClusterInstanceId = NULL
+  SourceType = Individual
+  FilterId = 3
+  ComboId = 4
+  MepElementIdsJson = [732146]
+  HostElementIdsJson = [321069]
+  MepParametersJson = {"System Type":"Return Air","System Name":"Mechanical Return Air 4","System Abbreviation":"RAD","Ref...
+  HostParametersJson = {}
+  SourceDocKeysJson = ["ME-00001"]
+  HostDocKeysJson = ["AR-00001"]
+  ClashZoneGuid = B46B82D4-41CF-708B-B85C-F30FD2F0BF1D
+Rows Affected: 1
+Info: ✅ Inserted NEW snapshot for SleeveId=1272315, ClusterId=, MEP params: 14 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+9 more))
+---
+
+[2026-01-08 19:47:03.344] === DATABASE OPERATION ===
+Operation: INSERT
+Table: SleeveSnapshots
+Parameters:
+  SleeveInstanceId = 1272322
+  ClusterInstanceId = NULL
+  SourceType = Individual
+  FilterId = 3
+  ComboId = 4
+  MepElementIdsJson = [733265]
+  HostElementIdsJson = [321070]
+  MepParametersJson = {"System Type":"Return Air","System Name":"Mechanical Return Air 9","System Abbreviation":"RAD","Ref...
+  HostParametersJson = {}
+  SourceDocKeysJson = ["ME-00001"]
+  HostDocKeysJson = ["AR-00001"]
+  ClashZoneGuid = 634A2B88-42F3-169C-6829-B1F5BCC0B8C1
+Rows Affected: 1
+Info: ✅ Inserted NEW snapshot for SleeveId=1272322, ClusterId=, MEP params: 14 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+9 more))
+---
+
+[2026-01-08 19:47:03.345] === DATABASE OPERATION ===
+Operation: INSERT
+Table: SleeveSnapshots
+Parameters:
+  SleeveInstanceId = 1272329
+  ClusterInstanceId = NULL
+  SourceType = Individual
+  FilterId = 3
+  ComboId = 4
+  MepElementIdsJson = [733651]
+  HostElementIdsJson = [321069]
+  MepParametersJson = {"System Type":"Supply Air","System Name":"Mechanical Supply Air 25","System Abbreviation":"SAD","Re...
+  HostParametersJson = {}
+  SourceDocKeysJson = ["ME-00001"]
+  HostDocKeysJson = ["AR-00001"]
+  ClashZoneGuid = B3515CA9-B4DD-C7FC-D6E6-133C2578ECDD
+Rows Affected: 1
+Info: ✅ Inserted NEW snapshot for SleeveId=1272329, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more))
+---
+
+[2026-01-08 19:47:03.346] === DATABASE OPERATION ===
+Operation: INSERT
+Table: SleeveSnapshots
+Parameters:
+  SleeveInstanceId = 1272336
+  ClusterInstanceId = NULL
+  SourceType = Individual
+  FilterId = 3
+  ComboId = 4
+  MepElementIdsJson = [726176]
+  HostElementIdsJson = [321070]
+  MepParametersJson = {"System Type":"Supply Air","System Name":"Mechanical Supply Air 5","System Abbreviation":"SAD","Ref...
+  HostParametersJson = {}
+  SourceDocKeysJson = ["ME-00001"]
+  HostDocKeysJson = ["AR-00001"]
+  ClashZoneGuid = 8616A0AA-A600-A464-3EBB-8CEBD6F83B6A
+Rows Affected: 1
+Info: ✅ Inserted NEW snapshot for SleeveId=1272336, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more))
+---
+
+[2026-01-08 19:47:03.347] === DATABASE OPERATION ===
+Operation: INSERT
+Table: SleeveSnapshots
+Parameters:
+  SleeveInstanceId = 1272343
+  ClusterInstanceId = NULL
+  SourceType = Individual
+  FilterId = 3
+  ComboId = 4
+  MepElementIdsJson = [732138]
+  HostElementIdsJson = [321069]
+  MepParametersJson = {"System Type":"Return Air","System Name":"Mechanical Return Air 1","System Abbreviation":"RAD","Ref...
+  HostParametersJson = {}
+  SourceDocKeysJson = ["ME-00001"]
+  HostDocKeysJson = ["AR-00001"]
+  ClashZoneGuid = A3145E45-B097-445F-2065-0863C3C137B6
+Rows Affected: 1
+Info: ✅ Inserted NEW snapshot for SleeveId=1272343, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more))
+---
+
+[2026-01-08 19:47:03.348] === DATABASE OPERATION ===
+Operation: INSERT
+Table: SleeveSnapshots
+Parameters:
+  SleeveInstanceId = 1272350
+  ClusterInstanceId = NULL
+  SourceType = Individual
+  FilterId = 3
+  ComboId = 4
+  MepElementIdsJson = [727730]
+  HostElementIdsJson = [321070]
+  MepParametersJson = {"System Type":"Return Air","System Name":"Mechanical Return Air 8","System Abbreviation":"RAD","Ref...
+  HostParametersJson = {}
+  SourceDocKeysJson = ["ME-00001"]
+  HostDocKeysJson = ["AR-00001"]
+  ClashZoneGuid = 2632BBF0-C167-CC8C-B3E2-E941990E41DE
+Rows Affected: 1
+Info: ✅ Inserted NEW snapshot for SleeveId=1272350, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more))
+---
+
+[2026-01-08 19:47:03.349] === DATABASE OPERATION ===
+Operation: INSERT
+Table: SleeveSnapshots
+Parameters:
+  SleeveInstanceId = 1272357
+  ClusterInstanceId = NULL
+  SourceType = Individual
+  FilterId = 3
+  ComboId = 4
+  MepElementIdsJson = [732142]
+  HostElementIdsJson = [321069]
+  MepParametersJson = {"System Type":"Return Air","System Name":"Mechanical Return Air 3","System Abbreviation":"RAD","Ref...
+  HostParametersJson = {}
+  SourceDocKeysJson = ["ME-00001"]
+  HostDocKeysJson = ["AR-00001"]
+  ClashZoneGuid = 7A3FC1A5-750B-23CE-C189-6DCB53FEAAC0
+Rows Affected: 1
+Info: ✅ Inserted NEW snapshot for SleeveId=1272357, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more))
+---
+
+[2026-01-08 19:47:03.350] === DATABASE OPERATION ===
+Operation: INSERT
+Table: SleeveSnapshots
+Parameters:
+  SleeveInstanceId = 1272364
+  ClusterInstanceId = NULL
+  SourceType = Individual
+  FilterId = 3
+  ComboId = 4
+  MepElementIdsJson = [726137]
+  HostElementIdsJson = [321070]
+  MepParametersJson = {"System Type":"Return Air","System Name":"Mechanical Return Air 7","System Abbreviation":"RAD","Ref...
+  HostParametersJson = {}
+  SourceDocKeysJson = ["ME-00001"]
+  HostDocKeysJson = ["AR-00001"]
+  ClashZoneGuid = 9F1747E9-810A-73B0-1926-EB581C142A2A
+Rows Affected: 1
+Info: ✅ Inserted NEW snapshot for SleeveId=1272364, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more))
+---
+
+[2026-01-08 19:47:03.351] === DATABASE OPERATION ===
+Operation: INSERT
+Table: SleeveSnapshots
+Parameters:
+  SleeveInstanceId = 1272371
+  ClusterInstanceId = NULL
+  SourceType = Individual
+  FilterId = 3
+  ComboId = 4
+  MepElementIdsJson = [732136]
+  HostElementIdsJson = [321069]
+  MepParametersJson = {"System Type":"Supply Air","System Name":"Mechanical Supply Air 66","System Abbreviation":"SAD","Re...
+  HostParametersJson = {}
+  SourceDocKeysJson = ["ME-00001"]
+  HostDocKeysJson = ["AR-00001"]
+  ClashZoneGuid = DF577D30-6424-A37A-4833-FE0825BB05BF
+Rows Affected: 1
+Info: ✅ Inserted NEW snapshot for SleeveId=1272371, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more))
+---
+
+[2026-01-08 19:47:03.352] === DATABASE OPERATION ===
+Operation: INSERT
+Table: SleeveSnapshots
+Parameters:
+  SleeveInstanceId = 1272378
+  ClusterInstanceId = NULL
+  SourceType = Individual
+  FilterId = 3
+  ComboId = 4
+  MepElementIdsJson = [726106]
+  HostElementIdsJson = [321070]
+  MepParametersJson = {"System Type":"Supply Air","System Name":"Mechanical Supply Air 4","System Abbreviation":"SAD","Ref...
+  HostParametersJson = {}
+  SourceDocKeysJson = ["ME-00001"]
+  HostDocKeysJson = ["AR-00001"]
+  ClashZoneGuid = 935EA122-7169-AC0B-1470-76F7A5E9D6D5
+Rows Affected: 1
+Info: ✅ Inserted NEW snapshot for SleeveId=1272378, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more))
+---
+
+[2026-01-08 19:47:03.353] === DATABASE OPERATION ===
+Operation: INSERT
+Table: SleeveSnapshots
+Parameters:
+  SleeveInstanceId = 1272385
+  ClusterInstanceId = NULL
+  SourceType = Individual
+  FilterId = 3
+  ComboId = 4
+  MepElementIdsJson = [732134]
+  HostElementIdsJson = [321069]
+  MepParametersJson = {"System Type":"Supply Air","System Name":"Mechanical Supply Air 59","System Abbreviation":"SAD","Re...
+  HostParametersJson = {}
+  SourceDocKeysJson = ["ME-00001"]
+  HostDocKeysJson = ["AR-00001"]
+  ClashZoneGuid = 7BF0A81D-7F23-7B16-D366-AB8B9A4B8C39
+Rows Affected: 1
+Info: ✅ Inserted NEW snapshot for SleeveId=1272385, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more))
+---
+
+[2026-01-08 19:47:03.354] === DATABASE OPERATION ===
+Operation: INSERT
+Table: SleeveSnapshots
+Parameters:
+  SleeveInstanceId = 1272392
+  ClusterInstanceId = NULL
+  SourceType = Individual
+  FilterId = 3
+  ComboId = 4
+  MepElementIdsJson = [727667]
+  HostElementIdsJson = [321070]
+  MepParametersJson = {"System Type":"Supply Air","System Name":"Mechanical Supply Air 7","System Abbreviation":"SAD","Ref...
+  HostParametersJson = {}
+  SourceDocKeysJson = ["ME-00001"]
+  HostDocKeysJson = ["AR-00001"]
+  ClashZoneGuid = 8487EE2C-D3F2-23CF-75B8-F5527727AB3D
+Rows Affected: 1
+Info: ✅ Inserted NEW snapshot for SleeveId=1272392, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more))
+---
+
+[2026-01-08 19:47:03.354] === DATABASE OPERATION ===
+Operation: INSERT
+Table: SleeveSnapshots
+Parameters:
+  SleeveInstanceId = 1272399
+  ClusterInstanceId = NULL
+  SourceType = Individual
+  FilterId = 3
+  ComboId = 4
+  MepElementIdsJson = [732140]
+  HostElementIdsJson = [321069]
+  MepParametersJson = {"System Type":"Supply Air","System Name":"Mechanical Supply Air 60","System Abbreviation":"SAD","Re...
+  HostParametersJson = {}
+  SourceDocKeysJson = ["ME-00001"]
+  HostDocKeysJson = ["AR-00001"]
+  ClashZoneGuid = 3CEC003B-2DD2-DFB1-A929-BBA6B642B2E5
+Rows Affected: 1
+Info: ✅ Inserted NEW snapshot for SleeveId=1272399, ClusterId=, MEP params: 12 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+7 more))
+---
+
+[2026-01-08 19:47:03.361] [2026-01-08 19:47:03.360] [SleevePersistenceService] ✅ Saved sleeve snapshots for 21 placed sleeves (FilterId=3)
+
+[2026-01-08 19:47:05.196] === DATABASE SELECT ===
+Table: ClusterSleeves
+WHERE: FilterId=3 AND Category='Duct Accessories'
+Info: Checking for existing cluster data by FilterId+Category
+---
+
+[2026-01-08 19:47:05.197] === DATABASE SELECT ===
+Table: ClusterSleeves
+WHERE: FilterId=3 AND Category='Duct Accessories'
+Results: 0 row(s)
+---
+
+[2026-01-08 19:47:08.611] === DATABASE OPERATION ===
+Operation: INSERT OR REPLACE
+Table: ClusterSleeves
+Parameters:
+  ClusterInstanceId = 1272422
+  Corner1X = 0.721784776903101
+  Corner1Y = 40.5561628091681
+  Corner1Z = 6.3484251968504
+---
+
+[2026-01-08 19:47:08.616] === DATABASE OPERATION ===
+Operation: INSERT OR REPLACE
+Table: ClusterSleeves
+Parameters:
+  ClusterInstanceId = 1272431
+  Corner1X = 0.721784776903101
+  Corner1Y = 30.131617295038
+  Corner1Z = 5.21653543307087
+---
+
+[2026-01-08 19:47:08.620] === DATABASE OPERATION ===
+Operation: INSERT OR REPLACE
+Table: ClusterSleeves
+Parameters:
+  ClusterInstanceId = 1272438
+  Corner1X = 0.721784776903101
+  Corner1Y = 34.1174831363168
+  Corner1Z = 9.86330537903833
+---
+
+[2026-01-08 19:47:08.624] === DATABASE OPERATION ===
+Operation: INSERT OR REPLACE
+Table: ClusterSleeves
+Parameters:
+  ClusterInstanceId = 1272445
+  Corner1X = 16.93109454733
+  Corner1Y = 0.721784776902574
+  Corner1Z = 6.47965879265093
+---
+
+[2026-01-08 19:47:08.626] === TRANSACTION ===
+Operation: COMMIT
+Status: SUCCESS
+Error: Saved 4 clusters using INSERT OR REPLACE
+---
+
+[2026-01-08 19:47:08.710] === DATABASE OPERATION ===
+Operation: INSERT OR REPLACE
+Table: ClusterSleeves
+Parameters:
+  ClusterInstanceId = 1272422
+  Corner1X = 0.721784776903101
+  Corner1Y = 40.5561628091681
+  Corner1Z = 6.3484251968504
+---
+
+[2026-01-08 19:47:08.714] === DATABASE OPERATION ===
+Operation: INSERT OR REPLACE
+Table: ClusterSleeves
+Parameters:
+  ClusterInstanceId = 1272431
+  Corner1X = 0.721784776903101
+  Corner1Y = 30.131617295038
+  Corner1Z = 5.21653543307087
+---
+
+[2026-01-08 19:47:08.718] === DATABASE OPERATION ===
+Operation: INSERT OR REPLACE
+Table: ClusterSleeves
+Parameters:
+  ClusterInstanceId = 1272438
+  Corner1X = 0.721784776903101
+  Corner1Y = 34.1174831363168
+  Corner1Z = 9.86330537903833
+---
+
+[2026-01-08 19:47:08.722] === DATABASE OPERATION ===
+Operation: INSERT OR REPLACE
+Table: ClusterSleeves
+Parameters:
+  ClusterInstanceId = 1272445
+  Corner1X = 16.93109454733
+  Corner1Y = 0.721784776902574
+  Corner1Z = 6.47965879265093
+---
+
+[2026-01-08 19:47:08.723] === TRANSACTION ===
+Operation: COMMIT
+Status: SUCCESS
+Error: Saved 4 clusters using INSERT OR REPLACE
+---
+
+[2026-01-08 19:47:08.828] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: SleeveSnapshots
+Parameters:
+  SnapshotId = 81
+  ClashZoneGuid = 7BF0A81D-7F23-7B16-D366-AB8B9A4B8C39
+  SleeveInstanceId = NULL
+  ClusterInstanceId = 1272422
+  MepParamsCount = 10
+  HostParamsCount = 0
+Rows Affected: 1
+Info: ✅ Updated existing snapshot SnapshotId=81, MEP params: 10 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+5 more))
+---
+
+[2026-01-08 19:47:08.831] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: SleeveSnapshots
+Parameters:
+  SnapshotId = 83
+  ClashZoneGuid = 3CEC003B-2DD2-DFB1-A929-BBA6B642B2E5
+  SleeveInstanceId = NULL
+  ClusterInstanceId = 1272431
+  MepParamsCount = 10
+  HostParamsCount = 0
+Rows Affected: 1
+Info: ✅ Updated existing snapshot SnapshotId=83, MEP params: 10 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+5 more))
+---
+
+[2026-01-08 19:47:08.832] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: SleeveSnapshots
+Parameters:
+  SnapshotId = 67
+  ClashZoneGuid = 26272A4F-9F89-805C-3C95-A1C1E7F340B9
+  SleeveInstanceId = NULL
+  ClusterInstanceId = 1272438
+  MepParamsCount = 10
+  HostParamsCount = 0
+Rows Affected: 1
+Info: ✅ Updated existing snapshot SnapshotId=67, MEP params: 10 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+5 more))
+---
+
+[2026-01-08 19:47:08.833] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: SleeveSnapshots
+Parameters:
+  SnapshotId = 80
+  ClashZoneGuid = 935EA122-7169-AC0B-1470-76F7A5E9D6D5
+  SleeveInstanceId = NULL
+  ClusterInstanceId = 1272445
+  MepParamsCount = 10
+  HostParamsCount = 0
+Rows Affected: 1
+Info: ✅ Updated existing snapshot SnapshotId=80, MEP params: 10 (System Type, System Name, System Abbreviation, Reference Level, Service Type (+5 more))
+---
+
+[2026-01-08 19:47:09.207] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 935ea122-7169-ac0b-1470-76f7a5e9d6d5
+  SleeveInstanceId = 1272378
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272378 for zone 935ea122-7169-ac0b-1470-76f7a5e9d6d5
+---
+
+[2026-01-08 19:47:09.208] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 9f1747e9-810a-73b0-1926-eb581c142a2a
+  SleeveInstanceId = 1272364
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272364 for zone 9f1747e9-810a-73b0-1926-eb581c142a2a
+---
+
+[2026-01-08 19:47:09.210] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 8616a0aa-a600-a464-3ebb-8cebd6f83b6a
+  SleeveInstanceId = 1272336
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272336 for zone 8616a0aa-a600-a464-3ebb-8cebd6f83b6a
+---
+
+[2026-01-08 19:47:09.211] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 8487ee2c-d3f2-23cf-75b8-f5527727ab3d
+  SleeveInstanceId = 1272392
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272392 for zone 8487ee2c-d3f2-23cf-75b8-f5527727ab3d
+---
+
+[2026-01-08 19:47:09.212] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 2632bbf0-c167-cc8c-b3e2-e941990e41de
+  SleeveInstanceId = 1272350
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272350 for zone 2632bbf0-c167-cc8c-b3e2-e941990e41de
+---
+
+[2026-01-08 19:47:09.225] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 55033bc9-ee4f-b7ba-ff0e-6c7a5b521493
+  SleeveInstanceId = 1272258
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272258 for zone 55033bc9-ee4f-b7ba-ff0e-6c7a5b521493
+---
+
+[2026-01-08 19:47:09.227] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 7bf0a81d-7f23-7b16-d366-ab8b9a4b8c39
+  SleeveInstanceId = 1272385
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272385 for zone 7bf0a81d-7f23-7b16-d366-ab8b9a4b8c39
+---
+
+[2026-01-08 19:47:09.229] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = df577d30-6424-a37a-4833-fe0825bb05bf
+  SleeveInstanceId = 1272371
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272371 for zone df577d30-6424-a37a-4833-fe0825bb05bf
+---
+
+[2026-01-08 19:47:09.231] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = a3145e45-b097-445f-2065-0863c3c137b6
+  SleeveInstanceId = 1272343
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272343 for zone a3145e45-b097-445f-2065-0863c3c137b6
+---
+
+[2026-01-08 19:47:09.232] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 3cec003b-2dd2-dfb1-a929-bba6b642b2e5
+  SleeveInstanceId = 1272399
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272399 for zone 3cec003b-2dd2-dfb1-a929-bba6b642b2e5
+---
+
+[2026-01-08 19:47:09.234] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 7a3fc1a5-750b-23ce-c189-6dcb53feaac0
+  SleeveInstanceId = 1272357
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272357 for zone 7a3fc1a5-750b-23ce-c189-6dcb53feaac0
+---
+
+[2026-01-08 19:47:09.235] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 33ae96d6-7dff-e1cc-48b0-2365508afaa6
+  SleeveInstanceId = 1272266
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272266 for zone 33ae96d6-7dff-e1cc-48b0-2365508afaa6
+---
+
+[2026-01-08 19:47:09.237] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = b46b82d4-41cf-708b-b85c-f30fd2f0bf1d
+  SleeveInstanceId = 1272315
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272315 for zone b46b82d4-41cf-708b-b85c-f30fd2f0bf1d
+---
+
+[2026-01-08 19:47:09.238] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = cf8ae4bc-437c-d894-d4e0-2a9b22c220a2
+  SleeveInstanceId = 1272273
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272273 for zone cf8ae4bc-437c-d894-d4e0-2a9b22c220a2
+---
+
+[2026-01-08 19:47:09.241] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 634a2b88-42f3-169c-6829-b1f5bcc0b8c1
+  SleeveInstanceId = 1272322
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272322 for zone 634a2b88-42f3-169c-6829-b1f5bcc0b8c1
+---
+
+[2026-01-08 19:47:09.242] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 8abcb5eb-fa43-1dd6-0735-d8cf977ff6cb
+  SleeveInstanceId = 1272280
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272280 for zone 8abcb5eb-fa43-1dd6-0735-d8cf977ff6cb
+---
+
+[2026-01-08 19:47:09.244] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 26272a4f-9f89-805c-3c95-a1c1e7f340b9
+  SleeveInstanceId = 1272287
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272287 for zone 26272a4f-9f89-805c-3c95-a1c1e7f340b9
+---
+
+[2026-01-08 19:47:09.245] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = b3515ca9-b4dd-c7fc-d6e6-133c2578ecdd
+  SleeveInstanceId = 1272329
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272329 for zone b3515ca9-b4dd-c7fc-d6e6-133c2578ecdd
+---
+
+[2026-01-08 19:47:09.247] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 6564c781-c6cb-2232-2fa0-8b701e4909d3
+  SleeveInstanceId = 1272294
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272294 for zone 6564c781-c6cb-2232-2fa0-8b701e4909d3
+---
+
+[2026-01-08 19:47:09.249] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = 50e781f3-5ff7-bb4b-d74f-d42c9551aac7
+  SleeveInstanceId = 1272301
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272301 for zone 50e781f3-5ff7-bb4b-d74f-d42c9551aac7
+---
+
+[2026-01-08 19:47:09.250] === DATABASE OPERATION ===
+Operation: UPDATE
+Table: ClashZones
+Parameters:
+  ClashZoneGuid = bcf58f2f-9a96-94a2-476d-3c39f15331b6
+  SleeveInstanceId = 1272308
+  RowExists = True
+Rows Affected: 1
+Info: ✅ Updated SleeveInstanceId=1272308 for zone bcf58f2f-9a96-94a2-476d-3c39f15331b6
+---
+

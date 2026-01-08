@@ -1,0 +1,16 @@
+[2026-01-08 19:47:00.450] [19:47:00] 🔥 BEFORE VERIFICATION CALL
+
+[19:47:05] 🔥 DIRECT IO: AdoptToDocumentFlag=True, FilterId=3
+[19:47:05] 🔥 DIRECT IO: PATH 1a CHECK - AdoptToDocument=True, NoInvalidatedZones=True, Queried by FilterId=3, Category=Duct Accessories, Found 0 clusters
+[19:47:05] 🔥 DIRECT IO: PATH 1a CHECK - No clusters in DB, using PATH 2 (database), comboId=4
+[19:47:05] 🔨 BUILD TIMESTAMP: 2026-01-08 18:51:17 | VERSION: R2023 | Assembly: JSE_RevitAddin_MEP_OPENINGS.dll
+[19:47:05] 🔥 DIRECT IO: isPath1Replay=False, comboId=4, filterId=3 (DATABASE-ONLY, NO XML)
+[2026-01-08 19:47:05.201] [19:47:05] 🔥🔥🔥 ABOUT TO CALL ClusterSleeves: category=Duct Accessories, isPath1Replay=False, comboId=4, filterId=3 (DATABASE-ONLY, NO XML)
+
+[19:47:05] 🔥 DIRECT IO: BEFORE ClusterServiceFactory.CreateWithAllServices
+[19:47:05] 🔥 DIRECT IO: CALLING ClusterServiceFactory.CreateWithAllServices NOW
+[19:47:05] 🔥 DIRECT IO: ClusterServiceFactory.CreateWithAllServices RETURNED
+[19:47:05] 🔥 DIRECT IO: BEFORE ClusterSleeves CALL (isPath1Replay=False, comboId=4, filterId=3)
+[19:47:08] 🔥 DIRECT IO: ClusterSleeves RETURNED SUCCESS: placed=4, deleted=10
+[2026-01-08 19:47:08.870] [19:47:08] 🔥🔥🔥 ClusterSleeves RETURNED: placedCount=4, deletedCount=10
+
