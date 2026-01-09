@@ -1406,24 +1406,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         var repository = new Data.Repositories.ClashZoneRepository(dbContext, msg => { });
 
-                        // ✅ STEP 1: Optimized Hierarchical Reset (Combined -> Cluster -> Individual)
-                        // Uses O(1) HashSet check against ALL opening families in Revit.
-                        int resetCount = repository.VerifyExistingSleevesAndResetFlags(
-                            _document,
-                            context.SelectedFilterNames ?? new List<string>(),
-                            context.SelectedMepCategories ?? new List<string>());
-
-                        if (!context.IsDeploymentMode)
-                        {
-                            DebugLogger.Info($"[REFRESH-REFACTORED] [HIERARCHICAL-RESET] ✅ Reset flags for {resetCount} zones with missing/deleted sleeves");
-                            SafeFileLogger.SafeAppendText(context.RefreshLogName,
-                                $"[{DateTime.Now}] [HIERARCHICAL-RESET] ✅ Reset flags for {resetCount} zones\n");
-                        }
-
-                        // ✅ STEP 2: Session Context (SOLID Refactor)
+                        // ✅ STEP 1: Session Context (SOLID Refactor)
                         // Orchestrates the 2-step flag setting logic:
                         // 1. Reset & Set IsCurrentClashFlag based on Filters + Section Box
                         // 2. Set ReadyForPlacementFlag based on IsCurrentClashFlag + Unresolved Status
+                        // NOTE: Run this BEFORE VerifyExistingSleeves to prevent ResetIsCurrentClashFlag from clobbering the flags set by verification.
                         var sessionContext = new SessionContextService(repository);
                         int markedCount = sessionContext.UpdateSessionFlags(
                             context.SelectedFilterNames ?? new List<string>(),
@@ -1435,6 +1422,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             DebugLogger.Info($"[REFRESH-REFACTORED] [SESSION-CONTEXT] ✅ Applied section box context. Marked {markedCount} zones as ReadyForPlacement.");
                             SafeFileLogger.SafeAppendText(context.RefreshLogName,
                                 $"[{DateTime.Now}] [SESSION-CONTEXT] ✅ Applied section box context. Marked {markedCount} zones\n");
+                        }
+
+                        // ✅ STEP 2: Optimized Hierarchical Reset (Combined -> Cluster -> Individual)
+                        // Uses O(1) HashSet check against ALL opening families in Revit.
+                        // MOVED to run AFTER SessionContext so that "Force IsCurrentClash=1" acts as an override for deleted sleeves.
+                        int resetCount = repository.VerifyExistingSleevesAndResetFlags(
+                            _document,
+                            context.SelectedFilterNames ?? new List<string>(),
+                            context.SelectedMepCategories ?? new List<string>());
+
+                        if (!context.IsDeploymentMode)
+                        {
+                            DebugLogger.Info($"[REFRESH-REFACTORED] [HIERARCHICAL-RESET] ✅ Reset flags for {resetCount} zones with missing/deleted sleeves");
+                            SafeFileLogger.SafeAppendText(context.RefreshLogName,
+                                $"[{DateTime.Now}] [HIERARCHICAL-RESET] ✅ Reset flags for {resetCount} zones\n");
                         }
                         
                         op?.SetItemCount(resetCount + markedCount);

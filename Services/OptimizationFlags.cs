@@ -293,6 +293,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public static bool UseBatchDamperParameterCapture { get; set; } = true;
 
         /// <summary>
+        /// Use bulk family placement (NewFamilyInstances2) for INDIVIDUAL sleeves instead of looped NewFamilyInstance
+        /// When true: Uses single NewFamilyInstances2 call for all individual sleeves (10-20x faster placement)
+        /// When false: Uses legacy per-sleeve placement with individual transactions
+        /// Default: false (safe rollout - enable after testing)
+        /// Scope: INDIVIDUAL SLEEVES ONLY - Cluster sleeves use separate flag (future)
+        /// Impact: Reduces 200-sleeve placement from ~2-5min to ~10-30sec
+        /// Location: Services/NewSleevePlacerService.cs (ExecuteBulkPlacement)
+        /// Note: Post-placement parameter capture (ParameterSnapshotService) is handled separately
+        /// </summary>
+        public static bool UseBulkIndividualSleevePlacement { get; set; } = false;
+
+        /// <summary>
         /// Skip XML reads during refresh (database-only mode).
         /// When true: Bypasses XML-CACHE loading and uses DB as the single source.
         /// When false: Loads XML cache for compatibility with older flows.
@@ -363,13 +375,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// When true: Uses IClusterPreCalculationService to pre-calculate rotation angles and bounding boxes
         ///            in parallel BEFORE the placement loop (2-4× faster for large clusters).
         /// When false: Uses legacy sequential calculation inside placement loop (current behavior).
-        /// Default: true (enabled - SOLID refactoring with all 28 features preserved).
+        /// Default: false (DISABLED for performance testing).
         /// Architecture: Implements SRP by separating calculation phase from placement phase.
         /// Performance: Pre-calculation runs in parallel (pure math, no Revit API calls).
         /// Location: Services/Clustering/RefactoredClusterService.cs
         /// Note: Falls back to legacy code automatically if pre-calculation fails (crash-safe).
         /// </summary>
-        public static bool UseSOLIDRefactoredClusterPreCalculation { get; set; } = true; // ✅ ENABLED: Safe category-partitioned parallel processing
+        public static bool UseSOLIDRefactoredClusterPreCalculation { get; set; } = false; // 🚫 DISABLED for testing
 
         /// <summary>
         /// Enable "Bottom of Opening" parameter calculation for RectangularOpeningOnWall sleeves.
@@ -389,7 +401,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// When true: Uses IndividualSleevePreCalculationService to pre-calculate dimensions, clearance,
         ///            and validation data in parallel BEFORE the placement loop.
         /// When false: Uses legacy sequential calculation inside placement loop (current behavior).
-        /// Default: true (enabled - matches ClusterPreCalculationService pattern).
+        /// Default: false (DISABLED for performance testing).
         /// Architecture: 
         ///   - TIER 1: Category Partitioning (Ducts, Pipes, Cable Trays processed independently)
         ///   - TIER 2: Spatial Partitioning (10ft grid cells allow parallel processing)
@@ -399,7 +411,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Location: Services/Placement/IndividualSleevePreCalculationService.cs, Services/NewSleevePlacerService.cs
         /// Note: Falls back to legacy code automatically if pre-calculation fails (crash-safe).
         /// </summary>
-        public static bool UseSOLIDRefactoredIndividualPreCalculation { get; set; } = true;
+        public static bool UseSOLIDRefactoredIndividualPreCalculation { get; set; } = false; // 🚫 DISABLED for testing
         #endregion
         
         #region Unified All-Category Placement (BIM 360 Optimization)
@@ -410,20 +422,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         ///            in a SINGLE loop within ONE transaction. Critical for BIM 360 performance
         ///            (1 sync instead of 4).
         /// When false: Legacy per-category sequential placement (4 transactions = 4 syncs).
-        /// Default: false (safe rollout - enable for testing).
+        /// Default: false (DISABLED for performance testing).
         /// Location: Services/OpeningCommandOrchestrator.cs
         /// Architecture: Pre-calc (parallel) → Place ALL (sequential) → Regenerate ONCE → Bulk DB save
         /// </summary>
-        public static bool UseUnifiedAllCategoryPlacement { get; set; } = true;
+        public static bool UseUnifiedAllCategoryPlacement { get; set; } = false;
         
         /// <summary>
         /// Suppress per-category TaskDialog prompts during placement.
         /// When true: Logs results to file only, no UI prompts (faster, non-blocking).
         /// When false: Shows TaskDialog after each category (legacy behavior).
-        /// Default: true (enabled - prompts slow down BIM 360 workflows).
+        /// Default: false (DISABLED for visual verification).
         /// Location: Services/OpeningCommandOrchestrator.cs, Services/NewSleevePlacerService.cs
         /// </summary>
-        public static bool SuppressPlacementPrompts { get; set; } = true;
+        public static bool SuppressPlacementPrompts { get; set; } = false;
         
         /// <summary>
         /// Enable single regeneration after ALL sleeves are placed (not per-sleeve).

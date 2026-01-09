@@ -5220,6 +5220,166 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         }
 
 
+        #region Bulk Family Placement Repository Methods
+
+        /// <summary>
+        /// ✅ BULK PLACEMENT: Get all zones ready for bulk placement.
+        /// Returns zones where IsCurrentClashFlag=1 AND ReadyForPlacementFlag=1.
+        /// Used by BulkPlacementService with OptimizationFlags.UseBulkIndividualSleevePlacement.
+        /// </summary>
+        public List<ClashZone> GetZonesReadyForPlacement()
+        {
+            var result = new List<ClashZone>();
+            
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = @"
+                        SELECT * 
+                        FROM ClashZones 
+                        WHERE IsCurrentClashFlag = 1 
+                          AND ReadyForPlacementFlag = 1
+                        ORDER BY MepElementCategory, SleeveFamilyName";
+                    
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            result.Add(MapClashZone(reader));
+                        }
+                    }
+                }
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ✅ GetZonesReadyForPlacement: Retrieved {result.Count} zones for bulk placement");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ❌ Error in GetZonesReadyForPlacement: {ex.Message}");
+            }
+            
+            return result;
+        }
+
+        /// <summary>
+        /// ✅ BULK PLACEMENT: Batch update calculated sleeve sizes before bulk placement.
+        /// Saves SleeveWidth, SleeveHeight, SleeveDiameter, and SleeveFamilyName for each zone.
+        /// Called after CalculateSleeveDimensions() and before NewFamilyInstances2().
+        /// </summary>
+        public int BatchUpdateSleeveSizesForBulkPlacement(List<ClashZone> zones)
+        {
+            if (zones == null || zones.Count == 0) return 0;
+            
+            int updatedCount = 0;
+            
+            try
+            {
+                using (var transaction = _context.Connection.BeginTransaction())
+                {
+                    using (var cmd = _context.Connection.CreateCommand())
+                    {
+                        cmd.CommandText = @"
+                            UPDATE ClashZones 
+                            SET SleeveWidth = @width,
+                                SleeveHeight = @height,
+                                SleeveDiameter = @diameter,
+                                SleeveFamilyName = @familyName,
+                                UpdatedAt = CURRENT_TIMESTAMP
+                            WHERE ClashZoneId = @id";
+                        
+                        var widthParam = cmd.Parameters.Add("@width", System.Data.DbType.Double);
+                        var heightParam = cmd.Parameters.Add("@height", System.Data.DbType.Double);
+                        var diamParam = cmd.Parameters.Add("@diameter", System.Data.DbType.Double);
+                        var familyParam = cmd.Parameters.Add("@familyName", System.Data.DbType.String);
+                        var idParam = cmd.Parameters.Add("@id", System.Data.DbType.Int64);
+                        
+                        foreach (var zone in zones)
+                        {
+                            widthParam.Value = zone.SleeveWidth;
+                            heightParam.Value = zone.SleeveHeight;
+                            diamParam.Value = zone.SleeveDiameter;
+                            familyParam.Value = zone.SleeveFamilyName ?? "";
+                            idParam.Value = zone.ClashZoneId;
+                            
+                            updatedCount += cmd.ExecuteNonQuery();
+                        }
+                    }
+                    
+                    transaction.Commit();
+                }
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ✅ BatchUpdateSleeveSizesForBulkPlacement: Updated {updatedCount} zones with calculated sizes");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ❌ Error in BatchUpdateSleeveSizesForBulkPlacement: {ex.Message}");
+                throw; // Re-throw for caller to handle
+            }
+            
+            return updatedCount;
+        }
+
+        /// <summary>
+        /// ✅ BULK PLACEMENT: Batch update zones after successful bulk placement.
+        /// Sets SleeveInstanceId, IsResolvedFlag=1, ReadyForPlacementFlag=0.
+        /// Called after NewFamilyInstances2() succeeds.
+        /// </summary>
+        public int BatchUpdateAfterBulkPlacement(List<ClashZone> zones)
+        {
+            if (zones == null || zones.Count == 0) return 0;
+            
+            int updatedCount = 0;
+            
+            try
+            {
+                using (var transaction = _context.Connection.BeginTransaction())
+                {
+                    using (var cmd = _context.Connection.CreateCommand())
+                    {
+                        cmd.CommandText = @"
+                            UPDATE ClashZones 
+                            SET SleeveInstanceId = @sleeveId,
+                                IsResolvedFlag = 1,
+                                ReadyForPlacementFlag = 0,
+                                UpdatedAt = CURRENT_TIMESTAMP
+                            WHERE ClashZoneId = @id";
+                        
+                        var sleeveIdParam = cmd.Parameters.Add("@sleeveId", System.Data.DbType.Int32);
+                        var idParam = cmd.Parameters.Add("@id", System.Data.DbType.Int64);
+                        
+                        foreach (var zone in zones)
+                        {
+                            sleeveIdParam.Value = zone.SleeveInstanceId;
+                            idParam.Value = zone.ClashZoneId;
+                            
+                            updatedCount += cmd.ExecuteNonQuery();
+                        }
+                    }
+                    
+                    transaction.Commit();
+                }
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[SQLite] ✅ BatchUpdateAfterBulkPlacement: Updated {updatedCount} zones with SleeveInstanceIds");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ❌ Error in BatchUpdateAfterBulkPlacement: {ex.Message}");
+                throw; // Re-throw for caller to handle
+            }
+            
+            return updatedCount;
+        }
+
+        #endregion
 
 
         /// <summary>
