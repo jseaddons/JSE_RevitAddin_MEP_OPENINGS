@@ -1650,48 +1650,96 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] About to create UniversalSleevePlacementCommand for category: {categoryString}, filter: {combinedFilterName}\n");
                     }
                     
-                    universalCommand = new UniversalSleevePlacementCommand(_document, clashZones, categoryString, combinedFilterName, _uiClearances);
-                    try {
+                    if (OptimizationFlags.UseBulkIndividualSleevePlacement)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🚀 [BULK-PLACEMENT] Routing to Clean Bulk Placement path\n");
+
+                        var bulkService = new BulkPlacementService(msg => DebugLogger.Info(msg));
+                        BulkPlacementResult bulkResult = null;
+
+                        using (var t = new Transaction(_document, $"Bulk Place {categoryString} Sleeves"))
+                        {
+                            t.Start();
+                            bulkResult = bulkService.ExecuteBulkPlacement(_document, clashZones);
+                            
+                            if (bulkResult.OverallSuccess && bulkResult.PlacedCount > 0)
+                            {
+                                // REUSE LEGACY PARAMETER WRITER
+                                // This ensures all standard parameters (Width, Height, Mark, etc.) are set via current logic
+                                var paramService = new SleeveParameterService(_document);
+                                foreach (var item in bulkResult.PlacedItems)
+                                {
+                                    var instance = _document.GetElement(item.ElementId) as FamilyInstance;
+                                    if (instance != null)
+                                    {
+                                        // Use zone dimensions calculated during refresh (stored in clashZones)
+                                        paramService.SetSleeveParameters(instance, item.Zone.SleeveWidth, item.Zone.SleeveHeight, item.Zone.SleeveDiameter, item.Zone.SleeveDiameter > 0, item.Zone);
+                                    }
+                                }
+                                
+                                _document.Regenerate();
+                                paramService.FlushDeferredParameters(); // The "Legendary" Batch Writer
+                                t.Commit();
+                                
+                                // PERSIST IDs TO DATABASE (Sequential Update - already works)
+                                using (var dbContext = new SleeveDbContext(_document))
+                                {
+                                    var repo = new ClashZoneRepository(dbContext);
+                                    foreach (var item in bulkResult.PlacedItems)
+                                    {
+                                        repo.UpdateSleeveInstanceId(item.Zone.Id, item.ElementId.IntegerValue);
+                                    }
+                                }
+
+                                placedCount = bulkResult.PlacedCount;
+                                errorCount = bulkResult.FailedCount;
+                            }
+                            else
+                            {
+                                t.RollBack();
+                                if (!bulkResult.OverallSuccess)
+                                {
+                                    DebugLogger.Error($"[Orchestrator] Bulk placement failed: {bulkResult.Error}");
+                                    errorCount = clashZones.Count;
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        universalCommand = new UniversalSleevePlacementCommand(_document, clashZones, categoryString, combinedFilterName, _uiClearances);
+                        try {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] COMMAND_CREATED: category={categoryString}, xml={xmlFilePath}\n");
+                            }
+                        } catch { }
+                        
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] COMMAND_CREATED: category={categoryString}, xml={xmlFilePath}\n");
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] UniversalSleevePlacementCommand created successfully, about to execute\n");
                         }
-                    } catch { }
-                    
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] UniversalSleevePlacementCommand created successfully, about to execute\n");
+                        
+                        universalCommand.Execute(_uiDocument.Application);
+                        
+                        // ✅ PERFORMANCE: Get counts from command properties
+                        placedCount = universalCommand.PlacedCount;
+                        skippedCount = universalCommand.SkippedCount;
+                        errorCount = universalCommand.ErrorCount;
                     }
-                    
-                    universalCommand.Execute(_uiDocument.Application);
-                    
-                    // ✅ REFACTORED: Parameter flushing is now handled internally by NewSleevePlacerService
-                    // NewSleevePlacerService uses SleeveParameterService which flushes parameters automatically
-                    // No external flush needed - legacy UniversalSleevePlacerService dependency has been removed
-                    // ✅ LEGACY REMOVED: universalCommand.Service property no longer exists
-                    
-                    // ✅ PERFORMANCE: Get counts from command properties
-                    placedCount = universalCommand.PlacedCount;
-                    skippedCount = universalCommand.SkippedCount;
-                    errorCount = universalCommand.ErrorCount;
                     
                     SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss}] UniversalSleevePlacementCommand executed: Placed={placedCount}, Skipped={skippedCount}, Errors={errorCount}\n");
+                        $"[{DateTime.Now:HH:mm:ss}] Placement executed: Placed={placedCount}, Skipped={skippedCount}, Errors={errorCount}\n");
                     
                     try {
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] COMMAND_EXECUTED: Placed={placedCount}, Skipped={skippedCount}, Errors={errorCount}\n");
+                            System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] PLACEMENT_COMPLETED: Placed={placedCount}, Skipped={skippedCount}, Errors={errorCount}\n");
                         }
                     } catch { }
                     
-                    // ✅ DEPLOYMENT: Wrapped in deployment mode check
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] UniversalSleevePlacementCommand executed successfully: Placed={placedCount}, Skipped={skippedCount}, Errors={errorCount}\n");
-                    }
-                    
-                    // ✅ Return success after command execution
+                    // ✅ Return success after processing
                     return Autodesk.Revit.UI.Result.Succeeded;
                     }
                     else

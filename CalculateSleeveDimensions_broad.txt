@@ -1,0 +1,994 @@
+﻿
+  
+Services\NewSleevePlacerService.cs:962: 
+           
+  
+Services\NewSleevePlacerService.cs:963: 
+           // ? PARALLEL PLANNING: Pass 
+planningDto to dimension calculation
+> 
+Services\NewSleevePlacerService.cs:964: 
+           // If planningDto is 
+provided, CalculateSleeveDimensions 
+will use pre-computed values (faster)
+  
+Services\NewSleevePlacerService.cs:965: 
+           // This includes dampers - 
+parallel planning handles all categories
+> 
+Services\NewSleevePlacerService.cs:966: 
+           var (width, height, 
+diameter, isCircular) = 
+CalculateSleeveDimensions(zone, 
+planningDto);
+  
+Services\NewSleevePlacerService.cs:967: 
+           
+  
+Services\NewSleevePlacerService.cs:968: 
+           // ? DIAGNOSTIC: Log 
+calculated dimensions (in both feet and 
+mm for readability)
+  
+Services\NewSleevePlacerService.cs:969: 
+           double widthMm = width * 
+304.8;
+  
+Services\NewSleevePlacerService.cs:970: 
+           double heightMm = height * 
+304.8;
+  
+Services\NewSleevePlacerService.cs:971: 
+           double diameterMm = diameter 
+* 304.8;
+  
+Services\NewSleevePlacerService.cs:972: 
+           SafeFileLogger.SafeAppendText
+("placement_debug.log",
+  
+Services\NewSleevePlacerService.cs:973: 
+               
+$"[{DateTime.Now:HH:mm:ss.fff}] 
+[NewSleevePlacer] ?? FINAL DIMENSIONS: 
+Zone {zone.Id}, " +
+  
+Services\NewSleevePlacerService.cs:974: 
+               $"W={width:F6}ft 
+({widthMm:F1}mm), H={height:F6}ft 
+({heightMm:F1}mm), D={diameter:F6}ft 
+({diameterMm:F1}mm), 
+Circular={isCircular}\n");
+  
+Services\NewSleevePlacerService.cs:975: 
+           
+  
+Services\NewSleevePlacerService.cs:976: 
+           if (width <= 0 && height <= 
+0 && diameter <= 0)
+  
+Services\NewSleevePlacerService.cs:977: 
+           {
+  
+Services\NewSleevePlacerService.cs:978: 
+               SafeFileLogger.SafeAppend
+Text("placement_debug.log",
+  
+Services\NewSleevePlacerService.cs:979: 
+                   
+$"[{DateTime.Now:HH:mm:ss.fff}] 
+[NewSleevePlacer] ? INVALID DIMENSIONS: 
+Zone {zone.Id}, all dimensions <= 0\n");
+  
+Services\NewSleevePlacerService.cs:980: 
+               return null; // Invalid 
+dimensions
+  
+Services\NewSleevePlacerService.cs:981: 
+           }
+  
+Services\NewSleevePlacerService.cs:982:
+  
+Services\NewSleevePlacerService.cs:983: 
+           // Select Family
+  
+Services\NewSleevePlacerService.cs:984: 
+           string familyName = 
+GetSleeveFamilyName(zone, isCircular);
+  
+Services\NewSleevePlacerService.cs:985: 
+           SafeFileLogger.SafeAppendText
+("placement_debug.log",
+  
+Services\NewSleevePlacerService.cs:986: 
+               
+$"[{DateTime.Now:HH:mm:ss.fff}] 
+[NewSleevePlacer] ?? FAMILY: Zone 
+{zone.Id}, 
+FamilyName='{familyName}'\n");
+  
+Services\NewSleevePlacerService.cs:987: 
+           
+  
+Services\NewSleevePlacerService.cs:988: 
+           FamilySymbol symbol = 
+LoadFamilySymbol(familyName);
+  
+Services\NewSleevePlacerService.cs:989: 
+           
+  
+Services\NewSleevePlacerService.cs:990: 
+           if (symbol == null)
+  
+Services\NewSleevePlacerService.cs:991: 
+           {
+  
+Services\NewSleevePlacerService.cs:992: 
+               SafeFileLogger.SafeAppend
+Text("placement_debug.log",
+  
+Services\NewSleevePlacerService.cs:993: 
+                   
+$"[{DateTime.Now:HH:mm:ss.fff}] 
+[NewSleevePlacer] ? SYMBOL NULL: Zone 
+{zone.Id}, FamilyName='{familyName}' - 
+LoadFamilySymbol returned null\n");
+  
+Services\NewSleevePlacerService.cs:994: 
+               return null;
+  
+Services\NewSleevePlacerService.cs:995: 
+           }
+  
+Services\NewSleevePlacerService.cs:996:
+  
+Services\NewSleevePlacerService.cs:997: 
+           // Determine Placement Point 
+(Intersection Point)
+  
+Services\NewSleevePlacerService.cs:998: 
+           XYZ placementPoint = 
+zone.IntersectionPoint ?? new 
+XYZ(zone.IntersectionPointX, 
+zone.IntersectionPointY, 
+zone.IntersectionPointZ);
+  
+Services\NewSleevePlacerService.cs:999: 
+           
+  Services\NewSleevePlacerService.cs:100
+0:            // ? SRP COMPLIANCE: 
+Delegate placement point adjustment to 
+dedicated service
+  Services\NewSleevePlacerService.cs:100
+1:            // 
+PlacementPointAdjustmentService handles 
+non-dampers, 
+DamperPlacementPointService handles 
+dampers
+  Services\NewSleevePlacerService.cs:100
+2:            // This keeps 
+NewSleevePlacerService focused on 
+orchestration, not geometric 
+calculations
+  Services\NewSleevePlacerService.cs:100
+3:            
+  Services\NewSleevePlacerService.cs:100
+4:            // ? EXTRACT CLEARANCE 
+VALUES: Store individual clearance 
+values in zone for later parameter 
+setting
+  Services\NewSleevePlacerService.cs:100
+5:            // This is done BEFORE 
+placement point adjustment so values 
+are available for parameter setting
+  Services\NewSleevePlacerService.cs:100
+6:            XYZ damperOffsetVector = 
+XYZ.Zero;
+  Services\NewSleevePlacerService.cs:100
+7:            if (_damperPlacementAdjust
+ments.ContainsKey(zone.Id))
+  Services\NewSleevePlacerService.cs:100
+8:            {
+  Services\NewSleevePlacerService.cs:100
+9:                var (finalWidth, 
+finalHeight, clearanceLeft, 
+clearanceRight, clearanceTop, 
+clearanceBottom, offsetVector) = 
+  Services\NewSleevePlacerService.cs:101
+0:                    
+_damperPlacementAdjustments[zone.Id];
+  Services\NewSleevePlacerService.cs:101
+1:                
+  Services\NewSleevePlacerService.cs:101
+2:                // ? SOLID ISP: Store 
+individual clearance values in zone for 
+later parameter setting
+  Services\NewSleevePlacerService.cs:101
+3:                // This allows 
+SetSleeveParameters to set clearance 
+parameters without strategy dependency
+  Services\NewSleevePlacerService.cs:101
+4:                zone.ClearanceLeft = 
+clearanceLeft;
+  Services\NewSleevePlacerService.cs:101
+5:                zone.ClearanceRight = 
+clearanceRight;
+  Services\NewSleevePlacerService.cs:101
+6:                zone.ClearanceTop = 
+clearanceTop;
+  Services\NewSleevePlacerService.cs:107
+0:                // This ensures both 
+the Revit parameters AND the saved zone 
+dimensions are rounded (consistent with 
+cluster sleeves)
+  Services\NewSleevePlacerService.cs:107
+1:                // Rounding is 
+applied to ALL categories (dampers, 
+pipes, ducts, cable trays, etc.)
+> Services\NewSleevePlacerService.cs:107
+2:                // ? REFACTOR: 
+Dimensions are already rounded by 
+CalculateSleeveDimensions (via 
+SizingService)
+  Services\NewSleevePlacerService.cs:107
+3:                var roundedWidth = 
+width;
+  Services\NewSleevePlacerService.cs:107
+4:                var roundedHeight = 
+height;
+  Services\NewSleevePlacerService.cs:107
+5:                double 
+roundedDiameter = diameter;
+  Services\NewSleevePlacerService.cs:107
+6:                
+  Services\NewSleevePlacerService.cs:107
+7:                // ? CRITICAL FIX: 
+Pass ROUNDED dimensions to 
+SetSleeveParameters (it will round 
+again, but rounding already-rounded 
+values is idempotent)
+  Services\NewSleevePlacerService.cs:107
+8:                // This ensures Revit 
+parameters are set with rounded values
+  Services\NewSleevePlacerService.cs:107
+9:                _parameterService.SetS
+leeveParameters(instance, roundedWidth, 
+roundedHeight, roundedDiameter, 
+isCircular, zone);
+  Services\NewSleevePlacerService.cs:108
+0:                
+  Services\NewSleevePlacerService.cs:108
+1:                // ? CRITICAL FIX: 
+Update zone with ROUNDED dimensions for 
+saving to database
+  Services\NewSleevePlacerService.cs:108
+2:                // For circular 
+pipes/ducts, SleeveWidth and 
+SleeveHeight should BOTH equal the 
+diameter
+  Services\NewSleevePlacerService.cs:108
+3:                // This ensures 
+correct persistence to database (not 
+bounding box dimensions)
+  Services\NewSleevePlacerService.cs:108
+4:                if (isCircular && 
+roundedDiameter > 0)
+  Services\NewSleevePlacerService.cs:108
+5:                {
+  Services\NewSleevePlacerService.cs:108
+6:                    // For circular 
+elements, width = height = diameter
+  Services\NewSleevePlacerService.cs:108
+7:                    zone.SleeveWidth 
+= roundedDiameter;
+  Services\NewSleevePlacerService.cs:108
+8:                    zone.SleeveHeight 
+= roundedDiameter;
+  Services\NewSleevePlacerService.cs:108
+9:                    
+zone.SleeveDiameter = roundedDiameter;
+  Services\NewSleevePlacerService.cs:109
+0:                }
+  Services\NewSleevePlacerService.cs:109
+1:                else
+  Services\NewSleevePlacerService.cs:109
+2:                {
+  Services\NewSleevePlacerService.cs:109
+3:                    // For 
+rectangular elements, use calculated 
+width/height
+  Services\NewSleevePlacerService.cs:109
+4:                    zone.SleeveWidth 
+= roundedWidth;
+  Services\NewSleevePlacerService.cs:109
+5:                    zone.SleeveHeight 
+= roundedHeight;
+  Services\NewSleevePlacerService.cs:109
+6:                    
+zone.SleeveDiameter = roundedDiameter;
+  Services\NewSleevePlacerService.cs:109
+7:                }
+  Services\NewSleevePlacerService.cs:109
+8:                
+zone.SleevePlacementPoint = 
+placementPoint;
+  Services\NewSleevePlacerService.cs:109
+9:                
+zone.SleevePlacementPointX = 
+placementPoint.X;
+  Services\NewSleevePlacerService.cs:110
+0:                
+zone.SleevePlacementPointY = 
+placementPoint.Y;
+  Services\NewSleevePlacerService.cs:110
+1:                
+zone.SleevePlacementPointZ = 
+placementPoint.Z;
+  Services\NewSleevePlacerService.cs:110
+2:            }
+  Services\NewSleevePlacerService.cs:110
+3:            
+  Services\NewSleevePlacerService.cs:110
+4:            return instance;
+  Services\NewSleevePlacerService.cs:110
+5:        }
+  
+Services\NewSleevePlacerService.cs:1106:
+  Services\NewSleevePlacerService.cs:110
+7:        /// <summary>
+  Services\NewSleevePlacerService.cs:110
+8:        /// ? CRITICAL FIX: Calculate 
+sleeve dimensions with proper clearance 
+handling.
+  Services\NewSleevePlacerService.cs:110
+9:        /// When batch parameter 
+writing is enabled, this ensures:
+  Services\NewSleevePlacerService.cs:111
+0:        /// 1. Cable trays use 
+GetCableTrayPlacementAdjustment which 
+correctly reads clearances from 
+conditions.ClearanceSettings (database)
+  Services\NewSleevePlacerService.cs:111
+1:        /// 2. Other categories use 
+GetClearance which may read from 
+strategy or fallback
+  Services\NewSleevePlacerService.cs:111
+2:        /// 3. All parameter reads 
+during placement use 
+GetParameterValueWithBatchingSupport to 
+prevent stale reads
+  Services\NewSleevePlacerService.cs:111
+3:        /// 
+  Services\NewSleevePlacerService.cs:111
+4:        /// ? PARALLEL PLANNING: If 
+planningDto is provided (from parallel 
+planning phase), use pre-computed 
+dimensions.
+  Services\NewSleevePlacerService.cs:111
+5:        /// This includes dampers - 
+parallel planning handles all 
+categories including Duct Accessories.
+  Services\NewSleevePlacerService.cs:111
+6:        /// </summary>
+> Services\NewSleevePlacerService.cs:111
+7:        private (double width, double 
+height, double diameter, bool 
+isCircular) 
+CalculateSleeveDimensions(ClashZone 
+zone, SleevePlacementPlanningDto? 
+planningDto = null)
+  Services\NewSleevePlacerService.cs:111
+8:        {
+  Services\NewSleevePlacerService.cs:111
+9:            // ? PERFORMANCE 
+MONITORING: Track dimension calculation
+  Services\NewSleevePlacerService.cs:112
+0:            using (var tracker = _perf
+ormanceMonitor?.TrackOperation("Calculat
+e Sleeve Dimensions"))
+  Services\NewSleevePlacerService.cs:112
+1:            {
+  Services\NewSleevePlacerService.cs:112
+2:                // ? PARALLEL 
+PLANNING: Use pre-computed dimensions 
+if available (from parallel planning 
+phase)
+  Services\NewSleevePlacerService.cs:112
+3:                // This includes 
+dampers - 
+ParallelSleevePlacementPlanner handles 
+Duct Accessories category
+  Services\NewSleevePlacerService.cs:112
+4:                // Safety: Only use 
+planning data if EnableParallelPlanning 
+flag is enabled and planningDto is valid
+  Services\NewSleevePlacerService.cs:112
+5:                if (DeploymentConfigur
+ation.EnableParallelPlanning && 
+planningDto != null && 
+!planningDto.ShouldSkip)
+  Services\NewSleevePlacerService.cs:112
+6:                {
+  Services\NewSleevePlacerService.cs:112
+7:                    // ? USE 
+PRE-COMPUTED DIMENSIONS: From parallel 
+planning (includes dampers)
+  Services\NewSleevePlacerService.cs:112
+8:                    // Note: For 
+dampers with asymmetric clearance, we 
+still need strategy for offset 
+calculation
+  Services\NewSleevePlacerService.cs:112
+9:                    // But dimensions 
+can come from planning phase
+  Services\NewSleevePlacerService.cs:113
+0:                    bool isDamper = 
+string.Equals(zone.MepElementCategory, 
+"Duct Accessories", 
+StringComparison.OrdinalIgnoreCase);
+  Services\NewSleevePlacerService.cs:113
+1:                    
+  Services\NewSleevePlacerService.cs:113
+2:                    if (!isDamper)
+  Services\NewSleevePlacerService.cs:113
+3:                    {
+  Services\NewSleevePlacerService.cs:113
+4:                        // ? 
+NON-DAMPER: Use pre-computed dimensions 
+directly (faster, already calculated in 
+parallel)
+  Services\NewSleevePlacerService.cs:113
+5:                        
+tracker?.SetItemCount(1);
+  Services\NewSleevePlacerService.cs:113
+6:                        return 
+(planningDto.TargetWidthFt, 
+planningDto.TargetHeightFt, 
+Math.Max(planningDto.TargetWidthFt, 
+planningDto.TargetHeightFt), false);
+  Services\NewSleevePlacerService.cs:113
+7:                    }
+  Services\NewSleevePlacerService.cs:113
+8:                    else
+  Services\NewSleevePlacerService.cs:113
+9:                    {
+  Services\NewSleevePlacerService.cs:114
+0:                        // ? DAMPER: 
+Use pre-computed dimensions but still 
+need strategy for offset calculation
+  Services\NewSleevePlacerService.cs:114
+1:                        // Planning 
+phase calculated dimensions, but we 
+need strategy for asymmetric clearance 
+offset
+  Services\NewSleevePlacerService.cs:114
+2:                        // Fall 
+through to strategy-based calculation 
+below
+  Services\NewSleevePlacerService.cs:114
+3:                        if (!Deploymen
+tConfiguration.DeploymentMode)
+  Services\NewSleevePlacerService.cs:114
+4:                        {
+  Services\NewSleevePlacerService.cs:114
+5:                            
+DebugLogger.Info($"[NewSleevePlacer] ?? 
+DAMPER: Using pre-computed dimensions 
+from planning: " +
+  Services\NewSleevePlacerService.cs:114
+6:                                
+$"W={planningDto.TargetWidthFt * 
+304.8:F1}mm, 
+H={planningDto.TargetHeightFt * 
+304.8:F1}mm, " +
+  Services\NewSleevePlacerService.cs:114
+7:                                $"but 
+still need strategy for offset 
+calculation");
+  Services\NewSleevePlacerService.cs:114
+8:                        }
+  Services\NewSleevePlacerService.cs:114
+9:                    }
+  Services\NewSleevePlacerService.cs:115
+0:                }
+  Services\NewSleevePlacerService.cs:115
+1:                
+  Services\NewSleevePlacerService.cs:115
+2:                // ? DAMPER PLACEMENT 
+STRATEGY: Handle dampers with 
+connector-aware asymmetric clearance
+  Services\NewSleevePlacerService.cs:115
+3:                // Dampers with MEP 
+connectors require special offset 
+calculation to achieve 100mm on 
+connector side, 50mm on other
+  Services\NewSleevePlacerService.cs:115
+4:                if (_strategy is 
+DamperPlacementStrategy damperStrategy)
+  Services\NewSleevePlacerService.cs:115
+5:                {
+  Services\NewSleevePlacerService.cs:115
+6:                    // ? 
+COMPREHENSIVE LOGGING: Log raw MEP 
+dimensions and clearance settings 
+BEFORE strategy call
+  Services\NewSleevePlacerService.cs:115
+7:                    double rawWidthMm 
+= zone.MepElementWidth * 304.8;
+  Services\NewSleevePlacerService.cs:115
+8:                    double 
+rawHeightMm = zone.MepElementHeight * 
+304.8;
+  Services\NewSleevePlacerService.cs:115
+9:                    if (!DeploymentCon
+figuration.DeploymentMode)
+  Services\NewSleevePlacerService.cs:116
+0:                    {
+  Services\NewSleevePlacerService.cs:116
+1:                        SafeFileLogger
+.SafeAppendText("clearance_calculation_t
+race.log",
+  Services\NewSleevePlacerService.cs:116
+2:                            
+$"[{DateTime.Now:HH:mm:ss.fff}] 
+[DAMPER-PRE-STRATEGY] Zone {zone.Id}, " 
++
+  Services\NewSleevePlacerService.cs:116
+3:                            $"RawMEP 
+W={rawWidthMm:F1}mm, 
+H={rawHeightMm:F1}mm, " +
+  Services\NewSleevePlacerService.cs:116
+4:                            $"DB 
+Clearances: MEP={(zone.IsInsulated ? _co
+nditions?.ClearanceSettings?.DuctAccesso
+ryMepInsulated : _conditions?.ClearanceS
+ettings?.DuctAccessoryMepNormal) ?? 
+0}mm, " +
+  Services\NewSleevePlacerService.cs:116
+5:                            
+$"Other={(zone.IsInsulated ? _conditions
+?.ClearanceSettings?.DuctAccessoryOtherI
+nsulated : _conditions?.ClearanceSetting
+s?.DuctAccessoryOtherNormal) ?? 0}mm, " 
++
+  Services\NewSleevePlacerService.cs:116
+6:                            
+$"IsInsulated={zone.IsInsulated}, 
+HasConditions={_conditions != null}, Has
+ClearanceSettings={_conditions?.Clearanc
+eSettings != null}\n");
+  Services\NewSleevePlacerService.cs:116
+7:                    }
+  Services\NewSleevePlacerService.cs:207
+1:                    foreach (var zone 
+in sampleZones)
+  Services\NewSleevePlacerService.cs:207
+2:                    {
+> Services\NewSleevePlacerService.cs:207
+3:                        var _ = 
+CalculateSleeveDimensions(zone);
+  Services\NewSleevePlacerService.cs:207
+4:                    }
+  Services\NewSleevePlacerService.cs:207
+5:                }
+  Services\NewSleevePlacerService.cs:207
+6:                
+  Services\NewSleevePlacerService.cs:207
+7:                // Initialize 
+parameter service
+  Services\NewSleevePlacerService.cs:207
+8:                
+_parameterService.ResetFlushFlag();
+  Services\NewSleevePlacerService.cs:207
+9:                
+  Services\NewSleevePlacerService.cs:208
+0:                if (!DeploymentConfigu
+ration.DeploymentMode)
+  Services\NewSleevePlacerService.cs:208
+1:                {
+  Services\NewSleevePlacerService.cs:208
+2:                    
+DebugLogger.Info($"[NewSleevePlacer] ? 
+WARM-UP COMPLETE");
+  Services\NewSleevePlacerService.cs:208
+3:                }
+  Services\NewSleevePlacerService.cs:208
+4:            }
+  Services\NewSleevePlacerService.cs:208
+5:            catch (Exception ex)
+  Services\NewSleevePlacerService.cs:208
+6:            {
+  Services\NewSleevePlacerService.cs:208
+7:                if (!DeploymentConfigu
+ration.DeploymentMode)
+  Services\NewSleevePlacerService.cs:208
+8:                {
+  Services\NewSleevePlacerService.cs:208
+9:                    
+DebugLogger.Error($"[NewSleevePlacer] 
+Error warming up operations: 
+{ex.Message}");
+  Services\NewSleevePlacerService.cs:209
+0:                }
+  Services\NewSleevePlacerService.cs:209
+1:            }
+  Services\NewSleevePlacerService.cs:209
+2:        }
+  
+Services\NewSleevePlacerService.cs:2093:
+  Services\NewSleevePlacerService.cs:209
+4:        /// <summary>
+  Services\NewSleevePlacerService.cs:209
+5:        /// ? PHASE 1.5 OPTIMIZATION: 
+Get sample zones for warm-up operations.
+  Services\NewSleevePlacerService.cs:209
+6:        /// Returns a small set of 
+zones for pre-calculating dimensions 
+and warming up operations.
+  Services\NewSleevePlacerService.cs:209
+7:        /// </summary>
+  Services\NewSleevePlacerService.cs:209
+8:        private List<ClashZone> 
+GetSampleZones()
+  Services\NewSleevePlacerService.cs:209
+9:        {
+  Services\NewSleevePlacerService.cs:210
+0:            // Create sample zones 
+for warm-up (minimal data)
+  Services\NewSleevePlacerService.cs:210
+1:            var sampleZones = new 
+List<ClashZone>
+  Services\NewSleevePlacerService.cs:210
+2:            {
+  Services\NewSleevePlacerService.cs:210
+3:                new ClashZone
+  Services\NewSleevePlacerService.cs:210
+4:                {
+  Services\NewSleevePlacerService.cs:210
+5:                    MepElementWidth = 
+1.0, // 1ft
+  Services\NewSleevePlacerService.cs:210
+6:                    MepElementHeight 
+= 1.0, // 1ft
+  Services\NewSleevePlacerService.cs:210
+7:                    
+MepElementOuterDiameter = 0.0,
+  Services\NewSleevePlacerService.cs:210
+8:                    
+StructuralElementType = "Wall",
+  Services\NewSleevePlacerService.cs:210
+9:                    
+MepElementCategory = "Ducts",
+  Services\NewSleevePlacerService.cs:211
+0:                    DuctShape = 
+"Rectangular",
+  Services\NewSleevePlacerService.cs:211
+1:                    IsInsulated = 
+false
+  Services\NewSleevePlacerService.cs:211
+2:                },
+  Services\NewSleevePlacerService.cs:211
+3:                new ClashZone
+  Services\NewSleevePlacerService.cs:211
+4:                {
+  Services\NewSleevePlacerService.cs:211
+5:                    MepElementWidth = 
+0.0,
+  Services\NewSleevePlacerService.cs:211
+6:                    MepElementHeight 
+= 0.0,
+  Services\NewSleevePlacerService.cs:211
+7:                    
+MepElementOuterDiameter = 1.0, // 1ft 
+circular
+  Services\NewSleevePlacerService.cs:211
+8:                    
+StructuralElementType = "Wall",
+  Services\NewSleevePlacerService.cs:211
+9:                    
+MepElementCategory = "Pipes",
+  Services\NewSleevePlacerService.cs:212
+0:                    IsInsulated = 
+false
+  Services\NewSleevePlacerService.cs:212
+1:                }
+  Services\NewSleevePlacerService.cs:212
+2:            };
+  Services\NewSleevePlacerService.cs:212
+3:            return sampleZones;
+  Services\NewSleevePlacerService.cs:214
+0:            foreach (var zone in 
+zones)
+  Services\NewSleevePlacerService.cs:214
+1:            {
+> Services\NewSleevePlacerService.cs:214
+2:                // Use existing 
+CalculateSleeveDimensions logic but 
+cache results
+> Services\NewSleevePlacerService.cs:214
+3:                var (width, height, 
+diameter, isCircular) = 
+CalculateSleeveDimensions(zone);
+  Services\NewSleevePlacerService.cs:214
+4:                
+  Services\NewSleevePlacerService.cs:214
+5:                // Calculate depth 
+from wall/structural thickness (same 
+logic as SetSleeveParameters)
+  Services\NewSleevePlacerService.cs:214
+6:                double depth = 0.0;
+  Services\NewSleevePlacerService.cs:214
+7:                if (diameter > 0)
+  Services\NewSleevePlacerService.cs:214
+8:                {
+  Services\NewSleevePlacerService.cs:214
+9:                    // For circular, 
+depth = diameter
+  Services\NewSleevePlacerService.cs:215
+0:                    depth = diameter;
+  Services\NewSleevePlacerService.cs:215
+1:                }
+  Services\NewSleevePlacerService.cs:215
+2:                else
+  Services\NewSleevePlacerService.cs:215
+3:                {
+  Services\NewSleevePlacerService.cs:215
+4:                    // For 
+rectangular, calculate depth from 
+structural element thickness
+  Services\NewSleevePlacerService.cs:215
+5:                    bool isWallHost = 
+zone.StructuralElementType == "Wall" || 
+zone.StructuralElementType == "Walls";
+  Services\NewSleevePlacerService.cs:215
+6:                    bool 
+isFramingHost = string.Equals(zone.Struc
+turalElementType, "Structural Framing", 
+StringComparison.OrdinalIgnoreCase);
+  Services\NewSleevePlacerService.cs:215
+7:                    
+  Services\NewSleevePlacerService.cs:215
+8:                    if (isWallHost)
+  Services\NewSleevePlacerService.cs:215
+9:                    {
+  Services\NewSleevePlacerService.cs:216
+0:                        depth = 
+zone.WallThickness > 0 ? 
+zone.WallThickness : 
+zone.StructuralElementThickness;
+  Services\NewSleevePlacerService.cs:216
+1:                    }
+  Services\NewSleevePlacerService.cs:216
+2:                    else if 
+(isFramingHost)
+  Services\NewSleevePlacerService.cs:216
+3:                    {
+  Services\NewSleevePlacerService.cs:216
+4:                        depth = 
+zone.FramingThickness > 0 ? 
+zone.FramingThickness : 
+zone.StructuralElementThickness;
+  Services\NewSleevePlacerService.cs:216
+5:                    }
+  Services\NewSleevePlacerService.cs:216
+6:                    else
+  Services\NewSleevePlacerService.cs:216
+7:                    {
+  Services\NewSleevePlacerService.cs:216
+8:                        depth = 
+zone.StructuralElementThickness;
+  Services\NewSleevePlacerService.cs:216
+9:                    }
+  Services\NewSleevePlacerService.cs:217
+0:                }
+  
+Services\NewSleevePlacerService.cs:2171:
+  Services\NewSleevePlacerService.cs:217
+2:                
+dimensionCache[zone.Id] = (width, 
+height, depth);
+  Services\NewSleevePlacerService.cs:217
+3:            }
+  Services\NewSleevePlacerService.cs:217
+4:            
+  Services\NewSleevePlacerService.cs:217
+5:            return dimensionCache;
+  Services\NewSleevePlacerService.cs:217
+6:        }
+  
+Services\NewSleevePlacerService.cs:2177:
+  Services\NewSleevePlacerService.cs:217
+8:        #endregion
+  
+Services\NewSleevePlacerService.cs:2179:
+  Services\NewSleevePlacerService.cs:218
+0:        #region Phase 1 Performance 
+Optimizations
+  
+Services\NewSleevePlacerService.cs:2181:
+  Services\NewSleevePlacerService.cs:218
+2:        /// <summary>
+  Services\NewSleevePlacerService.cs:218
+3:        /// ? PHASE 1 OPTIMIZATION: 
+Get cached placement point for element 
+(eliminates LocationPoint/LocationCurve 
+queries)
+  Services\NewSleevePlacerService.cs:218
+4:        /// When 
+UseElementLocationCaching=true, caches 
+placement points during batch placement 
+(70-80% reduction in location queries)
+  Services\NewSleevePlacerService.cs:218
+5:        /// </summary>
+  Services\NewSleevePlacerService.cs:218
+6:        private XYZ 
+GetCachedPlacementPoint(FamilyInstance 
+sleeve)
+  Services\NewSleevePlacerService.cs:218
+7:        {
+  Services\NewSleevePlacerService.cs:218
+8:            if (!OptimizationFlags.Use
+ElementLocationCaching)
+  Services\NewSleevePlacerService.cs:218
+9:            {
+  Services\NewSleevePlacerService.cs:219
+0:                return null; // Use 
+original logic
+  Services\NewSleevePlacerService.cs:219
+1:            }
+  
+Services\NewSleevePlacerService.cs:2192:
+  Services\NewSleevePlacerService.cs:219
+3:            if (!_placementPointCache.
+TryGetValue(sleeve.Id, out XYZ point))
+  Services\NewSleevePlacerService.cs:227
+8:            return zones.Select(zone 
+=>
+  Services\NewSleevePlacerService.cs:227
+9:            {
+> Services\NewSleevePlacerService.cs:228
+0:                // Use existing 
+CalculateSleeveDimensions logic but 
+cache results
+> Services\NewSleevePlacerService.cs:228
+1:                var (width, height, 
+diameter, isCircular) = 
+CalculateSleeveDimensions(zone);
+  Services\NewSleevePlacerService.cs:228
+2:                
+  Services\NewSleevePlacerService.cs:228
+3:                // Calculate depth 
+from wall/structural thickness (same 
+logic as SetSleeveParameters)
+  Services\NewSleevePlacerService.cs:228
+4:                double depth = 0.0;
+  Services\NewSleevePlacerService.cs:228
+5:                if (diameter > 0)
+  Services\NewSleevePlacerService.cs:228
+6:                {
+  Services\NewSleevePlacerService.cs:228
+7:                    // For circular, 
+depth = diameter
+  Services\NewSleevePlacerService.cs:228
+8:                    depth = diameter;
+  Services\NewSleevePlacerService.cs:228
+9:                }
+  Services\NewSleevePlacerService.cs:229
+0:                else
+  Services\NewSleevePlacerService.cs:229
+1:                {
+  Services\NewSleevePlacerService.cs:229
+2:                    // For 
+rectangular, calculate depth from 
+structural element thickness
+  Services\NewSleevePlacerService.cs:229
+3:                    bool isWallHost = 
+zone.StructuralElementType == "Wall" || 
+zone.StructuralElementType == "Walls";
+  Services\NewSleevePlacerService.cs:229
+4:                    bool 
+isFramingHost = string.Equals(zone.Struc
+turalElementType, "Structural Framing", 
+StringComparison.OrdinalIgnoreCase);
+  Services\NewSleevePlacerService.cs:229
+5:                    
+  Services\NewSleevePlacerService.cs:229
+6:                    if (isWallHost)
+  Services\NewSleevePlacerService.cs:229
+7:                    {
+  Services\NewSleevePlacerService.cs:229
+8:                        depth = 
+zone.WallThickness > 0 ? 
+zone.WallThickness : 
+zone.StructuralElementThickness;
+  Services\NewSleevePlacerService.cs:229
+9:                    }
+  Services\NewSleevePlacerService.cs:230
+0:                    else if 
+(isFramingHost)
+  Services\NewSleevePlacerService.cs:230
+1:                    {
+  Services\NewSleevePlacerService.cs:230
+2:                        depth = 
+zone.FramingThickness > 0 ? 
+zone.FramingThickness : 
+zone.StructuralElementThickness;
+  Services\NewSleevePlacerService.cs:230
+3:                    }
+  Services\NewSleevePlacerService.cs:230
+4:                    else
+  Services\NewSleevePlacerService.cs:230
+5:                    {
+  Services\NewSleevePlacerService.cs:230
+6:                        depth = 
+zone.StructuralElementThickness;
+  Services\NewSleevePlacerService.cs:230
+7:                    }
+  Services\NewSleevePlacerService.cs:230
+8:                }
+  
+Services\NewSleevePlacerService.cs:2309:
+  Services\NewSleevePlacerService.cs:231
+0:                return (zone, width, 
+height, depth);
+  Services\NewSleevePlacerService.cs:231
+1:            }).ToList();
+  Services\NewSleevePlacerService.cs:231
+2:        }
+  
+Services\NewSleevePlacerService.cs:2313:
+  Services\NewSleevePlacerService.cs:231
+4:        /// <summary>
+  Services\NewSleevePlacerService.cs:231
+5:        /// ? PHASE 1 OPTIMIZATION: 
+Batch parameter operations (reduces 
+individual parameter reads/writes)
+  Services\NewSleevePlacerService.cs:231
+6:        /// When 
+UseBatchParameterOperations=true, 
+batches parameter operations for better 
+performance (50-60% reduction in 
+parameter operations)
+  Services\NewSleevePlacerService.cs:231
+7:        /// </summary>
+  Services\NewSleevePlacerService.cs:231
+8:        private void BatchSetSleevePar
+ameters(List<(FamilyInstance instance, 
+double width, double height, double 
+diameter, bool isCircular, ClashZone 
+zone)> sleeveData)
+  Services\NewSleevePlacerService.cs:231
+9:        {
+  Services\NewSleevePlacerService.cs:232
+0:            if (!OptimizationFlags.Use
+BatchParameterOperations)
+  Services\NewSleevePlacerService.cs:232
+1:            {
+  Services\NewSleevePlacerService.cs:232
+2:                return; // Use 
+original logic
+  Services\NewSleevePlacerService.cs:232
+3:            }
+  
+Services\NewSleevePlacerService.cs:2324:
+  Services\NewSleevePlacerService.cs:232
+5:            foreach (var (instance, 
+width, height, diameter, isCircular, 
+zone) in sleeveData)
+  Services\NewSleevePlacerService.cs:232
+6:            {
+  Services\NewSleevePlacerService.cs:232
+7:                // Set all parameters 
+in batch
+  Services\NewSleevePlacerService.cs:232
+8:                _parameterService.SetS
+leeveParameters(instance, width, 
+height, diameter, isCircular, zone);
+  Services\NewSleevePlacerService.cs:232
+9:            }
+  Services\NewSleevePlacerService.cs:233
+0:            
+  Services\NewSleevePlacerService.cs:233
+1:            // Flush all parameters 
+at once
+
+

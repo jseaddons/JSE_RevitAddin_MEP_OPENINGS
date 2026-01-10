@@ -329,6 +329,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public static bool UseLazyParameterCapture { get; set; } = true;
 
         /// <summary>
+        /// Enable high-performance Bulk Placement using NewFamilyInstances2
+        /// Strictly Revit-only placement, uses legacy persistence architecture (SleeveParameterService).
+        /// Location: Services/BulkPlacementService.cs
+        /// Default: false (safe rollout)
+        /// </summary>
+        public static bool UseBulkIndividualSleevePlacement { get; set; } = false;
+
+        /// <summary>
         /// Skip forced garbage collection at end of refresh.
         /// When true: Lets CLR manage memory naturally (saves ~289ms).
         /// When false: Explicit GC.Collect(2) after refresh.
@@ -428,7 +436,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Enable diagnostic mode for performance monitoring
         /// Default: false (disabled - causes 2.6x slowdown due to logging overhead)
         /// </summary>
-        public static bool UseDiagnosticMode { get; set; } = false; // 🚫 OFF - disabled for deployment
+        public static bool UseDiagnosticMode { get; set; } = true; // 🚫 OFF - disabled for deployment
         
         /// <summary>
         /// Enable batch clash zone creation (pre-calculate common data once)

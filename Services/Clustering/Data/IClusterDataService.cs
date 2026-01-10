@@ -47,6 +47,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data
         ClashZone GetClashZoneFromCache(long mepElementId);
 
         /// <summary>
+        /// Get clash zone from cache by SleeveInstanceId.
+        /// Returns null if not found.
+        /// </summary>
+        /// <param name="sleeveInstanceId">Sleeve Instance ID to look up</param>
+        /// <returns>ClashZone or null</returns>
+        ClashZone GetClashZoneBySleeveInstanceId(int sleeveInstanceId);
+
+        /// <summary>
         /// Clear the clash zone cache.
         /// </summary>
         void ClearCache();

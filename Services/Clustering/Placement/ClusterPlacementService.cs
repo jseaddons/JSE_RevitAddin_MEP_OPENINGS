@@ -233,10 +233,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 // ✅ WALL/FRAMING MIDPOINT OVERRIDE: Replace delegate midpoint with computed midpoint from stored sleeve bounding boxes
                 // This permanently guards against the 33mm intersection-point offset without touching floor/rotated flows
                 // ⚠️⚠️⚠️ CRITICAL PROTECTION: Do not remove this override unless _getClusterBoundingBox is updated to emit the corrected centroid
-                bool isWallHost = groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing";
+                bool isWallOrFraming = groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing";
                 XYZ originalPlacementPoint = placementPoint;
                 
-                if (isWallHost)
+                if (isWallOrFraming)
                 {
                     XYZ? theoreticalMid = ComputeClusterMidpoint(cluster);
                     if (theoreticalMid != null)
@@ -308,24 +308,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                                 if (firstClashZone != null && firstClashZone.StructuralElementNormal != null)
                                 {
                                     // Get wall normal and thickness
+                                    // Get wall normal and structural thickness
                                     XYZ wallNormal = firstClashZone.StructuralElementNormal.Normalize();
-                                    double wallThickness = 0.0;
+                                    // ✅ SIMPLIFIED: Use structuralThickness (universal) instead of wallThickness specific logic
+                                    double structuralThickness = firstClashZone.StructuralElementThickness;
                                     
-                                    if (isWallHost)
+                                    if (structuralThickness > 0)
                                     {
-                                        wallThickness = firstClashZone.WallThickness > 0 ? firstClashZone.WallThickness : firstClashZone.StructuralElementThickness;
-                                    }
-                                    else
-                                    {
-                                        wallThickness = firstClashZone.FramingThickness > 0 ? firstClashZone.FramingThickness : firstClashZone.StructuralElementThickness;
-                                    }
-                                    
-                                    if (wallThickness > 0)
-                                    {
-                                        // ✅ WORKING LOGIC: Move from intersection point (wall face) to wall centerline
-                                        // Formula: placePoint = intersection + wallNormal * (-wallThickness * 0.5)
+                                        // ✅ WORKING LOGIC: Move from intersection point (wall face) to wall/host centerline
+                                        // Formula: placePoint = intersection + wallNormal * (-structuralThickness * 0.5)
                                         // This matches individual sleeve placement logic
-                                        XYZ wallVector = wallNormal.Multiply(-wallThickness);
+                                        XYZ wallVector = wallNormal.Multiply(-structuralThickness);
                                         placementPoint = placementPoint.Add(wallVector.Multiply(0.5));
                                         
                                         if (!DeploymentConfiguration.DeploymentMode)
@@ -334,7 +327,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                                                 $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ✅ WALL CENTERLINE ADJUSTMENT (fallback): " +
                                                 $"Original PlacementPoint=({originalPlacementPoint.X:F6}, {originalPlacementPoint.Y:F6}, {originalPlacementPoint.Z:F6}), " +
                                                 $"WallNormal=({wallNormal.X:F6}, {wallNormal.Y:F6}, {wallNormal.Z:F6}), " +
-                                                $"WallThickness={wallThickness * 304.8:F1}mm, " +
+                                                $"WallThickness={structuralThickness * 304.8:F1}mm, " +
                                                 $"Adjusted PlacementPoint=({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6})\n");
                                         }
                                     }
@@ -364,29 +357,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 FamilyInstance? inst = null;
                 try
                 {
-                    try
-                    {
-                        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                        var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
-                        if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
-                        var logPath = Path.Combine(logDir, "cluster_debug.log");
-                        // DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔥 ABOUT TO CREATE cluster sleeve instance: familyName={familyName}, level={refLevel?.Name ?? "NULL"}\n");
-                        }
-                    }
-                    catch { }
-                    
                     // ✅ PERFORMANCE PROFILING: Profile family instantiation to identify symbol binding vs geometry creation
                     var instantiationTimer = System.Diagnostics.Stopwatch.StartNew();
                     var beforeInstantiation = System.GC.CollectionCount(0); // Track GC before
                     
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        try
+                        {
+                            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                            var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                            if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔥 ABOUT TO CREATE cluster sleeve instance: familyName={familyName}, level={refLevel?.Name ?? "NULL"}\n");
+                        }
+                        catch { /* Ignore logging errors */ }
+                    }
+
                     inst = doc.Create.NewFamilyInstance(placementPoint, familySymbol, refLevel, StructuralType.NonStructural);
                     
                     instantiationTimer.Stop();
                     var afterInstantiation = System.GC.CollectionCount(0);
                     var gcCollections = afterInstantiation - beforeInstantiation;
+                    
+                    if (inst == null)
+                    {
+                        SafeFileLogger.SafeAppendText("placement_errors.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ❌ Cluster sleeve instance is null after creation\n");
+                        return false;
+                    }
+
+                    // ✅ CRITICAL: Capture ID immediately while element is valid
+                    capturedClusterSleeveId = inst.Id.IntegerValue;
+                    
+                    // ✅ CRITICAL: Return actual placement point via out parameter
+                    // This ensures database saves the correct calculated placement point instead of Revit bbox center
+                    actualPlacementPoint = placementPoint;
                     
                     // ✅ PROFILING: Log instantiation timing to identify bottlenecks
                     // Fast (<10ms) = quick placement, Medium (10-50ms) = moderate overhead, Slow (>50ms) = high overhead
@@ -399,368 +404,224 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                                 ? "MODERATE_OVERHEAD" 
                                 : "SLOW_OVERHEAD";
                         
-                        var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Logs", versionTag);
-                        Directory.CreateDirectory(logDir);
-                        var profPath = Path.Combine(logDir, "family_instantiation_profile.log");
-                        
-                        SafeFileLogger.SafeAppendText("cluster_debug.log", $"{DateTime.Now:O}\t" +
-                            $"ClusterSleeveId={inst?.Id?.IntegerValue ?? -1}\t" +
-                            $"Family={familySymbol?.Family?.Name ?? "NULL"}\t" +
-                            $"Symbol={familySymbol?.Name ?? "NULL"}\t" +
-                            $"Type={instantiationType}\t" +
-                            $"TimeMs={instantiationTimer.ElapsedMilliseconds}\t" +
-                            $"TimeTicks={instantiationTimer.ElapsedTicks}\t" +
-                            $"GCCollections={gcCollections}\t" +
-                            $"Level={refLevel?.Name ?? "NULL"}\t" +
-                            $"ClusterSize={cluster?.Count ?? 0}\n");
-                    }
-                    
-                    // ✅ CRITICAL: Capture ID immediately while element is valid
-                    capturedClusterSleeveId = inst.Id.IntegerValue;
-                    
-                    // ✅ CRITICAL: Return actual placement point via out parameter
-                    // This ensures database saves the correct calculated placement point instead of Revit bbox center
-                    actualPlacementPoint = placementPoint;
-                    
-                    try
-                    {
-                        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                        var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
-                        if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
-                        var logPath = Path.Combine(logDir, "cluster_debug.log");
-                        // DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
+                        try
                         {
+                            var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Logs", versionTag);
+                            Directory.CreateDirectory(logDir);
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"{DateTime.Now:O}\t" +
+                                $"ClusterSleeveId={inst?.Id?.IntegerValue ?? -1}\t" +
+                                $"Family={familySymbol?.Family?.Name ?? "NULL"}\t" +
+                                $"Symbol={familySymbol?.Name ?? "NULL"}\t" +
+                                $"Type={instantiationType}\t" +
+                                $"TimeMs={instantiationTimer.ElapsedMilliseconds}\t" +
+                                $"TimeTicks={instantiationTimer.ElapsedTicks}\t" +
+                                $"GCCollections={gcCollections}\t" +
+                                $"Level={refLevel?.Name ?? "NULL"}\t" +
+                                $"ClusterSize={cluster?.Count ?? 0}\n");
+
                             SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅✅✅ Cluster sleeve CREATED: ID={capturedClusterSleeveId}\n");
+                            string createMsg = $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ✅ Cluster sleeve created: ID={capturedClusterSleeveId}\n";
+                            DebugLogger.Info(createMsg);
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", createMsg);
                         }
+                        catch { /* Ignore logging errors */ }
                     }
-                    catch { }
                     
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        string createMsg = $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ✅ Cluster sleeve created: ID={capturedClusterSleeveId}\n";
-                        DebugLogger.Info(createMsg);
-                        SafeFileLogger.SafeAppendText("cluster_debug.log", createMsg);
-                    }
-                }
-                catch (Exception createEx)
-                {
+                    // ✅ CRITICAL FIX for Cluster Depth: Divert SleeveParameterService batch writes to our local dictionary
+                    // This ensures "Depth" and "Wall Width" parameters (set via SleeveParameterService)
+                    // are captured in the same dictionary as "Width" and "Height" (set here).
+                    // ✅ UNIFIED BATCH CONTEXT FIX: Removed local assignment.
+                    // We now rely on RefactoredClusterService to set the DivertedBatchDictionary globally for the group.
+                    // if (_parameterService != null)
+                    // {
+                    //     _parameterService.DivertedBatchDictionary = deferredParameters;
+                    // }
+
                     try
                     {
-                        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                        var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
-                        if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
-                        var logPath = Path.Combine(logDir, "cluster_debug.log");
-                        // DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ EXCEPTION creating cluster sleeve: {createEx.Message}\n");
-                        }
-                        // DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] StackTrace: {createEx.StackTrace}\n");
-                        }
-                    }
-                    catch { }
-                    SafeFileLogger.SafeAppendText("placement_errors.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ❌ Exception creating cluster sleeve: {createEx.Message}\n");
-                    return false;
-                }
+                        // Set size parameters
+                        // ✅ WALL/FRAMING: X-walls get +90° rotation (matches individual sleeves), Y-walls get 0°
+                        // shouldSwapDimensions is false for walls (dimension mapping is handled in SetSizeParameters)
+                        // Rotation logic for floors (rotated axis/non-straight) is separate from wall orientation rotation
+                        bool shouldSwapDimensions = false; // Walls use normal dimension mapping (no swap needed)
+                        SetSizeParameters(doc, inst, cluster, groupKey, width, height, depth, shouldSwapDimensions, deferredParameters);
 
-                if (inst == null)
-                {
-                    try
-                    {
-                        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                        var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
-                        if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
-                        var logPath = Path.Combine(logDir, "cluster_debug.log");
-                        // DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
+                        // ✅ ROTATION: Apply rotation for X-walls (90°) and floors (rotated axis/non-straight)
+                        // Y-walls get 0° rotation (no rotation needed - LEFT view family works naturally for Y-walls)
+                        // X-walls need +90° rotation (matches individual sleeve placement logic)
+                        // Floor rotation is for rotated axis-aligned clusters (non-straight, 45°, etc.)
+                        // ⚠️ CABLETRAY FIX: Cable trays on floors don't need rotation like ducts do
+                        // Note: isWallOrFraming is already declared earlier in the method (for midpoint override)
+                        bool isFloorHost = groupKey.hostType == "Floor" || groupKey.hostType == "Floors";
+                        
+                        // ✅ CATEGORY CHECK: Determine if this is a cable tray or duct cluster
+                        bool isCableTrayCategory = false;
+                        bool isDuctCategory = false;
+                        if (cluster != null && cluster.Count > 0)
                         {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ Cluster sleeve instance is NULL after creation\n");
-                        }
-                    }
-                    catch { }
-                    SafeFileLogger.SafeAppendText("placement_errors.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ❌ Cluster sleeve instance is null after creation\n");
-                    return false;
-                }
-
-                // Set size parameters
-                // ✅ WALL/FRAMING: X-walls get +90° rotation (matches individual sleeves), Y-walls get 0°
-                // shouldSwapDimensions is false for walls (dimension mapping is handled in SetSizeParameters)
-                // Rotation logic for floors (rotated axis/non-straight) is separate from wall orientation rotation
-                bool shouldSwapDimensions = false; // Walls use normal dimension mapping (no swap needed)
-                SetSizeParameters(doc, inst, cluster, groupKey, width, height, depth, shouldSwapDimensions, deferredParameters);
-
-                // ✅ ROTATION: Apply rotation for X-walls (90°) and floors (rotated axis/non-straight)
-                // Y-walls get 0° rotation (no rotation needed - LEFT view family works naturally for Y-walls)
-                // X-walls need +90° rotation (matches individual sleeve placement logic)
-                // Floor rotation is for rotated axis-aligned clusters (non-straight, 45°, etc.)
-                // ⚠️ CABLETRAY FIX: Cable trays on floors don't need rotation like ducts do
-                // Note: isWallHost is already declared earlier in the method (for midpoint override)
-                bool isFloorHost = groupKey.hostType == "Floor" || groupKey.hostType == "Floors";
-                
-                // ✅ CATEGORY CHECK: Determine if this is a cable tray or duct cluster
-                bool isCableTrayCategory = false;
-                bool isDuctCategory = false;
-                if (cluster != null && cluster.Count > 0)
-                {
-                    var firstSleeve = cluster[0];
-                    if (firstSleeve?.ClashZone != null)
-                    {
-                        var firstClashZone = firstSleeve.ClashZone as Models.ClashZone;
-                        if (firstClashZone != null)
-                        {
-                            string category = firstClashZone.MepElementCategory ?? "";
-                            isCableTrayCategory = category.Contains("Cable", StringComparison.OrdinalIgnoreCase) ||
-                                                 category.Contains("CableTray", StringComparison.OrdinalIgnoreCase);
-                            isDuctCategory = category.Contains("Duct", StringComparison.OrdinalIgnoreCase) &&
-                                           !category.Contains("Accessory", StringComparison.OrdinalIgnoreCase);
-                        }
-                    }
-                }
-                
-                // Apply rotation if:
-                // 1. It's a wall with significant rotation (X-wall with 90°), OR
-                // 2. It's a floor with rotated axis (non-straight)
-                // ✅ FIX: Cable trays and ducts on floors get rotation based on MEP orientation WITHOUT extra 90° offset
-                // Individual sleeves use MepElementRotationAngle directly (no 90° offset), so clusters must match
-                if (Math.Abs(rotationAngle) > 1e-6)
-                {
-                    if (isWallHost)
-                    {
-                        // ✅ X-WALL: Apply +90° rotation (matches individual sleeve placement)
-                        // Individual sleeves apply rotation for X-walls, so clusters must match
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] 🔄 APPLYING X-WALL ROTATION: {rotationAngle * 180 / Math.PI:F1}° for wall-hosted cluster\n");
-                        }
-                        ApplyRotation(doc, inst, placementPoint, rotationAngle, skip90DegreeOffset: false);
-                    }
-                    else if (isFloorHost)
-                    {
-                        // ✅ FLOOR: Match individual sleeve rotation logic exactly
-                        // Individual sleeves use MepElementRotationAngle directly for cable trays (no 90° offset)
-                        // Individual sleeves use MepElementRotationAngle directly for ducts (no 90° offset)
-                        // Both cable trays and ducts should skip the 90° offset to match individual sleeve behavior
-                                                bool skipOffset = isCableTrayCategory || isDuctCategory || string.Equals(targetCategory, "Pipes", StringComparison.OrdinalIgnoreCase); // Cable trays and ducts: no offset (matches individual sleeves)
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            string categoryBehavior = skipOffset ? $"{targetCategory.ToUpper()} (matches individual: no offset)" : "PIPE (cluster: +90° offset)";
-                            SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] 🔄 APPLYING FLOOR ROTATION: {rotationAngle * 180 / Math.PI:F1}° for floor-hosted cluster (category: {targetCategory}, {categoryBehavior})\n");
-                        }
-                        ApplyRotation(doc, inst, placementPoint, rotationAngle, skip90DegreeOffset: skipOffset);
-                    }
-                }
-                else if (isWallHost)
-                {
-                    // ✅ Y-WALL: No rotation needed (0° rotation matches individual sleeve placement)
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss}] ✅ Y-WALL: No rotation applied (0° matches individual sleeve placement)\n");
-                    }
-                }
-
-                // Set metadata (including HostOrientation for proper orientation)
-                SetMetadata(inst, targetCategory, null, deferredParameters);
-
-                // ✅ SCHEDULE LEVEL & ELEVATION FROM LEVEL: Set from first ClashZone's MEP element level
-                // ✅ SOLID: Use injected SleeveParameterService if available, otherwise set directly
-                try
-                {
-                    var firstSleeve = cluster[0];
-                    ClashZone? firstClashZone = null;
-                    if (firstSleeve is ClashZone cz)
-                    {
-                        firstClashZone = cz;
-                    }
-                    else if (firstSleeve?.ClashZone != null)
-                    {
-                        firstClashZone = firstSleeve.ClashZone as ClashZone;
-                    }
-                    else if (firstSleeve?.SleeveInstanceId != null && _getClashZoneBySleeveInstanceId != null)
-                    {
-                        firstClashZone = _getClashZoneBySleeveInstanceId(firstSleeve.SleeveInstanceId, xmlFilePath);
-                    }
-
-                    if (firstClashZone != null)
-                    {
-                        if (_parameterService != null)
-                        {
-                            // ✅ SOLID: Use injected SleeveParameterService (follows dependency injection principle)
-                            // ✅ CRITICAL: Verify cluster sleeve exists BEFORE setting parameters
-                            var verifyBeforeParams = doc.GetElement(inst.Id) as FamilyInstance;
-                            if (verifyBeforeParams == null || !verifyBeforeParams.IsValidObject)
+                            var firstSleeve = cluster[0];
+                            if (firstSleeve?.ClashZone != null)
                             {
-                                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ CRITICAL: Cluster sleeve {inst.Id.IntegerValue} is NULL or INVALID before setting Schedule Level - SKIPPING parameter setting\n");
-                            }
-                            else
-                            {
-                                _parameterService.SetScheduleLevelAndElevationForCluster(inst, firstClashZone, inst.Id);
-                                
-                                // ✅ CRITICAL: Verify cluster sleeve exists AFTER setting parameters
-                                var verifyAfterParams = doc.GetElement(inst.Id) as FamilyInstance;
-                                if (verifyAfterParams == null || !verifyAfterParams.IsValidObject)
+                                var firstClashZone = firstSleeve.ClashZone as Models.ClashZone;
+                                if (firstClashZone != null)
                                 {
-                                    SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                        $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ CRITICAL: Cluster sleeve {inst.Id.IntegerValue} was DELETED during Schedule Level setting! This should NOT happen!\n");
+                                    string category = firstClashZone.MepElementCategory ?? "";
+                                    isCableTrayCategory = category.Contains("Cable", StringComparison.OrdinalIgnoreCase) ||
+                                                        category.Contains("CableTray", StringComparison.OrdinalIgnoreCase);
+                                    isDuctCategory = category.Contains("Duct", StringComparison.OrdinalIgnoreCase) &&
+                                                    !category.Contains("Accessory", StringComparison.OrdinalIgnoreCase);
                                 }
                             }
-                            
+                        }
+                        
+                        // Apply rotation if needed
+                        if (Math.Abs(rotationAngle) > 1e-6)
+                        {
+                            if (isWallOrFraming)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                        $"[{DateTime.Now:HH:mm:ss}] 🔄 APPLYING WALL/FRAMING ROTATION: {rotationAngle * 180 / Math.PI:F1}° (Trusting ClusterRotationService)\n");
+                                }
+                                ApplyRotation(doc, inst, placementPoint, rotationAngle, isWallOrFraming: true, skip90DegreeOffset: false);
+                            }
+                            else if (isFloorHost)
+                            {
+                                bool skipOffset = isCableTrayCategory || isDuctCategory || string.Equals(targetCategory, "Pipes", StringComparison.OrdinalIgnoreCase); 
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    string categoryBehavior = skipOffset ? $"{targetCategory.ToUpper()} (matches individual: no offset)" : "PIPE (cluster: +90° offset)";
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                        $"[{DateTime.Now:HH:mm:ss}] 🔄 APPLYING FLOOR ROTATION: {rotationAngle * 180 / Math.PI:F1}° for floor-hosted cluster (category: {targetCategory}, {categoryBehavior})\n");
+                                }
+                                ApplyRotation(doc, inst, placementPoint, rotationAngle, isWallOrFraming: false, skip90DegreeOffset: skipOffset);
+                            }
+                        }
+                        else if (isWallOrFraming)
+                        {
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
                                 SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss}] ✅ Set Schedule Level and Elevation from Level for cluster sleeve {inst.Id} from ClashZone {firstClashZone.Id} (via injected SleeveParameterService)\n");
+                                    $"[{DateTime.Now:HH:mm:ss}] ✅ Y-WALL: No rotation applied (0° matches individual sleeve placement)\n");
                             }
                         }
-                        else
-                        {
-                            // ✅ FALLBACK: Set Schedule Level directly if SleeveParameterService not injected
-                            if (!string.IsNullOrWhiteSpace(firstClashZone.MepElementLevelName))
-                            {
-                                Level? mepLevel = new FilteredElementCollector(doc)
-                                    .OfClass(typeof(Level))
-                                    .Cast<Level>()
-                                    .FirstOrDefault(l => string.Equals(l.Name, firstClashZone.MepElementLevelName, StringComparison.OrdinalIgnoreCase));
 
-                                if (mepLevel != null)
+                        // Set metadata (including HostOrientation for proper orientation)
+                        SetMetadata(inst, targetCategory, null, deferredParameters);
+
+                        // ✅ SCHEDULE LEVEL & ELEVATION: Set from first ClashZone's MEP element level
+                        try
+                        {
+                            var firstSleeve = cluster[0];
+                            ClashZone? firstClashZone = null;
+                            if (firstSleeve is ClashZone cz) firstClashZone = cz;
+                            else if (firstSleeve?.ClashZone != null) firstClashZone = firstSleeve.ClashZone as ClashZone;
+                            else if (firstSleeve?.SleeveInstanceId != null && _getClashZoneBySleeveInstanceId != null)
+                                firstClashZone = _getClashZoneBySleeveInstanceId(firstSleeve.SleeveInstanceId, xmlFilePath);
+
+                            if (firstClashZone != null)
+                            {
+                                if (_parameterService != null)
                                 {
-                                    var scheduleLevelParam = inst.LookupParameter("Schedule of Level")
-                                                         ?? inst.LookupParameter("Schedule Level")
-                                                         ?? inst.LookupParameter("ScheduleLevel")
-                                                         ?? inst.Symbol?.LookupParameter("Schedule of Level")
-                                                         ?? inst.Symbol?.LookupParameter("Schedule Level")
-                                                         ?? inst.Symbol?.LookupParameter("ScheduleLevel");
-                                    
-                                    if (scheduleLevelParam != null && !scheduleLevelParam.IsReadOnly)
+                                    var verifyBeforeParams = doc.GetElement(inst.Id) as FamilyInstance;
+                                    if (verifyBeforeParams != null && verifyBeforeParams.IsValidObject)
                                     {
-                                        if (scheduleLevelParam.StorageType == StorageType.ElementId)
+                                        _parameterService.SetScheduleLevelAndElevationForCluster(inst, firstClashZone, inst.Id);
+                                    }
+                                }
+                                else
+                                {
+                                    // ✅ FALLBACK: Set Schedule Level directly if SleeveParameterService not injected
+                                    if (!string.IsNullOrWhiteSpace(firstClashZone.MepElementLevelName))
+                                    {
+                                        Level? mepLevel = new FilteredElementCollector(doc)
+                                            .OfClass(typeof(Level))
+                                            .Cast<Level>()
+                                            .FirstOrDefault(l => string.Equals(l.Name, firstClashZone.MepElementLevelName, StringComparison.OrdinalIgnoreCase));
+
+                                        if (mepLevel != null)
                                         {
-                                            scheduleLevelParam.Set(mepLevel.Id);
-                                        }
-                                        else if (scheduleLevelParam.StorageType == StorageType.String)
-                                        {
-                                            scheduleLevelParam.Set(mepLevel.Name);
-                                        }
-                                        
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        {
-                                            SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                                $"[{DateTime.Now:HH:mm:ss}] ✅ Set Schedule Level to '{mepLevel.Name}' on cluster sleeve {inst.Id.IntegerValue} (direct setting, no SleeveParameterService)\n");
+                                            var scheduleLevelParam = inst.LookupParameter("Schedule of Level")
+                                                                 ?? inst.LookupParameter("Schedule Level")
+                                                                 ?? inst.LookupParameter("ScheduleLevel");
+                                            
+                                            if (scheduleLevelParam != null && !scheduleLevelParam.IsReadOnly)
+                                            {
+                                                if (scheduleLevelParam.StorageType == StorageType.ElementId)
+                                                    scheduleLevelParam.Set(mepLevel.Id);
+                                                else
+                                                    scheduleLevelParam.Set(mepLevel.Name);
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
+                        catch (Exception levelEx)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Warning($"[ClusterPlacementService] Error setting level for cluster: {levelEx.Message}");
+                        }
+
+                        // ✅ BOTTOM OF OPENING
+                        if (OptimizationFlags.UseBottomOfOpeningCalculation)
+                        {
+                            double openingHeight = height;
+                            if (deferredParameters != null && deferredParameters.ContainsKey(inst.Id) && deferredParameters[inst.Id].ContainsKey("Height"))
+                            {
+                                openingHeight = (double)deferredParameters[inst.Id]["Height"];
+                            }
+                            SetBottomOfOpeningForCluster(inst, openingHeight, deferredParameters);
+                        }
+
+                        // Mark clash zones as cluster-resolved
+                        BoundingBoxXYZ? clusterBbox = null;
+                        try { clusterBbox = inst.get_BoundingBox(null); } catch { }
+
+                        if (_markClusterResolved != null)
+                        {
+                            _markClusterResolved(cluster, inst.Id, xmlFilePath, clusterBbox, null);
+                        }
+
+                        placedClusterSleeve = inst;
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅✅✅ PlaceClusterSleeve COMPLETED: ID={inst.Id.IntegerValue}\n");
+                        }
+                        
+                        return true;
+                    }
+                    finally
+                    {
+                        // ✅ ALWAYS unset diverted dictionary to prevent side effects
+                        // ✅ UNIFIED BATCH CONTEXT FIX: Removed local reset.
+                        // if (_parameterService != null)
+                        // {
+                        //     _parameterService.DivertedBatchDictionary = null;
+                        // }
                     }
                 }
                 catch (Exception ex)
                 {
+                    // DEPLOYMENT MODE: Skip file writes
                     if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ Error setting Schedule Level and Elevation from Level for cluster: {ex.Message}\n");
-                    }
-                }
-
-                // ✅ BOTTOM OF OPENING: Calculate and set "Bottom of Opening" AFTER Schedule Level is set
-                // ✅ CRITICAL SEQUENCING: Schedule Level must be set FIRST, then Revit calculates Elevation from Level,
-                // then we can read Elevation from Level and calculate Bottom of Opening
-                // This was previously called inside SetSizeParameters (line 966) BEFORE Schedule Level was set, causing wrong values
-                if (OptimizationFlags.UseBottomOfOpeningCalculation)
-                {
-                    // Get openingHeight from deferred parameters (rounded height that was set in SetSizeParameters)
-                    // If not in deferred parameters, use the original height parameter (fallback)
-                    double openingHeight = height;
-                    if (deferredParameters != null && deferredParameters.ContainsKey(inst.Id) && deferredParameters[inst.Id].ContainsKey("Height"))
-                    {
-                        openingHeight = (double)deferredParameters[inst.Id]["Height"];
-                    }
-                    else
-                    {
-                        // Fallback: Get from Height parameter if already set
-                        var heightParam = inst.LookupParameter("Height");
-                        if (heightParam != null && heightParam.StorageType == StorageType.Double)
-                        {
-                            openingHeight = heightParam.AsDouble();
-                        }
-                    }
-                    SetBottomOfOpeningForCluster(inst, openingHeight, deferredParameters);
-                }
-
-                // Mark clash zones as cluster-resolved
-                BoundingBoxXYZ? clusterBbox = null;
-                try
-                {
-                    clusterBbox = inst.get_BoundingBox(null);
-                }
-                catch { }
-
-                // 🔥 CRITICAL: Check if _markClusterResolved is null (might not be wired)
-                if (_markClusterResolved == null)
-                {
-                    try
-                    {
-                        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                        var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
-                        if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
-                        var logPath = Path.Combine(logDir, "cluster_debug.log");
-                        // DEPLOYMENT MODE: Skip file writes
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ _markClusterResolved delegate is NULL - skipping mark cluster resolved\n");
-                        }
-                    }
-                    catch { }
-                }
-                else
-                {
-                    try
-                    {
-                _markClusterResolved(cluster, inst.Id, xmlFilePath, clusterBbox, null);
-                    }
-                    catch (Exception markEx)
                     {
                         try
                         {
                             var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                             var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
                             if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
-                            var logPath = Path.Combine(logDir, "cluster_debug.log");
-                            // DEPLOYMENT MODE: Skip file writes
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ Exception in _markClusterResolved: {markEx.Message}\n");
-                            }
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ EXCEPTION creating cluster sleeve: {ex.Message}\n");
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] StackTrace: {ex.StackTrace}\n");
                         }
-                        catch { }
+                        catch { /* Ignore logging errors */ }
                     }
+                    SafeFileLogger.SafeAppendText("placement_errors.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ❌ Exception creating cluster sleeve: {ex.Message}\n");
+                    return false;
                 }
-
-                placedClusterSleeve = inst;
-                
-                try
-                {
-                    var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                    var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
-                    if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
-                    var logPath = Path.Combine(logDir, "cluster_debug.log");
-                    // DEPLOYMENT MODE: Skip file writes
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅✅✅ PlaceClusterSleeve RETURNING TRUE: placedClusterSleeve={(placedClusterSleeve != null ? "NOT NULL" : "NULL")}, capturedId={capturedClusterSleeveId?.ToString() ?? "NULL"}\n");
-                    }
-                }
-                catch { }
-                
-                return true;
             }
             catch (Exception ex)
             {
@@ -793,16 +654,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 return;
             }
 
-            try
-            {
-                // Get parameters with caching
-                Parameter? widthParam = GetParameter(clusterSleeve, "Width");
-                Parameter? heightParam = GetParameter(clusterSleeve, "Height");
-                Parameter? depthParam = GetParameter(clusterSleeve, "Depth");
-
-                double openingWidth = width;
-                double openingHeight = height;
-                double openingDepth = depth;
+            // Default dimensions (apply swapping if requested)
+            double openingWidth = shouldSwapDimensions ? depth : width;
+            double openingHeight = height;
+            double openingDepth = shouldSwapDimensions ? width : depth;
+            double structuralThickness = 0.0;
 
                 // ✅ RCS DIMENSION MAPPING: For walls/framing, use RCS dimensions directly (already wall-aligned)
                 if (groupKey.hostType == "Wall" || groupKey.hostType == "Structural Framing")
@@ -817,7 +673,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                     // Width = RCS X (along wall)
                     // Depth = RCS Y (through wall) - override with wall thickness
                     // Height = RCS Z (vertical)
-                    
+
                     // ✅ DIAGNOSTIC: Log input dimensions (already in RCS)
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
@@ -827,45 +683,66 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                         SafeFileLogger.SafeAppendText("cluster_debug.log",
                             $"[{DateTime.Now:HH:mm:ss}] 📐 RCS DIMENSIONS: Orientation={groupKey.orientation}, RCS W={wMm:F1}mm (X=along wall), H={hMm:F1}mm (Z=vertical), D={dMm:F1}mm (Y=through wall)\n");
                     }
-                    
-                    // ✅ CRITICAL FIX: Get wall thickness from clash zones (should be same for all sleeves on same wall)
-                    double wallThickness = 0.0;
+
+                    // ✅ DIRECT DB ACCESS: Get structural thickness from clash zone 
+                    // All sleeves in a cluster MUST have the same host element
                     try
                     {
                         if (cluster.Count > 0)
                         {
-                            var firstSleeve = cluster[0];
-                            var firstClashZone = firstSleeve?.ClashZone as Models.ClashZone;
+                            var firstItem = cluster[0];
+                            Models.ClashZone? firstClashZone = null;
+                            
+                            // Try to get from the item itself first (fastest)
+                            try { firstClashZone = firstItem?.ClashZone as Models.ClashZone; } catch { }
+                            
+                            // ⚠️ ROBUSTNESS: If not found, look up by ID directly (most direct/reliable)
+                            if (firstClashZone == null)
+                            {
+                                int sleeveId = 0;
+                                try { sleeveId = firstItem?.SleeveInstanceId ?? 0; } catch { }
+                                if (sleeveId > 0 && _getClashZoneBySleeveInstanceId != null)
+                                {
+                                    firstClashZone = _getClashZoneBySleeveInstanceId(sleeveId, null);
+                                }
+                            }
+
                             if (firstClashZone != null)
                             {
-                                // Get wall thickness (prefer WallThickness over StructuralElementThickness)
-                                wallThickness = firstClashZone.WallThickness > 0 
-                                    ? firstClashZone.WallThickness 
-                                    : firstClashZone.StructuralElementThickness;
+                                // ✅ ITERATIVE PRIORITY: Prioritize based on host type to avoid picking junk values from other fields
+                                bool isWallHost = firstClashZone.StructuralElementType == "Wall" || firstClashZone.StructuralElementType == "Walls";
+                                bool isFramingHost = string.Equals(firstClashZone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
+
+                                if (isWallHost && firstClashZone.WallThickness > 0.001)
+                                    structuralThickness = firstClashZone.WallThickness;
+                                else if (isFramingHost && firstClashZone.FramingThickness > 0.001)
+                                    structuralThickness = firstClashZone.FramingThickness;
+                                else
+                                    structuralThickness = firstClashZone.StructuralElementThickness;
                             }
                         }
                     }
                     catch (Exception ex)
                     {
                         SafeFileLogger.SafeAppendText("placement_errors.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ⚠️ Error getting wall thickness: {ex.Message}\n");
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ⚠️ Error getting structural thickness: {ex.Message}\n");
                     }
-                    
+
                     // ✅ RCS: Direct dimension mapping (no swapping needed)
                     openingWidth = width;   // RCS X (along wall) → Width parameter
                     openingHeight = height; // RCS Z (vertical) → Height parameter
                     openingDepth = depth;   // RCS Y (through wall) → Depth parameter (will be overridden)
-                    
-                    // ✅ WALL DEPTH FIX: Override depth with wall thickness for wall-hosted clusters
-                    if (wallThickness > 0)
+
+                    // ✅ HOST DEPTH FIX: Override depth with structural thickness for wall/framing-hosted clusters
+                    if (structuralThickness > 0)
                     {
-                        openingDepth = wallThickness;
+                        openingDepth = structuralThickness;
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            double wallThicknessMm = RevitUnitConversionService.Instance.FromInternalMillimeters(wallThickness);
+                            double thicknessMm = RevitUnitConversionService.Instance.FromInternalMillimeters(structuralThickness);
                             double originalDepthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(depth);
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] 🔧 RCS WALL DEPTH FIX: Overriding depth from {originalDepthMm:F1}mm (RCS Y) to wall thickness {wallThicknessMm:F1}mm\n");
+                                $"[{DateTime.Now:HH:mm:ss}] 🔧 RCS HOST DEPTH FIX: Overriding depth from {originalDepthMm:F1}mm (RCS Y) to structural thickness {thicknessMm:F1}mm\n");
                         }
                     }
                 }
@@ -887,172 +764,140 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 // This ensures the cluster sleeve is centered correctly on the calculated centroid, with only size adjusted per UI settings
                 double originalWidth = openingWidth;
                 double originalHeight = openingHeight;
-                
-                // ✅ DIAGNOSTIC: Log exact values BEFORE rounding (with high precision) to diagnose rounding jumps
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    double originalWMm = RevitUnitConversionService.Instance.FromInternalMillimeters(originalWidth);
-                    double originalHMm = RevitUnitConversionService.Instance.FromInternalMillimeters(originalHeight);
-                    var settings = ApplicationProfileService.Instance.GetCurrentSettings();
-                    SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss}] 📐 PRE-ROUNDING: Cluster {clusterSleeve.Id.IntegerValue} - " +
-                        $"Width={originalWMm:F3}mm, Height={originalHMm:F3}mm, " +
-                        $"RoundingValue={settings.RoundingValue}mm, RoundAlwaysUp={settings.RoundAlwaysUp}\n");
-                }
-                
-                // ✅ CLUSTER-SPECIFIC: Use special rounding for clusters (prevents <1mm differences from jumping to next increment)
-                (openingWidth, openingHeight) = OpeningSettingsHelper.RoundDimensionsForCluster(openingWidth, openingHeight);
-                
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    // Log rounding if values changed
-                    if (Math.Abs(originalWidth - openingWidth) > 1e-6 || Math.Abs(originalHeight - openingHeight) > 1e-6)
-                    {
-                        double originalWMm = RevitUnitConversionService.Instance.FromInternalMillimeters(originalWidth);
-                        double originalHMm = RevitUnitConversionService.Instance.FromInternalMillimeters(originalHeight);
-                        double roundedWMm = RevitUnitConversionService.Instance.FromInternalMillimeters(openingWidth);
-                        double roundedHMm = RevitUnitConversionService.Instance.FromInternalMillimeters(openingHeight);
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss}] 🔄 ROUNDING: Cluster {clusterSleeve.Id.IntegerValue} - " +
-                            $"Width {originalWMm:F3}mm → {roundedWMm:F1}mm, " +
-                            $"Height {originalHMm:F3}mm → {roundedHMm:F1}mm " +
-                            $"(Placement point/centroid UNCHANGED at calculated corner centroid)\n");
-                    }
-                }
+                if (clusterSleeve == null || cluster == null || cluster.Count == 0) return;
 
-                // Set parameters
-                if (widthParam != null && !widthParam.IsReadOnly)
+                try
                 {
-                    try
-                    {
-                        if (deferredParameters != null && OptimizationFlags.UseBatchedParameterWrites)
-                        {
-                            if (!deferredParameters.ContainsKey(clusterSleeve.Id))
-                                deferredParameters[clusterSleeve.Id] = new Dictionary<string, object>();
-                            deferredParameters[clusterSleeve.Id]["Width"] = openingWidth;
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                double wMm = RevitUnitConversionService.Instance.FromInternalMillimeters(openingWidth);
-                                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SetSizeParameters] ✅ DEFERRED: Added Width={wMm:F1}mm to deferredParameters for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
-                            }
-                        }
-                        else
-                        {
-                            widthParam.Set(openingWidth);
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                double wMm = RevitUnitConversionService.Instance.FromInternalMillimeters(openingWidth);
-                                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SetSizeParameters] ✅ IMMEDIATE: Set Width={wMm:F1}mm for cluster sleeve {clusterSleeve.Id.IntegerValue} (deferredParams={(deferredParameters != null ? "NOT NULL" : "NULL")}, UseBatched={OptimizationFlags.UseBatchedParameterWrites})\n");
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        SafeFileLogger.SafeAppendText("placement_errors.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ❌ Error setting Width parameter: {ex.Message}\n");
-                    }
-                }
-                else
-                {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetSizeParameters] ⚠️ Width parameter is NULL or READONLY for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
-                    }
-                }
+                    // Dimensions (Using outer scope variables)
 
-                if (heightParam != null && !heightParam.IsReadOnly)
-                {
-                    try
-                    {
-                        if (deferredParameters != null && OptimizationFlags.UseBatchedParameterWrites)
-                        {
-                            if (!deferredParameters.ContainsKey(clusterSleeve.Id))
-                                deferredParameters[clusterSleeve.Id] = new Dictionary<string, object>();
-                            deferredParameters[clusterSleeve.Id]["Height"] = openingHeight;
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                double hMm = RevitUnitConversionService.Instance.FromInternalMillimeters(openingHeight);
-                                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SetSizeParameters] ✅ DEFERRED: Added Height={hMm:F1}mm to deferredParameters for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
-                            }
-                        }
-                        else
-                        {
-                            heightParam.Set(openingHeight);
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                double hMm = RevitUnitConversionService.Instance.FromInternalMillimeters(openingHeight);
-                                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SetSizeParameters] ✅ IMMEDIATE: Set Height={hMm:F1}mm for cluster sleeve {clusterSleeve.Id.IntegerValue} (deferredParams={(deferredParameters != null ? "NOT NULL" : "NULL")}, UseBatched={OptimizationFlags.UseBatchedParameterWrites})\n");
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        SafeFileLogger.SafeAppendText("placement_errors.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ❌ Error setting Height parameter: {ex.Message}\n");
-                    }
-                }
-                else
-                {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetSizeParameters] ⚠️ Height parameter is NULL or READONLY for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
-                    }
-                }
+                    // Lookup Parameters
+                    Parameter widthParam = clusterSleeve.LookupParameter("Width") ?? clusterSleeve.LookupParameter("width");
+                    Parameter heightParam = clusterSleeve.LookupParameter("Height") ?? clusterSleeve.LookupParameter("height");
+                    Parameter depthParam = clusterSleeve.LookupParameter("Depth") ?? clusterSleeve.LookupParameter("depth");
 
-                if (depthParam != null && !depthParam.IsReadOnly)
-                {
-                    try
+                    // Set Width
+                    if (widthParam != null && !widthParam.IsReadOnly)
                     {
-                        if (deferredParameters != null && OptimizationFlags.UseBatchedParameterWrites)
+                        try
                         {
-                            if (!deferredParameters.ContainsKey(clusterSleeve.Id))
-                                deferredParameters[clusterSleeve.Id] = new Dictionary<string, object>();
-                            deferredParameters[clusterSleeve.Id]["Depth"] = openingDepth;
-                            if (!DeploymentConfiguration.DeploymentMode)
+                            if (deferredParameters != null && OptimizationFlags.UseBatchedParameterWrites)
                             {
-                                double dMm = RevitUnitConversionService.Instance.FromInternalMillimeters(openingDepth);
-                                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SetSizeParameters] ✅ DEFERRED: Added Depth={dMm:F1}mm to deferredParameters for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
+                                if (!deferredParameters.ContainsKey(clusterSleeve.Id))
+                                    deferredParameters[clusterSleeve.Id] = new Dictionary<string, object>();
+                                deferredParameters[clusterSleeve.Id]["Width"] = openingWidth;
+                            }
+                            else
+                            {
+                                widthParam.Set(openingWidth);
                             }
                         }
-                        else
+                        catch (Exception ex)
                         {
-                            depthParam.Set(openingDepth);
-                            if (!DeploymentConfiguration.DeploymentMode)
+                            SafeFileLogger.SafeAppendText("placement_errors.log", $"[SetSizeParameters] Error setting Width: {ex.Message}\n");
+                        }
+                    }
+
+                    // Set Height
+                    if (heightParam != null && !heightParam.IsReadOnly)
+                    {
+                        try
+                        {
+                            if (deferredParameters != null && OptimizationFlags.UseBatchedParameterWrites)
                             {
-                                double dMm = RevitUnitConversionService.Instance.FromInternalMillimeters(openingDepth);
-                                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SetSizeParameters] ✅ IMMEDIATE: Set Depth={dMm:F1}mm for cluster sleeve {clusterSleeve.Id.IntegerValue} (deferredParams={(deferredParameters != null ? "NOT NULL" : "NULL")}, UseBatched={OptimizationFlags.UseBatchedParameterWrites})\n");
+                                if (!deferredParameters.ContainsKey(clusterSleeve.Id))
+                                    deferredParameters[clusterSleeve.Id] = new Dictionary<string, object>();
+                                deferredParameters[clusterSleeve.Id]["Height"] = openingHeight;
+                            }
+                            else
+                            {
+                                heightParam.Set(openingHeight);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            SafeFileLogger.SafeAppendText("placement_errors.log", $"[SetSizeParameters] Error setting Height: {ex.Message}\n");
+                        }
+                    }
+
+                    // Set Depth (Robustness Fix Logic)
+                    if (_parameterService != null)
+                    {
+                        try
+                        {
+                            var firstItem = cluster[0];
+                            Models.ClashZone? firstClashZone = null;
+
+                            // 1. Try to get from the item itself first (fastest)
+                            try { firstClashZone = firstItem?.ClashZone as Models.ClashZone; } catch { }
+
+                            // 2. ⚠️ ROBUSTNESS: Directly fetch from DB/Cache if missing or thickness invalid
+                            int sleeveId = 0;
+                            try { sleeveId = firstItem?.SleeveInstanceId ?? 0; } catch { }
+
+                            if (sleeveId > 0 && (firstClashZone == null || firstClashZone.StructuralElementThickness <= 0.001))
+                            {
+                                if (_getClashZoneBySleeveInstanceId != null)
+                                {
+                                    var freshZone = _getClashZoneBySleeveInstanceId(sleeveId, null);
+                                    if (freshZone != null)
+                                    {
+                                        firstClashZone = freshZone;
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[SetSizeParameters] 🔄 DIRECT DB FETCH: ClashZone {sleeveId} retrieved successfully.\n");
+                                    }
+                                }
+                            }
+
+                            if (firstClashZone != null)
+                            {
+                                // ✅ DELEGATE: Use the unified parameter service to set thickness (it handles Wall Width vs Depth)
+                                // Pass the explicit structuralThickness we prioritized above to ensure consistency
+                                _parameterService.SetDepthParameter(clusterSleeve, firstClashZone, clusterSleeve.Id, structuralThickness);
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[SetSizeParameters] ✅ DIRECT DEPTH SET via ParameterService (Thickness={structuralThickness * 304.8:F1}mm)\n");
+                            }
+                            else
+                            {
+                                if (depthParam != null && !depthParam.IsReadOnly) depthParam.Set(openingDepth);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            SafeFileLogger.SafeAppendText("placement_errors.log", $"[SetSizeParameters] Error in delegated depth: {ex.Message}\n");
+                        }
+                    }
+                    else
+                    {
+                        // Fallback
+                        if (depthParam != null && !depthParam.IsReadOnly)
+                        {
+                            try
+                            {
+                                if (deferredParameters != null && OptimizationFlags.UseBatchedParameterWrites)
+                                {
+                                    if (!deferredParameters.ContainsKey(clusterSleeve.Id))
+                                        deferredParameters[clusterSleeve.Id] = new Dictionary<string, object>();
+                                    deferredParameters[clusterSleeve.Id]["Depth"] = openingDepth;
+                                }
+                                else
+                                {
+                                    depthParam.Set(openingDepth);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                SafeFileLogger.SafeAppendText("placement_errors.log", $"[SetSizeParameters] Error (Fallback): {ex.Message}\n");
                             }
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        SafeFileLogger.SafeAppendText("placement_errors.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ❌ Error setting Depth parameter: {ex.Message}\n");
-                    }
+
                 }
-                else
+                catch (Exception ex)
                 {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetSizeParameters] ⚠️ Depth parameter is NULL or READONLY for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
-                    }
+                    SafeFileLogger.SafeAppendText("placement_errors.log", $"[SetSizeParameters] Critical Error: {ex.Message}\n");
                 }
             }
-            catch (Exception ex)
-            {
-                SafeFileLogger.SafeAppendText("placement_errors.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ❌ Error in SetSizeParameters: {ex.Message}\n");
-            }
-        }
+            
 
         /// <summary>
         /// ✅ SRP COMPLIANCE: Dedicated method for setting "Bottom of Opening" parameter on cluster sleeves.
@@ -2066,7 +1911,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
         /// ⚠️ DO NOT REMOVE THE 90-DEGREE OFFSET - This will break rotated cluster alignment!
         /// ⚠️ DO NOT CHANGE THE OFFSET VALUE - π/2 (90°) is the correct value!
         /// </summary>
-        private void ApplyRotation(Document doc, FamilyInstance inst, XYZ placementPoint, double rotationAngle, bool skip90DegreeOffset = false)
+        private void ApplyRotation(Document doc, FamilyInstance inst, XYZ placementPoint, double rotationAngle, bool isWallOrFraming = false, bool skip90DegreeOffset = false)
         {
             // ⚠️ CONSENT CHECK: Prevent modifications without explicit consent
             if (!ALLOW_MODIFICATIONS_TO_PROTECTED_CODE)
@@ -2103,7 +1948,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 // Walls: Use rotation angle directly (already correct from ClusterRotationService)
                 double adjustedRotationAngle = rotationAngle;
                 
-                if (skip90DegreeOffset)
+                if (isWallOrFraming)
+                {
+                    // ✅ WALL/FRAMING TRUST: Trust the angle from ClusterRotationService implicitly
+                    // This fixes "crowded" cluster bugs where averaged angles (e.g. 89.9°) fail the strict 90° check below
+                    // and get an unwanted 90° offset added.
+                    adjustedRotationAngle = rotationAngle;
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ✅ WALL/FRAMING: Using rotation angle directly (Fix for crowded clusters): {rotationAngle * 180 / Math.PI:F1}°\n");
+                    }
+                }
+                else if (skip90DegreeOffset)
                 {
                     // ✅ CABLE TRAYS AND DUCTS ON FLOORS: Use rotation angle directly (matches individual sleeve behavior)
                     // Individual sleeves use MepElementRotationAngle directly for cable trays and ducts, no 90° offset

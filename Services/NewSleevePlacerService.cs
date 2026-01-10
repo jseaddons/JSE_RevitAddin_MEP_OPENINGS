@@ -909,7 +909,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (symbol == null) return null;
 
             // Place Instance
-            XYZ placementPoint = new XYZ(zone.SleevePlacementPointX, zone.SleevePlacementPointY, zone.SleevePlacementPointZ);
+            XYZ placementPoint = new XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ);
             
             // ? SRP: Use rotation service to determine correct rotation for host type
             double rotation = _rotationService.DetermineRotation(zone); 
@@ -1315,7 +1315,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             
                 // ? OOP METHOD: Use insulation-aware sizing service for consistent calculation (SOLID principles)
-                // Formula: RawSize + (2 × InsulationThickness) + (2 × Clearance)
+                // Formula: RawSize + (2 ï¿½ InsulationThickness) + (2 ï¿½ Clearance)
                 // ? CRITICAL REFACTOR: Use ROUNDED calculation directly in the service
                 // This centralizes rounding logic and ensures dimensions are final and consistent
                 var settings = ApplicationProfileService.Instance.GetCurrentSettings();

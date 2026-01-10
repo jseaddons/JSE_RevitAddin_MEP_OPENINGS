@@ -41,7 +41,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             if (clashZone.StructuralElementType?.Contains("Wall") == true)
             {
                 // ✅ PRIORITY 1: Check HostOrientation (most reliable - set during refresh)
-                string hostOrientation = clashZone.HostOrientation ?? "";
+                string hostOrientation = (clashZone.HostOrientation ?? "").Trim();
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                           $"[{DateTime.Now:HH:mm:ss}] 🔍 WALL ROTATION CHECK: HostOri='{clashZone.HostOrientation}' (Trimmed='{hostOrientation}'), MepOri='{clashZone.MepElementOrientationDirection}'\n");
+                }
+
                 if (string.Equals(hostOrientation, "X", StringComparison.OrdinalIgnoreCase) || 
                     string.Equals(hostOrientation, "X-WALL", StringComparison.OrdinalIgnoreCase))
                 {
@@ -55,7 +62,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 
                 // ✅ FALLBACK: Check MepElementOrientationDirection (if HostOrientation not set)
                 // Note: This is a fallback - HostOrientation should be set during refresh
-                if (clashZone.MepElementOrientationDirection == "X")
+                if ((clashZone.MepElementOrientationDirection ?? "").Trim() == "X")
                 {
                     return Math.PI / 2.0; // 90 degrees in radians for X-WALL
                 }
@@ -73,8 +80,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             // Y-FRAMING: Apply 0° rotation (no rotation) - matches Y-wall behavior
             if (clashZone.StructuralElementType?.Contains("Structural Framing") == true)
             {
-                // Check HostOrientation first (most reliable for framing)
-                string hostOrientation = clashZone.HostOrientation ?? "";
+                string hostOrientation = (clashZone.HostOrientation ?? "").Trim();
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                           $"[{DateTime.Now:HH:mm:ss}] 🔍 FRAMING ROTATION CHECK: HostOri='{clashZone.HostOrientation}' (Trimmed='{hostOrientation}'), MepOri='{clashZone.MepElementOrientationDirection}'\n");
+                }
+
                 if (string.Equals(hostOrientation, "X", StringComparison.OrdinalIgnoreCase))
                 {
                     return Math.PI / 2.0; // 90 degrees in radians for X-framing
@@ -85,13 +98,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 }
                 
                 // Fallback: Check MepElementOrientationDirection (may be set for framing)
-                if (clashZone.MepElementOrientationDirection == "X")
+                if ((clashZone.MepElementOrientationDirection ?? "").Trim() == "X")
                 {
                     return Math.PI / 2.0; // 90 degrees in radians for X-framing
                 }
-                else if (clashZone.MepElementOrientationDirection == "Y")
+                else if ((clashZone.MepElementOrientationDirection ?? "").Trim() == "Y")
                 {
                     return 0.0; // No rotation for Y-framing
+                }
+
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                           $"[{DateTime.Now:HH:mm:ss}] ⚠️ FRAMING ROTATION UNKNOWN: HostOri='{clashZone.HostOrientation}', MepOri='{clashZone.MepElementOrientationDirection}', using 0.0\n");
                 }
                 
                 // Default fallback for framing (if orientation cannot be determined)

@@ -7,6 +7,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Geometry;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Placement; // ✅ SHARED: For SleeveRotationService reuse
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
 {
@@ -140,78 +141,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                         break;
                 }
 
+                // ✅ UNIFIED ROTATION LOGIC: Reuse Individual Sleeve Rotation Code
+                // As requested, use SleeveRotationService for Wall and Framing rotation to ensure 100% consistency.
                 if (firstClashZone != null)
                 {
-                    // Check if this is a wall or structural framing host
-                    bool isWallHost = string.Equals(firstClashZone.StructuralElementType, "Wall", StringComparison.OrdinalIgnoreCase) ||
-                                     string.Equals(firstClashZone.StructuralElementType, "Walls", StringComparison.OrdinalIgnoreCase);
-                    bool isFramingHost = string.Equals(firstClashZone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
+                    bool isWallHost = firstClashZone.StructuralElementType != null && 
+                                     (firstClashZone.StructuralElementType.IndexOf("Wall", StringComparison.OrdinalIgnoreCase) >= 0);
+                    bool isFramingHost = firstClashZone.StructuralElementType != null &&
+                                        (firstClashZone.StructuralElementType.IndexOf("Structural Framing", StringComparison.OrdinalIgnoreCase) >= 0);
 
                     if (isWallHost || isFramingHost)
                     {
-                        // ✅ WALL ROTATION: Match individual sleeve rotation logic
-                        // Individual sleeves: X-walls get +90° rotation, Y-walls get 0° rotation
-                        // Cluster sleeves must use the SAME rotation to match individual sleeve orientation
-                        // ⚠️⚠️⚠️ CRITICAL FIX: Even circular elements (pipes) need rotation on X-walls
-                        string wallDirectionType = firstClashZone.WallDirectionType ?? "";
-                        string hostOrientation = firstClashZone.HostOrientation ?? "";
+                        // ✅ CLUSTER ROTATION FIX: Revert to Legacy/User-Confirmed Logic
+                        // User confirms: "WITHOUT ROTATION (0°) CAN SIT ON Y WALL".
+                        // This implies the Family is Y-Aligned by default (Width along Y).
+                        // Y-Wall (Runs Y): 0° (Matches default).
+                        // X-Wall (Runs X): 90° (Rotates to align Width with X).
                         
-                        // LOGGING FOR USER VERIFICATION
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE-DEBUG] Sleeve {firstClashZone.SleeveInstanceId} WallDirectionType='{wallDirectionType}', HostOrientation='{hostOrientation}'\n");
-                            DebugLogger.Info($"[ClusterRotationService] Sleeve {firstClashZone.SleeveInstanceId} WallDirectionType='{wallDirectionType}', HostOrientation='{hostOrientation}'");
-                        }
-                                                
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE-DEBUG] WALL HOST: StructuralType='{firstClashZone.StructuralElementType}', WallDirectionType='{wallDirectionType}', HostOrientation='{hostOrientation}', IsCircular={isCircularElementCluster}\n");
-                        }
+                        string hostOrientation = firstClashZone.HostOrientation ?? "X"; // Default to X if null
+                        hostOrientation = hostOrientation.Trim().ToUpper();
                         
-                        // Check WallDirectionType or HostOrientation to determine X-wall vs Y-wall
-                        bool isXWall = wallDirectionType.Contains("X-WALL", StringComparison.OrdinalIgnoreCase) ||
-                                      string.Equals(hostOrientation, "X", StringComparison.OrdinalIgnoreCase);
-                        bool isYWall = wallDirectionType.Contains("Y-WALL", StringComparison.OrdinalIgnoreCase) ||
-                                      string.Equals(hostOrientation, "Y", StringComparison.OrdinalIgnoreCase);
-                        
-                        if (isXWall)
+                        double clusterRotation = 0.0;
+                        if (hostOrientation == "Y" || hostOrientation.Contains("Y-WALL"))
                         {
-                            // ⚠️⚠️⚠️ CRITICAL FIX: X-wall needs 90° rotation even for circular elements (pipes)
-                            // Individual sleeves apply 90° rotation for X-walls regardless of element shape
+                            clusterRotation = 0.0; // 0 degrees for Y-Wall
                             if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                string elementType = isCircularElementCluster ? $"{circularElementType} on" : "";
-                                DebugLogger.Info($"[CLUSTER-ANGLE] WALL ROTATION: {elementType} {firstClashZone.StructuralElementType} - X-WALL → Returning 90.0° (matches individual sleeve rotation)");
-                                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE] ✅ X-WALL DETECTED → 90.0° (matches individual sleeve, applies to circular elements too)\n");
-                            }
-                            return Math.PI / 2.0; // 90° rotation for X-walls (matches individual sleeves, even for pipes)
-                        }
-                        else if (isYWall)
-                        {
-                            // Y-wall: 0° rotation (matches individual sleeve rotation)
-                            // Circular elements on Y-walls also get 0° (no rotation needed)
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                string elementType = isCircularElementCluster ? $"{circularElementType} on" : "";
-                                DebugLogger.Info($"[CLUSTER-ANGLE] WALL ROTATION: {elementType} {firstClashZone.StructuralElementType} - Y-WALL → Returning 0.0° (matches individual sleeve rotation)");
-                                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE] ✅ Y-WALL DETECTED → 0.0° (matches individual sleeve)\n");
-                            }
-                            return 0.0; // No rotation for Y-walls (matches individual sleeves)
+                                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔧 CLUSTER ROTATION: Y-Wall detected. Setting Rotation=0.0° (User confirmed Legacy)\n");
                         }
                         else
                         {
-                            // Fallback: Default to 0° if cannot determine
+                            clusterRotation = Math.PI / 2.0; // 90 degrees for X-Wall
                             if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss}] [CLUSTER-ANGLE] ⚠️ WALL HOST but cannot determine X/Y → Defaulting to 0.0°\n");
-                            }
-                            return 0.0;
+                                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔧 CLUSTER ROTATION: X-Wall detected. Setting Rotation=90.0° (User confirmed Legacy)\n");
                         }
+                        
+                        return clusterRotation;
                     }
                 }
 
@@ -400,10 +364,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 SafeFileLogger.SafeAppendText("cluster_sizing.log",
                     $"[{DateTime.Now:HH:mm:ss}] ⚠️ Failed to calculate placement point from intersections, falling back to first sleeve intersection point\n");
                 // Fallback: Use first sleeve's intersection point
-                var firstCz = GetCachedClashZone(cluster[0].SleeveInstanceId, xmlFilePath);
-                if (firstCz != null)
+                var fallbackCz = GetCachedClashZone(cluster[0].SleeveInstanceId, xmlFilePath);
+                if (fallbackCz != null)
                 {
-                    placementPoint = new XYZ(firstCz.IntersectionPointX, firstCz.IntersectionPointY, firstCz.IntersectionPointZ);
+                    placementPoint = new XYZ(fallbackCz.IntersectionPointX, fallbackCz.IntersectionPointY, fallbackCz.IntersectionPointZ);
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         SafeFileLogger.SafeAppendText("cluster_sizing.log",
@@ -561,12 +525,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     }
                 }
 
-                double circularWidth = circularMaxX - circularMinX;
-                double circularHeight = circularMaxY - circularMinY;
-                double circularDepth = circularMaxZ - circularMinZ;
-
                 // ✅ CRITICAL FIX: For pipes, use actual sleeve diameter for Height, not bounding box Z-range
-                // Get the maximum sleeve diameter from all sleeves in the cluster
+                // Get the maximum sleeve diameter and structural thickness from all sleeves in the cluster
                 double maxSleeveDiameter = 0.0;
                 double maxStructuralThickness = 0.0;
                 foreach (var sleeveData in cluster)
@@ -582,8 +542,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             if (cz.SleeveDiameter > maxSleeveDiameter)
                                 maxSleeveDiameter = cz.SleeveDiameter;
                             
-                            // Get structural thickness for depth (prefer WallThickness)
-                            double currentThickness = cz.WallThickness > 0 ? cz.WallThickness : cz.StructuralElementThickness;
+                            // Get structural thickness for depth - single source of truth
+                            double currentThickness = cz.StructuralElementThickness;
+
                             if (currentThickness > maxStructuralThickness)
                                 maxStructuralThickness = currentThickness;
                             
@@ -593,6 +554,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     }
                     catch { continue; }
                 }
+
+                double circularWidth = circularMaxX - circularMinX;
+                double circularHeight = circularMaxY - circularMinY;
+                double circularDepth = maxStructuralThickness; // Authoritative Depth from Structural Thickness fullstop
 
                 // ✅ ROBUST SIZING: Determine wall direction explicitly from database properties
                 // Do NOT guess based on aspect ratio (Math.Abs(dY) > Math.Abs(dX)) because for square grids or combined clusters it fails.
@@ -647,28 +612,69 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 // Safety clamp
                 if (circularHeight < maxSleeveDiameter) circularHeight = maxSleeveDiameter;
 
-                if (isXWall)
+                // ✅ UNIFIED DIMENSION MAPPING: Derive orientation directly from Rotation Angle (Source of Truth)
+                // If Rotation is ~90° (local X aligns with World Y), map Y-range to Width.
+                // If Rotation is ~0° (local X aligns with World X), map X-range to Width.
+                double rotDeg = rotationAngle * 180.0 / Math.PI;
+                // Normalize to 0-360
+                while (rotDeg < 0) rotDeg += 360;
+                while (rotDeg >= 360) rotDeg -= 360;
+                
+                // Allow tolerance (e.g. 5 degrees)
+                bool isRotatedLengthwise = (Math.Abs(rotDeg - 90) < 5.0) || (Math.Abs(rotDeg - 270) < 5.0);
+                
+                // ✅ CRITICAL FIX for WALL/FRAMING: Always align Width with the Wall Length
+                // The PlacementService expects 'Width' to be the RCS X (along wall) dimension.
+                // However, PlacementService ADDS 90 degrees to the rotation for walls (X-Wall 90->180, Y-Wall 0->90).
+                // The generic logic below uses the raw angle (90 for X-Wall) which maps Width to Y (Thickness).
+                // But since it's placed at 180 (X-Aligned), we place Thickness along Length. This causes the "Too Small" bug.
+                // FIX: For Walls, ignoring rotation and strictly mapping Along-Wall dimension to Width.
+                
+                bool handledByWallLogic = false;
+                if (isXWall || isYWall)
                 {
-                    // X-WALL (wall runs ALONG X-axis, normal is along Y):
-                    // Width is the span ALONG the wall = X-axis = rawWidthX
-                    // Depth is THROUGH the wall = Y-axis = rawWidthY (wall thickness)
-                    circularWidth = rawWidthX;
-                    
-                    // Depth logic: Use structural thickness if valid, else fallback to BBox Y-depth
-                    double bboxDepth = rawWidthY;
-                    circularDepth = maxStructuralThickness > 0 ? maxStructuralThickness : bboxDepth;
+                    handledByWallLogic = true;
+                    if (isXWall)
+                    {
+                        // X-Wall: Length is along X. Width parameter must be Length.
+                        // (Placement at 180 deg puts Width along X).
+                        circularWidth = rawWidthX;
+                        circularDepth = maxStructuralThickness;
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] 🔧 WALL FIX (X-Wall): Forced Width=RawX (Length), Depth=StructuralThickness\n");
+                    }
+                    else // isYWall
+                    {
+                        // Y-Wall: Length is along Y. Width parameter must be Length.
+                        // (Placement at 90 deg puts Width along Y).
+                        circularWidth = rawWidthY;
+                        circularDepth = maxStructuralThickness;
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] 🔧 WALL FIX (Y-Wall): Forced Width=RawY (Length), Depth=StructuralThickness\n");
+                    }
                 }
-                else
+                
+                if (!handledByWallLogic)
                 {
-                    // Y-WALL (wall runs ALONG Y-axis, normal is along X):
-                    // Width is the span ALONG the wall = Y-axis = rawWidthY
-                    // Depth is THROUGH the wall = X-axis = rawWidthX (wall thickness)
-                    // ✅ FIX: Was backwards - had Width=rawWidthX, Depth=rawWidthY (wrong!)
-                    circularWidth = rawWidthY;
-
-                    // Depth logic: Use structural thickness if valid, else fallback to BBox X-depth
-                    double bboxDepth = rawWidthX;
-                    circularDepth = maxStructuralThickness > 0 ? maxStructuralThickness : bboxDepth;
+                    // Generic logic for Floors / Unknown hosts
+                    if (isRotatedLengthwise)
+                    {
+                        // ROTATED (e.g. Width runs along Y in world)
+                        circularWidth = rawWidthY;
+                        circularDepth = maxStructuralThickness;
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] 🔄 ORIENTATION: Angle {rotDeg:F1}° -> Mapped Width=RawY, Depth=StructuralThickness\n");
+                    }
+                    else
+                    {
+                        // ALIGNED (e.g. Width runs along X in world)
+                        circularWidth = rawWidthX;
+                        circularDepth = maxStructuralThickness;
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] 🔄 ORIENTATION: Angle {rotDeg:F1}° -> Mapped Width=RawX, Depth=StructuralThickness\n");
+                    }
                 }
 
                 // ✅ FAILSAFE: Swap Width and Depth if Depth is unrealistically large compared to Width
@@ -676,16 +682,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 // A sleeve is typically Wider (along wall) than it is Deep (wall thickness).
                 // If Depth > 1.5 * Width AND Depth > 300mm (1ft), it's likely the dimensions are swapped.
                 // Exception: If structural thickness is explicitly large (e.g. > 500mm), don't swap.
+                // ✅ EXCEPTION 2: If we explicitly handled wall logic above, TRUST IT. Don't swap.
                 bool explicitLargeThickness = maxStructuralThickness > 0.5; // > 500mm
-                if (!explicitLargeThickness && circularDepth > (circularWidth * 1.5) && circularDepth > 0.3)
+                if (!handledByWallLogic && !explicitLargeThickness && circularDepth > (circularWidth * 1.5) && circularDepth > 0.3)
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                          SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ SUSPICIOUS DIMENSIONS: Depth ({circularDepth*304.8:F0}mm) > Width ({circularWidth*304.8:F0}mm). Swapping Width/Depth (assuming misidentified wall direction).\n");
                     
                     double temp = circularWidth;
                     circularWidth = circularDepth;
-                    // For the new depth, use the smaller dimension (was width) OR rely on maxStructuralThickness if valid
-                    circularDepth = maxStructuralThickness > 0 ? maxStructuralThickness : temp;
+                    // For the new depth, strictly use structural thickness
+                    circularDepth = maxStructuralThickness;
                 }
 
                 SafeFileLogger.SafeAppendText("cluster_sizing.log",
@@ -735,20 +742,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     int firstSleeveInstanceId = firstSleeveData.SleeveInstanceId;
                     if (firstSleeveInstanceId > 0)
                     {
-                        var firstCz = GetCachedClashZone(firstSleeveInstanceId, xmlFilePath);
-                        if (firstCz != null)
+                        var hostCz = GetCachedClashZone(firstSleeveInstanceId, xmlFilePath);
+                        if (hostCz != null)
                         {
-                            bool isWallHost = string.Equals(firstCz.StructuralElementType, "Wall", StringComparison.OrdinalIgnoreCase) ||
-                                              string.Equals(firstCz.StructuralElementType, "Walls", StringComparison.OrdinalIgnoreCase);
-                            bool isFramingHost = string.Equals(firstCz.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
+                            bool isWallHost = string.Equals(hostCz.StructuralElementType, "Wall", StringComparison.OrdinalIgnoreCase) ||
+                                              string.Equals(hostCz.StructuralElementType, "Walls", StringComparison.OrdinalIgnoreCase);
+                            bool isFramingHost = string.Equals(hostCz.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
                             
-                            if ((isWallHost || isFramingHost) && firstCz.WallDirection != null && !firstCz.WallDirection.IsZeroLength())
+                            if ((isWallHost || isFramingHost) && hostCz.WallDirection != null && !hostCz.WallDirection.IsZeroLength())
                             {
                                 isWallOrFraming = true;
-                                wallDirection = firstCz.WallDirection;
-                                wallOrigin = new XYZ(firstCz.SleevePlacementPointActiveDocumentX, 
-                                                    firstCz.SleevePlacementPointActiveDocumentY, 
-                                                    firstCz.SleevePlacementPointActiveDocumentZ);
+                                wallDirection = hostCz.WallDirection;
+                                wallOrigin = new XYZ(hostCz.SleevePlacementPointX, 
+                                                    hostCz.SleevePlacementPointY, 
+                                                    hostCz.SleevePlacementPointZ);
                                 
                                 SafeFileLogger.SafeAppendText("cluster_sizing.log",
                                     $"[{DateTime.Now:HH:mm:ss}] 🔍 WALL/FRAMING DETECTED: Will use corner-based calculation with RCS transformation (straight or rotated axis)\n");
@@ -795,7 +802,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 
                 // ✅ PERFORMANCE: Use cached ClashZone lookup
                 var clashZone = GetCachedClashZone(sleeveInstanceId, xmlFilePath);
-                if (clashZone == null)
                 if (clashZone == null)
                 {
                     SafeFileLogger.SafeAppendText("cluster_sizing.log",
@@ -935,7 +941,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                 SafeFileLogger.SafeAppendText("cluster_sizing.log",
                                         $"[{DateTime.Now:HH:mm:ss}]   ✅ Sleeve {sleeveId}: Corner Z coordinates found in database! " +
                                         $"Corner1Z={corner1Z.GetValueOrDefault():F6}, Corner2Z={corner2Z.GetValueOrDefault():F6}, Corner3Z={corner3Z.GetValueOrDefault():F6}, Corner4Z={corner4Z.GetValueOrDefault():F6}, " +
-                                        $"PlacementPointZ={clashZone.SleevePlacementPointActiveDocumentZ:F6}, BBoxMinZ={clashZone.SleeveBoundingBoxMinZ:F6}\n");
+                                        $"PlacementPointZ={clashZone.SleevePlacementPointZ:F6}, BBoxMinZ={clashZone.SleeveBoundingBoxMinZ:F6}\n");
 
                             }
                             
@@ -1204,7 +1210,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                         
                                         cornerWidth = floorMaxX - floorMinX;
                                         cornerHeight = floorMaxY - floorMinY;
-                                        cornerDepth = floorMaxZ - floorMinZ;
+                                        cornerDepth = 0.0; // Strictly from structural thickness later
                                         
                                         // ✅ Calculate new center point from corner extents
                                         // X and Y: Midpoint of corner extents
@@ -1216,14 +1222,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                         // Z from first sleeve in cluster
                                         if (sleeveIdsInCluster.Count > 0)
                                         {
-                                            var firstCz = GetCachedClashZone(sleeveIdsInCluster[0], xmlFilePath);
-                                            if (firstCz != null)
+                                            var mixedCz = GetCachedClashZone(sleeveIdsInCluster[0], xmlFilePath);
+                                            if (mixedCz != null)
                                             {
-                                                placementZ = firstCz.SleevePlacementPointActiveDocumentZ;
+                                                placementZ = mixedCz.SleevePlacementPointZ;
                                                 if (placementZ == 0.0)
-                                                    placementZ = firstCz.IntersectionPointZ;
-                                                if (placementZ == 0.0 && firstCz.SleeveCorner1Z.HasValue)
-                                                    placementZ = firstCz.SleeveCorner1Z.Value;
+                                                    placementZ = mixedCz.IntersectionPointZ;
+                                                if (placementZ == 0.0 && mixedCz.SleeveCorner1Z.HasValue)
+                                                    placementZ = mixedCz.SleeveCorner1Z.Value;
                                             }
                                         }
                                         
@@ -1252,14 +1258,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                         
                                         // ✅ Skip rotation transformation for mixed orientations (already have world-space bounds)
                                         // Set depth from StructuralElementThickness if not already set
-                                        if (cornerDepth <= 0)
-                                        {
-                                            var firstCzForDepth = GetCachedClashZone(sleeveIdsInCluster[0], xmlFilePath);
-                                            if (firstCzForDepth != null && firstCzForDepth.StructuralElementThickness > 0)
-                                            {
-                                                cornerDepth = firstCzForDepth.StructuralElementThickness;
-                                            }
-                                        }
+                                        // Strictly use structural thickness for depth
+                                        var firstCzForDepth = GetCachedClashZone(sleeveIdsInCluster[0], xmlFilePath);
+                                        cornerDepth = firstCzForDepth?.StructuralElementThickness ?? 0.0;
                                     }
                                     else
                                     {
@@ -1297,17 +1298,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                         if (sleeveIdsInCluster.Count > 0)
                                         {
                                             int firstSleeveId = sleeveIdsInCluster[0];
-                                            var firstCz = GetCachedClashZone(firstSleeveId, xmlFilePath);
-                                            if (firstCz != null)
+                                            var straightCz = GetCachedClashZone(firstSleeveId, xmlFilePath);
+                                            if (straightCz != null)
                                             {
-                                                placementZ = firstCz.SleevePlacementPointActiveDocumentZ;
+                                                placementZ = straightCz.SleevePlacementPointZ;
                                                 if (placementZ == 0.0)
-                                                    placementZ = firstCz.IntersectionPointZ;
+                                                    placementZ = straightCz.IntersectionPointZ;
                                                 
                                                 SafeFileLogger.SafeAppendText("cluster_sizing.log",
                                                     $"[{DateTime.Now:HH:mm:ss}]   ✅ STRAIGHT AXIS FLOOR: Got Z from first sleeve {firstSleeveId}: " +
-                                                    $"SleevePlacementPointZ={firstCz.SleevePlacementPointActiveDocumentZ:F6}, " +
-                                                    $"IntersectionPointZ={firstCz.IntersectionPointZ:F6}, " +
+                                                    $"SleevePlacementPointZ={straightCz.SleevePlacementPointZ:F6}, " +
+                                                    $"IntersectionPointZ={straightCz.IntersectionPointZ:F6}, " +
                                                     $"Final placementZ={placementZ:F6}\n");
                                             }
                                             else
@@ -1363,11 +1364,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                         // Consistency with Straight Axis logic: fetch Z from first sleeve to ensure alignment with host plane
                                         if (sleeveIdsInCluster.Count > 0)
                                         {
-                                            var firstCz = GetCachedClashZone(sleeveIdsInCluster[0], xmlFilePath);
-                                            if (firstCz != null)
+                                            var rotatedCz = GetCachedClashZone(sleeveIdsInCluster[0], xmlFilePath);
+                                            if (rotatedCz != null)
                                             {
-                                                double z = firstCz.SleevePlacementPointActiveDocumentZ;
-                                                if (z == 0.0) z = firstCz.IntersectionPointZ;
+                                                double z = rotatedCz.SleevePlacementPointZ;
+                                                if (z == 0.0) z = rotatedCz.IntersectionPointZ;
                                                 if (z != 0.0) placementZ = z;
                                             }
                                         }
@@ -1416,13 +1417,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             // ✅ HEIGHT: Calculate from Z range of bounding boxes (vertical dimension)
                             // For walls/framing: Height = Z range (vertical), NOT from corner Z (all corners have same Z for 2D opening)
                             // For floors/other: Height = Y range (vertical in rotated space)
-                            var clashZonesForHeight = sleeveIdsInCluster
+                            var clashZonesInCluster = sleeveIdsInCluster
                                 .Select(id => GetCachedClashZone(id, xmlFilePath))
                                 .Where(cz => cz != null)
                                 .ToList();
                             
-                            double cornerMinZ = clashZonesForHeight.Count > 0 ? clashZonesForHeight.Min(cz => cz.SleeveBoundingBoxMinZ) : 0.0;
-                            double cornerMaxZ = clashZonesForHeight.Count > 0 ? clashZonesForHeight.Max(cz => cz.SleeveBoundingBoxMaxZ) : 0.0;
+                            double cornerMinZ = clashZonesInCluster.Count > 0 ? clashZonesInCluster.Min(cz => cz.SleeveBoundingBoxMinZ) : 0.0;
+                            double cornerMaxZ = clashZonesInCluster.Count > 0 ? clashZonesInCluster.Max(cz => cz.SleeveBoundingBoxMaxZ) : 0.0;
                             double calculatedHeight = cornerMaxZ - cornerMinZ; // Height = Z range (vertical dimension)
                             
                             // ✅ CRITICAL FIX: For walls/framing, use Z range for height, not RCS Y
@@ -1445,45 +1446,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             // ✅ DEPTH: Calculate based on host type (only if not already set for mixed orientations)
                             // For walls/framing: depth = wall/framing thickness (overridden later in SetSizeParameters)
                             // For floors/other: depth = StructuralElementThickness (same as individual sleeves)
-                            if (cornerDepth <= 0)
+                            // ✅ DEPTH: Authoritative Source StructuralElementThickness fullstop
+                            var firstCz = clashZonesInCluster.FirstOrDefault();
+                            if (firstCz != null)
                             {
-                                if (isWallOrFraming)
+                                cornerDepth = firstCz.StructuralElementThickness;
+                                if (!DeploymentConfiguration.DeploymentMode)
                                 {
-                                    // ✅ WALL/FRAMING: Depth will be set from wall thickness
-                                    // Retrieve max thickness from constituent clash zones
-                                    double maxWallThickness = 0.0;
-                                    foreach (var cz in clashZonesForHeight)
-                                    {
-                                        if (cz == null) continue;
-                                        double t = cz.WallThickness > 0 ? cz.WallThickness : cz.StructuralElementThickness;
-                                        if (t > maxWallThickness) maxWallThickness = t;
-                                    }
-                                    
-                                    cornerDepth = maxWallThickness > 0 ? maxWallThickness : 0.0;
-                                    
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                            $"[{DateTime.Now:HH:mm:ss}]   ✅ WALL/FRAMING DEPTH: Using max thickness={cornerDepth * 304.8:F1}mm (calculated from {clashZonesForHeight.Count} clash zones)\n");
-                                    }
-                                }
-                                else
-                                {
-                                    // ✅ FLOOR/OTHER: Get depth from StructuralElementThickness (same as individual sleeves)
-                                    // Use the first clash zone's StructuralElementThickness (all sleeves in cluster should have same host)
-                                    var firstClashZoneForDepth = clashZonesForHeight.FirstOrDefault();
-                                    if (firstClashZoneForDepth != null && firstClashZoneForDepth.StructuralElementThickness > 0)
-                                    {
-                                        cornerDepth = firstClashZoneForDepth.StructuralElementThickness;
-                                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                            $"[{DateTime.Now:HH:mm:ss}]   ✅ FLOOR DEPTH: Using StructuralElementThickness={cornerDepth * 304.8:F1}mm from first sleeve\n");
-                                    }
-                                    else
-                                    {
-                                        // ⚠️ FALLBACK: If StructuralElementThickness is missing, log warning
-                                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                            $"[{DateTime.Now:HH:mm:ss}]   ⚠️ FLOOR DEPTH: StructuralElementThickness not found or zero, depth will be 0.0mm\n");
-                                    }
+                                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                        $"[{DateTime.Now:HH:mm:ss}]   ✅ DEPTH: Set strictly to StructuralElementThickness={cornerDepth * 304.8:F1}mm (HostType={firstCz.StructuralElementType})\n");
                                 }
                             }
                             
@@ -1544,9 +1515,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                     var cz = GetCachedClashZone(sleeveId, xmlFilePath);
                                     if (cz != null)
                                     {
-                                        double px = cz.SleevePlacementPointActiveDocumentX;
-                                        double py = cz.SleevePlacementPointActiveDocumentY;
-                                        double pz = cz.SleevePlacementPointActiveDocumentZ;
+                                        double px = cz.SleevePlacementPointX;
+                                        double py = cz.SleevePlacementPointY;
+                                        double pz = cz.SleevePlacementPointZ;
                                         
                                         if (px != 0.0 || py != 0.0 || pz != 0.0)
                                         {
@@ -1697,9 +1668,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                         
                                         XYZ rcsMid = new XYZ((rcsMinX + rcsMaxX) / 2, (rcsMinY + rcsMaxY) / 2, (rcsMinZ + rcsMaxZ) / 2);
                                         XYZ wcsMid = WallRcsTransformer.TransformToWcs(rcsMid, firstCz.WallDirection,
-                                            new XYZ(firstCz.SleevePlacementPointActiveDocumentX,
-                                                   firstCz.SleevePlacementPointActiveDocumentY,
-                                                   firstCz.SleevePlacementPointActiveDocumentZ)) ?? XYZ.Zero;
+                                            new XYZ(firstCz.SleevePlacementPointX,
+                                                   firstCz.SleevePlacementPointY,
+                                                   firstCz.SleevePlacementPointZ)) ?? XYZ.Zero;
                                         
                                         if (!DeploymentConfiguration.DeploymentMode)
                                         {
@@ -1800,9 +1771,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                                 if (cz != null)
                                                 {
                                                     // ✅ Calculate World Bounding Box from Placement Point + Dimensions
-                                                    double placementX = cz.SleevePlacementPointActiveDocumentX;
-                                                    double placementY = cz.SleevePlacementPointActiveDocumentY;
-                                                    double placementZ = cz.SleevePlacementPointActiveDocumentZ;
+                                                    double placementX = cz.SleevePlacementPointX;
+                                                    double placementY = cz.SleevePlacementPointY;
+                                                    double placementZ = cz.SleevePlacementPointZ;
                                                     
                                                     // ✅ CRITICAL FIX: Get dimensions in feet (stored in feet, no conversion needed)
                                                     // SleeveWidth and SleeveHeight are stored in Revit internal units (feet), not millimeters
@@ -1932,9 +1903,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     if (isFloorClusterProcessing)
                     {
                         // ✅ For floor clusters: Use placement point + sleeve dimensions to build world-space bbox
-                        double placementX = clashZone.SleevePlacementPointActiveDocumentX;
-                        double placementY = clashZone.SleevePlacementPointActiveDocumentY;
-                        double placementZ = clashZone.SleevePlacementPointActiveDocumentZ;
+                        double placementX = clashZone.SleevePlacementPointX;
+                        double placementY = clashZone.SleevePlacementPointY;
+                        double placementZ = clashZone.SleevePlacementPointZ;
                         
                         // Get dimensions in feet (stored in feet, no conversion needed)
                         double sleeveWidth = clashZone.SleeveWidth;
@@ -2053,9 +2024,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     if (cz == null) continue;
                     
                     // Get placement point and dimensions
-                    double placementX = cz.SleevePlacementPointActiveDocumentX;
-                    double placementY = cz.SleevePlacementPointActiveDocumentY;
-                    double placementZ = cz.SleevePlacementPointActiveDocumentZ;
+                    double placementX = cz.SleevePlacementPointX;
+                    double placementY = cz.SleevePlacementPointY;
+                    double placementZ = cz.SleevePlacementPointZ;
                     
                     // Get dimensions in feet (stored in feet, no conversion needed)
                     double sleeveWidth = cz.SleeveWidth;

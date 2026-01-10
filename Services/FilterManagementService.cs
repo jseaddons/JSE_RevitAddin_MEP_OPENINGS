@@ -2307,13 +2307,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 target.SleevePlacementPointX = source.SleevePlacementPointX;
                 target.SleevePlacementPointY = source.SleevePlacementPointY;
                 target.SleevePlacementPointZ = source.SleevePlacementPointZ;
-            }
-
-            if (HasActivePlacementPoint(source))
-            {
-                target.SleevePlacementPointActiveDocumentX = source.SleevePlacementPointActiveDocumentX;
-                target.SleevePlacementPointActiveDocumentY = source.SleevePlacementPointActiveDocumentY;
-                target.SleevePlacementPointActiveDocumentZ = source.SleevePlacementPointActiveDocumentZ;
+                
+                // Keep ActiveDocument properties in sync with World for compatibility, 
+                // but use World as the primary source.
+                target.SleevePlacementPointActiveDocumentX = source.SleevePlacementPointX;
+                target.SleevePlacementPointActiveDocumentY = source.SleevePlacementPointY;
+                target.SleevePlacementPointActiveDocumentZ = source.SleevePlacementPointZ;
             }
 
             if (source.SleeveWidth > 0) target.SleeveWidth = source.SleeveWidth;
@@ -2361,7 +2360,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private static bool HasActivePlacementPoint(ClashZone zone)
         {
             if (zone == null) return false;
-            return Math.Abs(zone.SleevePlacementPointActiveDocumentX) > 1e-9 || Math.Abs(zone.SleevePlacementPointActiveDocumentY) > 1e-9 || Math.Abs(zone.SleevePlacementPointActiveDocumentZ) > 1e-9;
+            // Check both standard and active document coordinates
+            return (Math.Abs(zone.SleevePlacementPointActiveDocumentX) > 1e-9 || Math.Abs(zone.SleevePlacementPointActiveDocumentY) > 1e-9 || Math.Abs(zone.SleevePlacementPointActiveDocumentZ) > 1e-9) ||
+                   (Math.Abs(zone.SleevePlacementPointX) > 1e-9 || Math.Abs(zone.SleevePlacementPointY) > 1e-9 || Math.Abs(zone.SleevePlacementPointZ) > 1e-9);
         }
 
         private static bool HasBoundingBox(ClashZone zone)

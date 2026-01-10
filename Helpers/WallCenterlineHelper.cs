@@ -6,55 +6,58 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
     public static class WallCenterlineHelper
     {
         /// <summary>
-        /// ✅ SIMPLE METHOD: Get wall centerline point using bounding box center (no ray tracing/projection).
-        /// Gets wall bounding box, calculates center point, and merges with intersection point based on orientation.
-        /// This is more reliable than projection/ray tracing methods which can find wall face instead of centerline.
+        /// ✅ OPTIMIZED: Get invariant wall data (orientation, center coordinate, width) for caching.
+        /// Extracts the geometric center (Y for X-walls, X for Y-walls) from the bounding box.
+        /// Also returns wall width.
+        /// Use this when processing multiple sleeves on the same wall to avoid repeated Bbox/Location/Parameter calls.
+        /// ✅ LINKED DOC SUPPORT: Handles transforms if wall is in a linked model.
         /// </summary>
-        public static XYZ GetWallCenterlinePointFromBbox(Wall wall, XYZ intersectionPoint, Document hostDocument = null)
+        public static (bool IsXWall, double CenterCoordinate, double Width, bool Success) GetWallInvariantData(Wall wall, Document hostDocument = null)
         {
-            if (OptimizationFlags.UseDiagnosticMode)
-            {
-                DebugLogger.Log($"[CENTERLINE-DEBUG] ===== WALL CENTERLINE FROM BBOX (SIMPLE METHOD) =====");
-                DebugLogger.Log($"[CENTERLINE-DEBUG] Wall ID: {wall?.Id?.IntegerValue}");
-                DebugLogger.Log($"[CENTERLINE-DEBUG] Input intersectionPoint: {intersectionPoint}");
-            }
-            
-            if (wall == null)
-            {
-                if (OptimizationFlags.UseDiagnosticMode) DebugLogger.Log($"[CENTERLINE-DEBUG] Wall is null, returning input point");
-                return intersectionPoint;
-            }
+            if (wall == null) return (false, 0, 0, false);
             
             try
             {
-                // ✅ STEP 1: Get wall bounding box
+                // Get Width
+                double width = wall.Width;
+
                 BoundingBoxXYZ wallBbox = wall.get_BoundingBox(null);
-                if (wallBbox == null)
-                {
-                    if (OptimizationFlags.UseDiagnosticMode) DebugLogger.Log($"[CENTERLINE-DEBUG] Wall has no bounding box, returning input point");
-                    return intersectionPoint;
-                }
+                if (wallBbox == null) return (false, 0, width, false);
                 
-                // ✅ STEP 2: Calculate wall bounding box center (this is the wall centerline)
+                // Calculate bbox center (Local Coordinate System)
                 XYZ wallBboxCenter = new XYZ(
                     (wallBbox.Min.X + wallBbox.Max.X) / 2.0,
                     (wallBbox.Min.Y + wallBbox.Max.Y) / 2.0,
                     (wallBbox.Min.Z + wallBbox.Max.Z) / 2.0
                 );
                 
-                if (OptimizationFlags.UseDiagnosticMode)
+                // Handle Linked File Transform
+                if (hostDocument != null && wall.Document != null && !wall.Document.Equals(hostDocument))
                 {
-                    DebugLogger.Log($"[CENTERLINE-DEBUG] Wall bbox: Min=({wallBbox.Min.X:F6}ft, {wallBbox.Min.Y:F6}ft, {wallBbox.Min.Z:F6}ft), Max=({wallBbox.Max.X:F6}ft, {wallBbox.Max.Y:F6}ft, {wallBbox.Max.Z:F6}ft)");
-                    DebugLogger.Log($"[CENTERLINE-DEBUG] Wall bbox center (centerline): ({wallBboxCenter.X:F6}ft, {wallBboxCenter.Y:F6}ft, {wallBboxCenter.Z:F6}ft)");
+                    // Find transform
+                    var linkInstances = new FilteredElementCollector(hostDocument)
+                        .OfClass(typeof(RevitLinkInstance))
+                        .Cast<RevitLinkInstance>();
+                    
+                    foreach (var linkInstance in linkInstances)
+                    {
+                        var linkDoc = linkInstance.GetLinkDocument();
+                        if (linkDoc != null && linkDoc.Equals(wall.Document))
+                        {
+                            var transform = linkInstance.GetTotalTransform();
+                            if (transform != null && !transform.IsIdentity)
+                            {
+                                wallBboxCenter = transform.OfPoint(wallBboxCenter);
+                            }
+                            break;
+                        }
+                    }
                 }
                 
-                // ✅ STEP 3: Get wall direction to determine orientation
+                // Get orientation
                 var locationCurve = wall.Location as LocationCurve;
                 if (locationCurve == null || locationCurve.Curve == null)
-                {
-                    if (OptimizationFlags.UseDiagnosticMode) DebugLogger.Log($"[CENTERLINE-DEBUG] Wall has no location curve, using bbox center directly");
-                    return wallBboxCenter;
-                }
+                    return (false, 0, width, false);
                 
                 var curve = locationCurve.Curve;
                 XYZ wallDirection;
@@ -69,47 +72,120 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                     wallDirection = (end - start).Normalize();
                 }
                 
-                // ✅ STEP 4: Determine if wall is X-wall or Y-wall
                 double absX = Math.Abs(wallDirection.X);
                 double absY = Math.Abs(wallDirection.Y);
                 bool isXWall = absX > absY;
-                bool isYWall = absY > absX;
                 
-                // ✅ STEP 5: Merge coordinates based on wall orientation
-                XYZ centerlinePoint;
-                if (isXWall)
-                {
-                    centerlinePoint = new XYZ(intersectionPoint.X, wallBboxCenter.Y, intersectionPoint.Z);
-                    if (OptimizationFlags.UseDiagnosticMode) DebugLogger.Log($"[CENTERLINE-DEBUG] X-wall detected: Using bbox center Y={wallBboxCenter.Y:F6}ft, keeping intersection X={intersectionPoint.X:F6}ft, Z={intersectionPoint.Z:F6}ft");
-                }
-                else if (isYWall)
-                {
-                    centerlinePoint = new XYZ(wallBboxCenter.X, intersectionPoint.Y, intersectionPoint.Z);
-                    if (OptimizationFlags.UseDiagnosticMode) DebugLogger.Log($"[CENTERLINE-DEBUG] Y-wall detected: Using bbox center X={wallBboxCenter.X:F6}ft, keeping intersection Y={intersectionPoint.Y:F6}ft, Z={intersectionPoint.Z:F6}ft");
-                }
-                else
-                {
-                    centerlinePoint = wallBboxCenter;
-                    if (OptimizationFlags.UseDiagnosticMode) DebugLogger.Log($"[CENTERLINE-DEBUG] Unknown wall orientation: Using bbox center directly");
-                }
+                // Return coordinate: Y for X-walls (perpendicular axis), X for Y-walls
+                double centerCoord = isXWall ? wallBboxCenter.Y : wallBboxCenter.X;
                 
-                if (OptimizationFlags.UseDiagnosticMode)
-                {
-                    XYZ offset = centerlinePoint - intersectionPoint;
-                    double offsetDistance = offset.GetLength();
-                    DebugLogger.Log($"[CENTERLINE-DEBUG] Final centerline point: ({centerlinePoint.X:F6}ft, {centerlinePoint.Y:F6}ft, {centerlinePoint.Z:F6}ft)");
-                    DebugLogger.Log($"[CENTERLINE-DEBUG] Offset from input: ({offset.X:F6}ft, {offset.Y:F6}ft, {offset.Z:F6}ft), distance: {UnitUtils.ConvertFromInternalUnits(offsetDistance, UnitTypeId.Millimeters):F1}mm");
-                    DebugLogger.Log($"[CENTERLINE-DEBUG] ===== END WALL CENTERLINE FROM BBOX =====");
-                }
-                
-                return centerlinePoint;
+                return (isXWall, centerCoord, width, true);
             }
-            catch (System.Exception ex)
+            catch
             {
-                if (OptimizationFlags.UseDiagnosticMode) DebugLogger.Log($"[CENTERLINE-DEBUG] Exception in GetWallCenterlinePointFromBbox: {ex.Message}");
-                return intersectionPoint;
+                return (false, 0, 0, false);
             }
         }
+
+        /// <summary>
+        /// ✅ OPTIMIZED: Get invariant structural framing data (Normal, Thickness) for caching.
+        /// Calculates normal (with transform) and thickness ('b' or 'Width').
+        /// </summary>
+        public static (XYZ Normal, double Thickness, bool Success) GetFramingInvariantData(Element framing, Document hostDocument = null)
+        {
+            try
+            {
+                // Calculate Normal (handles linked transforms internally)
+                // We'll reuse the logic from GetStructuralFramingCenterlinePoint via helper or duplicate it slightly efficiently?
+                // DRY: Let's extract the Logic from GetStructuralFramingCenterlinePoint into this method?
+                // Or just implement it here cleanly.
+                
+                // 1. Get Thickness
+                double thickness = GetStructuralFramingThickness(framing);
+
+                // 2. Get Normal (Local)
+                XYZ normal = GetStructuralFramingNormal(framing);
+                
+                // 3. Transform Normal if needed
+                if (hostDocument != null && framing.Document != null && !framing.Document.Equals(hostDocument))
+                {
+                     // Need transform. 
+                     // Ideally we cache the transform too? But finding it is the expensive part.
+                     // Copy-paste the transform finding logic for now or refactor to helper.
+                     // For brevity/speed, I'll copy the robust loop.
+                    var linkInstances = new FilteredElementCollector(hostDocument)
+                        .OfClass(typeof(RevitLinkInstance))
+                        .Cast<RevitLinkInstance>();
+                    
+                    foreach (var linkInstance in linkInstances)
+                    {
+                        var linkDoc = linkInstance.GetLinkDocument();
+                        if (linkDoc != null && linkDoc.Equals(framing.Document))
+                        {
+                            var transform = linkInstance.GetTotalTransform();
+                            if (transform != null && !transform.IsIdentity)
+                            {
+                                normal = transform.OfVector(normal).Normalize();
+                            }
+                            break;
+                        }
+                    }
+                }
+                
+                return (normal, thickness, true);
+            }
+            catch
+            {
+                return (XYZ.BasisZ, 0, false);
+            }
+        }
+
+        /// <summary>
+        /// ✅ OPTIMIZED: Get invariant floor data (Normal, Thickness) for caching.
+        /// </summary>
+        public static (XYZ Normal, double Thickness, bool Success) GetFloorInvariantData(Element floor)
+        {
+            try
+            {
+                double thickness = GetFloorThickness(floor);
+                XYZ normal = GetFloorNormal(floor); // Usually 0,0,1
+                return (normal, thickness, true);
+            }
+            catch
+            {
+                 return (XYZ.BasisZ, 0, false);
+            }
+        }
+
+        /// <summary>
+        /// ✅ SIMPLE METHOD: Get wall centerline point using bounding box center (no ray tracing/projection).
+        /// Gets wall bounding box, calculates center point, and merges with intersection point based on orientation.
+        /// This is more reliable than projection/ray tracing methods which can find wall face instead of centerline.
+        /// </summary>
+        public static XYZ GetWallCenterlinePointFromBbox(Wall wall, XYZ intersectionPoint, Document hostDocument = null)
+        {
+            // Use the efficient invariant data method
+            // Note: This method re-calculates it every time. Cache-aware callers should use GetWallInvariantData directly.
+            var data = GetWallInvariantData(wall, hostDocument);
+            
+            if (!data.Success)
+            {
+                if (OptimizationFlags.UseDiagnosticMode) DebugLogger.Log($"[CENTERLINE-DEBUG] Wall {wall?.Id} data extraction failed, returning input point");
+                return intersectionPoint;
+            }
+
+            if (data.IsXWall)
+            {
+                // X-Wall: Replace Y with CenterCoordinate
+                return new XYZ(intersectionPoint.X, data.CenterCoordinate, intersectionPoint.Z);
+            }
+            else
+            {
+                // Y-Wall (or others defaulting here): Replace X with CenterCoordinate
+                return new XYZ(data.CenterCoordinate, intersectionPoint.Y, intersectionPoint.Z);
+            }
+        }
+
         
         // Returns the centerline point of the wall at a given intersection point, using robust exterior normal
         // ✅ CRITICAL FIX: Handles walls from linked documents by transforming wall normal to host coordinate system
@@ -769,10 +845,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
             {
                 if (element is Wall wall)
                 {
-                    // ✅ STANCE UNIFICATION: Use GetWallCenterlinePoint (LocationCurve Projection)
-                    // This is consistent with DamperPlacementPointService and Doc Section 6.0.1.1.
-                    // It is faster than Ray-Trace and more accurate than BBox in R2024.
-                    return GetWallCenterlinePoint(wall, intersectionPoint, hostDocument);
+                    // ✅ STANCE UNIFICATION: Use GetWallCenterlinePointFromBbox (Simple Method)
+                    // This uses the wall bounding box center, which is the most reliable geometric center
+                    // regardless of Location Line (Face vs Center).
+                    // This avoids the complexity of RayTrace and the potential Face/Center confusion of LocationCurve.
+                    return GetWallCenterlinePointFromBbox(wall, intersectionPoint, hostDocument);
                 }
                 else
                     return intersectionPoint;

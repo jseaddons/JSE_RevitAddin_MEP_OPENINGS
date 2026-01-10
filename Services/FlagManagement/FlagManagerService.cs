@@ -441,7 +441,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                     clashZone.AfterClusterSleevePlacedSleeveInstanceId = persisted.AfterClusterSleevePlacedSleeveInstanceId;
                     clashZone.MarkedForClusterProcess = persisted.MarkedForClusterProcess;
                     clashZone.HasDamperNearby = persisted.HasDamperNearby;
-                    clashZone.IsCurrentClashFlag = persisted.IsCurrentClashFlag;
+
+                    
+                    if (clashZone.IsCurrentClashFlag != persisted.IsCurrentClashFlag)
+                    {
+                        clashZone.IsCurrentClashFlag = persisted.IsCurrentClashFlag;
+                        flagChanged = true;
+                    }
+
+                    if (clashZone.ReadyForPlacementFlag != persisted.ReadyForPlacementFlag)
+                    {
+                        clashZone.ReadyForPlacementFlag = persisted.ReadyForPlacementFlag;
+                        flagChanged = true;
+                    }
 
                     if (flagChanged)
                     {

@@ -1,0 +1,281 @@
+﻿
+                            AND 
+ReadyForPlacementFlag = 1
+                          ORDER BY 
+MepElementCategory, SleeveFamilyName";
+                      
+                      using (var reader 
+= cmd.ExecuteReader())
+                      {
+                          while 
+(reader.Read())
+                          {
+                              
+result.Add(MapClashZone(reader));
+                          }
+                      }
+                  }
+                  
+                  if (!DeploymentConfigu
+ration.DeploymentMode)
+                  {
+                      
+_logger($"[SQLite] Γ£à 
+GetZonesReadyForPlacement: Retrieved 
+{result.Count} zones for bulk 
+placement");
+                  }
+              }
+              catch (Exception ex)
+              {
+                  _logger($"[SQLite] 
+Γ¥î Error in GetZonesReadyForPlacement: 
+{ex.Message}");
+              }
+              
+              return result;
+          }
+  
+          /// <summary>
+          /// Γ£à BULK PLACEMENT: Batch 
+update calculated sleeve sizes before 
+bulk placement.
+          /// Saves SleeveWidth, 
+SleeveHeight, SleeveDiameter, and 
+SleeveFamilyName for each zone.
+          /// Called after 
+CalculateSleeveDimensions() and before 
+NewFamilyInstances2().
+          /// </summary>
+>         public int BatchUpdateSleeveSi
+zesForBulkPlacement(List<ClashZone> 
+zones)
+          {
+              if (zones == null || 
+zones.Count == 0) return 0;
+              
+              int updatedCount = 0;
+              
+              try
+              {
+                  using (var 
+transaction = 
+_context.Connection.BeginTransaction())
+                  {
+                      using (var cmd = 
+_context.Connection.CreateCommand())
+                      {
+                          
+cmd.CommandText = @"
+                              UPDATE 
+ClashZones 
+                              SET 
+SleeveWidth = @width,
+                                  
+SleeveHeight = @height,
+                                  
+SleeveDiameter = @diameter,
+                                  
+SleeveFamilyName = @familyName,
+                                  
+UpdatedAt = CURRENT_TIMESTAMP
+                              WHERE 
+ClashZoneId = @id";
+                          
+                          var 
+widthParam = 
+cmd.Parameters.Add("@width", 
+System.Data.DbType.Double);
+                          var 
+heightParam = 
+cmd.Parameters.Add("@height", 
+System.Data.DbType.Double);
+                          var diamParam 
+= cmd.Parameters.Add("@diameter", 
+System.Data.DbType.Double);
+                          var 
+familyParam = 
+cmd.Parameters.Add("@familyName", 
+System.Data.DbType.String);
+                          var idParam = 
+cmd.Parameters.Add("@id", 
+System.Data.DbType.Int64);
+                          
+                          foreach (var 
+zone in zones)
+                          {
+                              
+widthParam.Value = zone.SleeveWidth;
+                              
+heightParam.Value = zone.SleeveHeight;
+                              
+diamParam.Value = zone.SleeveDiameter;
+                              
+familyParam.Value = 
+zone.SleeveFamilyName ?? "";
+                              
+idParam.Value = zone.ClashZoneId;
+                              
+                              
+updatedCount += cmd.ExecuteNonQuery();
+                          }
+                      }
+                      
+                      
+transaction.Commit();
+                  }
+                  
+                  if (!DeploymentConfigu
+ration.DeploymentMode)
+                  {
+>                     
+_logger($"[SQLite] Γ£à 
+BatchUpdateSleeveSizesForBulkPlacement: 
+Updated {updatedCount} zones with 
+calculated sizes");
+                  }
+              }
+              catch (Exception ex)
+              {
+>                 _logger($"[SQLite] 
+Γ¥î Error in 
+BatchUpdateSleeveSizesForBulkPlacement: 
+{ex.Message}");
+                  throw; // Re-throw 
+for caller to handle
+              }
+              
+              return updatedCount;
+          }
+  
+          /// <summary>
+          /// Γ£à BULK PLACEMENT: Batch 
+update zones after successful bulk 
+placement.
+          /// Sets SleeveInstanceId, 
+IsResolvedFlag=1, 
+ReadyForPlacementFlag=0.
+          /// Called after 
+NewFamilyInstances2() succeeds.
+          /// </summary>
+>         public int BatchUpdateAfterBul
+kPlacement(List<ClashZone> zones)
+          {
+              if (zones == null || 
+zones.Count == 0) return 0;
+              
+              int updatedCount = 0;
+              
+              try
+              {
+                  using (var 
+transaction = 
+_context.Connection.BeginTransaction())
+                  {
+                      using (var cmd = 
+_context.Connection.CreateCommand())
+                      {
+                          
+cmd.CommandText = @"
+                              UPDATE 
+ClashZones 
+                              SET 
+SleeveInstanceId = @sleeveId,
+                                  
+IsResolvedFlag = 1,
+                                  
+ReadyForPlacementFlag = 0,
+                                  
+UpdatedAt = CURRENT_TIMESTAMP
+                              WHERE 
+ClashZoneId = @id";
+                          
+                          var 
+sleeveIdParam = 
+cmd.Parameters.Add("@sleeveId", 
+System.Data.DbType.Int32);
+                          var idParam = 
+cmd.Parameters.Add("@id", 
+System.Data.DbType.Int64);
+                          
+                          foreach (var 
+zone in zones)
+                          {
+                              
+sleeveIdParam.Value = 
+zone.SleeveInstanceId;
+                              
+idParam.Value = zone.ClashZoneId;
+                              
+                              
+updatedCount += cmd.ExecuteNonQuery();
+                          }
+                      }
+                      
+                      
+transaction.Commit();
+                  }
+                  
+                  if (!DeploymentConfigu
+ration.DeploymentMode)
+                  {
+>                     
+_logger($"[SQLite] Γ£à 
+BatchUpdateAfterBulkPlacement: Updated 
+{updatedCount} zones with 
+SleeveInstanceIds");
+                  }
+              }
+              catch (Exception ex)
+              {
+>                 _logger($"[SQLite] 
+Γ¥î Error in 
+BatchUpdateAfterBulkPlacement: 
+{ex.Message}");
+                  throw; // Re-throw 
+for caller to handle
+              }
+              
+              return updatedCount;
+          }
+  
+          #endregion
+  
+  
+          /// <summary>
+          /// Γ£à R-TREE OPTIMIZATION: 
+Query clash zones within section box 
+using R-tree spatial index
+          /// Returns zones that 
+intersect with the section box bounding 
+box
+          /// Falls back to B-tree if 
+R-tree is not available
+          /// </summary>
+          private List<ClashZone> 
+GetClashZonesInSectionBoxRTree(
+              string filterName,
+              string category,
+              BoundingBoxXYZ sectionBox)
+          {
+              var zones = new 
+List<ClashZone>();
+  
+              if (!Services.Optimization
+Flags.UseRTreeDatabaseIndex || 
+sectionBox == null)
+              {
+                  // Fallback to B-tree 
+query
+                  return 
+GetClashZonesByFilter(filterName, 
+category, unresolvedOnly: false) ?? new 
+List<ClashZone>();
+              }
+  
+              try
+              {
+                  using (var cmd = 
+_context.Connection.CreateCommand())
+
+

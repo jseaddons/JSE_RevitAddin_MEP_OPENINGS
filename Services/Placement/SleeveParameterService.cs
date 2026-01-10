@@ -49,6 +49,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         
         // ✅ SAFETY FLAG: Prevents multiple flushes (critical for performance)
         private bool _hasFlushedParameters = false;
+
+        /// <summary>
+        /// ✅ NEW: Support for external batch dictionaries (e.g. from RefactoredClusterService).
+        /// When set, all batched parameter writes will go to this dictionary instead of the internal one.
+        /// This ensures context synchronization across different services.
+        /// </summary>
+        public Dictionary<ElementId, Dictionary<string, object>> DivertedBatchDictionary { get; set; }
+
+        /// <summary>
+        /// Gets the currently active batch dictionary.
+        /// </summary>
+        private Dictionary<ElementId, Dictionary<string, object>> ActiveBatchDictionary => DivertedBatchDictionary ?? _deferredParameters;
         
         // ✅ PERFORMANCE OPTIMIZATION: Caching for expensive operations
         // Level lookup cache - prevents repeated level searches for same level names
@@ -121,21 +133,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 if (OptimizationFlags.UseBatchedParameterWrites)
                 {
                     // ✅ BATCH OPTIMIZATION: Accumulate parameters for batch processing
-                    if (!_deferredParameters.ContainsKey(currentSleeveId))
-                        _deferredParameters[currentSleeveId] = new Dictionary<string, object>();
+                    var targetDict = ActiveBatchDictionary;
+                    if (!targetDict.ContainsKey(currentSleeveId))
+                        targetDict[currentSleeveId] = new Dictionary<string, object>();
                     
                     // Set dimensions (Width/Height or Diameter)
                     if (isCircular)
                     {
-                        _deferredParameters[currentSleeveId]["Diameter"] = roundedDiameter;
-                        _deferredParameters[currentSleeveId]["Sleeve Diameter"] = roundedDiameter;
+                        targetDict[currentSleeveId]["Diameter"] = roundedDiameter;
+                        targetDict[currentSleeveId]["Sleeve Diameter"] = roundedDiameter;
                     }
                     else
                     {
-                        _deferredParameters[currentSleeveId]["Width"] = roundedWidth;
-                        _deferredParameters[currentSleeveId]["Sleeve Width"] = roundedWidth;
-                        _deferredParameters[currentSleeveId]["Height"] = roundedHeight;
-                        _deferredParameters[currentSleeveId]["Sleeve Height"] = roundedHeight;
+                        targetDict[currentSleeveId]["Width"] = roundedWidth;
+                        targetDict[currentSleeveId]["Sleeve Width"] = roundedWidth;
+                        targetDict[currentSleeveId]["Height"] = roundedHeight;
+                        targetDict[currentSleeveId]["Sleeve Height"] = roundedHeight;
                     }
                     
                     // ✅ SRP COMPLIANCE: Delegate depth parameter setting to dedicated method
@@ -222,15 +235,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         /// Single Responsibility: Calculate and set structural thickness parameter only.
         /// Maintains all optimization features: batching, performance monitoring, safe validation, diagnostic logging.
         /// </summary>
-        public void SetDepthParameter(FamilyInstance instance, ClashZone zone, ElementId currentSleeveId)
+        public void SetDepthParameter(FamilyInstance instance, ClashZone zone, ElementId currentSleeveId, double? structuralThicknessOverride = null)
         {
             if (instance == null || zone == null) return;
             
             bool isWallHost = zone.StructuralElementType == "Wall" || zone.StructuralElementType == "Walls";
             bool isFramingHost = string.Equals(zone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
             
-            // Get the correct thickness based on host type
-            double thickness = GetThickness(zone, isWallHost, isFramingHost);
+            // Get the correct thickness based on host type (use override if provided)
+            double thickness = structuralThicknessOverride ?? GetThickness(zone, isWallHost, isFramingHost);
             
             // ✅ DIAGNOSTIC: Log thickness values from ClashZone before fallback
             if (!DeploymentConfiguration.DeploymentMode)
@@ -238,7 +251,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 SafeFileLogger.SafeAppendText("depth_parameter_debug.log",
                     $"[{DateTime.Now:HH:mm:ss.fff}] [SetDepthParameter] Zone={zone.Id}, " +
                     $"HostType='{zone.StructuralElementType}', " +
-                    $"IsWallHost={isWallHost}, IsFramingHost={isFramingHost}, " +
+                    $"IsWallHost={isWallHost}, IsFramingHost={isFramingHost}, Override={(structuralThicknessOverride.HasValue ? (structuralThicknessOverride.Value * 304.8).ToString("F1") + "mm" : "None")}, " +
                     $"WallThickness={zone.WallThickness * 304.8:F1}mm, " +
                     $"FramingThickness={zone.FramingThickness * 304.8:F1}mm, " +
                     $"StructuralElementThickness={zone.StructuralElementThickness * 304.8:F1}mm, " +
@@ -297,6 +310,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         /// </summary>
         public int FlushDeferredParameters()
         {
+            var targetDict = ActiveBatchDictionary;
+
             // ✅ SAFETY FLAG: Prevent multiple flushes (critical for performance)
             if (_hasFlushedParameters)
             {
@@ -309,7 +324,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 return 0; // ✅ CRITICAL: Exit early to prevent duplicate flushes
             }
             
-            if (_deferredParameters == null || _deferredParameters.Count == 0)
+            if (targetDict == null || targetDict.Count == 0)
             {
                 _hasFlushedParameters = true; // Mark as flushed even if empty
                 return 0;
@@ -321,13 +336,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             
             if (!DeploymentConfiguration.DeploymentMode)
             {
-                int totalParams = _deferredParameters.Values.Sum(d => d.Count);
-                DebugLogger.Info($"[SleeveParameterService] [BATCH-PARAMS] 🔄 Flushing {_deferredParameters.Count} individual sleeves with {totalParams} total parameters...");
+                int totalParams = targetDict.Values.Sum(d => d.Count);
+                DebugLogger.Info($"[SleeveParameterService] [BATCH-PARAMS] 🔄 Flushing {targetDict.Count} individual sleeves with {totalParams} total parameters...");
             }
             
             try
             {
-                foreach (var kvp in _deferredParameters)
+                foreach (var kvp in targetDict)
                 {
                     var sleeveId = kvp.Key;
                     var paramValues = kvp.Value;
@@ -459,8 +474,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    int totalParams = _deferredParameters.Values.Sum(d => d.Count);
-                    DebugLogger.Info($"[SleeveParameterService] [BATCH-PARAMS] ✅ Flushed {successCount} parameters for {_deferredParameters.Count} sleeves, {failCount} failed");
+                    int totalParams = targetDict.Values.Sum(d => d.Count);
+                    DebugLogger.Info($"[SleeveParameterService] [BATCH-PARAMS] ✅ Flushed {successCount} parameters for {targetDict.Count} sleeves, {failCount} failed");
                     if (errorLog.Length > 0)
                     {
                         SafeFileLogger.SafeAppendText("parameter_batching_errors.log", errorLog.ToString());
@@ -468,7 +483,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 }
                 
                 // Clear deferred parameters after flush (ready for next placement batch)
-                _deferredParameters.Clear();
+                targetDict.Clear();
             }
             
             return successCount;
@@ -492,13 +507,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             string parameterName, 
             double fallbackValue)
         {
-            if (OptimizationFlags.UseBatchedParameterWrites && _deferredParameters != null)
+            if (OptimizationFlags.UseBatchedParameterWrites)
             {
                 var sleeveId = sleeve.Id;
-                if (_deferredParameters.ContainsKey(sleeveId) && 
-                    _deferredParameters[sleeveId].ContainsKey(parameterName))
+                var targetDict = ActiveBatchDictionary;
+                if (targetDict != null && targetDict.ContainsKey(sleeveId) && 
+                    targetDict[sleeveId].ContainsKey(parameterName))
                 {
-                    var cachedValue = _deferredParameters[sleeveId][parameterName];
+                    var cachedValue = targetDict[sleeveId][parameterName];
                     if (cachedValue is double dVal)
                         return dVal;
                 }
@@ -610,21 +626,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             
             if (OptimizationFlags.UseBatchedParameterWrites)
             {
-                if (!_deferredParameters.ContainsKey(currentSleeveId))
-                    _deferredParameters[currentSleeveId] = new Dictionary<string, object>();
+                var targetDict = ActiveBatchDictionary;
+                if (!targetDict.ContainsKey(currentSleeveId))
+                    targetDict[currentSleeveId] = new Dictionary<string, object>();
+                
+                // ✅ FIX: Use the actual parameter definition name as the key.
+                // This ensures that if we fell back from "Wall Width" to "Depth", 
+                // the dictionary stores it as "Depth", which matches what the element actually has.
+                string actualParamName = param.Definition.Name;
                 
                 // ✅ CRITICAL DIAGNOSTIC: Log if parameter is being overwritten
-                bool isOverwrite = _deferredParameters[currentSleeveId].ContainsKey(parameterName);
-                if (isOverwrite && (parameterName == "Width" || parameterName == "Height" || 
-                                   parameterName == "Depth" || parameterName == "Wall Width"))
+                bool isOverwrite = targetDict[currentSleeveId].ContainsKey(actualParamName);
+                if ((actualParamName == "Width" || actualParamName == "Height" || 
+                     actualParamName == "Depth" || actualParamName == "Wall Width"))
                 {
-                    var oldValue = _deferredParameters[currentSleeveId][parameterName];
-                    SafeFileLogger.SafeAppendText("parameter_overwrite_debug.log",
-                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] ⚠️ PARAMETER OVERWRITE: Sleeve {currentSleeveId.IntegerValue}, " +
-                        $"Parameter='{parameterName}', OldValue={oldValue}, NewValue={value}\n");
+                    if (isOverwrite)
+                    {
+                        var oldValue = targetDict[currentSleeveId][actualParamName];
+                        SafeFileLogger.SafeAppendText("parameter_overwrite_debug.log",
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] ⚠️ PARAMETER OVERWRITE: Sleeve {currentSleeveId.IntegerValue}, " +
+                            $"Parameter='{actualParamName}' (requested='{parameterName}'), OldValue={oldValue}, NewValue={value}\n");
+                    }
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-ADD] Sleeve={currentSleeveId.IntegerValue}, " +
+                            $"Parameter='{actualParamName}' (requested='{parameterName}'), Value={value}\n");
+                    }
                 }
                 
-                _deferredParameters[currentSleeveId][parameterName] = value;
+                targetDict[currentSleeveId][actualParamName] = value;
                 return true;
             }
             else
@@ -648,9 +680,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 // If batching is enabled, also add to deferred for consistency, but immediate set is critical
                 if (OptimizationFlags.UseBatchedParameterWrites)
                 {
-                    if (!_deferredParameters.ContainsKey(currentSleeveId))
-                        _deferredParameters[currentSleeveId] = new Dictionary<string, object>();
-                    _deferredParameters[currentSleeveId]["Sleeve Instance ID"] = currentSleeveId.IntegerValue;
+                    var targetDict = ActiveBatchDictionary;
+                    if (!targetDict.ContainsKey(currentSleeveId))
+                        targetDict[currentSleeveId] = new Dictionary<string, object>();
+                    targetDict[currentSleeveId]["Sleeve Instance ID"] = currentSleeveId.IntegerValue;
                 }
                 
                 if (!DeploymentConfiguration.DeploymentMode)
@@ -682,9 +715,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             {
                 if (OptimizationFlags.UseBatchedParameterWrites)
                 {
-                    if (!_deferredParameters.ContainsKey(currentSleeveId))
-                        _deferredParameters[currentSleeveId] = new Dictionary<string, object>();
-                    _deferredParameters[currentSleeveId]["MEP_Category"] = zone.MepElementCategory;
+                    var targetDict = ActiveBatchDictionary;
+                    if (!targetDict.ContainsKey(currentSleeveId))
+                        targetDict[currentSleeveId] = new Dictionary<string, object>();
+                    targetDict[currentSleeveId]["MEP_Category"] = zone.MepElementCategory;
                 }
                 else
                 {
@@ -702,9 +736,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 // If batching is enabled, also add to deferred for consistency, but immediate set is critical
                 if (OptimizationFlags.UseBatchedParameterWrites)
                 {
-                    if (!_deferredParameters.ContainsKey(currentSleeveId))
-                        _deferredParameters[currentSleeveId] = new Dictionary<string, object>();
-                    _deferredParameters[currentSleeveId]["MEP_ElementId"] = zone.MepElementId.IntegerValue;
+                    var targetDict = ActiveBatchDictionary;
+                    if (!targetDict.ContainsKey(currentSleeveId))
+                        targetDict[currentSleeveId] = new Dictionary<string, object>();
+                    targetDict[currentSleeveId]["MEP_ElementId"] = zone.MepElementId.IntegerValue;
                 }
                 
                 if (!DeploymentConfiguration.DeploymentMode)
@@ -775,9 +810,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             {
                 if (OptimizationFlags.UseBatchedParameterWrites)
                 {
-                    if (!_deferredParameters.ContainsKey(currentSleeveId))
-                        _deferredParameters[currentSleeveId] = new Dictionary<string, object>();
-                    _deferredParameters[currentSleeveId][paramName] = value;
+                    var targetDict = ActiveBatchDictionary;
+                    if (!targetDict.ContainsKey(currentSleeveId))
+                        targetDict[currentSleeveId] = new Dictionary<string, object>();
+                    targetDict[currentSleeveId][paramName] = value;
                 }
                 else
                 {
@@ -787,22 +823,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
 
         /// <summary>
-        /// Get thickness based on host type
+        /// Get thickness - uses StructuralElementThickness as single source of truth
+        /// Prioritizes WallThickness for walls and FramingThickness for framing, falling back to StructuralElementThickness.
         /// </summary>
         private double GetThickness(ClashZone zone, bool isWallHost, bool isFramingHost)
         {
-            if (isWallHost)
-            {
-                return zone.WallThickness > 0 ? zone.WallThickness : zone.StructuralElementThickness;
-            }
-            else if (isFramingHost)
-            {
-                return zone.FramingThickness > 0 ? zone.FramingThickness : zone.StructuralElementThickness;
-            }
-            else
-            {
-                return zone.StructuralElementThickness;
-            }
+            // ✅ ITERATIVE PRIORITY: Prioritize based on host type to avoid picking junk values from other fields
+            if (isWallHost && zone.WallThickness > 0.001)
+                return zone.WallThickness;
+                
+            if (isFramingHost && zone.FramingThickness > 0.001)
+                return zone.FramingThickness;
+                
+            // Fallback to general structural thickness
+            return zone.StructuralElementThickness;
         }
 
         /// <summary>
@@ -961,9 +995,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                         {
                             if (OptimizationFlags.UseBatchedParameterWrites)
                             {
-                                if (!_deferredParameters.ContainsKey(currentSleeveId))
-                                    _deferredParameters[currentSleeveId] = new Dictionary<string, object>();
-                                _deferredParameters[currentSleeveId][paramName] = mepLevel.Id;
+                                var targetDict = ActiveBatchDictionary;
+                                if (!targetDict.ContainsKey(currentSleeveId))
+                                    targetDict[currentSleeveId] = new Dictionary<string, object>();
+                                targetDict[currentSleeveId][paramName] = mepLevel.Id;
                             }
                             else
                             {
@@ -981,9 +1016,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                         {
                             if (OptimizationFlags.UseBatchedParameterWrites)
                             {
-                                if (!_deferredParameters.ContainsKey(currentSleeveId))
-                                    _deferredParameters[currentSleeveId] = new Dictionary<string, object>();
-                                _deferredParameters[currentSleeveId][paramName] = mepLevel.Name;
+                                var targetDict = ActiveBatchDictionary;
+                                if (!targetDict.ContainsKey(currentSleeveId))
+                                    targetDict[currentSleeveId] = new Dictionary<string, object>();
+                                targetDict[currentSleeveId][paramName] = mepLevel.Name;
                             }
                             else
                             {
@@ -1204,9 +1240,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     
                     if (OptimizationFlags.UseBatchedParameterWrites)
                     {
-                        if (!_deferredParameters.ContainsKey(currentSleeveId))
-                            _deferredParameters[currentSleeveId] = new Dictionary<string, object>();
-                        _deferredParameters[currentSleeveId][paramName] = bottomOfOpening.Value;
+                        var targetDict = ActiveBatchDictionary;
+                        if (!targetDict.ContainsKey(currentSleeveId))
+                            targetDict[currentSleeveId] = new Dictionary<string, object>();
+                        targetDict[currentSleeveId][paramName] = bottomOfOpening.Value;
                         
                         SafeFileLogger.SafeAppendText("placement_debug.log",
                             $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ✅ DEFERRED: Zone={zone?.Id}, Sleeve={instance.Id}: " +
@@ -1459,9 +1496,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     {
                         if (OptimizationFlags.UseBatchedParameterWrites)
                         {
-                            if (!_deferredParameters.ContainsKey(currentSleeveId))
-                                _deferredParameters[currentSleeveId] = new Dictionary<string, object>();
-                            _deferredParameters[currentSleeveId][elevationParam.Definition.Name] = elevationFromLevel;
+                            var targetDict = ActiveBatchDictionary;
+                            if (!targetDict.ContainsKey(currentSleeveId))
+                                targetDict[currentSleeveId] = new Dictionary<string, object>();
+                            targetDict[currentSleeveId][elevationParam.Definition.Name] = elevationFromLevel;
                         }
                         else
                         {

@@ -604,7 +604,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
                         // Process each cluster
                         SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 PROCESSING: Group {groupKey.hostType}/{groupKey.systemType}/{groupKey.orientation} has {clusters.Count} clusters\n");
-                        foreach (var cluster in clusters)
+                        
+                        // ✅ UNIFIED BATCH CONTEXT: Ensure ClusterPlacementService writes to the same dictionary we flush
+                        // This fixes the "Missing Parameters" bug where PlaceClusterSleeve used a local dictionary that confused the flush logic
+                        try
+                        {
+                            _parameterService.DivertedBatchDictionary = _deferredClusterParameters;
+                            
+                            foreach (var cluster in clusters)
                         {
                             if (cluster.Count <= 1)
                             {
@@ -838,7 +845,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                 }
                                 // Continue with next cluster
                             }
+                            }
                         }
+                    }
+                    finally
+                    {
+                        // ✅ UNIFIED BATCH CONTEXT: Reset diverted dictionary
+                        _parameterService.DivertedBatchDictionary = null;
+                    }
                     }
                     placementLoopTracker.SetItemCount(placedCount);
                 } // ✅ PERFORMANCE: End of cluster placement loop tracking
@@ -2213,6 +2227,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     {
                         var paramName = param.Key;
                         var paramValue = param.Value;
+
+                        // ✅ DIAGNOSTIC LOGGING: Track depth/size parameters being applied
+                        if (paramName == "Depth" || paramName == "Wall Width" || paramName == "Width" || paramName == "Height")
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-FLUSH-PARAM] Sleeve={elementId.IntegerValue}, Parameter='{paramName}', Value={paramValue}\n");
+                        }
                         
                         // ✅ CRITICAL FIX: Try parameter name variations for "Bottom of Opening" (same as in ClusterPlacementService)
                         Parameter parameter = null;

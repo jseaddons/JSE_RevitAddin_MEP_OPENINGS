@@ -29,6 +29,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         private readonly Document _doc;
         private readonly bool _isForceDetectionMode;
         private readonly PlacementPerformanceMonitor? _performanceMonitor;
+        
+        // Cache to store invariant wall data (Orientation, Center Coordinate, Width) by Wall ID
+        private readonly Dictionary<int, (bool IsXWall, double CenterCoordinate, double Width, bool Success)> _wallCenterlineCache 
+            = new Dictionary<int, (bool IsXWall, double CenterCoordinate, double Width, bool Success)>();
+
+        // Cache for Structural Framing (Normal, Thickness)
+        private readonly Dictionary<int, (XYZ Normal, double Thickness, bool Success)> _framingCenterlineCache 
+            = new Dictionary<int, (XYZ Normal, double Thickness, bool Success)>();
+
+        // Cache for Floors (Normal, Thickness)
+        private readonly Dictionary<int, (XYZ Normal, double Thickness, bool Success)> _floorCenterlineCache 
+            = new Dictionary<int, (XYZ Normal, double Thickness, bool Success)>();
 
         /// <summary>
         /// ✅ DIP COMPLIANCE: Constructor accepts optional performance monitor for dependency injection.
@@ -96,11 +108,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 
                 // ✅ NON-DAMPER ELEMENTS: Adjust for wall/framing centerline only
                 // This applies to Ducts, Pipes, Cable Trays - NOT dampers
+                // Re-enabled: WallCenterlineHelper is now fixed to use RayTrace (Midpoint)
                 XYZ adjustedPoint = AdjustForHostCenterline(zone, originalPlacementPoint);
 
                 // ✅ PERFORMANCE MONITORING: Record item count
                 tracker?.SetItemCount(1);
-
+ 
                 return adjustedPoint;
             }
         }
@@ -293,7 +306,71 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                         $"IntersectionPoint=({placementPoint.X:F6}ft, {placementPoint.Y:F6}ft, {placementPoint.Z:F6}ft) - Will adjust to wall centerline\n");
                 }
                 
-                XYZ centerlinePoint = WallCenterlineHelper.GetElementCenterlinePoint(hostElement, placementPoint, _doc);
+
+                XYZ centerlinePoint = null;
+                
+                // ✅ OPTIMIZED: Use caching for Walls, Framing, and Floors
+                if (hostElement is Wall wall)
+                {
+                    int wallId = wall.Id.IntegerValue;
+                    if (!_wallCenterlineCache.TryGetValue(wallId, out var data))
+                    {
+                        data = WallCenterlineHelper.GetWallInvariantData(wall, _doc);
+                        _wallCenterlineCache[wallId] = data;
+                    }
+
+                    if (data.Success)
+                    {
+                        if (data.IsXWall) centerlinePoint = new XYZ(placementPoint.X, data.CenterCoordinate, placementPoint.Z);
+                        else centerlinePoint = new XYZ(data.CenterCoordinate, placementPoint.Y, placementPoint.Z);
+                    }
+                    else
+                    {
+                        centerlinePoint = WallCenterlineHelper.GetElementCenterlinePoint(hostElement, placementPoint, _doc);
+                    }
+                }
+                else if (hostElement.Category.Id.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+                {
+                    int elemId = hostElement.Id.IntegerValue;
+                    if (!_framingCenterlineCache.TryGetValue(elemId, out var data))
+                    {
+                         data = WallCenterlineHelper.GetFramingInvariantData(hostElement, _doc);
+                         _framingCenterlineCache[elemId] = data;
+                    }
+                    
+                    if (data.Success)
+                    {
+                        // Calculate center: intersection - normal * halfThickness
+                        centerlinePoint = placementPoint + data.Normal * (-data.Thickness / 2.0);
+                    }
+                    else
+                    {
+                        centerlinePoint = WallCenterlineHelper.GetElementCenterlinePoint(hostElement, placementPoint, _doc);
+                    }
+                }
+                else if (hostElement is Floor floor)
+                {
+                    int elemId = floor.Id.IntegerValue;
+                    if (!_floorCenterlineCache.TryGetValue(elemId, out var data))
+                    {
+                         data = WallCenterlineHelper.GetFloorInvariantData(floor);
+                         _floorCenterlineCache[elemId] = data;
+                    }
+                    
+                    if (data.Success)
+                    {
+                         centerlinePoint = placementPoint + data.Normal * (-data.Thickness / 2.0);
+                    }
+                    else
+                    {
+                         centerlinePoint = WallCenterlineHelper.GetElementCenterlinePoint(hostElement, placementPoint, _doc);
+                    }
+                }
+                else
+                {
+                    // Fallback for other categories
+                    centerlinePoint = WallCenterlineHelper.GetElementCenterlinePoint(hostElement, placementPoint, _doc);
+                }
 
                 if (centerlinePoint != null && centerlinePoint != placementPoint)
                 {

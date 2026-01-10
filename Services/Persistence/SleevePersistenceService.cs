@@ -330,9 +330,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                                 zone.SleevePlacementPointX,
                                 zone.SleevePlacementPointY,
                                 zone.SleevePlacementPointZ,
-                                zone.SleevePlacementPointActiveDocumentX,
-                                zone.SleevePlacementPointActiveDocumentY,
-                                zone.SleevePlacementPointActiveDocumentZ,
+                                zone.SleevePlacementPointX,
+                                zone.SleevePlacementPointY,
+                                zone.SleevePlacementPointZ,
                                 zone.MepElementRotationAngle));
 
                             // ✅ CRITICAL: Sync MEP Category to DB (Dump once, use many times)

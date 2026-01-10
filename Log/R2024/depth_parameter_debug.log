@@ -1,4 +1,0 @@
-[2026-01-02 10:28:02.090] [10:28:02.089] [SetDepthParameter] Zone=0544a9a0-89b8-0e08-2188-db8554cbad72, HostType='Wall', IsWallHost=True, IsFramingHost=False, WallThickness=200.0mm, FramingThickness=0.0mm, StructuralElementThickness=200.0mm, CalculatedThickness=200.0mm
-
-[2026-01-02 10:28:02.093] [10:28:02.092] [SetDepthParameter] ✅ Zone=0544a9a0-89b8-0e08-2188-db8554cbad72, Sleeve=745292: Set Depth=200.0mm
-

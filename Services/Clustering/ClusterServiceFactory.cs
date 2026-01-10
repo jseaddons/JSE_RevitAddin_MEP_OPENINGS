@@ -308,9 +308,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             // Note: These are placeholders - RefactoredClusterService should provide these via its own methods
             Func<int, string?, ClashZone?> getClashZoneBySleeveInstanceId = (sleeveId, xmlPath) =>
             {
-                // Use dataService cache
-                // TODO: Implement proper lookup from dataService cache
-                return null;
+                // ✅ FIX: Use dataService to retrieve ClashZone instead of returning null stub
+                // This enables the robustness fix in ClusterPlacementService to work (fetching thickness)
+                return dataService.GetClashZoneBySleeveInstanceId(sleeveId);
             };
 
             Func<List<dynamic>, string?, double> determineRotationAngle = (cluster, xmlPath) =>
