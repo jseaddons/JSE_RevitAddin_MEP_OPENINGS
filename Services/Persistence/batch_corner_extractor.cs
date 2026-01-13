@@ -117,8 +117,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                 // ✅ REUSE: Use existing SleeveCornerCalculationService (Methodology compliant)
                 var calculator = new JSE_RevitAddin_MEP_OPENINGS.Services.Geometry.SleeveCornerCalculationService();
                 
-                // ✅ CRITICAL: Pass HostOrientation from database to use correct projection
-                var corners = calculator.CalculateCornersFromInstance(sleeve, zone?.HostOrientation);
+                // ✅ CRITICAL: Pass HostOrientation AND StructuralElementType from database
+                // This ensures correct strategy (Wall vs Floor) is used even if sleeve.Host is null
+                var corners = calculator.CalculateCornersFromInstance(sleeve, zone?.HostOrientation, zone?.StructuralElementType);
                 
                 if (corners.HasValue)
                 {

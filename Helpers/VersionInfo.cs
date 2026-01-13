@@ -30,5 +30,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
         /// Returns a string identifier for logging or diagnostics.
         /// </summary>
         public static string VersionTag => $"R{CurrentMajor}";
+
+        /// <summary>
+        /// Gets the build timestamp based on the assembly's last write time.
+        /// </summary>
+        public static string GetBuildTimestamp()
+        {
+            try
+            {
+                var assemblyLocation = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                var fileInfo = new System.IO.FileInfo(assemblyLocation);
+                return fileInfo.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss");
+            }
+            catch
+            {
+                return "Unknown";
+            }
+        }
     }
 }

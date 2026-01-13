@@ -40,7 +40,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         void UpdateSleevePlacement(System.Guid clashZoneGuid, int sleeveInstanceId, double width, double height, double diameter, 
             double placementX, double placementY, double placementZ,
             double placementActiveX, double placementActiveY, double placementActiveZ,
-            double rotationAngleRad);
+            double rotationAngleRad, string sleeveFamilyName = null);
 
         /// <summary>
         /// Update cluster placement
@@ -49,7 +49,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             double maxX, double maxY, double maxZ, double? placementX = null, double? placementY = null, double? placementZ = null,
             double? rotatedMinX = null, double? rotatedMinY = null, double? rotatedMinZ = null,
             double? rotatedMaxX = null, double? rotatedMaxY = null, double? rotatedMaxZ = null,
-            bool? isClustered = null, bool? markedForCluster = null);
+            bool? isClustered = null, bool? markedForCluster = null, string? sleeveFamilyName = null,
+            double sleeveWidth = 0, double sleeveHeight = 0, double sleeveDiameter = 0);
 
         /// <summary>
         /// Update rotated bounding box coordinates for a rotated individual sleeve
@@ -71,6 +72,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Update the MEP Category for a clash zone (dump once, use many times)
         /// </summary>
         void UpdateMepCategory(System.Guid clashZoneGuid, string category);
+
+        /// <summary>
+        /// Update the Sleeve Family Name for a clash zone (persists pre-placement determination)
+        /// </summary>
+        void UpdateSleeveFamilyName(System.Guid clashZoneGuid, string familyName);
+
+        /// <summary>
+        /// Update the Sleeve Family Name for multiple clash zones (persists pre-placement determination)
+        /// </summary>
+        void UpdateSleeveFamilyNameBulk(System.Collections.Generic.IEnumerable<System.Guid> clashZoneGuids, string familyName);
 
         /// <summary>
         /// Get MEP Categories for a list of sleeve instance IDs
@@ -109,7 +120,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// <summary>
         /// Batch update flags including IsCurrentClashFlag.
         /// </summary>
-        void BatchUpdateFlagsWithCurrentClash(List<(System.Guid ClashZoneId, int ClashZoneIntId, bool IsResolvedFlag, bool IsClusterResolvedFlag, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsCurrentClashFlag, bool IsClusteredFlag, bool? MarkedForClusterProcess, int AfterClusterSleeveId)> updates);
+        void BatchUpdateFlagsWithCurrentClash(List<(System.Guid ClashZoneId, int ClashZoneIntId, bool IsResolvedFlag, bool IsClusterResolvedFlag, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsCurrentClashFlag, bool IsClusteredFlag, bool? MarkedForClusterProcess, int AfterClusterSleeveId, double SleeveWidth, double SleeveHeight, double SleeveDiameter)> updates);
 
         /// <summary>
         /// Force Detection Mode: Reset all flags (IsResolved, IsClusterResolved) to false and clear sleeve IDs
@@ -201,7 +212,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             IEnumerable<(System.Guid ClashZoneGuid, int SleeveInstanceId, double Width, double Height, double Diameter,
                 double PlacementX, double PlacementY, double PlacementZ,
                 double PlacementActiveX, double PlacementActiveY, double PlacementActiveZ,
-                double RotationAngleRad)> updates);
+                double RotationAngleRad, string SleeveFamilyName)> updates);
+
+        /// <summary>
+        /// ✅ PLACEMENT OPTIMIZATION: Batch update cluster placement data in a single transaction.
+        /// </summary>
+        void BatchUpdateClusterPlacement(
+            IEnumerable<(System.Guid ClashZoneGuid, int ClusterInstanceId, 
+                double Width, double Height, double Diameter,
+                double BoundingBoxMinX, double BoundingBoxMinY, double BoundingBoxMinZ,
+                double BoundingBoxMaxX, double BoundingBoxMaxY, double BoundingBoxMaxZ,
+                string SleeveFamilyName)> updates);
 
         /// <summary>
         /// ✅ PLACEMENT OPTIMIZATION: Batch update sleeve corners in a single transaction.

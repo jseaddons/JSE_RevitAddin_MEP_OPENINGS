@@ -184,7 +184,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
             List<(ClashZone clashZone, int sleeveId)> clashZones, 
             bool isCluster, 
             string category, 
-            string filterName = null)
+            string filterName = null,
+            double clusterWidth = 0,
+            double clusterHeight = 0,
+            double clusterDiameter = 0)
         {
             // 🔥 DIAGNOSTIC: Log entry to this method
             SafeFileLogger.SafeAppendText("cluster_debug.log", 
@@ -200,7 +203,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                 throw new ArgumentException("Category cannot be null or empty", nameof(category));
             try
             {
-                var dbUpdates = new List<(Guid ClashZoneId, int ClashZoneIntId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsCurrentClash, bool IsClusteredFlag, bool? MarkedForClusterProcess, int AfterClusterSleeveId)>();
+                var dbUpdates = new List<(Guid ClashZoneId, int ClashZoneIntId, bool IsResolvedFlag, bool IsClusterResolvedFlag, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsCurrentClashFlag, bool IsClusteredFlag, bool? MarkedForClusterProcess, int AfterClusterSleeveId, double SleeveWidth, double SleeveHeight, double SleeveDiameter)>();
                 foreach (var (clashZone, sleeveId) in clashZones)
                 {
                     if (clashZone == null || sleeveId <= 0) continue;
@@ -254,7 +257,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                         true, // ✅ UNIFIED: Always keep IsCurrentClash true during placement (Reset only on Refresh)
                         clashZone.IsClusteredFlag,
                         clashZone.MarkedForClusterProcess, // Pass MarkedForClusterProcess
-                        clashZone.AfterClusterSleevePlacedSleeveInstanceId // Pass AfterClusterSleeveId
+                        clashZone.AfterClusterSleevePlacedSleeveInstanceId, // Pass AfterClusterSleeveId
+                        isCluster ? clusterWidth : 0,    // SleeveWidth
+                        isCluster ? clusterHeight : 0,   // SleeveHeight
+                        isCluster ? clusterDiameter : 0  // SleeveDiameter
                     ));
                 }
                 if (dbUpdates.Count == 0)

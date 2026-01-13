@@ -125,32 +125,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             var finalErrorCount = currentContext.Errors.Count + stageErrors.Count;
             var overallSuccess = finalPlacedCount > 0 || (finalErrorCount == 0 && zones.Count == 0);
 
-            // OPTIONAL SNAPSHOT PARAMETER TRANSFER (post-pipeline)
-            if (OptimizationFlags.EnableSnapshotParameterTransfer && OptimizationFlags.UseBatchedParameterWrites &&
-                _snapshotTransferService != null && _parameterBatchingService != null && _clashZoneRepository != null &&
-                currentContext.PlacedInstances.Any())
+            // ✅ BATCH PARAMETER FLUSH: Ensure parameters are written regardless of snapshot transfer status
+            if (OptimizationFlags.UseBatchedParameterWrites && _parameterBatchingService != null && currentContext.PlacedInstances.Any())
             {
                 try
                 {
-                    var sleeveElementIds = currentContext.PlacedInstances.Select(fi => fi.Id).ToList();
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[SNAPSHOT-PARAMS] 🚀 Starting snapshot transfer for {sleeveElementIds.Count} placed sleeves (CorrelationId={context.CorrelationId})");
+                    // OPTIONAL SNAPSHOT PARAMETER TRANSFER (post-pipeline)
+                    if (OptimizationFlags.EnableSnapshotParameterTransfer && _snapshotTransferService != null && _clashZoneRepository != null)
+                    {
+                        var sleeveElementIds = currentContext.PlacedInstances.Select(fi => fi.Id).ToList();
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[ORCHESTRATOR] [SNAPSHOT-PARAMS] 🚀 Starting snapshot transfer for {sleeveElementIds.Count} placed sleeves");
 
-                    var deferredCount = _snapshotTransferService.TransferSnapshotParameters(doc, sleeveElementIds, _clashZoneRepository, _parameterBatchingService);
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[SNAPSHOT-PARAMS] 📥 Deferred {deferredCount} parameters; regenerating document once...");
+                        int deferredCount = _snapshotTransferService.TransferSnapshotParameters(doc, sleeveElementIds, _clashZoneRepository, _parameterBatchingService);
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[ORCHESTRATOR] [SNAPSHOT-PARAMS] 📥 Deferred {deferredCount} parameters from snapshots.");
+                    }
 
-                    // Single regeneration prior to batch flush
-                    doc.Regenerate();
-
-                    var flushed = _parameterBatchingService.FlushDeferredParameters(doc);
+                    // ✅ CRITICAL REGEN: Ensure elements are valid for parameter writes AFTER placement
                     if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[SNAPSHOT-PARAMS] ✅ Flush complete: wrote {flushed} parameters for {sleeveElementIds.Count} sleeves");
+                        DebugLogger.Info("[ORCHESTRATOR] [BATCH-PARAMS] 🔄 Regenerating document once prior to batch flush...");
+                    
+                    doc.Regenerate(); // User instruction: regeneration needed AFTER placement
+
+                    // ✅ FLUSH: Write all batched parameters (dimensions + snapshots)
+                    int flushed = _parameterBatchingService.FlushDeferredParameters(doc);
+                    if (!DeploymentConfiguration.DeploymentMode && flushed > 0)
+                        DebugLogger.Info($"[ORCHESTRATOR] [BATCH-PARAMS] ✅ Flush complete: wrote {flushed} parameters for {currentContext.PlacedInstances.Count} sleeves");
                 }
-                catch (Exception snapEx)
+                catch (Exception batchEx)
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Warning($"[SNAPSHOT-PARAMS] ⚠️ Snapshot transfer failed: {snapEx.Message}");
+                        DebugLogger.Warning($"[ORCHESTRATOR] [BATCH-PARAMS] ⚠️ Batch operation failed: {batchEx.Message}");
                 }
             }
 

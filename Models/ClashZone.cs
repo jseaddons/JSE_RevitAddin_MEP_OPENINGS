@@ -607,6 +607,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
                     SleevePlacementPointActiveDocument = new XYZ(SleevePlacementPointActiveDocument.X, SleevePlacementPointActiveDocument.Y, value);
             }
         }
+
+        // ✅ ALIAS PROPERTIES: For backward compatibility and to fix compilation errors in SleevePersistenceService
+        [XmlIgnore]
+        public double SleevePlacementActiveX
+        {
+            get => SleevePlacementPointActiveDocumentX;
+            set => SleevePlacementPointActiveDocumentX = value;
+        }
+
+        [XmlIgnore]
+        public double SleevePlacementActiveY
+        {
+            get => SleevePlacementPointActiveDocumentY;
+            set => SleevePlacementPointActiveDocumentY = value;
+        }
+
+        [XmlIgnore]
+        public double SleevePlacementActiveZ
+        {
+            get => SleevePlacementPointActiveDocumentZ;
+            set => SleevePlacementPointActiveDocumentZ = value;
+        }
         
         /// <summary>
         /// Ensures SleevePlacementPointActiveDocument is properly reconstructed from XML-serializable properties

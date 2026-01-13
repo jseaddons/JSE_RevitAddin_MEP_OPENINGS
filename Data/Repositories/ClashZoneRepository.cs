@@ -961,7 +961,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Uses a temporary table approach for maximum performance.
         /// Updates IsResolved, IsClusterResolved, IsCombinedResolved, SleeveInstanceId, ClusterSleeveInstanceId, and IsCurrentClash flags.
         /// </summary>
-        public void BatchUpdateFlagsWithCurrentClash(List<(System.Guid ClashZoneId, int ClashZoneIntId, bool IsResolvedFlag, bool IsClusterResolvedFlag, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsCurrentClashFlag, bool IsClusteredFlag, bool? MarkedForClusterProcess, int AfterClusterSleeveId)> updates)
+        public void BatchUpdateFlagsWithCurrentClash(List<(System.Guid ClashZoneId, int ClashZoneIntId, bool IsResolvedFlag, bool IsClusterResolvedFlag, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsCurrentClashFlag, bool IsClusteredFlag, bool? MarkedForClusterProcess, int AfterClusterSleeveId, double SleeveWidth, double SleeveHeight, double SleeveDiameter)> updates)
         {
             _logger($"[SQLite][BATCH] 🚀 BatchUpdateFlagsWithCurrentClash called with {updates?.Count ?? 0} updates");
 
@@ -996,7 +996,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 IsCurrentClashFlag INTEGER,
                                 IsClusteredFlag INTEGER,
                                 MarkedForClusterProcess INTEGER,
-                                AfterClusterSleeveId INTEGER
+                                AfterClusterSleeveId INTEGER,
+                                SleeveWidth REAL,
+                                SleeveHeight REAL,
+                                SleeveDiameter REAL
                             )";
                         cmd.ExecuteNonQuery();
 
@@ -1004,9 +1007,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         cmd.CommandText = @"
                             INSERT INTO TempFlagUpdates 
                             (ClashZoneId, ClashZoneGuid, IsResolvedFlag, IsClusterResolvedFlag, IsCombinedResolved, 
-                             SleeveInstanceId, ClusterInstanceId, IsCurrentClashFlag, IsClusteredFlag, MarkedForClusterProcess, AfterClusterSleeveId)
+                             SleeveInstanceId, ClusterInstanceId, IsCurrentClashFlag, IsClusteredFlag, MarkedForClusterProcess, AfterClusterSleeveId,
+                             SleeveWidth, SleeveHeight, SleeveDiameter)
                             VALUES (@ClashZoneId, @ClashZoneGuid, @IsResolvedFlag, @IsClusterResolvedFlag, @IsCombinedResolved, 
-                                    @SleeveInstanceId, @ClusterInstanceId, @IsCurrentClashFlag, @IsClusteredFlag, @MarkedForClusterProcess, @AfterClusterSleeveId)";
+                                    @SleeveInstanceId, @ClusterInstanceId, @IsCurrentClashFlag, @IsClusteredFlag, @MarkedForClusterProcess, @AfterClusterSleeveId,
+                                    @SleeveWidth, @SleeveHeight, @SleeveDiameter)";
 
                         var pClashZoneIntId = cmd.CreateParameter();
                         pClashZoneIntId.ParameterName = "@ClashZoneId";
@@ -1052,6 +1057,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         pAfterClusterSleeveId.ParameterName = "@AfterClusterSleeveId";
                         cmd.Parameters.Add(pAfterClusterSleeveId);
 
+                        var pSleeveWidth = cmd.CreateParameter();
+                        pSleeveWidth.ParameterName = "@SleeveWidth";
+                        cmd.Parameters.Add(pSleeveWidth);
+
+                        var pSleeveHeight = cmd.CreateParameter();
+                        pSleeveHeight.ParameterName = "@SleeveHeight";
+                        cmd.Parameters.Add(pSleeveHeight);
+
+                        var pSleeveDiameter = cmd.CreateParameter();
+                        pSleeveDiameter.ParameterName = "@SleeveDiameter";
+                        cmd.Parameters.Add(pSleeveDiameter);
+
                         foreach (var update in updates)
                         {
                             pClashZoneIntId.Value = update.ClashZoneIntId;
@@ -1065,6 +1082,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             pIsClusteredFlag.Value = update.IsClusteredFlag ? 1 : 0;
                             pMarkedForClusterProcess.Value = (object)(update.MarkedForClusterProcess.HasValue ? (update.MarkedForClusterProcess.Value ? 1 : 0) : DBNull.Value);
                             pAfterClusterSleeveId.Value = update.AfterClusterSleeveId;
+                            pSleeveWidth.Value = update.SleeveWidth;
+                            pSleeveHeight.Value = update.SleeveHeight;
+                            pSleeveDiameter.Value = update.SleeveDiameter;
 
                             cmd.ExecuteNonQuery();
                         }
@@ -1087,6 +1107,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 ReadyForPlacementFlag = (SELECT IsCurrentClashFlag FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneId),
                                 MarkedForClusterProcess = (SELECT MarkedForClusterProcess FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneId),
                                 AfterClusterSleeveId = (SELECT AfterClusterSleeveId FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneId),
+                                SleeveWidth = CASE WHEN (SELECT SleeveWidth FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneId) > 0 THEN (SELECT SleeveWidth FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneId) ELSE SleeveWidth END,
+                                SleeveHeight = CASE WHEN (SELECT SleeveHeight FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneId) > 0 THEN (SELECT SleeveHeight FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneId) ELSE SleeveHeight END,
+                                SleeveDiameter = CASE WHEN (SELECT SleeveDiameter FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneId) > 0 THEN (SELECT SleeveDiameter FROM TempFlagUpdates WHERE TempFlagUpdates.ClashZoneId = ClashZones.ClashZoneId) ELSE SleeveDiameter END,
                                 UpdatedAt = CURRENT_TIMESTAMP
                             WHERE ClashZoneId IN (SELECT ClashZoneId FROM TempFlagUpdates)";
                         int rowsAffected = updateCmd.ExecuteNonQuery();
@@ -6588,7 +6611,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         public void UpdateSleevePlacement(System.Guid clashZoneGuid, int sleeveInstanceId, double width, double height, double diameter,
             double placementX, double placementY, double placementZ,
             double placementActiveX, double placementActiveY, double placementActiveZ,
-            double rotationAngleRad)
+            double rotationAngleRad, string sleeveFamilyName = null)
         {
             using (var cmd = _context.Connection.CreateCommand())
             {
@@ -6609,6 +6632,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         MepRotationAngleDeg = @MepRotationAngleDeg,
                         MepRotationCos = @MepRotationCos,
                         MepRotationSin = @MepRotationSin,
+                        SleeveFamilyName = @SleeveFamilyName,
                         UpdatedAt = CURRENT_TIMESTAMP
                     WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)
                       AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL";
@@ -6629,6 +6653,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 // ✅ ROTATION MATRIX: Pre-calculate and save cos/sin (dump once use many times)
                 cmd.Parameters.AddWithValue("@MepRotationCos", Math.Cos(rotationAngleRad));
                 cmd.Parameters.AddWithValue("@MepRotationSin", Math.Sin(rotationAngleRad));
+                cmd.Parameters.AddWithValue("@SleeveFamilyName", sleeveFamilyName ?? string.Empty);
                 cmd.ExecuteNonQuery();
             }
         }
@@ -6637,7 +6662,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             double maxX, double maxY, double maxZ, double? placementX = null, double? placementY = null, double? placementZ = null,
             double? rotatedMinX = null, double? rotatedMinY = null, double? rotatedMinZ = null,
             double? rotatedMaxX = null, double? rotatedMaxY = null, double? rotatedMaxZ = null,
-            bool? isClustered = null, bool? markedForCluster = null)
+            bool? isClustered = null, bool? markedForCluster = null, string? sleeveFamilyName = null,
+            double sleeveWidth = 0, double sleeveHeight = 0, double sleeveDiameter = 0)
         {
             using (var cmd = _context.Connection.CreateCommand())
             {
@@ -6653,17 +6679,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     "BoundingBoxMaxZ = @BoundingBoxMaxZ"
                 };
 
-                // ✅ USER REQUEST: Do NOT overwrite individual sleeve placement points with cluster placement point
-                // This preserves the individual wall centerline logic for potential fallback/dissolving
-                // See "Prevention of Cluster Point Overwrite" task
-                /*
-                if (placementX.HasValue && placementY.HasValue && placementZ.HasValue)
+                // ✅ CLUSTER DIMENSIONS: Save cluster dimensions to ClashZones table
+                if (sleeveWidth > 0)
                 {
-                    updateFields.Add("SleevePlacementX = @SleevePlacementX");
-                    updateFields.Add("SleevePlacementY = @SleevePlacementY");
-                    updateFields.Add("SleevePlacementZ = @SleevePlacementZ");
+                    updateFields.Add("SleeveWidth = @SleeveWidth");
+                    cmd.Parameters.AddWithValue("@SleeveWidth", sleeveWidth);
                 }
-                */
+                if (sleeveHeight > 0)
+                {
+                    updateFields.Add("SleeveHeight = @SleeveHeight");
+                    cmd.Parameters.AddWithValue("@SleeveHeight", sleeveHeight);
+                }
+                if (sleeveDiameter > 0)
+                {
+                    updateFields.Add("SleeveDiameter = @SleeveDiameter");
+                    cmd.Parameters.AddWithValue("@SleeveDiameter", sleeveDiameter);
+                }
+
+                // ✅ PERSISTENCE FIX: Save Family Name for validation in ClashZones table
+                if (!string.IsNullOrEmpty(sleeveFamilyName))
+                {
+                    updateFields.Add("SleeveFamilyName = @SleeveFamilyName");
+                    cmd.Parameters.AddWithValue("@SleeveFamilyName", sleeveFamilyName);
+                }
 
                 // ✅ Add rotated bounding boxes if provided
                 if (rotatedMinX.HasValue && rotatedMinY.HasValue && rotatedMinZ.HasValue &&
@@ -6675,11 +6713,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     updateFields.Add("RotatedBoundingBoxMaxX = @RotatedBoundingBoxMaxX");
                     updateFields.Add("RotatedBoundingBoxMaxY = @RotatedBoundingBoxMaxY");
                     updateFields.Add("RotatedBoundingBoxMaxZ = @RotatedBoundingBoxMaxZ");
+                    
+                    cmd.Parameters.AddWithValue("@RotatedBoundingBoxMinX", rotatedMinX.Value);
+                    cmd.Parameters.AddWithValue("@RotatedBoundingBoxMinY", rotatedMinY.Value);
+                    cmd.Parameters.AddWithValue("@RotatedBoundingBoxMinZ", rotatedMinZ.Value);
+                    cmd.Parameters.AddWithValue("@RotatedBoundingBoxMaxX", rotatedMaxX.Value);
+                    cmd.Parameters.AddWithValue("@RotatedBoundingBoxMaxY", rotatedMaxY.Value);
+                    cmd.Parameters.AddWithValue("@RotatedBoundingBoxMaxZ", rotatedMaxZ.Value);
                 }
 
                 if (isClustered.HasValue)
                 {
                     updateFields.Add("IsClusteredFlag = @IsClusteredFlag");
+                    cmd.Parameters.AddWithValue("@IsClusteredFlag", isClustered.Value ? 1 : 0);
                 }
 
                 // ✅ CRITICAL FIX: Always resolve the zone when cluster ID is provided
@@ -6689,6 +6735,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 if (markedForCluster.HasValue)
                 {
                     updateFields.Add("MarkedForClusterProcess = @MarkedForClusterProcess");
+                    cmd.Parameters.AddWithValue("@MarkedForClusterProcess", markedForCluster.Value ? 1 : 0);
                 }
 
                 updateFields.Add("UpdatedAt = CURRENT_TIMESTAMP");
@@ -6696,7 +6743,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 cmd.CommandText = $@"
                     UPDATE ClashZones SET
                         {string.Join(",\n                        ", updateFields)}
-                    WHERE Id = @ClashZoneId"; // ✅ Changed from 'ClashZoneId = @ClashZoneId' (int) to 'Id = @ClashZoneId' (text/guid)
+                    WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneId)
+                      AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL";
 
                 cmd.Parameters.AddWithValue("@ClashZoneId", clashZoneId.ToString()); // ✅ Pass Guid as string
                 cmd.Parameters.AddWithValue("@ClusterInstanceId", clusterInstanceId);
@@ -6964,6 +7012,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             }
         }
 
+        public void UpdateMepCategory(Guid clashZoneGuid, string category)
+        {
+            using (var cmd = _context.Connection.CreateCommand())
+            {
+                cmd.CommandText = "UPDATE ClashZones SET MepCategory = @Category, UpdatedAt = CURRENT_TIMESTAMP WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)";
+                cmd.Parameters.AddWithValue("@Category", category);
+                cmd.Parameters.AddWithValue("@ClashZoneGuid", clashZoneGuid.ToString());
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        public void UpdateSleeveFamilyName(Guid clashZoneGuid, string familyName)
+        {
+            using (var cmd = _context.Connection.CreateCommand())
+            {
+                cmd.CommandText = "UPDATE ClashZones SET SleeveFamilyName = @FamilyName, UpdatedAt = CURRENT_TIMESTAMP WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)";
+                cmd.Parameters.AddWithValue("@FamilyName", familyName ?? string.Empty);
+                cmd.Parameters.AddWithValue("@ClashZoneGuid", clashZoneGuid.ToString());
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        public void UpdateSleeveFamilyNameBulk(IEnumerable<Guid> clashZoneGuids, string familyName)
+        {
+            using (var transaction = _context.Connection.BeginTransaction())
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.Transaction = transaction;
+                    cmd.CommandText = "UPDATE ClashZones SET SleeveFamilyName = @FamilyName, UpdatedAt = CURRENT_TIMESTAMP WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)";
+                    
+                    cmd.Parameters.Add("@FamilyName", System.Data.DbType.String);
+                    cmd.Parameters.Add("@ClashZoneGuid", System.Data.DbType.String);
+
+                    cmd.Parameters["@FamilyName"].Value = familyName ?? string.Empty;
+
+                    foreach (var guid in clashZoneGuids)
+                    {
+                        cmd.Parameters["@ClashZoneGuid"].Value = guid.ToString();
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+                transaction.Commit();
+            }
+        }
+
         /// <summary>
         /// ✅ CLUSTER SLEEVE CORNERS: Update pre-calculated 4 corner coordinates for Cluster Sleeves (Phase 3)
         /// Calculated after cluster placement, stored for downstream processes.
@@ -7055,7 +7149,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             IEnumerable<(Guid ClashZoneGuid, int SleeveInstanceId, double Width, double Height, double Diameter,
                 double PlacementX, double PlacementY, double PlacementZ,
                 double PlacementActiveX, double PlacementActiveY, double PlacementActiveZ,
-                double RotationAngleRad)> updates)
+                double RotationAngleRad, string SleeveFamilyName)> updates)
         {
             var updateList = updates?.ToList();
             if (updateList == null || updateList.Count == 0) return;
@@ -7087,9 +7181,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 MepRotationAngleDeg = @MepRotationAngleDeg,
                                 MepRotationCos = @MepRotationCos,
                                 MepRotationSin = @MepRotationSin,
+                                SleeveFamilyName = @SleeveFamilyName,
                                 UpdatedAt = CURRENT_TIMESTAMP
                             WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)
-                              AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL";
+                               AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL";
 
                         // ✅ PREPARED STATEMENT: Create parameters once, reuse for all updates
                         var pGuid = cmd.Parameters.Add("@ClashZoneGuid", System.Data.DbType.String);
@@ -7107,6 +7202,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         var pRotDeg = cmd.Parameters.Add("@MepRotationAngleDeg", System.Data.DbType.Double);
                         var pRotCos = cmd.Parameters.Add("@MepRotationCos", System.Data.DbType.Double);
                         var pRotSin = cmd.Parameters.Add("@MepRotationSin", System.Data.DbType.Double);
+                        var pFamily = cmd.Parameters.Add("@SleeveFamilyName", System.Data.DbType.String);
 
                         foreach (var u in updateList)
                         {
@@ -7125,6 +7221,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             pRotDeg.Value = u.RotationAngleRad * 180.0 / Math.PI;
                             pRotCos.Value = Math.Cos(u.RotationAngleRad);
                             pRotSin.Value = Math.Sin(u.RotationAngleRad);
+                            pFamily.Value = u.SleeveFamilyName ?? string.Empty;
 
                             totalRows += cmd.ExecuteNonQuery();
                         }
@@ -7140,6 +7237,92 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             catch (Exception ex)
             {
                 _logger($"[SQLite] ❌ BatchUpdateSleevePlacement failed: {ex.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// ✅ PLACEMENT OPTIMIZATION: Batch update cluster placement data in a single transaction.
+        /// </summary>
+        public void BatchUpdateClusterPlacement(
+            IEnumerable<(System.Guid ClashZoneGuid, int ClusterInstanceId, 
+                double Width, double Height, double Diameter,
+                double BoundingBoxMinX, double BoundingBoxMinY, double BoundingBoxMinZ,
+                double BoundingBoxMaxX, double BoundingBoxMaxY, double BoundingBoxMaxZ,
+                string SleeveFamilyName)> updates)
+        {
+            var updateList = updates?.ToList();
+            if (updateList == null || updateList.Count == 0) return;
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            int totalRows = 0;
+
+            try
+            {
+                using (var transaction = _context.Connection.BeginTransaction())
+                {
+                    using (var cmd = _context.Connection.CreateCommand())
+                    {
+                        cmd.Transaction = transaction;
+                        cmd.CommandText = @"
+                            UPDATE ClashZones SET
+                                SleeveState = 2,
+                                ClusterInstanceId = @ClusterInstanceId,
+                                SleeveWidth = @SleeveWidth,
+                                SleeveHeight = @SleeveHeight,
+                                SleeveDiameter = @SleeveDiameter,
+                                BoundingBoxMinX = @BoundingBoxMinX,
+                                BoundingBoxMinY = @BoundingBoxMinY,
+                                BoundingBoxMinZ = @BoundingBoxMinZ,
+                                BoundingBoxMaxX = @BoundingBoxMaxX,
+                                BoundingBoxMaxY = @BoundingBoxMaxY,
+                                BoundingBoxMaxZ = @BoundingBoxMaxZ,
+                                SleeveFamilyName = @SleeveFamilyName,
+                                UpdatedAt = CURRENT_TIMESTAMP
+                            WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)
+                               AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL";
+
+                        var pGuid = cmd.Parameters.Add("@ClashZoneGuid", System.Data.DbType.String);
+                        var pClusterId = cmd.Parameters.Add("@ClusterInstanceId", System.Data.DbType.Int32);
+                        var pWidth = cmd.Parameters.Add("@SleeveWidth", System.Data.DbType.Double);
+                        var pHeight = cmd.Parameters.Add("@SleeveHeight", System.Data.DbType.Double);
+                        var pDiameter = cmd.Parameters.Add("@SleeveDiameter", System.Data.DbType.Double);
+                        var pMinX = cmd.Parameters.Add("@BoundingBoxMinX", System.Data.DbType.Double);
+                        var pMinY = cmd.Parameters.Add("@BoundingBoxMinY", System.Data.DbType.Double);
+                        var pMinZ = cmd.Parameters.Add("@BoundingBoxMinZ", System.Data.DbType.Double);
+                        var pMaxX = cmd.Parameters.Add("@BoundingBoxMaxX", System.Data.DbType.Double);
+                        var pMaxY = cmd.Parameters.Add("@BoundingBoxMaxY", System.Data.DbType.Double);
+                        var pMaxZ = cmd.Parameters.Add("@BoundingBoxMaxZ", System.Data.DbType.Double);
+                        var pFamily = cmd.Parameters.Add("@SleeveFamilyName", System.Data.DbType.String);
+
+                        foreach (var u in updateList)
+                        {
+                            pGuid.Value = u.ClashZoneGuid.ToString();
+                            pClusterId.Value = u.ClusterInstanceId;
+                            pWidth.Value = u.Width;
+                            pHeight.Value = u.Height;
+                            pDiameter.Value = u.Diameter;
+                            pMinX.Value = u.BoundingBoxMinX;
+                            pMinY.Value = u.BoundingBoxMinY;
+                            pMinZ.Value = u.BoundingBoxMinZ;
+                            pMaxX.Value = u.BoundingBoxMaxX;
+                            pMaxY.Value = u.BoundingBoxMaxY;
+                            pMaxZ.Value = u.BoundingBoxMaxZ;
+                            pFamily.Value = u.SleeveFamilyName ?? string.Empty;
+
+                            totalRows += cmd.ExecuteNonQuery();
+                        }
+                    }
+                    transaction.Commit();
+                }
+                
+                sw.Stop();
+                DatabaseOperationLogger.LogOperation("UPDATE", "ClashZones (ClusterBatch)", null, totalRows, 
+                    $"Done. {totalRows} rows in {sw.ElapsedMilliseconds}ms");
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ❌ Error in BatchUpdateClusterPlacement: {ex.Message}");
                 throw;
             }
         }
@@ -8249,34 +8432,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             return zones;
         }
 
-        public void UpdateMepCategory(Guid clashZoneGuid, string category)
-        {
-            try
-            {
-                using (var transaction = _context.Connection.BeginTransaction())
-                {
-                    using (var cmd = _context.Connection.CreateCommand())
-                    {
-                        cmd.Transaction = transaction;
-                        cmd.CommandText = @"
-                            UPDATE ClashZones 
-                            SET MepCategory = @category,
-                                UpdatedAt = CURRENT_TIMESTAMP
-                            WHERE ClashZoneGuid = @guid";
-
-                        cmd.Parameters.AddWithValue("@guid", clashZoneGuid.ToString());
-                        cmd.Parameters.AddWithValue("@category", category);
-
-                        cmd.ExecuteNonQuery();
-                    }
-                    transaction.Commit();
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger($"[SQLite] ❌ Error updating MEP Category for {clashZoneGuid}: {ex.Message}");
-            }
-        }
 
         public Dictionary<int, string> GetMepCategoriesForSleeveIds(IEnumerable<int> sleeveInstanceIds)
         {

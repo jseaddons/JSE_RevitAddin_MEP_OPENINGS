@@ -61,7 +61,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
         /// <param name="filterName">Filter name for snapshot saving</param>
         /// <returns>Number of sleeves successfully persisted</returns>
         public int PersistSleeveData(
-            List<(FamilyInstance sleeve, ClashZone zone, double finalWidth, double finalHeight, double finalDiameter)> placedSleeveData,
+            List<(FamilyInstance sleeve, ClashZone zone, double finalWidth, double finalHeight, double finalDiameter, double finalDepth)> placedSleeveData,
             string filterName)
         {
             if (placedSleeveData == null || placedSleeveData.Count == 0)
@@ -113,7 +113,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                             {
                                 try
                                 {
-                                    var (sleeve, zone, fw, fh, fd) = item;
+                                    var (sleeve, zone, fw, fh, fd, fdepth) = item;
                                     var rotationAngleRad = zone.MepElementRotationAngle;
                                     var rotationAngleDeg = Math.Abs(rotationAngleRad * 180.0 / Math.PI);
                                     bool isStraightAxisAligned = IsStraightAxisAligned(rotationAngleDeg);
@@ -196,7 +196,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                     else
                     {
                         // ✅ FALLBACK: Use orchestrator for corners if parallel disabled or small batch
-                        cornerData = _parallelCornerOrchestrator.CalculateCornersInParallel(placedSleeveData);
+                        // ? CRITICAL: Convert 6-tuple to 5-tuple for orchestrator (it only expects 5)
+                        var convertedList = placedSleeveData.Select(x => (x.sleeve, x.zone, x.finalWidth, x.finalHeight, x.finalDiameter)).ToList();
+                        cornerData = _parallelCornerOrchestrator.CalculateCornersInParallel(convertedList);
                     }
                     
                     geometryCalculationTimer.Stop();
@@ -208,7 +210,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                     // ✅ PERFORMANCE OPTIMIZATION: Pre-validate all sleeves in parallel (non-Revit, non-DB operations)
                     // This validation is pure data checking - can be parallelized
                     var validationTimer = System.Diagnostics.Stopwatch.StartNew();
-                    var validSleeveData = new List<(FamilyInstance sleeve, ClashZone zone, double fw, double fh, double fd)>();
+                    var validSleeveData = new List<(FamilyInstance sleeve, ClashZone zone, double fw, double fh, double fd, double fdepth)>();
                     
                     if (OptimizationFlags.UseParallelProcessing && placedSleeveData.Count >= 12)
                     {
@@ -218,7 +220,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                             {
                                 try
                                 {
-                                    var (sleeve, zone, fw, fh, fd) = item;
+                                    var (sleeve, zone, fw, fh, fd, fdepth) = item;
                                     
                                     // ✅ VALIDATION CHECKS (pure data validation - no Revit API, no DB)
                                     if (zone == null) return (item, false, "Null zone");
@@ -271,7 +273,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                     var placementUpdates = new List<(Guid ClashZoneGuid, int SleeveInstanceId, double Width, double Height, double Diameter,
                         double PlacementX, double PlacementY, double PlacementZ,
                         double PlacementActiveX, double PlacementActiveY, double PlacementActiveZ,
-                        double RotationAngleRad)>();
+                        double RotationAngleRad, string SleeveFamilyName)>();
                     var cornerUpdates = new List<(Guid ClashZoneGuid,
                         double Corner1X, double Corner1Y, double Corner1Z,
                         double Corner2X, double Corner2Y, double Corner2Z,
@@ -281,7 +283,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                     // ✅ PERFORMANCE OPTIMIZATION: Batch processing in single transaction (handled by repository)
                     // ✅ SAFETY: Process each sleeve with individual error handling (fail-safe)
                     // ✅ NOTE: Database operations remain sequential (SQLite doesn't support parallel writes well)
-                    foreach (var (sleeve, zone, fw, fh, fd) in validSleeveData)
+                    foreach (var (sleeve, zone, fw, fh, fd, fdepth) in validSleeveData)
                     {
                         // ✅ SAFETY: Comprehensive validation before processing
                         if (zone == null)
@@ -330,10 +332,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                                 zone.SleevePlacementPointX,
                                 zone.SleevePlacementPointY,
                                 zone.SleevePlacementPointZ,
-                                zone.SleevePlacementPointX,
-                                zone.SleevePlacementPointY,
-                                zone.SleevePlacementPointZ,
-                                zone.MepElementRotationAngle));
+                                zone.SleevePlacementActiveX,
+                                zone.SleevePlacementActiveY,
+                                zone.SleevePlacementActiveZ,
+                                zone.MepElementRotationAngle,
+                                sleeve.Symbol?.Family?.Name ?? string.Empty));
 
                             // ✅ CRITICAL: Sync MEP Category to DB (Dump once, use many times)
                             // This ensures the category used for filtering is persisted
@@ -478,7 +481,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                         var snapshotTimer = System.Diagnostics.Stopwatch.StartNew();
                         try
                         {
-                            SaveSnapshots(repository, dbContext, placedSleeveData, filterName);
+                            // ? CRITICAL: Convert 6-tuple to 5-tuple for SaveSnapshots (it only expects 5)
+                            var convertedForSnapshot = placedSleeveData.Select(x => (x.sleeve, x.zone, x.finalWidth, x.finalHeight, x.finalDiameter)).ToList();
+                            SaveSnapshots(repository, dbContext, convertedForSnapshot, filterName);
                             snapshotTimer.Stop();
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
@@ -550,7 +555,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
             {
                try 
                {
-                   corners = _cornerCalculationService.CalculateCornersFromInstance(sleeve);
+                   // ✅ CRITICAL UPDATE: Pass HostOrientation and StructuralType from DB for robust strategy selection
+                   corners = _cornerCalculationService.CalculateCornersFromInstance(sleeve, zone.HostOrientation, zone.StructuralElementType);
                    if (corners.HasValue && !DeploymentConfiguration.DeploymentMode)
                    {
                          // Optional: Log success

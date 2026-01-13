@@ -64,235 +64,103 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         /// </summary>
         public double DetermineRotationAngle(List<dynamic> cluster, string? xmlFilePath = null)
         {
-            try
+            // ✅ PHASE 4 FIX: Get orientation from DATABASE, not from Revit API
+            // This replaces all legacy heuristic logic (finding first zone, checking wall types manually, etc.)
+            
+            if (cluster != null && cluster.Count > 0)
             {
-                if (cluster == null || cluster.Count == 0)
-                    return 0.0;
-
-                // ✅ CRITICAL: Check if cluster contains circular elements (Pipes and Round Ducts)
-                // Circular elements should always be placed straight to WCS (axis-aligned), no rotation needed
-                // MEP orientation is meaningless for circular elements - they have the same dimensions in all directions
-                // This applies to BOTH floors and walls - circular elements don't need rotation for alignment
-                bool isCircularElementCluster = false;
-                string circularElementType = "";
-                foreach (var sleeveData in cluster)
+                var firstItem = cluster[0];
+                ClashZone? firstClashZone = null;
+                
+                if (firstItem is ClashZone cz)
+                    firstClashZone = cz;
+                else if (firstItem?.ClashZone != null)
+                    firstClashZone = firstItem.ClashZone as ClashZone;
+                
+                if (firstClashZone != null)
                 {
-                    if (sleeveData?.ClashZone == null)
-                        continue;
-
-                    var clashZone = sleeveData.ClashZone as ClashZone;
-                    if (clashZone == null)
-                        continue;
-
-                    // ✅ DIAGNOSTIC: Log actual category name to identify pipe detection issues
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [PIPE-CATEGORY-DEBUG] Sleeve {sleeveData.SleeveInstanceId}: MepElementCategory='{clashZone.MepElementCategory}'\n");
-                    }
-
-                    // ✅ Check if this is a pipe (all pipes are circular)
-                    bool isPipe = string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase) ||
-                                  string.Equals(clashZone.MepElementCategory, "Pipe Accessories", StringComparison.OrdinalIgnoreCase) ||
-                                  (clashZone.MepElementCategory != null && clashZone.MepElementCategory.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0);
+                    // Normalize HostOrientation string
+                    string hostOrientation = (firstClashZone.HostOrientation ?? "").Trim();
                     
-                    if (isPipe)
+                    // ✅ VALIDATION: All zones in cluster must have SAME orientation
+                    // This prevents mixed-orientation clusters (e.g. X-wall mixed with Y-wall)
+                    bool allSameOrientation = true;
+                    foreach (var item in cluster)
                     {
-                        isCircularElementCluster = true;
-                        circularElementType = "PIPE";
-                        break;
-                    }
-
-                    // ✅ Check if this is a round duct (circular element)
-                    bool isDuct = string.Equals(clashZone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase) ||
-                                  string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase);
-                    if (isDuct)
-                    {
-                        // Check if duct is round/circular
-                        bool isRoundDuct = string.Equals(clashZone.DuctShape, "Round", StringComparison.OrdinalIgnoreCase) ||
-                                          string.Equals(clashZone.DuctShape, "Circular", StringComparison.OrdinalIgnoreCase) ||
-                                          (clashZone.MepElementSizeData != null && 
-                                           (string.Equals(clashZone.MepElementSizeData.Shape, "Round", StringComparison.OrdinalIgnoreCase) ||
-                                            string.Equals(clashZone.MepElementSizeData.Shape, "Circular", StringComparison.OrdinalIgnoreCase)));
+                        ClashZone? itemCz = null;
+                        if (item is ClashZone clashZone)
+                            itemCz = clashZone;
+                        else if (item?.ClashZone != null)
+                            itemCz = item.ClashZone as ClashZone;
                         
-                        if (isRoundDuct)
+                        // Treat null/empty as specific mismatch if reference is not empty
+                        string itemOrientation = (itemCz?.HostOrientation ?? "").Trim();
+                        
+                        if (!string.Equals(itemOrientation, hostOrientation, StringComparison.OrdinalIgnoreCase))
                         {
-                            isCircularElementCluster = true;
-                            circularElementType = "ROUND DUCT";
+                            allSameOrientation = false;
+                            SafeFileLogger.SafeAppendText("cluster_errors.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ❌ CRITICAL: Cluster has MIXED orientations! " +
+                                $"Zone1 Orientation='{hostOrientation}', Zone2 Orientation='{itemOrientation}'\n");
                             break;
                         }
                     }
-                }
-
-                // ✅ WALL/STRUCTURAL FRAMING: Rotation based on X-wall vs Y-wall (same as individual sleeves)
-                // Individual sleeves: X-walls get +90°, Y-walls get 0°
-                // Cluster sleeves must match individual sleeve rotation to maintain correct orientation
-                // ⚠️⚠️⚠️ CRITICAL FIX: Check wall orientation BEFORE returning 0.0° for circular elements
-                // Pipes on X-walls need 90° rotation, pipes on Y-walls need 0° rotation
-                // Get host type and orientation from first clash zone
-                ClashZone? firstClashZone = null;
-                foreach (var sleeveData in cluster)
-                {
-                    if (sleeveData?.ClashZone == null)
-                        continue;
-
-                    firstClashZone = sleeveData.ClashZone as ClashZone;
-                    if (firstClashZone != null)
-                        break;
-                }
-
-                // ✅ UNIFIED ROTATION LOGIC: Reuse Individual Sleeve Rotation Code
-                // As requested, use SleeveRotationService for Wall and Framing rotation to ensure 100% consistency.
-                if (firstClashZone != null)
-                {
-                    bool isWallHost = firstClashZone.StructuralElementType != null && 
-                                     (firstClashZone.StructuralElementType.IndexOf("Wall", StringComparison.OrdinalIgnoreCase) >= 0);
-                    bool isFramingHost = firstClashZone.StructuralElementType != null &&
-                                        (firstClashZone.StructuralElementType.IndexOf("Structural Framing", StringComparison.OrdinalIgnoreCase) >= 0);
-
-                    if (isWallHost || isFramingHost)
+                    
+                    if (!allSameOrientation)
                     {
-                        // ✅ CLUSTER ROTATION FIX: Revert to Legacy/User-Confirmed Logic
-                        // User confirms: "WITHOUT ROTATION (0°) CAN SIT ON Y WALL".
-                        // This implies the Family is Y-Aligned by default (Width along Y).
-                        // Y-Wall (Runs Y): 0° (Matches default).
-                        // X-Wall (Runs X): 90° (Rotates to align Width with X).
-                        
-                        string hostOrientation = firstClashZone.HostOrientation ?? "X"; // Default to X if null
-                        hostOrientation = hostOrientation.Trim().ToUpper();
-                        
-                        double clusterRotation = 0.0;
-                        if (hostOrientation == "Y" || hostOrientation.Contains("Y-WALL"))
+                        SafeFileLogger.SafeAppendText("cluster_errors.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ❌ SKIPPING cluster due to mixed orientations\n");
+                        return 0.0; // Fallback to 0 (will likely be rejected or placed poorly, but safe)
+                    }
+                    
+                    // ✅ PHASE 4: Use database orientation directly
+                    if (string.Equals(hostOrientation, "X", StringComparison.OrdinalIgnoreCase) || 
+                        hostOrientation.IndexOf("X-WALL", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        double rotationAngle = Math.PI / 2.0; // 90 degrees for X-walls
+                        if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            clusterRotation = 0.0; // 0 degrees for Y-Wall
-                            if (!DeploymentConfiguration.DeploymentMode)
-                                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔧 CLUSTER ROTATION: Y-Wall detected. Setting Rotation=0.0° (User confirmed Legacy)\n");
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ ORIENTATION FROM DATABASE: X-wall → 90° rotation\n");
                         }
-                        else
+                        return rotationAngle;
+                    }
+                    else if (string.Equals(hostOrientation, "Y", StringComparison.OrdinalIgnoreCase) || 
+                             hostOrientation.IndexOf("Y-WALL", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        double rotationAngle = 0.0; // 0 degrees for Y-walls
+                        if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            clusterRotation = Math.PI / 2.0; // 90 degrees for X-Wall
-                            if (!DeploymentConfiguration.DeploymentMode)
-                                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔧 CLUSTER ROTATION: X-Wall detected. Setting Rotation=90.0° (User confirmed Legacy)\n");
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ ORIENTATION FROM DATABASE: Y-wall → 0° rotation\n");
                         }
+                        return rotationAngle;
+                    }
+                    else
+                    {
+                        // For floors (or anything not explicitly X/Y wall), use MEP element rotation angle (from database)
+                        // This covers "Floor", "Floors", or any other host type where we rely on the MEP element's rotation
+                        double rotationAngle = firstClashZone.MepElementRotationAngle;
                         
-                        return clusterRotation;
+                        // Normalize to 0-2PI
+                        while (rotationAngle < 0) rotationAngle += 2 * Math.PI;
+                        while (rotationAngle >= 2 * Math.PI) rotationAngle -= 2 * Math.PI;
+
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            string typeLog = string.IsNullOrEmpty(hostOrientation) ? "Unknown/Floor" : hostOrientation;
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ ORIENTATION FROM DATABASE: {typeLog} → {rotationAngle * 180 / Math.PI:F1}° rotation (MEP Angle)\n");
+                        }
+                        return rotationAngle;
                     }
                 }
-
-                // ✅ CIRCULAR ELEMENT FIX: For floors (non-wall hosts), return 0.0° for circular elements (Pipes and Round Ducts)
-                // MEP orientation is meaningless for circular elements on floors - they have the same dimensions in all directions
-                // ⚠️⚠️⚠️ CRITICAL: This only applies to floors, NOT walls (walls handled above)
-                if (isCircularElementCluster)
-                {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"[CLUSTER-ANGLE] {circularElementType} cluster on FLOOR detected: Returning 0.0° (straight axis-aligned to WCS, MEP orientation meaningless for circular elements on floors)");
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [CIRCULAR-RETURN] ✅ {circularElementType} cluster on FLOOR → Returning 0.0° (straight axis, MEP orientation meaningless)\n");
-                    }
-                    return 0.0;
-                }
-
-                var rotationAngles = new List<double>();
-
-                foreach (var sleeveData in cluster)
-                {
-                    if (sleeveData?.ClashZone == null)
-                        continue;
-
-                    var clashZone = sleeveData.ClashZone as ClashZone;
-                    if (clashZone == null)
-                        continue;
-
-                    // ✅ ROTATION DATA FROM DB: Get rotation angle from clash zone (loaded from database).
-                    // MepElementRotationAngle is saved to database during refresh (InsertOrUpdateClashZones)
-                    // and loaded by GetClashZonesByCategory -> MepRotationAngleRad column.
-                    double angle = clashZone.MepElementRotationAngle;
-                    
-                    // Normalize angle to 0-2π range
-                    while (angle < 0) angle += 2 * Math.PI;
-                    while (angle >= 2 * Math.PI) angle -= 2 * Math.PI;
-                    
-                    rotationAngles.Add(angle);
-                }
-
-                if (rotationAngles.Count == 0)
-                    return 0.0;
-
-                // ✅ STRATEGY: Use average angle (works well for similar angles)
-                double averageAngle = rotationAngles.Average();
-                
-                // Check if angles wrap around 0°/360° boundary
-                double minAngle = rotationAngles.Min();
-                double maxAngle = rotationAngles.Max();
-                if (maxAngle - minAngle > Math.PI)
-                {
-                    // Angles wrap around - adjust by adding 2π to angles < π
-                    var adjustedAngles = rotationAngles.Select(a => a < Math.PI ? a + 2 * Math.PI : a).ToList();
-                    averageAngle = adjustedAngles.Average();
-                    if (averageAngle >= 2 * Math.PI)
-                        averageAngle -= 2 * Math.PI;
-                }
-
-                // ✅ CRITICAL FIX: Check if angle is essentially straight axis-aligned to WCS (0°, 90°, 180°, 270°)
-                // If so, return 0 to use straight axis-aligned bounding box logic
-                // Otherwise, return rotation angle for rotated axis-aligned (non-straight) clusters
-                double thresholdDegrees = 2.0; // 2 degree tolerance
-                
-                // Helper function to check if an angle is straight axis-aligned to WCS
-                bool IsStraightAxisAligned(double angleRad)
-                {
-                    double angleDeg = angleRad * 180 / Math.PI;
-                    while (angleDeg < 0) angleDeg += 360;
-                    while (angleDeg >= 360) angleDeg -= 360;
-                    
-                    double distTo0 = Math.Min(angleDeg, 360 - angleDeg);
-                    double distTo90 = Math.Abs(angleDeg - 90);
-                    double distTo180 = Math.Abs(angleDeg - 180);
-                    double distTo270 = Math.Abs(angleDeg - 270);
-                    
-                    return distTo0 < thresholdDegrees || distTo90 < thresholdDegrees || 
-                           distTo180 < thresholdDegrees || distTo270 < thresholdDegrees;
-                }
-                
-                // Check if ALL individual angles are straight axis-aligned to WCS
-                bool allStraightAxisAligned = rotationAngles.All(IsStraightAxisAligned);
-                
-                if (allStraightAxisAligned)
-                {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        string angleList = string.Join(", ", rotationAngles.Select(a => $"{a * 180 / Math.PI:F1}°"));
-                        DebugLogger.Info($"[CLUSTER-ANGLE] All {rotationAngles.Count} angles are straight axis-aligned to WCS: [{angleList}], using straight axis-aligned bounding box");
-                    }
-                    return 0.0;
-                }
-                
-                // Check if average angle is straight axis-aligned to WCS
-                if (IsStraightAxisAligned(averageAngle))
-                {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        double angleDegrees = averageAngle * 180 / Math.PI;
-                        string angleList = string.Join(", ", rotationAngles.Select(a => $"{a * 180 / Math.PI:F1}°"));
-                        DebugLogger.Info($"[CLUSTER-ANGLE] Average angle {angleDegrees:F1}° is straight axis-aligned to WCS (angles: [{angleList}]), using straight axis-aligned bounding box");
-                    }
-                    return 0.0;
-                }
-
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    DebugLogger.Info($"[CLUSTER-ANGLE] Determined dominant rotation angle: {averageAngle * 180 / Math.PI:F1}° from {rotationAngles.Count} sleeves (rotated axis-aligned/non-straight)");
-                }
-
-                return averageAngle;
             }
-            catch (Exception ex)
-            {
-                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Warning($"[ClusterRotationService] Error determining dominant rotation angle: {ex.Message}");
-                return 0.0;
-            }
+
+            // ❌ If we reach here, database values were not available - ERROR
+            SafeFileLogger.SafeAppendText("cluster_errors.log",
+                $"[{DateTime.Now:HH:mm:ss}] ❌ CRITICAL: Could not get HostOrientation from database for cluster\n");
+            return 0.0; // Fallback to no rotation (error case)
         }
 
         /// <summary>
@@ -2325,74 +2193,118 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         }
 
         /// <summary>
-        /// ✅ CRITICAL FIX: Calculate cluster placement point from intersection points (centroid)
-        /// Individual sleeves are placed at intersection points, so cluster should be at average of intersection points
-        /// This ensures the cluster sleeve is placed correctly relative to the individual intersection points
+        /// ✅ CRITICAL FIX: Calculate cluster placement point using HYBRID logic
+        /// - CENTROID (Average): Used for Width (Along Wall) and Height (Z) axes.
+        /// - FIRST SLEEVE: Used for Perpendicular (Wall Thickness) axis to ensure wall center alignment.
+        /// - User Request: "placement point is at wall center same as first sleeve... get the centroid for width and height only"
         /// </summary>
         private XYZ CalculatePlacementPointFromIntersections(List<dynamic> cluster, string? xmlFilePath)
         {
             if (cluster == null || cluster.Count == 0)
                 return XYZ.Zero;
 
-            double sumX = 0.0;
-            double sumY = 0.0;
-            double sumZ = 0.0;
+            // ✅ Step 1: Calculate CENTROID (Average) first
+            double sumX = 0.0, sumY = 0.0, sumZ = 0.0;
             int validCount = 0;
+            ClashZone? firstValidCz = null;
+            int firstSleeveId = 0;
 
+            // Collect all points and find first valid sleeve for metadata
             foreach (var sleeveData in cluster)
             {
+                if (sleeveData == null || sleeveData.SleeveInstanceId <= 0) continue;
+                
                 try
                 {
-                    int sleeveInstanceId = sleeveData.SleeveInstanceId;
-                    if (sleeveInstanceId <= 0)
-                        continue;
+                    var cz = GetCachedClashZone(sleeveData.SleeveInstanceId, xmlFilePath);
+                    if (cz == null) continue;
 
-                    var cz = GetCachedClashZone(sleeveInstanceId, xmlFilePath);
-                    if (cz == null)
-                        continue;
+                    // Capture first valid sleeve for Host/Orientation checks
+                    if (firstValidCz == null)
+                    {
+                        firstValidCz = cz;
+                        firstSleeveId = sleeveData.SleeveInstanceId;
+                    }
 
-                    // ✅ Use intersection point coordinates (where MEP element intersects structural element)
                     double ipX = cz.IntersectionPointX;
                     double ipY = cz.IntersectionPointY;
                     double ipZ = cz.IntersectionPointZ;
 
-                    // Validate coordinates are non-zero and not NaN
-                    if (ipX != 0.0 || ipY != 0.0 || ipZ != 0.0)
+                    if ((ipX != 0.0 || ipY != 0.0 || ipZ != 0.0) &&
+                        !double.IsNaN(ipX) && !double.IsInfinity(ipX))
                     {
-                        if (!double.IsNaN(ipX) && !double.IsInfinity(ipX) &&
-                            !double.IsNaN(ipY) && !double.IsInfinity(ipY) &&
-                            !double.IsNaN(ipZ) && !double.IsInfinity(ipZ))
-                        {
-                            sumX += ipX;
-                            sumY += ipY;
-                            sumZ += ipZ;
-                            validCount++;
-                        }
+                        sumX += ipX;
+                        sumY += ipY;
+                        sumZ += ipZ;
+                        validCount++;
                     }
                 }
-                catch (Exception ex)
-                {
-                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ Error getting intersection point for sleeve in cluster: {ex.Message}\n");
-                }
+                catch { }
             }
 
-            if (validCount == 0)
+            if (validCount == 0 || firstValidCz == null)
             {
                 SafeFileLogger.SafeAppendText("cluster_sizing.log",
                     $"[{DateTime.Now:HH:mm:ss}] ⚠️ No valid intersection points found in cluster ({cluster.Count} sleeves)\n");
                 return XYZ.Zero;
             }
 
-            // Calculate centroid (average) of intersection points
+            // Initial Centroid (Average of all sleeves)
             XYZ centroid = new XYZ(sumX / validCount, sumY / validCount, sumZ / validCount);
 
+            // ✅ Step 2: Determine if Hybrid Logic is needed (Wall/Framing)
+            string hostType = firstValidCz.StructuralElementType ?? "";
+            bool isWall = hostType.StartsWith("Wall", StringComparison.OrdinalIgnoreCase) || 
+                          hostType.Equals("Structural Framing", StringComparison.OrdinalIgnoreCase);
+
+            if (isWall)
+            {
+                // ✅ WALL LOGIC: Override Perpendicular Axis with First Sleeve's coordinate
+                // "placement point is at wall center same as first sleeve"
+                
+                string orientation = (firstValidCz.HostOrientation ?? "").Trim().ToUpper();
+                double finalX = centroid.X;
+                double finalY = centroid.Y;
+                double finalZ = centroid.Z; // Height always uses Centroid (Average Z)
+
+                if (orientation.Contains("X"))
+                {
+                    // X-WALL: Wall runs along X-axis.
+                    // - Parallel (Width): X (Keep Centroid)
+                    // - Perpendicular (Thickness): Y (Override with First Sleeve)
+                    finalY = firstValidCz.IntersectionPointY;
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] 📐 HYBRID X-WALL: Override Y (Thk)={finalY:F6}, Keep X (Len)={finalX:F6}\n");
+                }
+                else if (orientation.Contains("Y"))
+                {
+                    // Y-WALL: Wall runs along Y-axis.
+                    // - Parallel (Width): Y (Keep Centroid)
+                    // - Perpendicular (Thickness): X (Override with First Sleeve)
+                    finalX = firstValidCz.IntersectionPointX;
+
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] 📐 HYBRID Y-WALL: Override X (Thk)={finalX:F6}, Keep Y (Len)={finalY:F6}\n");
+                }
+                else
+                {
+                    // Fallback (Unknown Orientation): Stick to First Sleeve complete override for safety
+                    finalX = firstValidCz.IntersectionPointX;
+                    finalY = firstValidCz.IntersectionPointY;
+                    // Keep Centroid Z for height centering
+                }
+
+                XYZ hybridPoint = new XYZ(finalX, finalY, finalZ);
+                return hybridPoint;
+            }
+
+            // ✅ FLOOR LOGIC: Pure Centroid
             if (!DeploymentConfiguration.DeploymentMode)
             {
                 SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                    $"[{DateTime.Now:HH:mm:ss}] ✅ PLACEMENT POINT: Calculated from {validCount}/{cluster.Count} intersection points: ({centroid.X:F6}, {centroid.Y:F6}, {centroid.Z:F6})\n");
+                    $"[{DateTime.Now:HH:mm:ss}] ✅ PLACEMENT (FLOOR): Centroid ({centroid.X:F6}, {centroid.Y:F6}, {centroid.Z:F6})\n");
             }
-
             return centroid;
         }
     }

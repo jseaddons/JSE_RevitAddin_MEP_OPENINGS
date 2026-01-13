@@ -85,7 +85,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor
             List<(ClashZone clashZone, int sleeveId)> clashZones, 
             bool isCluster, 
             string category, 
-            string filterName = null);
+            string filterName = null,
+            double clusterWidth = 0,
+            double clusterHeight = 0,
+            double clusterDiameter = 0);
         
         /// <summary>
         /// Deletes a sleeve when its intersection point has changed significantly.

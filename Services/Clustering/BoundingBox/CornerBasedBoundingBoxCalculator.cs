@@ -90,8 +90,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
                     );
 
                     // Get sleeve dimensions
-                    double sleeveWidth = cz.SleeveWidth > 0 ? cz.SleeveWidth : 0;
-                    double sleeveHeight = cz.SleeveHeight > 0 ? cz.SleeveHeight : 0;
+                    // ✅ CRITICAL FIX: Fallback to Diameter if Width/Height are 0 (e.g. Pipes in DB)
+                    // This prevents "Flat Clusters" (H=0) when clustering pipes that haven't explicitly set W/H columns.
+                    double sleeveWidth = cz.SleeveWidth > 0 ? cz.SleeveWidth : (cz.SleeveDiameter > 0 ? cz.SleeveDiameter : 0);
+                    double sleeveHeight = cz.SleeveHeight > 0 ? cz.SleeveHeight : (cz.SleeveDiameter > 0 ? cz.SleeveDiameter : 0);
 
                     // Get sleeve rotation angle
                     double sleeveRotation = cz.MepElementRotationAngle;
@@ -211,8 +213,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
                         double relY = worldCorners[j].Y - origin.Y;
 
                         // Rotate to cluster's intended axis coordinate system
-                        double clusterX = relX * cosCluster - relY * sinCluster;
-                        double clusterY = relX * sinCluster + relY * cosCluster;
+                        // ✅ CRITICAL FIX: To transform FROM world TO local cluster axis, we must apply INVERSE rotation (rotate by -theta)
+                        // This aligns the world point onto the cluster's axis.
+                        // Previous code used forward rotation (+theta), which rotated the point FURTHER away, causing Width/Height swaps (X/Y mixup).
+                        double clusterX = relX * cosCluster + relY * sinCluster;   // (x*cos + y*sin)
+                        double clusterY = -relX * sinCluster + relY * cosCluster;  // (-x*sin + y*cos)
 
                         allTransformedCorners.Add(new XYZ(
                             clusterX,

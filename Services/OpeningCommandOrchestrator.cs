@@ -658,9 +658,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     hasInvalidatedZones = path3Flags.isInvalidated;
                                 }
                                 
-                                // ✅ PATH 1a: If no invalidated zones, check for Path 1a (even with AdoptToDocument enabled)
-                                // ✅ PATH 3: If invalidated zones exist, skip Path 1a and use Path 3
-                                if (!hasInvalidatedZones)
+                                // ✅ FORCE DETECTION: Fetched dynamically to ensure latest state
+                                var settings = JSE_RevitAddin_MEP_OPENINGS.Services.ApplicationProfileService.Instance.GetCurrentSettings();
+                                bool isForceDetection = settings.ForceDetectionMode;
+                                
+                                // ✅ PATH 1a CHECK (STRICT):
+                                // Path 1a (Replay) is ONLY allowed if:
+                                // 1. No Invalidated Zones (all valid)
+                                // 2. Adopt To Document is OFF (User requirement: Adopt Checked = Skip Fast Path)
+                                // 3. Force Detection is OFF (User requirement: Force Checked = Skip Fast Path)
+                                if (!hasInvalidatedZones && !adoptToDocumentEnabled && !isForceDetection)
                                 {
                                     // ✅ Check if there's cluster data for this filter+category in database (Path 1a)
                                     var clusterRepository = new ClusterSleeveRepository(dbContext);
@@ -787,6 +794,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         var orchestratorDebugLogPath = SafeFileLogger.GetLogFilePath("orchestrator_debug.log");
                         File.AppendAllText(orchestratorDebugLogPath, $"[{DateTime.Now:HH:mm:ss}] 🔨 BUILD TIMESTAMP: {buildTimestamp} | VERSION: {versionTag} | Assembly: {Path.GetFileName(assemblyPath)}\n");
+                        // ✅ ALSO LOG TO CLUSTER DEBUG FOR ACCESSIBILITY
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🚀 BATCH ENTRY - BUILD TIMESTAMP: {buildTimestamp} | VERSION: {versionTag}\n");
                         File.AppendAllText(orchestratorDebugLogPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 DIRECT IO: isPath1Replay={isPath1Replay}, comboId={comboId}, filterId={filterId} (DATABASE-ONLY, NO XML)\n");
                     }
                     catch { }

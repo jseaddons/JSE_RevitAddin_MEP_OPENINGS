@@ -573,6 +573,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     // ✅ R-TREE: Create R-tree table for existing databases (if enabled)
                     EnsureRTreeTable(transaction);
 
+                    // ✅ TRIGGERS: Ensure flag management triggers are up to date (drops stale triggers)
+                    EnsureFlagManagementTriggers(transaction);
+
                     AddColumnIfMissing("ClashZones", "ClashZoneGuid", "TEXT NOT NULL DEFAULT ''", transaction);
                     AddColumnIfMissing("ClashZones", "MepCategory", "TEXT", transaction);
                     AddColumnIfMissing("ClashZones", "StructuralType", "TEXT", transaction);
@@ -1192,6 +1195,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                 // ✅ FIXED: Simplified trigger syntax for SQLite compatibility
                 // Trigger 1: Auto-update SleeveState when flags change
                 // Note: Using simpler WHEN clause to avoid SQL logic errors
+                
+                // ✅ CRITICAL: Drop existing trigger first to ensure update
+                ExecuteCommand("DROP TRIGGER IF EXISTS update_sleeve_state_on_flags", transaction);
+                
                 ExecuteCommand(@"
                     CREATE TRIGGER IF NOT EXISTS update_sleeve_state_on_flags
                     AFTER UPDATE OF IsResolvedFlag, IsClusterResolvedFlag ON ClashZones
@@ -1222,6 +1229,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
             try
             {
                 // Trigger 2: Auto-update flags and SleeveState when sleeve IDs change
+                
+                // ✅ CRITICAL: Drop existing trigger first to ensure update
+                ExecuteCommand("DROP TRIGGER IF EXISTS sync_flags_from_ids", transaction);
+                
                 ExecuteCommand(@"
                     CREATE TRIGGER IF NOT EXISTS sync_flags_from_ids
                     AFTER UPDATE OF SleeveInstanceId, ClusterInstanceId ON ClashZones

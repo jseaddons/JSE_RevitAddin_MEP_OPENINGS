@@ -12,6 +12,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Geometry
     {
         (XYZ corner1, XYZ corner2, XYZ corner3, XYZ corner4)? CalculateCorners(XYZ placementPoint, double width, double height, double rotationAngleRad);
         (XYZ corner1, XYZ corner2, XYZ corner3, XYZ corner4)? CalculateCornersFromZone(ClashZone zone, double width, double height);
+        (XYZ corner1, XYZ corner2, XYZ corner3, XYZ corner4)? CalculateCornersFromInstance(FamilyInstance sleeve, string hostOrientation = null, string structuralType = null);
     }
 
     /// <summary>
@@ -233,8 +234,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Geometry
         /// <summary>
         /// Factory to select the correct strategy.
         /// </summary>
-        private ICornerRetrievalStrategy GetStrategyForElement(FamilyInstance sleeve)
+        private ICornerRetrievalStrategy GetStrategyForElement(FamilyInstance sleeve, string structuralType = null)
         {
+            // ✅ PRIORITY: Use explicit structuralType if available
+            if (!string.IsNullOrEmpty(structuralType))
+            {
+                if (structuralType.IndexOf("Wall", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return new WallSleeveStrategy();
+                if (structuralType.IndexOf("Floor", StringComparison.OrdinalIgnoreCase) >= 0 || structuralType.IndexOf("Roof", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return new FloorSleeveStrategy();
+            }
+
             // Heuristic: Check Host Category
             if (sleeve != null && sleeve.Host != null)
             {
@@ -246,6 +256,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Geometry
 
             // Fallback / Default
             return new FloorSleeveStrategy();
+        }
+
+        private string GetStructuralTypeFromLogic(FamilyInstance sleeve, string explicitType)
+        {
+            if (!string.IsNullOrEmpty(explicitType)) return explicitType;
+            if (sleeve?.Host != null) return sleeve.Host.Category.Name;
+            return null;
         }
 
         // =========================================================
@@ -298,21 +315,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Geometry
         }
 
         /// <summary>
-        /// ✅ REFACTORED: Calculates corners with explicit hostOrientation from database.
-        /// When hostOrientation is provided (e.g., "X" or "Y" for walls), uses that directly
-        /// instead of trying to detect from geometry.
+        /// ✅ REFACTORED: Calculates corners with explicit hostOrientation AND structuralType from database.
+        /// When structuralType is provided (e.g., "Wall"), uses that to determining strategy,
+        /// avoiding issues when sleeve.Host is null (e.g. for Generic Models in Links).
         /// </summary>
         /// <param name="sleeve">The Revit FamilyInstance</param>
         /// <param name="hostOrientation">Wall orientation from DB: "X", "Y", or null for auto-detect</param>
-        public (XYZ corner1, XYZ corner2, XYZ corner3, XYZ corner4)? CalculateCornersFromInstance(FamilyInstance sleeve, string hostOrientation)
+        /// <param name="structuralType">Structural Type from DB: "Wall", "Floor", etc.</param>
+        public (XYZ corner1, XYZ corner2, XYZ corner3, XYZ corner4)? CalculateCornersFromInstance(FamilyInstance sleeve, string hostOrientation, string structuralType = null)
         {
             try
             {
                 if (sleeve == null || !sleeve.IsValidObject) return null;
 
-                // ✅ CHECK: Is this a wall-hosted sleeve?
-                // Note: sleeve.Host may be null for Generic Model families placed in walls
-                bool isWallHosted = sleeve.Host != null && sleeve.Host.Category.Name.Contains("Wall");
+                // ✅ CHECK: Is this a wall-hosted sleeve? 
+                // Prioritize explicit structuralType over unreliable sleeve.Host
+                bool isWallHosted = false;
+                
+                if (!string.IsNullOrEmpty(structuralType) && structuralType.IndexOf("Wall", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    isWallHosted = true;
+                }
+                else if (sleeve.Host != null && sleeve.Host.Category.Name.Contains("Wall"))
+                {
+                    isWallHosted = true;
+                }
                 
                 // ✅ FALLBACK: If no host, use hostOrientation from DB (StructuralElementType)
                 bool useWallLogic = isWallHosted || (!string.IsNullOrEmpty(hostOrientation) && 
@@ -393,7 +420,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Geometry
         /// Calculates corners using Revit Parameters (Width/Height) and Location Rotation.
         /// Essential fallback for Void families where Geometry extraction fails.
         /// </summary>
-        private (XYZ c1, XYZ c2, XYZ c3, XYZ c4)? CalculateCornersFromParameters(FamilyInstance sleeve)
+        private (XYZ c1, XYZ c2, XYZ c3, XYZ c4)? CalculateCornersFromParameters(FamilyInstance sleeve, string structuralType = null)
         {
             try
             {
@@ -431,7 +458,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Geometry
                 if (!(sleeve.Location is LocationPoint loc)) return null;
                 
                 // 3. Select Strategy & Execute
-                var strategy = GetStrategyForElement(sleeve);
+                var strategy = GetStrategyForElement(sleeve, GetStructuralTypeFromLogic(sleeve, structuralType));
                 
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[SleeveCornerCalculationService] 🔢 From Params ({strategy.GetType().Name}): W={width:F3}, H={height:F3}, Rot={loc.Rotation:F3}");

@@ -36,6 +36,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         public string HostType { get; set; }
         public string HostOrientation { get; set; }
         public List<Guid> ClashZoneIds { get; set; }
+        
+        // ✅ PERSISTENCE FIX: Save Family Name for validation
+        public string SleeveFamilyName { get; set; }
 
         // ✅ CORNER PERISISTENCE (Added for proper cluster sizing)
         public double Corner1X { get; set; }
@@ -82,6 +85,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                        RotationAngleDeg, IsRotated,
                                        PlacementX, PlacementY, PlacementZ,
                                        HostType, HostOrientation, ClashZoneIdsJson,
+                                       SleeveFamilyName,
                                        Corner1X, Corner1Y, Corner1Z,
                                        Corner2X, Corner2Y, Corner2Z,
                                        Corner3X, Corner3Y, Corner3Z,
@@ -173,6 +177,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                        RotationAngleDeg, IsRotated,
                                        PlacementX, PlacementY, PlacementZ,
                                        HostType, HostOrientation, ClashZoneIdsJson,
+                                       SleeveFamilyName,
                                        Corner1X, Corner1Y, Corner1Z,
                                        Corner2X, Corner2Y, Corner2Z,
                                        Corner3X, Corner3Y, Corner3Z,
@@ -267,6 +272,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             string hostType,
             string hostOrientation,
             List<Guid> clashZoneIds,
+            // ✅ PERSISTENCE FIX: Added SleeveFamilyName
+            string sleeveFamilyName,
             // ✅ CORNER PERISISTENCE (Added for proper cluster sizing)
             double corner1X, double corner1Y, double corner1Z,
             double corner2X, double corner2Y, double corner2Z,
@@ -370,6 +377,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                         HostType = @HostType,
                                         HostOrientation = @HostOrientation,
                                         ClashZoneIdsJson = @ClashZoneIdsJson,
+                                        SleeveFamilyName = @SleeveFamilyName,
                                         ClashZoneGuids = @ClashZoneGuids,
                                         MepSizes = @MepSizes,
                                         MepSystemNames = @MepSystemNames,
@@ -416,6 +424,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                         RotationAngleDeg, IsRotated,
                                         PlacementX, PlacementY, PlacementZ,
                                         HostType, HostOrientation, ClashZoneIdsJson,
+                                        SleeveFamilyName,
                                         ClashZoneGuids, MepSizes, MepSystemNames, MepElementIds,
                                         CreatedAt, UpdatedAt
                                     ) VALUES (
@@ -426,6 +435,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                         @RotationAngleDeg, @IsRotated,
                                         @PlacementX, @PlacementY, @PlacementZ,
                                         @HostType, @HostOrientation, @ClashZoneIdsJson,
+                                        @SleeveFamilyName,
                                         @ClashZoneGuids, @MepSizes, @MepSystemNames, @MepElementIds,
                                         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                                     )";
@@ -584,6 +594,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                                 HostType = @HostType,
                                                 HostOrientation = @HostOrientation,
                                                 ClashZoneIdsJson = @ClashZoneIdsJson,
+                                                SleeveFamilyName = @SleeveFamilyName,
                                                 ClashZoneGuids = @ClashZoneGuids,
                                                 MepSizes = @MepSizes,
                                                 MepSystemNames = @MepSystemNames,
@@ -616,9 +627,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                             HostOrientation = @HostOrientation,
                                             ClashZoneIdsJson = @ClashZoneIdsJson,
                                             ClashZoneGuids = @ClashZoneGuids,
-                                            MepSizes = @MepSizes,
-                                            MepSystemNames = @MepSystemNames,
-                                            MepElementIds = @MepElementIds,
                                             MepSizes = @MepSizes,
                                             MepSystemNames = @MepSystemNames,
                                             MepElementIds = @MepElementIds,
@@ -656,7 +664,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                             RotationAngleDeg, IsRotated,
                                             PlacementX, PlacementY, PlacementZ,
                                             HostType, HostOrientation, ClashZoneIdsJson,
-                                            ClashZoneGuids, MepSizes, MepSystemNames, MepElementIds,
+                                            SleeveFamilyName,
                                             ClashZoneGuids, MepSizes, MepSystemNames, MepElementIds,
                                             Corner1X, Corner1Y, Corner1Z,
                                             Corner2X, Corner2Y, Corner2Z,
@@ -671,7 +679,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                             @RotationAngleDeg, @IsRotated,
                                             @PlacementX, @PlacementY, @PlacementZ,
                                             @HostType, @HostOrientation, @ClashZoneIdsJson,
-                                            @ClashZoneGuids, @MepSizes, @MepSystemNames, @MepElementIds,
+                                            @SleeveFamilyName,
                                             @ClashZoneGuids, @MepSizes, @MepSystemNames, @MepElementIds,
                                             @Corner1X, @Corner1Y, @Corner1Z,
                                             @Corner2X, @Corner2Y, @Corner2Z,
@@ -745,6 +753,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     RotationAngleDeg, IsRotated,
                                     PlacementX, PlacementY, PlacementZ,
                                     HostType, HostOrientation, ClashZoneIdsJson,
+                                    SleeveFamilyName,
                                     ClashZoneGuids, MepSizes, MepSystemNames, MepElementIds,
                                     Corner1X, Corner1Y, Corner1Z,
                                     Corner2X, Corner2Y, Corner2Z,
@@ -759,6 +768,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     @RotationAngleDeg, @IsRotated,
                                     @PlacementX, @PlacementY, @PlacementZ,
                                     @HostType, @HostOrientation, @ClashZoneIdsJson,
+                                    @SleeveFamilyName,
                                     @ClashZoneGuids, @MepSizes, @MepSystemNames, @MepElementIds,
                                     @Corner1X, @Corner1Y, @Corner1Z,
                                     @Corner2X, @Corner2Y, @Corner2Z,
@@ -791,6 +801,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             cmd.Parameters.AddWithValue("@HostType", cluster.HostType ?? (object)DBNull.Value);
                             cmd.Parameters.AddWithValue("@HostOrientation", cluster.HostOrientation ?? (object)DBNull.Value);
                             cmd.Parameters.AddWithValue("@ClashZoneIdsJson", clashZoneIdsJson);
+                            cmd.Parameters.AddWithValue("@SleeveFamilyName", cluster.SleeveFamilyName ?? (object)DBNull.Value);
                             cmd.Parameters.AddWithValue("@ClashZoneGuids", clashZoneGuids ?? (object)DBNull.Value);
                             cmd.Parameters.AddWithValue("@MepSizes", mepSizes ?? (object)DBNull.Value);
                             cmd.Parameters.AddWithValue("@MepSystemNames", mepSystemNames ?? (object)DBNull.Value);
@@ -1229,6 +1240,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             double corner2X, double corner2Y, double corner2Z,
             double corner3X, double corner3Y, double corner3Z,
             double corner4X, double corner4Y, double corner4Z,
+            string sleeveFamilyName = null,
             string clusterGuid = null)
         {
             cmd.Parameters.AddWithValue("@ClusterInstanceId", clusterInstanceId);
@@ -1252,7 +1264,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             cmd.Parameters.AddWithValue("@PlacementZ", placementZ);
             cmd.Parameters.AddWithValue("@HostType", hostType ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue("@HostOrientation", hostOrientation ?? (object)DBNull.Value);
-
+            cmd.Parameters.AddWithValue("@SleeveFamilyName", sleeveFamilyName ?? (object)DBNull.Value);
+            
             // Serialize ClashZoneIds to JSON
             var clashZoneIdsJson = clashZoneIds != null && clashZoneIds.Count > 0
                 ? JsonSerializer.Serialize(clashZoneIds.Select(g => g.ToString()).ToList())

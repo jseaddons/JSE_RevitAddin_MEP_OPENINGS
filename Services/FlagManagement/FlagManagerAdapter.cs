@@ -88,11 +88,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
             List<(ClashZone clashZone, int sleeveId)> clashZones, 
             bool isCluster, 
             string category, 
-            string filterName = null)
+            string filterName = null,
+            double clusterWidth = 0,
+            double clusterHeight = 0,
+            double clusterDiameter = 0)
         {
             if (_refactoredService != null)
             {
-                _refactoredService.BatchUpdateFlagsForPlacement(clashZones, isCluster, category, filterName);
+                _refactoredService.BatchUpdateFlagsForPlacement(clashZones, isCluster, category, filterName, clusterWidth, clusterHeight, clusterDiameter);
             }
         }
         

@@ -55,10 +55,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
             double depth,
             double rotationAngle,
             string? xmlFilePath,
+            string? sleeveFamilyName,
             out FamilyInstance? placedClusterSleeve,
             out int? capturedClusterSleeveId,
             out XYZ? actualPlacementPoint,
-            Dictionary<ElementId, Dictionary<string, object>>? deferredParameters = null);
+            Dictionary<ElementId, Dictionary<string, object>>? deferredParameters = null,
+            string? hostOrientation = null,
+            double mepRotationAngle = 0.0);
 
         /// <summary>
         /// Set size parameters (Width, Height, Depth) on a cluster sleeve.
@@ -94,7 +97,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
             FamilyInstance clusterSleeve,
             string category,
             string? filterName = null,
-            Dictionary<ElementId, Dictionary<string, object>>? deferredParameters = null);
+            Dictionary<ElementId, Dictionary<string, object>>? deferredParameters = null,
+            string? hostOrientation = null,
+            double mepRotationAngle = 0.0);
 
         /// <summary>
         /// Get reference level for cluster sleeve placement.

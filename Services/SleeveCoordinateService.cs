@@ -9,6 +9,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Refresh;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Geometry;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -19,11 +20,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     {
         private readonly Document _doc;
         private Dictionary<long, ClashZone> _clashZoneCache;
+        private readonly ISleeveCornerCalculationService _cornerCalculationService;
         
         public SleeveCoordinateService(Document doc)
         {
             _doc = doc;
             _clashZoneCache = new Dictionary<long, ClashZone>();
+            _cornerCalculationService = new SleeveCornerCalculationService();
         }
         
         /// <summary>
@@ -728,11 +731,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var bbox = sleeve.get_BoundingBox(null);
                         if (bbox != null)
                         {
-                            // ✅ MASTER FIX: Get actual Revit coordinates
-                            var corner1 = new XYZ(bbox.Min.X, bbox.Min.Y, bbox.Min.Z);
-                            var corner2 = new XYZ(bbox.Max.X, bbox.Min.Y, bbox.Min.Z);
-                            var corner3 = new XYZ(bbox.Max.X, bbox.Max.Y, bbox.Max.Z);
-                            var corner4 = new XYZ(bbox.Min.X, bbox.Max.Y, bbox.Max.Z);
+                            // ✅ MASTER FIX: Get actual Revit coordinates using the robust calculation service
+                            var corners = _cornerCalculationService.CalculateCornersFromInstance(sleeve);
+                            XYZ corner1 = new XYZ(0,0,0), corner2 = new XYZ(0,0,0), corner3 = new XYZ(0,0,0), corner4 = new XYZ(0,0,0);
+                            
+                            if (corners.HasValue)
+                            {
+                                corner1 = corners.Value.corner1;
+                                corner2 = corners.Value.corner2;
+                                corner3 = corners.Value.corner3;
+                                corner4 = corners.Value.corner4;
+                            }
                             
                             var sleeveData = new SleeveData
                             {

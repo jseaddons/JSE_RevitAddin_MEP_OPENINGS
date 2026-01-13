@@ -182,27 +182,74 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
 
         private bool ShouldClusterSleeves(dynamic s1, dynamic s2, double toleranceDist)
         {
-            // Wall host check (same wall id)
-            if (s1.HostType == "Wall" && s2.HostType == "Wall")
-            {
-                var host1Id = s1.ClashZone?.StructuralElementIdValue ?? -1;
-                var host2Id = s2.ClashZone?.StructuralElementIdValue ?? -1;
-                if (host1Id > 0 && host2Id > 0 && host1Id != host2Id) return false;
-            }
-
-            // ✅ SOLID REFACTORING: Delegate to ProximityCheckerFactory
-            // This ensures consistent logic with Phase 2 refactoring (handling 2D distance for walls/floors)
-            var cz1 = s1.ClashZone as ClashZone;
-            double angle1 = cz1?.MepElementRotationAngle ?? 0.0;
+            // ⚠️ DIAGNOSTIC 1: Prove method is called
+            SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                $"[{DateTime.Now:HH:mm:ss}] 🚨 ShouldClusterSleeves CALLED (tolerance={toleranceDist * 304.8:F0}mm)\n");
             
-            // Check if rotated (using existing helper)
+            // ✅ CRITICAL FIX: Check HostElementId FIRST, BEFORE proximity
+            ClashZone cz1 = null;
+            ClashZone cz2 = null;
+            try
+            {
+                cz1 = s1?.ClashZone as ClashZone;
+                cz2 = s2?.ClashZone as ClashZone;
+                
+                // ⚠️ DIAGNOSTIC 2: Check if ClashZones exist
+                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss}]   ClashZones: cz1={(cz1 != null ? $"EXISTS (Id={cz1.Id.ToString().Substring(0, 8)})" : "NULL")}, cz2={(cz2 != null ? $"EXISTS (Id={cz2.Id.ToString().Substring(0, 8)})" : "NULL")}\n");
+                
+                if (cz1 == null || cz2 == null)
+                {
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss}]   ⚠️ WARNING: ClashZone is NULL! Cannot check HostElementId. Proceeding with proximity check only.\n");
+                    // Continue to proximity check
+                }
+                else
+                {
+                    int host1 = cz1.StructuralElementIdValue;
+                    int host2 = cz2.StructuralElementIdValue;
+                    
+                    // ⚠️ DIAGNOSTIC 3: Show HostElementId values
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss}]   HostElementIds: host1={host1}, host2={host2}\n");
+                    
+                    // If both have valid IDs and they're different → CANNOT cluster
+                    if (host1 > 0 && host2 > 0 && host1 != host2)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}]   ❌ REJECT: Different walls (host1={host1} != host2={host2})\n");
+                        return false; // Different walls/floors - stop immediately
+                    }
+                    else if (host1 > 0 && host2 > 0 && host1 == host2)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}]   ✅ ACCEPT: Same wall (host={host1})\n");
+                    }
+                    else
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}]   ⚠️ WARNING: HostElementId is 0 or invalid (host1={host1}, host2={host2}). Cannot verify walls.\n");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss}]   ❌ EXCEPTION in HostElementId check: {ex.Message}\n");
+            }
+            
+            // ✅ Continue with existing proximity logic
+            double angle1 = cz1?.MepElementRotationAngle ?? 0.0;
             bool isRotated = Math.Abs(angle1) > 1e-6 && !IsAxisAlignedAngle(angle1);
-
-            // Create appropriate checker
             var checker = ProximityCheckerFactory.CreateChecker(s1, s2, angle1, isRotated);
             
-            // Perform check
-            return checker.CheckProximity(s1, s2, toleranceDist);
+            bool proximityResult = checker.CheckProximity(s1, s2, toleranceDist);
+            
+            // ⚠️ DIAGNOSTIC 4: Show proximity result
+            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                $"[{DateTime.Now:HH:mm:ss}]   Proximity check result: {(proximityResult ? "PASS (will cluster)" : "FAIL (too far)")}\n");
+            
+            return proximityResult;
         }
 
         private static double NormalizeAngleDeg(double deg)
@@ -314,15 +361,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
             SleeveGroupKey groupKey)
         {
             var neighbors = new List<FamilyInstance>();
+
+            // ✅ CRITICAL FIX: Get HostElementId from PARAMETERS (not inst.Host which is null in batch mode)
+            int host1Id = -1;
+            try
+            {
+                // Individual sleeves store HostElementId in "Host Element ID" parameter
+                var host1Param = inst.LookupParameter("Host Element ID");
+                if (host1Param != null && host1Param.StorageType == StorageType.Integer)
+                {
+                    host1Id = host1Param.AsInteger();
+                }
+            }
+            catch { }
+
             foreach (var candidate in candidates)
             {
                 if (candidate == inst || !unprocessedSet.Contains(candidate)) continue;
                 if (!MatchesGroupCriteria(candidate, groupKey)) continue;
-                if (groupKey.hostType == "Wall")
+
+                // ✅ FIX: Check HostElementId parameter
+                if (host1Id > 0)
+                {
+                    int host2Id = -1;
+                    try
+                    {
+                        var host2Param = candidate.LookupParameter("Host Element ID");
+                        if (host2Param != null && host2Param.StorageType == StorageType.Integer)
+                        {
+                            host2Id = host2Param.AsInteger();
+                        }
+                    }
+                    catch { }
+
+                    // If both have valid IDs and are different -> REJECT
+                    if (host2Id > 0 && host1Id != host2Id)
+                    {
+                        continue;
+                    }
+                }
+                // Fallback to inst.Host check if parameters missing (legacy support)
+                else if (groupKey.hostType == "Wall")
                 {
                     var host1 = inst.Host; var host2 = candidate.Host;
-                    if (host1 == null || host2 == null || host1.Id != host2.Id) continue;
+                    if (host1 != null && host2 != null && host1.Id != host2.Id) continue;
                 }
+
                 BoundingBoxXYZ o2_bbox = bboxes.ContainsKey(candidate) ? bboxes[candidate] : candidate.get_BoundingBox(null);
                 if (o2_bbox == null) continue;
                 if (BoundingBoxesOverlap(o1_bbox, o2_bbox, toleranceDist)) neighbors.Add(candidate);

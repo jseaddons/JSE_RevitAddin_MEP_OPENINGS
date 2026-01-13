@@ -122,13 +122,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
 
                     if (cornerResult.HasValue)
                     {
-                        var (width, height, minX, minY, maxX, maxY, calculatedOrigin) = cornerResult.Value;
-                        origin = calculatedOrigin;
+                        double width = maxX - minX;
+                        double height = maxY - minY; // Default: Y is Height (Floor logic)
+                        double depth = maxZ - minZ;  // Default: Z is Depth (Floor logic)
 
-                        double minZ = rotatedBboxes.Min(b => b.min.Z);
-                        double maxZ = rotatedBboxes.Max(b => b.max.Z);
-                        double depth = maxZ - minZ;
+                        // ✅ WALL FIX: For Walls, Z is Height (Vertical), and Y is Depth (Thickness)
+                        // The rotation aligns Wall Length with X, so Y becomes Thickness.
+                        bool isWall = false;
+                        if (cluster.Count > 0)
+                        {
+                            try
+                            {
+                                // Dynamic lookup for HostType/StructuralElementType
+                                var firstItem = cluster[0];
+                                // Handle both 'HostType' and 'StructuralElementType' property names
+                                string hostType = null;
+                                try { hostType = firstItem.HostType; } catch { }
+                                if (string.IsNullOrEmpty(hostType))
+                                {
+                                    try { hostType = firstItem.StructuralElementType; } catch { }
+                                }
+                                
+                                if (!string.IsNullOrEmpty(hostType) && hostType.IndexOf("Wall", StringComparison.OrdinalIgnoreCase) >= 0)
+                                {
+                                    isWall = true;
+                                }
+                            }
+                            catch { /* Safe check */ }
+                        }
 
+                        if (isWall)
+                        {
+                            // Swap Height and Depth
+                            double temp = height;
+                            height = depth; // Height becomes Z-delta
+                            depth = temp;   // Depth becomes Y-delta (Thickness)
+                        }
+                        
                         // ✅ MIDPOINT: Calculate in rotated coordinate space, then transform back to world coordinates
                         XYZ midRotated = new XYZ((minX + maxX) / 2.0, (minY + maxY) / 2.0, (minZ + maxZ) / 2.0);
 
@@ -136,12 +166,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
                         if (Math.Abs(rotationAngle) > 1e-6 && origin != XYZ.Zero)
                         {
                             // ✅ Transform midpoint from rotated coordinate space back to world coordinates
+                            // We projected World -> Local using InverseRotation (R(-t)).
+                            // To go Local -> World, we must use Forward Rotation (R(+t)).
                             var inverseRotationMatrix = RotationMatrixCalculator.CreateRotationMatrix(rotationAngle);
                             if (inverseRotationMatrix != null)
                             {
                                 double cosA = inverseRotationMatrix.Value.cos;
                                 double sinA = inverseRotationMatrix.Value.sin;
-                                var inversePoint = RotationMatrixCalculator.InverseRotation((midRotated.X, midRotated.Y), cosA, sinA);
+                                // FIX: Use ApplyRotation (R(+t)) to invert the R(-t) projection
+                                var inversePoint = RotationMatrixCalculator.ApplyRotation((midRotated.X, midRotated.Y), cosA, sinA);
                                 if (inversePoint != null)
                                 {
                                     mid = new XYZ(

@@ -150,7 +150,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     using (var bulkOp = _performanceMonitor?.TrackOperation("9a8. Repo Bulk Save"))
                     {
-                        var validZones = allClashZones.Where(z => z != null && !string.IsNullOrWhiteSpace(z.MepElementCategory)).ToList();
+                        var validZones = allClashZones
+                            .Where(z => z != null && !string.IsNullOrWhiteSpace(z.MepElementCategory) && IsValidClashZone(z))
+                            .ToList();
                         
                         // ✅ FLOOR ROTATION FIX: Enrich zones with MEP orientation and rotation angle BEFORE saving
                         // This populates MepOrientationX/Y/Z and MepElementRotationAngle for database storage

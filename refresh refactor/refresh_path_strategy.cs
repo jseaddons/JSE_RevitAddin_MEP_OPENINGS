@@ -537,6 +537,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         {
             try
             {
+                // ✅ CHECK 0: Force Detection Mode override
+                // If Force Detection is enabled, we MUST force PATH 2 (Sizing/Detection)
+                // This ensures we don't accidentally use Replay (Path 1) with stale data
+                bool forceDetectionMode = false;
+                try
+                {
+                    var settings = ApplicationProfileService.Instance?.GetCurrentSettings();
+                    forceDetectionMode = settings?.ForceDetectionMode ?? false;
+                }
+                catch { }
+
+                if (forceDetectionMode)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"{logPrefix}[PLACEMENT-PATH] ⚡ FORCE DETECTION MODE: Forcing PATH 2 (Sizing) - Bypassing FileCombo/Condition checks");
+                    }
+                    return SleevePlacementPath.Sizing;
+                }
+
                 // ✅ FIX: Check IsFilterComboNew flag PER FILE COMBO (not per filter+category)
                 // If ANY file combo has IsFilterComboNew=1 → PATH 2 (Sizing/Detection)
                 // If ALL file combos have IsFilterComboNew=0 → PATH 1 (Replay)

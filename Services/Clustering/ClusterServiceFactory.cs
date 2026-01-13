@@ -14,6 +14,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Placement; // ✅ SOLID: For SleevePa
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor;
+using JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -177,24 +178,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             
 
             
-            // Phase 5: Placement Service - null delegates (RefactoredClusterService wires them internally)
-            // ✅ SOLID: Create SleeveParameterService for dependency injection
-            var parameterService = new SleeveParameterService(doc);
-            var placementService = new ClusterPlacementService(
-                getClashZoneBySleeveInstanceId: null,
-                determineRotationAngle: null,
-                getClusterBoundingBox: null,
-                markClusterResolved: null,
-                getFilterNameForCategory: null,
-                boundingBoxCalculator: null,
-                parameterService: parameterService // ✅ SOLID: Inject SleeveParameterService dependency
-            );
+            // Phase 5: Placement Service - wire using helper to ensure all delegates are provided
+            var placementService = CreatePlacementService(doc, dataService, rotationService, flagManager, null);
             
             // Phase 4: Strategy Factory
             var strategyFactory = new ClusteringStrategyFactory();
 
-            // ✅ WIRING: Create flag manager adapter (use null for now since refactored flag manager not ready)
-            Services.Interfaces.Refactor.IFlagManager? flagManagerRefactor = null;
+            // ✅ WIRING: Use FlagManagerFactory to create a working IFlagManager adapter
+            // This ensures RefactoredClusterService has a non-null flag manager for flag updates
+            var flagManagerRefactor = flagManager ?? FlagManagerFactory.CreateAdapter(doc);
             
             // Wire all services into RefactoredClusterService
             return new RefactoredClusterService(
@@ -207,7 +199,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 timeoutService: timeoutService,
                 cornerService: cornerService,
                 strategyFactory: strategyFactory,
-                flagManager: null,  // IFlagManager - refactored flag manager not yet ready
+                flagManager: flagManagerRefactor,
                 filterService: filterService
             );
         }
@@ -276,7 +268,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             // For now, create with null delegates - RefactoredClusterService will provide them via method calls
             // Note: PlacementService is actually called indirectly via PlaceClusterForGroup method
             // So we can create a minimal wrapper that will be replaced by proper wiring
-            var placementService = CreatePlacementService(doc, dataService, rotationService, flagManager, null); // ✅ SOLID: Pass doc for SleeveParameterService
+            // ✅ WIRING: Use FlagManagerFactory to create a working IFlagManager adapter
+            var flagManagerToUse = flagManager ?? FlagManagerFactory.CreateAdapter(doc);
+            
+            var placementService = CreatePlacementService(doc, dataService, rotationService, flagManagerToUse, null); // ✅ SOLID: Pass doc for SleeveParameterService
 
             // ✅ Create RefactoredClusterService with all services wired
             return new RefactoredClusterService(
@@ -289,7 +284,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 timeoutService: timeoutService,
                 cornerService: cornerService,
                 strategyFactory: strategyFactory,
-                flagManager: null, // IFlagManager - refactored flag manager not yet ready
+                flagManager: flagManagerToUse,
                 filterService: filterService
             );
         }

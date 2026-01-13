@@ -9,24 +9,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public string hostType;
         public string systemType;
         public string orientation;
+        public int HostElementId; // ✅ NEW: Track host element ID to prevent cross-wall clustering
 
-        public SleeveGroupKey(string hostType, string systemType, string orientation)
+        public SleeveGroupKey(string hostType, string systemType, string orientation, int hostElementId = -1)
         {
             this.hostType = hostType;
             this.systemType = systemType;
             this.orientation = orientation;
+            this.HostElementId = hostElementId;
         }
 
         public override bool Equals(object obj)
         {
             if (!(obj is SleeveGroupKey)) return false;
             var other = (SleeveGroupKey)obj;
-            return hostType == other.hostType && systemType == other.systemType && orientation == other.orientation;
+            // ✅ Include HostId in equality check to separate sleeves in different walls
+            return hostType == other.hostType && 
+                   systemType == other.systemType && 
+                   orientation == other.orientation &&
+                   HostElementId == other.HostElementId;
         }
 
         public override int GetHashCode()
         {
-            return (hostType, systemType, orientation).GetHashCode();
+            return (hostType, systemType, orientation, HostElementId).GetHashCode();
         }
     }
 }
