@@ -106,6 +106,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
                     // ✅ FIX: Use helper method to extract corners to avoid any dynamic dispatch issues
                     XYZ[] preCalculatedCorners = ExtractPreCalculatedCorners(cz);
 
+                    // ✅ PIPES FIX: If Width/Height in DB were 0, the pre-calculated corners are likely just the centerline (degenerate).
+                    // In this case, we MUST discard them and recalculate using the Diameter fallback.
+                    if (cz.SleeveWidth <= 0 && cz.SleeveHeight <= 0 && cz.SleeveDiameter > 0)
+                    {
+                        preCalculatedCorners = null; // Force recalculation in Step 4
+                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                             $"[{DateTime.Now:HH:mm:ss}] ⚠️ Force-Recalc Corners for Sleeve {sleeveInstanceId}: Width=0 in DB, using Diameter={cz.SleeveDiameter}\n");
+                    }
+
                     sleeveDataList.Add((cz, center, sleeveWidth, sleeveHeight, sleeveRotation, cosSleeve, sinSleeve, preCalculatedCorners));
                 }
 

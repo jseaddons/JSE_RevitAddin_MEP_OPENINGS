@@ -122,6 +122,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
 
                     if (cornerResult.HasValue)
                     {
+                        // ✅ RESTORED MISSING VARIABLES
+                        var (calcWidth, calcHeight, minX, minY, maxX, maxY, calculatedOrigin) = cornerResult.Value;
+                        origin = calculatedOrigin;
+
+                        double minZ = rotatedBboxes.Min(b => b.min.Z);
+                        double maxZ = rotatedBboxes.Max(b => b.max.Z);
+
                         double width = maxX - minX;
                         double height = maxY - minY; // Default: Y is Height (Floor logic)
                         double depth = maxZ - minZ;  // Default: Z is Depth (Floor logic)

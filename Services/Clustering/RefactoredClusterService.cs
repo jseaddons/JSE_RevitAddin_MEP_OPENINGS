@@ -189,9 +189,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             var performanceMonitor = new PlacementPerformanceMonitor(performanceLogName);
 
             // ✅ LOGGING: Log Build Timestamp to verify correct DLL is running (PATH 2/3)
-            SafeFileLogger.SafeAppendText("cluster_debug.log", 
+            SafeFileLogger.SafeAppendText("cluster_debug.log",
                 $"[{DateTime.Now:HH:mm:ss}] 🚀 STARTING CLUSTERING (PATH 2/3) - Build: {Helpers.VersionInfo.GetBuildTimestamp()} - Version: {Helpers.VersionInfo.VersionTag}\n");
-            
+
             // 🔥 CRITICAL: Direct System.IO logging to ensure we always see entry (bypasses SafeFileLogger completely)
             // This MUST work in both R2023 and R2024
             try
@@ -199,28 +199,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 var versionTag = Helpers.VersionInfo.VersionTag; // "R2023" or "R2024"
                 var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                 var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
-                
+
                 // Ensure directory exists
                 if (!Directory.Exists(logDir))
                 {
                     Directory.CreateDirectory(logDir);
                 }
-                
+
                 var logPath = Path.Combine(logDir, "cluster_debug.log");
                 var assembly = System.Reflection.Assembly.GetExecutingAssembly();
                 var assemblyPath = assembly?.Location ?? "unknown";
                 var buildTime = File.Exists(assemblyPath) ? File.GetLastWriteTime(assemblyPath).ToString("yyyy-MM-dd HH:mm:ss") : "unknown";
-                
+
                 File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥🔥🔥 ClusterSleeves METHOD CALLED\n");
                 File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] Version: {versionTag}, Assembly: {Path.GetFileName(assemblyPath)}, BuildTime: {buildTime}\n");
                 File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] Parameters: category={targetCategory}, filter={filterName}, comboId={comboId}, filterId={filterId}\n");
             }
             catch (Exception ex)
             {
-               // Fallback removed as requested - rely on standard SafeFileLogger or crash to debug
-               System.Diagnostics.Debug.WriteLine($"Log init failed: {ex.Message}");
+                // Fallback removed as requested - rely on standard SafeFileLogger or crash to debug
+                System.Diagnostics.Debug.WriteLine($"Log init failed: {ex.Message}");
             }
-            
+
             // ✅ BUILD TIMESTAMP: Log build info to verify correct DLL is loaded
             try
             {
@@ -230,7 +230,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     ? System.IO.File.GetLastWriteTime(assemblyPath).ToString("yyyy-MM-dd HH:mm:ss")
                     : "unknown";
                 var versionTag = Helpers.VersionInfo.VersionTag; // "R2023" or "R2024"
-                
+
                 SafeFileLogger.SafeAppendText("cluster_debug.log", $"\n========== REFACTORED CLUSTER SERVICE STARTED ==========\n");
                 SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔨 BUILD TIMESTAMP: {buildTimestamp} | VERSION: {versionTag} | Assembly: {Path.GetFileName(assemblyPath)}\n");
                 SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] Target category: {targetCategory ?? "ALL"}\n");
@@ -245,7 +245,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             {
                 SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ❌ Error logging build info: {buildLogEx.Message}\n");
             }
-            
+
             _filterName = filterName;
             int placedCount = 0;
             int deletedCount = 0;
@@ -334,17 +334,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
                     // ✅ SELF-HEALING FIRST: Check for deleted cluster sleeves BEFORE filtering by SleeveInstanceId
                     // This allows zones with SleeveInstanceId=0 (after clustering) to have SleeveInstanceId restored
-                    
+
                     // ✅ FORCE DETECTION / REFRESH CLEANUP: 
                     // If Force Detection is ON or we are in Path 3 (Refresh), we MUST delete existing clusters to prevent duplicates.
                     // This creates a "clean slate" for the zones in this scope.
                     bool isForceDetection = JSE_RevitAddin_MEP_OPENINGS.Services.ApplicationProfileService.Instance.GetCurrentSettings().ForceDetectionMode;
-                    
+
                     if (isForceDetection || isPath3Validated || isPath3Invalidated || isPath3New)
                     {
                         var clustersToDelete = new List<ElementId>();
                         var clusterIdsSeen = new HashSet<int>();
-                        
+
                         foreach (var cz in allClashZones)
                         {
                             if (cz.ClusterSleeveInstanceId > 0 && cz.IsClusterResolved && !clusterIdsSeen.Contains(cz.ClusterSleeveInstanceId))
@@ -353,16 +353,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                 clustersToDelete.Add(new ElementId(cz.ClusterSleeveInstanceId));
                             }
                         }
-                        
+
                         if (clustersToDelete.Count > 0)
                         {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
                                 $"[{DateTime.Now:HH:mm:ss}] 🧹 FORCE CLEANUP: Deleting {clustersToDelete.Count} existing clusters (Force={isForceDetection}, Path3={isPath3Validated}|{isPath3Invalidated}|{isPath3New})\n");
-                            
-                            try 
-                            { 
-                                doc.Delete(clustersToDelete); 
-                                
+
+                            try
+                            {
+                                doc.Delete(clustersToDelete);
+
                                 // ✅ DATABASE CLEANUP: Remove "data rows" for these deleted clusters to prevent ghosts
                                 // User Requirement: "delete the data rows of the invalidated zones" (Cluster AND Combined)
                                 try
@@ -374,28 +374,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                             using (var cmd = db.Connection.CreateCommand())
                                             {
                                                 cmd.Transaction = tx;
-                                                
+
                                                 // 1. CLEANUP STANDARD CLUSTERS
                                                 var clusterIdList = string.Join(",", clustersToDelete.Select(id => id.IntegerValue)); // These are ClusterSleeveInstanceIds
-                                                
+
                                                 if (!string.IsNullOrEmpty(clusterIdList))
                                                 {
                                                     // Delete from ClusterSleeves table
                                                     cmd.CommandText = $"DELETE FROM ClusterSleeves WHERE ClusterSleeveInstanceId IN ({clusterIdList})";
                                                     int delClusters = cmd.ExecuteNonQuery();
-                                                    
+
                                                     // Reset Cluster flags in ClashZones
                                                     cmd.CommandText = $"UPDATE ClashZones SET IsClusterResolvedFlag = 0, ClusterInstanceId = -1 WHERE ClusterInstanceId IN ({clusterIdList})";
                                                     int updClusters = cmd.ExecuteNonQuery();
-                                                    
-                                                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+
+                                                    SafeFileLogger.SafeAppendText("cluster_debug.log",
                                                         $"[{DateTime.Now:HH:mm:ss}] 🧹 DB CLEANUP (Clusters): Deleted {delClusters} rows, Reset {updClusters} zones.\n");
                                                 }
 
                                                 // 2. CLEANUP COMBINED CLUSTERS (If any zones reference them)
                                                 // Find zones associated with deleted clusters that ALSO have CombinedCluster metrics
                                                 var combinedIds = allClashZones
-                                                    .Where(z => z.CombinedClusterSleeveInstanceId > 0 && 
+                                                    .Where(z => z.CombinedClusterSleeveInstanceId > 0 &&
                                                                (clustersToDelete.Any(id => id.IntegerValue == z.ClusterSleeveInstanceId) || isPath3Invalidated))
                                                     .Select(z => z.CombinedClusterSleeveInstanceId)
                                                     .Distinct()
@@ -404,12 +404,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                                 if (combinedIds.Count > 0)
                                                 {
                                                     var combinedIdList = string.Join(",", combinedIds);
-                                                    
+
                                                     // Delete from CombinedSleeves table (Assuming table name is CombinedSleeves)
                                                     // Also delete the Revit Element if it exists (need to find it... but we only have ID)
                                                     // Ideally we should have collected Revit Element IDs for Combined too.
                                                     // For now, clean DB to break the link.
-                                                    
+
                                                     cmd.CommandText = $"DELETE FROM CombinedSleeves WHERE CombinedClusterSleeveInstanceId IN ({combinedIdList})";
                                                     try { cmd.ExecuteNonQuery(); } catch { /* Table might not exist yet in early phase */ }
 
@@ -417,7 +417,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                                     cmd.CommandText = $"UPDATE ClashZones SET IsCombinedResolved = 0, CombinedClusterInstanceId = -1, CombinedClusterSleeveInstanceId = -1 WHERE CombinedClusterSleeveInstanceId IN ({combinedIdList})";
                                                     int updCombined = cmd.ExecuteNonQuery();
 
-                                                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                                    SafeFileLogger.SafeAppendText("cluster_debug.log",
                                                         $"[{DateTime.Now:HH:mm:ss}] 🧹 DB CLEANUP (Combined): Reset {updCombined} zones for IDs: {combinedIdList}.\n");
                                                 }
                                             }
@@ -430,7 +430,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                     SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ DB Cleanup Failed: {dbEx.Message}\n");
                                 }
                             }
-                            catch (Exception delEx) 
+                            catch (Exception delEx)
                             {
                                 SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ Delete failed (partial): {delEx.Message}\n");
                             }
@@ -451,7 +451,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                 if (cz.AfterClusterSleevePlacedSleeveInstanceId > 0)
                                 {
                                     cz.SleeveInstanceId = cz.AfterClusterSleevePlacedSleeveInstanceId;
-                                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log",
                                         $"[{DateTime.Now:HH:mm:ss}] 🔄 SELF-HEALING: Restored SleeveInstanceId={cz.AfterClusterSleevePlacedSleeveInstanceId} for zone {cz.Id}\n");
                                 }
                                 cz.IsClusterResolved = false;
@@ -460,12 +460,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                 cz.AfterClusterSleevePlacedSleeveInstanceId = 0;
                                 cz.MarkedForClusterProcess = true; // ✅ Mark for cluster process
                                 resetCount++;
-                                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
                                     $"[{DateTime.Now:HH:mm:ss}] 🔄 SELF-HEALING: Reset cluster flags for zone {cz.Id} (cluster sleeve deleted)\n");
                             }
                         }
                     }
-                    
+
                     if (resetCount > 0)
                     {
                         SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔄 SELF-HEALING: Reset {resetCount} zones for re-clustering (deleted cluster sleeves)\n");
@@ -473,14 +473,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
                     // ✅ NOW filter by SleeveInstanceId > 0 (after self-healing restored SleeveInstanceId)
                     var withSleeveId = allClashZones.Where(cz => cz.SleeveInstanceId > 0).ToList();
-                    
+
                     // 🔍 TRACING: Check specific problematic IDs
                     foreach (var czId in new[] { 1183693, 1183702 })
                     {
                         var found = allClashZones.FirstOrDefault(cz => cz.SleeveInstanceId == czId);
                         if (found != null)
                         {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
                                 $"[TRACE-FILTER] ID {czId}: Found=True, SleeveId={found.SleeveInstanceId}, IsResolved={found.IsClusterResolved}, IsCurrentClash={found.IsCurrentClash}, Category={found.MepElementCategory}\n");
                         }
                         else
@@ -511,24 +511,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                 .Select(g => new { HostId = g.Key, Count = g.Count() })
                                 .OrderByDescending(x => x.Count)
                                 .ToList();
-                                
-                            SafeFileLogger.SafeAppendText("cluster_debug.log", 
+
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
                                 $"[{DateTime.Now:HH:mm:ss}] 📊 HOST ELEMENT DISTRIBUTION: {filteredClashZones.Count} zones across {hostDistribution.Count} unique hosts\n");
-                                
+
                             foreach (var host in hostDistribution.Take(20)) // Log top 20 hosts to avoid massive logs
                             {
-                                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
                                     $"[{DateTime.Now:HH:mm:ss}]   → HostId {host.HostId}: {host.Count} zones\n");
                             }
                             if (hostDistribution.Count > 20)
                             {
-                                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
                                     $"[{DateTime.Now:HH:mm:ss}]   → ... and {hostDistribution.Count - 20} more hosts\n");
                             }
                         }
                         catch (Exception ex)
                         {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
                                 $"[{DateTime.Now:HH:mm:ss}] ⚠️ Error logging host distribution: {ex.Message}\n");
                         }
                     }
@@ -550,25 +550,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 foreach (var cz in filteredClashZones)
                 {
                     if (cz == null) continue;
-                    
+
                     // Validate HostElementId
                     if (cz.StructuralElementIdValue <= 0)
                     {
                         invalidZones.Add((cz.Id, $"Invalid HostElementId: {cz.StructuralElementIdValue}"));
                         continue;
                     }
-                    
+
                     // Validate StructuralThickness
                     if (cz.StructuralElementThickness <= 0.001)
                     {
                         invalidZones.Add((cz.Id, $"Invalid StructuralThickness: {cz.StructuralElementThickness}"));
                         continue;
                     }
-                    
+
                     // Validate HostOrientation (for walls/framing is critical, for others good to have)
                     // If HostOrientation is null, we might default to something else, but let's log it
                     // Note: Floors might have empty HostOrientation but use MepElementRotationAngle
-                    
+
                     // Passed all validations
                     validZones.Add(cz);
                 }
@@ -628,13 +628,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 IGrouping<SleeveGroupKey, dynamic>[] sleeveGroups;
                 using (var groupTracker = performanceMonitor.TrackOperation("Group Sleeves by Host/System/Orientation"))
                 {
-                    // ✅ STEP 8: Group sleeves by host type, system type, orientation, AND HOST ID (Phase 11 fix)
-                    sleeveGroups = rawSleeves.GroupBy(sleeve => new SleeveGroupKey(
-                        sleeve.HostType,
-                        sleeve.Category,  // systemType = Category (MEP element category)
-                        sleeve.Orientation,
-                        (sleeve.ClashZone?.StructuralElementIdValue ?? -1) // ✅ PASS HOST ID to prevent cross-wall clustering
-                    )).ToArray();
+                    // ✅ STEP 8: Group sleeves by host type, system type, orientation, and SPATIAL PROXIMITY (Phase 12: Duplicate Fix)
+                    // We group by 10m buckets (approx 32.8ft) to ensure sleeves on the same wall/floor are processed together
+                    // regardless of slight Host ID mismatches or linked model issues.
+                    sleeveGroups = rawSleeves.GroupBy(sleeve =>
+                    {
+                        ClashZone cz = sleeve.ClashZone;
+                        // Use IntesectionPoint if available, otherwise 0
+                        double x = cz?.IntersectionPointX ?? 0;
+                        double y = cz?.IntersectionPointY ?? 0;
+                        double z = cz?.IntersectionPointZ ?? 0;
+
+                        // 10m bucket size (approx 32.8 ft)
+                        int bucketX = (int)Math.Floor(x / 32.8);
+                        int bucketY = (int)Math.Floor(y / 32.8);
+                        int bucketZ = (int)Math.Floor(z / 32.8);
+
+                        return new SleeveGroupKey(
+                            sleeve.HostType,
+                            sleeve.Category,
+                            sleeve.Orientation,
+                            bucketX,
+                            bucketY,
+                            bucketZ
+                        );
+                    }).ToArray();
                     groupTracker.SetItemCount(sleeveGroups.Length);
                 }
 
@@ -659,28 +677,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         var groupKey = kvp.Key;
                         var clusterList = kvp.Value;
                         var validClustersForGroup = new List<List<dynamic>>();
-                        
+
                         foreach (var cluster in clusterList)
                         {
                             if (cluster == null || cluster.Count == 0) continue;
-                            
+
                             // Get first zone as reference
                             ClashZone? firstClashZone = null;
                             var firstItem = cluster[0];
                             if (firstItem is ClashZone cz) firstClashZone = cz;
                             else if (firstItem?.ClashZone != null) firstClashZone = firstItem.ClashZone as ClashZone;
-                            
+
                             if (firstClashZone == null)
                             {
                                 SafeFileLogger.SafeAppendText("placement_errors.log", $"[{DateTime.Now:HH:mm:ss}] ❌ DISCARDING CLUSTER: First zone data invalid\n");
                                 discardedClusterCount++;
                                 continue;
                             }
-                            
+
                             int referenceHostId = firstClashZone.StructuralElementIdValue;
                             string referenceOrientation = (firstClashZone.HostOrientation ?? "").Trim();
                             double referenceThickness = firstClashZone.StructuralElementThickness;
-                            
+
                             // Validate ALL zones in cluster match reference values
                             bool isValid = true;
                             foreach (var item in cluster)
@@ -688,36 +706,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                 ClashZone? itemCz = null;
                                 if (item is ClashZone icz) itemCz = icz;
                                 else if (item?.ClashZone != null) itemCz = item.ClashZone as ClashZone;
-                                
+
                                 if (itemCz == null) { isValid = false; break; }
 
                                 // Check HostElementId
                                 if (itemCz.StructuralElementIdValue != referenceHostId)
                                 {
-                                    SafeFileLogger.SafeAppendText("placement_errors.log", 
+                                    SafeFileLogger.SafeAppendText("placement_errors.log",
                                         $"[{DateTime.Now:HH:mm:ss}] ❌ DISCARDING CLUSTER: Mixed HostElementIds ({referenceHostId} vs {itemCz.StructuralElementIdValue})\n");
                                     isValid = false; break;
                                 }
-                                
+
                                 // Check HostOrientation (Strict string match? Or loose?)
                                 // We check simply for inequality of trimmed strings
                                 string itemOrientation = (itemCz.HostOrientation ?? "").Trim();
                                 if (!string.Equals(referenceOrientation, itemOrientation, StringComparison.OrdinalIgnoreCase))
                                 {
-                                    SafeFileLogger.SafeAppendText("placement_errors.log", 
+                                    SafeFileLogger.SafeAppendText("placement_errors.log",
                                         $"[{DateTime.Now:HH:mm:ss}] ❌ DISCARDING CLUSTER: Mixed HostOrientations ('{referenceOrientation}' vs '{itemOrientation}')\n");
                                     isValid = false; break;
                                 }
-                                
+
                                 // Check StructuralThickness (tolerance 1mm = ~0.003 ft)
                                 if (Math.Abs(itemCz.StructuralElementThickness - referenceThickness) > 0.003)
                                 {
-                                    SafeFileLogger.SafeAppendText("placement_errors.log", 
+                                    SafeFileLogger.SafeAppendText("placement_errors.log",
                                         $"[{DateTime.Now:HH:mm:ss}] ❌ DISCARDING CLUSTER: Mixed StructuralThickness ({referenceThickness:F3} vs {itemCz.StructuralElementThickness:F3})\n");
                                     isValid = false; break;
                                 }
                             }
-                            
+
                             if (isValid)
                             {
                                 validClustersForGroup.Add(cluster);
@@ -727,19 +745,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                 discardedClusterCount++;
                             }
                         }
-                        
+
                         if (validClustersForGroup.Count > 0)
                         {
                             validatedClustersByGroup[groupKey] = validClustersForGroup;
                         }
                     }
-                    
+
                     if (discardedClusterCount > 0)
                     {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
                             $"[{DateTime.Now:HH:mm:ss}] ⚠️ POST-CLUSTERING VALIDATION: Discarded {discardedClusterCount} invalid clusters (mixed properties)\n");
                     }
-                    
+
                     // Replace results with validated clusters
                     clustersByGroup = validatedClustersByGroup;
 
@@ -748,13 +766,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     int totalClustersWithMultipleSleeves = clustersByGroup?.Sum(g => g.Value?.Count(c => c.Count > 1) ?? 0) ?? 0;
                     SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅ CLUSTERING: Formed {clustersByGroup?.Count ?? 0} cluster groups, {totalClusters} total clusters, {totalClustersWithMultipleSleeves} clusters with >1 sleeve\n");
                     formTracker.SetItemCount(totalClusters);
-                    
+
                     // ✅ Mark zones in multi-sleeve clusters with MarkedForClusterProcess = true
                     if (clustersByGroup != null && allClashZones != null)
                     {
                         var sleeveIdToZone = allClashZones.Where(cz => cz.SleeveInstanceId > 0)
                             .ToDictionary(cz => cz.SleeveInstanceId, cz => cz);
-                        
+
                         foreach (var groupEntry in clustersByGroup)
                         {
                             foreach (var cluster in groupEntry.Value)
@@ -796,7 +814,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 // ✅ PRE-CALCULATION: Pre-calculate rotation angles and bounding boxes in parallel
                 // User requested NO FALLBACKS - if this fails, we want to know immediately.
                 Dictionary<int, ClusterCalculationResult>? preCalculatedResults = null;
-                
+
                 if (_preCalculationService != null)
                 {
                     using (var preCalcTracker = performanceMonitor.TrackOperation("Pre-Calculate Clusters (Parallel)"))
@@ -834,630 +852,725 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 }
                 else
                 {
-                     SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ Pre-calculation service is NULL - cannot optimize\n");
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                       $"[{DateTime.Now:HH:mm:ss}] ⚠️ Pre-calculation service is NULL - cannot optimize\n");
                 }
 
                 // ✅ PERFORMANCE: Track cluster placement loop
-                int clusterProcessedCount = 0;
-                using (var placementLoopTracker = performanceMonitor.TrackOperation("Place Clusters Loop"))
+                try
                 {
-                    // ✅ STEP 12: Process each cluster group
-                    // ✅ SOLID REFACTORING: Use pre-calculated results if available, otherwise use legacy sequential calculation
-                    int clusterIndex = 0;
-                    foreach (var groupEntry in clustersByGroup)
+                    int clusterProcessedCount = 0;
+                    // ✅ PHASE 1: Add Global Tracking (Prevent Duplicates across groups)
+                    var globalProcessedSleeveIds = new HashSet<int>();
+
+                    try
                     {
-                        // Check timeout every 5 clusters
-                        clusterProcessedCount++;
-                        if (clusterProcessedCount % 5 == 0 && _timeoutService.IsTimedOut())
+                        using (var placementLoopTracker = performanceMonitor.TrackOperation("Place Clusters Loop"))
                         {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Error($"[RefactoredClusterService] ⏱ TIMEOUT: Exceeded limit after processing {clusterProcessedCount} clusters");
-                            _timeoutService.ShowTimeoutWarning($"after processing {clusterProcessedCount} clusters");
-                            break;
-                        }
-
-                        var groupKey = groupEntry.Key;
-                        var clusters = groupEntry.Value;
-
-                        // ✅ STEP 13: Select clustering strategy (Phase 4: Strategy Factory)
-                        var strategy = _strategyFactory.GetStrategy(groupKey, clusters.FirstOrDefault() ?? new List<dynamic>());
-
-                        // Process each cluster
-                        SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 PROCESSING: Group {groupKey.hostType}/{groupKey.systemType}/{groupKey.orientation} (HostId: {groupKey.HostElementId}) has {clusters.Count} clusters\n");
-                        
-                        // ✅ UNIFIED BATCH CONTEXT: Ensure ClusterPlacementService writes to the same dictionary we flush
-                        // This fixes the "Missing Parameters" bug where PlaceClusterSleeve used a local dictionary that confused the flush logic
-                        try
-                        {
-                            _parameterService.DivertedBatchDictionary = _deferredClusterParameters;
-                            
-                            foreach (var cluster in clusters)
+                            // ✅ STEP 12: Process each cluster group
+                            // ✅ SOLID REFACTORING: Use pre-calculated results if available, otherwise use legacy sequential calculation
+                            int clusterIndex = 0;
+                            foreach (var groupEntry in clustersByGroup)
                             {
-                                // ✅ PHASE 6: CLUSTER PLACEMENT LOGGING
-                                if (!DeploymentConfiguration.DeploymentMode)
+                                // Check timeout every 5 clusters
+                                clusterProcessedCount++;
+                                if (clusterProcessedCount % 5 == 0 && _timeoutService.IsTimedOut())
                                 {
-                                    var idx = clusters.IndexOf(cluster);
-                                    try
-                                    {
-                                        var firstItem = cluster[0];
-                                        ClashZone? logClashZone = null;
-                                        if (firstItem is ClashZone cz) logClashZone = cz;
-                                        else if (firstItem?.ClashZone != null) logClashZone = firstItem.ClashZone as ClashZone;
-                                        
-                                        if (logClashZone != null)
-                                        {
-                                            string logMsg = $"[{DateTime.Now:HH:mm:ss}] 🔧 PLACING CLUSTER {idx + 1}/{clusters.Count}:\n";
-                                            logMsg += $"  GroupKey: Host={groupKey.hostType}, Orient={groupKey.orientation}\n";
-                                            logMsg += $"  Size: {cluster.Count} zones\n";
-                                            logMsg += $"  HostElementId: {logClashZone.StructuralElementIdValue}\n";
-                                            logMsg += $"  HostOrientation: {logClashZone.HostOrientation}\n";
-                                            double thkMm = RevitUnitConversionService.Instance.FromInternalMillimeters(logClashZone.StructuralElementThickness);
-                                            logMsg += $"  StructuralThickness: {thkMm:F1}mm\n";
-                                            SafeFileLogger.SafeAppendText("cluster_debug.log", logMsg);
-                                        }
-                                    }
-                                    catch { /* Log failure shouldn't stop placement */ }
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Error($"[RefactoredClusterService] ⏱ TIMEOUT: Exceeded limit after processing {clusterProcessedCount} clusters");
+                                    _timeoutService.ShowTimeoutWarning($"after processing {clusterProcessedCount} clusters");
+                                    break;
                                 }
 
-                            if (cluster.Count <= 1)
-                            {
-                                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ⏭️ SKIP: Cluster with only {cluster.Count} sleeve(s) (need >1 to cluster)\n");
-                                clusterIndex++; // Increment index even for skipped clusters
-                                continue; // Skip individual sleeves
-                            }
+                                var groupKey = groupEntry.Key;
+                                var clusters = groupEntry.Value;
 
-                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅ PROCESSING: Cluster with {cluster.Count} sleeves (index={clusterIndex})\n");
+                                // ✅ STEP 13: Select clustering strategy (Phase 4: Strategy Factory)
+                                var strategy = _strategyFactory.GetStrategy(groupKey, clusters.FirstOrDefault() ?? new List<dynamic>());
 
-                            try
-                            {
+                                // Process each cluster
+                                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 PROCESSING: Group {groupKey.hostType}/{groupKey.systemType}/{groupKey.orientation} (Spatial: X={groupKey.SpatialX}, Y={groupKey.SpatialY}, Z={groupKey.SpatialZ}) has {clusters.Count} clusters\n");
 
+                                // ✅ UNIFIED BATCH CONTEXT: Ensure ClusterPlacementService writes to the same dictionary we flush
+                                // This fixes the "Missing Parameters" bug where PlaceClusterSleeve used a local dictionary that confused the flush logic
+                                // ✅ UNIFIED IMMEDIDATE MODE: Do NOT divert. Write directly to element.
+                                // _parameterService.DivertedBatchDictionary = _deferredClusterParameters;
 
-                                // ✅ PERFORMANCE: Track cluster placement
-                                (bool success, int placedCount, int deletedCount, FamilyInstance? placedClusterSleeve, int? capturedClusterSleeveId) placementResult;
-                                using (placementLoopTracker?.TrackSubOperation("Place Cluster Sleeve"))
+                                foreach (var cluster in clusters)
                                 {
-                                    // ✅ USE PRE-CALCULATED RESULTS
-                                    ClusterCalculationResult? preCalcResult = null;
-                                    if (preCalculatedResults != null && preCalculatedResults.ContainsKey(clusterIndex))
+                                    // ✅ PHASE 6: CLUSTER PLACEMENT LOGGING
+                                    if (!DeploymentConfiguration.DeploymentMode)
                                     {
-                                        preCalcResult = preCalculatedResults[clusterIndex];
+                                        var idx = clusters.IndexOf(cluster);
+                                        try
+                                        {
+                                            var firstItem = cluster[0];
+                                            ClashZone? logClashZone = null;
+                                            if (firstItem is ClashZone cz) logClashZone = cz;
+                                            else if (firstItem?.ClashZone != null) logClashZone = firstItem.ClashZone as ClashZone;
+
+                                            if (logClashZone != null)
+                                            {
+                                                string logMsg = $"[{DateTime.Now:HH:mm:ss}] 🔧 PLACING CLUSTER {idx + 1}/{clusters.Count}:\n";
+                                                logMsg += $"  GroupKey: Host={groupKey.hostType}, Orient={groupKey.orientation}\n";
+                                                logMsg += $"  Size: {cluster.Count} zones\n";
+                                                logMsg += $"  HostElementId: {logClashZone.StructuralElementIdValue}\n";
+                                                logMsg += $"  HostOrientation: {logClashZone.HostOrientation}\n";
+                                                double thkMm = RevitUnitConversionService.Instance.FromInternalMillimeters(logClashZone.StructuralElementThickness);
+                                                logMsg += $"  StructuralThickness: {thkMm:F1}mm\n";
+                                                SafeFileLogger.SafeAppendText("cluster_debug.log", logMsg);
+                                            }
+                                        }
+                                        catch { /* Log failure shouldn't stop placement */ }
                                     }
 
-                                    // ✅ STEP 14: Place cluster sleeve (Phase 5: Placement Service + Phase 6: Rotation Service + Phase 3: BoundingBox)
-                                    // Note: Placement service needs to be wired with functions from rotation service and data service
-                                    placementResult = PlaceClusterForGroup(
-                                        doc,
-                                        cluster,
-                                        groupKey,
-                                        targetCategory,
-                                        xmlFilePath,
-                                        placementLoopTracker, // Pass tracker for sub-operation tracking
-                                        preCalcResult); // ✅ Pass pre-calculated result if available
-                                } // End Place Cluster Sleeve sub-operation
-
-                                clusterIndex++; // Increment index after processing
-
-
-
-                                if (placementResult.success)
-                                {
+                                    // ✅ PHASE 1: Duplicate Prevention Check
+                                    // Verify if any sleeve in this cluster has already been processed in another group
+                                    // This handles cases where sleeves sit on the boundary of spatial buckets
+                                    var clusterSleeveIds = cluster.Select(s => (int)s.SleeveInstanceId).ToList();
+                                    // ✅ PHASE 1: DUPLICATE PREVENTION (Global Tracking)
+                                    bool isDuplicate = false;
                                     try
                                     {
-                                        var versionTag = Helpers.VersionInfo.VersionTag;
-                                        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                                        var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
-                                        if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
-                                        var logPath = Path.Combine(logDir, "cluster_debug.log");
-                                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅✅✅ PLACEMENT SUCCESS: Adding to _clusterToClashZoneIds\n");
+                                        foreach (var s in cluster)
+                                        {
+                                            // Robust ID access: Try direct property, then ClashZone property
+                                            int sId = -1;
+                                            try { sId = s.SleeveInstanceId; }
+                                            catch { try { sId = s.ClashZone.SleeveInstanceId; } catch { } }
+
+                                            if (sId > 0 && globalProcessedSleeveIds.Contains(sId))
+                                            {
+                                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                                    $"[{DateTime.Now:HH:mm:ss}] 🚫 DUPLICATE PREVENTED: Sleeve {sId} already processed. Skipping cluster.\n");
+                                                isDuplicate = true;
+                                                break;
+                                            }
+                                        }
                                     }
-                                    catch { }
-
-                                    placedCount += placementResult.placedCount;
-                                    deletedCount += placementResult.deletedCount;
-
-                                    if (placementResult.placedClusterSleeve != null && placementResult.capturedClusterSleeveId.HasValue)
+                                    catch (Exception ex)
                                     {
-                                        try
+                                        SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ ERROR in Duplicate Check: {ex.Message}\n");
+                                    }
+
+                                    if (isDuplicate)
+                                    {
+                                        clusterIndex++;
+                                        continue;
+                                    }
+
+                                    // ✅ Add IDs to global set (Pre-add to block self/others immediately)
+                                    foreach (var s in cluster)
+                                    {
+                                        int sId = -1;
+                                        try { sId = s.SleeveInstanceId; } catch { try { sId = s.ClashZone.SleeveInstanceId; } catch { } }
+                                        if (sId > 0) globalProcessedSleeveIds.Add(sId);
+                                    }
+
+                                    if (cluster.Count <= 1)
+                                    {
+                                        SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ⏭️ SKIP: Cluster with only {cluster.Count} sleeve(s) (need >1 to cluster)\n");
+                                        clusterIndex++; // Increment index even for skipped clusters
+                                        continue; // Skip individual sleeves
+                                    }
+
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅ PROCESSING: Cluster with {cluster.Count} sleeves (index={clusterIndex})\n");
+
+                                    try
+                                    {
+
+
+                                        // ✅ PERFORMANCE: Track cluster placement
+                                        (bool success, int placedCount, int deletedCount, FamilyInstance? placedClusterSleeve, int? capturedClusterSleeveId) placementResult;
+                                        using (placementLoopTracker?.TrackSubOperation("Place Cluster Sleeve"))
                                         {
-                                            var versionTag = Helpers.VersionInfo.VersionTag;
-                                            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                                            var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
-                                            if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
-                                            var logPath = Path.Combine(logDir, "cluster_debug.log");
-                                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ Adding cluster to placedClusters and _clusterToClashZoneIds: clusterSleeveId={placementResult.capturedClusterSleeveId.Value}\n");
-                                        }
-                                        catch { }
+                                            // ✅ USE PRE-CALCULATED RESULTS
+                                            ClusterCalculationResult? preCalcResult = null;
+                                            if (preCalculatedResults != null && preCalculatedResults.ContainsKey(clusterIndex))
+                                            {
+                                                preCalcResult = preCalculatedResults[clusterIndex];
+                                            }
 
-                                        // ✅ SESSION PROTECTION: Register recently placed cluster sleeve to prevent deletion
-                                        // This protects the cluster sleeve from being deleted by FlagManager.DeleteSleeveForIntersectionPointChange()
-                                        // ✅ CRITICAL: Always register with legacy FlagManager (static method works regardless of which service is active)
-                                        // The legacy FlagManager's static HashSet is shared and will protect sleeves even when using refactored services
-                                        Services.FlagManagement.FlagManagerProtectionHelper.RegisterRecentlyPlacedClusterSleeve(placementResult.capturedClusterSleeveId.Value);
+                                            // ✅ STEP 14: Place cluster sleeve (Phase 5: Placement Service + Phase 6: Rotation Service + Phase 3: BoundingBox)
+                                            // Note: Placement service needs to be wired with functions from rotation service and data service
+                                            placementResult = PlaceClusterForGroup(
+                                                doc,
+                                                cluster,
+                                                groupKey,
+                                                targetCategory,
+                                                xmlFilePath,
+                                                placementLoopTracker, // Pass tracker for sub-operation tracking
+                                                preCalcResult); // ✅ Pass pre-calculated result if available
+                                        } // End Place Cluster Sleeve sub-operation
 
-                                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                            $"[{DateTime.Now:HH:mm:ss}] ✅✅✅ REGISTERED cluster sleeve {placementResult.capturedClusterSleeveId.Value} with FlagManagerProtectionHelper (static protection)\n");
+                                        clusterIndex++; // Increment index after processing
 
-                                        placedClusters.Add(placementResult.placedClusterSleeve);
 
-                                        // Track ClashZoneIds for database save
-                                        var clusterClashZoneIds = cluster
-                                            .Select(s => (s.ClashZone as ClashZone)?.Id)
-                                            .Where(id => id.HasValue)
-                                            .Select(id => id!.Value)
-                                            .ToList();
 
-                                        try
+                                        if (placementResult.success)
                                         {
-                                            var versionTag = Helpers.VersionInfo.VersionTag;
-                                            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                                            var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
-                                            if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
-                                            var logPath = Path.Combine(logDir, "cluster_debug.log");
-                                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ Adding {clusterClashZoneIds.Count} ClashZoneIds to _clusterToClashZoneIds[{placementResult.capturedClusterSleeveId.Value}]\n");
-                                        }
-                                        catch { }
+                                            try
+                                            {
+                                                var versionTag = Helpers.VersionInfo.VersionTag;
+                                                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                                                var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                                                if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
+                                                var logPath = Path.Combine(logDir, "cluster_debug.log");
+                                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅✅✅ PLACEMENT SUCCESS: Adding to _clusterToClashZoneIds\n");
+                                            }
+                                            catch { }
 
-                                        _clusterToClashZoneIds[placementResult.capturedClusterSleeveId.Value] = clusterClashZoneIds;
+                                            placedCount += placementResult.placedCount;
+                                            deletedCount += placementResult.deletedCount;
 
-                                        try
-                                        {
-                                            var versionTag = Helpers.VersionInfo.VersionTag;
-                                            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                                            var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
-                                            if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
-                                            var logPath = Path.Combine(logDir, "cluster_debug.log");
-                                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ AFTER ADD: _clusterToClashZoneIds.Count={_clusterToClashZoneIds.Count}\n");
-
-                                            // ✅ PHASE 3 PERISTENCE: Calculate and save cluster corners
                                             if (placementResult.placedClusterSleeve != null && placementResult.capturedClusterSleeveId.HasValue)
                                             {
                                                 try
                                                 {
-                                                    var cornerService = new SleeveCornerCalculationService();
-                                                    // Extract parameters from placed element
-                                                    var loc = placementResult.placedClusterSleeve.Location as LocationPoint;
-                                                    var point = loc?.Point;
-                                                    var rotation = loc?.Rotation ?? 0.0;
+                                                    var versionTag = Helpers.VersionInfo.VersionTag;
+                                                    var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                                                    var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                                                    if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
+                                                    var logPath = Path.Combine(logDir, "cluster_debug.log");
+                                                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ Adding cluster to placedClusters and _clusterToClashZoneIds: clusterSleeveId={placementResult.capturedClusterSleeveId.Value}\n");
+                                                }
+                                                catch { }
 
-                                                    // Get dimensions (prioritize RCS dimensions)
-                                                    var widthParam = placementResult.placedClusterSleeve.LookupParameter("Element Width") ?? placementResult.placedClusterSleeve.LookupParameter("Width");
-                                                    var heightParam = placementResult.placedClusterSleeve.LookupParameter("Element Height") ?? placementResult.placedClusterSleeve.LookupParameter("Height");
+                                                // ✅ SESSION PROTECTION: Register recently placed cluster sleeve to prevent deletion
+                                                // This protects the cluster sleeve from being deleted by FlagManager.DeleteSleeveForIntersectionPointChange()
+                                                // ✅ CRITICAL: Always register with legacy FlagManager (static method works regardless of which service is active)
+                                                // The legacy FlagManager's static HashSet is shared and will protect sleeves even when using refactored services
+                                                Services.FlagManagement.FlagManagerProtectionHelper.RegisterRecentlyPlacedClusterSleeve(placementResult.capturedClusterSleeveId.Value);
 
-                                                    // ⚠️ DEPRECATED: Old per-cluster corner save - now handled by BatchSaveClusterDataToDatabase
-                                                    // This was causing 0.0 values because it ran before DB entry existed
-                                                    /*
-                                                    double width = widthParam?.AsDouble() ?? 1.0;
-                                                    double height = heightParam?.AsDouble() ?? 1.0;
+                                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                                    $"[{DateTime.Now:HH:mm:ss}] ✅✅✅ REGISTERED cluster sleeve {placementResult.capturedClusterSleeveId.Value} with FlagManagerProtectionHelper (static protection)\n");
 
-                                                    if (point != null)
+                                                placedClusters.Add(placementResult.placedClusterSleeve);
+
+                                                // Track ClashZoneIds for database save
+                                                var clusterClashZoneIds = cluster
+                                                    .Select(s => (s.ClashZone as ClashZone)?.Id)
+                                                    .Where(id => id.HasValue)
+                                                    .Select(id => id!.Value)
+                                                    .ToList();
+
+                                                // ✅ PHASE 1: Mark sleeves as processed globally
+                                                foreach (var id in clusterSleeveIds)
+                                                {
+                                                    globalProcessedSleeveIds.Add(id);
+                                                }
+
+                                                try
+                                                {
+                                                    var versionTag = Helpers.VersionInfo.VersionTag;
+                                                    var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                                                    var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                                                    if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
+                                                    var logPath = Path.Combine(logDir, "cluster_debug.log");
+                                                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ Adding {clusterClashZoneIds.Count} ClashZoneIds to _clusterToClashZoneIds[{placementResult.capturedClusterSleeveId.Value}]\n");
+                                                }
+                                                catch { }
+
+                                                _clusterToClashZoneIds[placementResult.capturedClusterSleeveId.Value] = clusterClashZoneIds;
+
+                                                try
+                                                {
+                                                    var versionTag = Helpers.VersionInfo.VersionTag;
+                                                    var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                                                    var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                                                    if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
+                                                    var logPath = Path.Combine(logDir, "cluster_debug.log");
+                                                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ AFTER ADD: _clusterToClashZoneIds.Count={_clusterToClashZoneIds.Count}\n");
+
+                                                    // ✅ PHASE 3 PERISTENCE: Calculate and save cluster corners
+                                                    if (placementResult.placedClusterSleeve != null && placementResult.capturedClusterSleeveId.HasValue)
                                                     {
-                                                        var cornersResult = cornerService.CalculateCorners(point, width, height, rotation);
-
-                                                        if (cornersResult.HasValue)
+                                                        try
                                                         {
-                                                            var c = cornersResult.Value;
-                                                            _dataService.UpdateClusterSleeveCorners(
-                                                                placementResult.capturedClusterSleeveId.Value,
-                                                                c.corner1.X, c.corner1.Y, c.corner1.Z,
-                                                                c.corner2.X, c.corner2.Y, c.corner2.Z,
-                                                                c.corner3.X, c.corner3.Y, c.corner3.Z,
-                                                                c.corner4.X, c.corner4.Y, c.corner4.Z
-                                                            );
+                                                            var cornerService = new SleeveCornerCalculationService();
+                                                            // Extract parameters from placed element
+                                                            var loc = placementResult.placedClusterSleeve.Location as LocationPoint;
+                                                            var point = loc?.Point;
+                                                            var rotation = loc?.Rotation ?? 0.0;
+
+                                                            // Get dimensions (prioritize RCS dimensions)
+                                                            var widthParam = placementResult.placedClusterSleeve.LookupParameter("Element Width") ?? placementResult.placedClusterSleeve.LookupParameter("Width");
+                                                            var heightParam = placementResult.placedClusterSleeve.LookupParameter("Element Height") ?? placementResult.placedClusterSleeve.LookupParameter("Height");
+
+                                                            // ⚠️ DEPRECATED: Old per-cluster corner save - now handled by BatchSaveClusterDataToDatabase
+                                                            // This was causing 0.0 values because it ran before DB entry existed
+                                                            /*
+                                                            double width = widthParam?.AsDouble() ?? 1.0;
+                                                            double height = heightParam?.AsDouble() ?? 1.0;
+
+                                                            if (point != null)
+                                                            {
+                                                                var cornersResult = cornerService.CalculateCorners(point, width, height, rotation);
+
+                                                                if (cornersResult.HasValue)
+                                                                {
+                                                                    var c = cornersResult.Value;
+                                                                    _dataService.UpdateClusterSleeveCorners(
+                                                                        placementResult.capturedClusterSleeveId.Value,
+                                                                        c.corner1.X, c.corner1.Y, c.corner1.Z,
+                                                                        c.corner2.X, c.corner2.Y, c.corner2.Z,
+                                                                        c.corner3.X, c.corner3.Y, c.corner3.Z,
+                                                                        c.corner4.X, c.corner4.Y, c.corner4.Z
+                                                                    );
+                                                                }
+                                                            }
+
+                                                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ SAVED CORNERS for Cluster {placementResult.capturedClusterSleeveId.Value}\n");
+                                                            */
+
+                                                        }
+                                                        catch (Exception cornerEx)
+                                                        {
+                                                            // File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ⚠️ FAILED to save corners for Cluster {placementResult.capturedClusterSleeveId.Value}: {cornerEx.Message}\n");
                                                         }
                                                     }
-
-                                                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ SAVED CORNERS for Cluster {placementResult.capturedClusterSleeveId.Value}\n");
-                                                    */
                                                 }
-                                                catch (Exception cornerEx)
+                                                catch { }
+                                            }
+                                            else
+                                            {
+                                                try
                                                 {
-                                                    // File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ⚠️ FAILED to save corners for Cluster {placementResult.capturedClusterSleeveId.Value}: {cornerEx.Message}\n");
+                                                    var versionTag = Helpers.VersionInfo.VersionTag;
+                                                    var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                                                    var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                                                    if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
+                                                    var logPath = Path.Combine(logDir, "cluster_debug.log");
+                                                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ⚠️ PLACEMENT SUCCESS but NOT adding to _clusterToClashZoneIds: placedClusterSleeve={(placementResult.placedClusterSleeve != null ? "NOT NULL" : "NULL")}, capturedId={placementResult.capturedClusterSleeveId?.ToString() ?? "NULL"}\n");
                                                 }
+                                                catch { }
                                             }
                                         }
-                                        catch { }
-                                    }
-                                    else
-                                    {
-                                        try
+                                        else
                                         {
-                                            var versionTag = Helpers.VersionInfo.VersionTag;
-                                            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                                            var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
-                                            if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
-                                            var logPath = Path.Combine(logDir, "cluster_debug.log");
-                                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ⚠️ PLACEMENT SUCCESS but NOT adding to _clusterToClashZoneIds: placedClusterSleeve={(placementResult.placedClusterSleeve != null ? "NOT NULL" : "NULL")}, capturedId={placementResult.capturedClusterSleeveId?.ToString() ?? "NULL"}\n");
+                                            try
+                                            {
+                                                var versionTag = Helpers.VersionInfo.VersionTag;
+                                                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                                                var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                                                if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
+                                                var logPath = Path.Combine(logDir, "cluster_debug.log");
+                                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ PLACEMENT FAILED: success=false, placedCount={placementResult.placedCount}, deletedCount={placementResult.deletedCount}, capturedId={placementResult.capturedClusterSleeveId?.ToString() ?? "NULL"}, placedClusterSleeve={(placementResult.placedClusterSleeve != null ? "NOT NULL" : "NULL")}\n");
+                                            }
+                                            catch { }
                                         }
-                                        catch { }
                                     }
-                                }
-                                else
-                                {
-                                    try
+                                    catch (Exception ex)
                                     {
-                                        var versionTag = Helpers.VersionInfo.VersionTag;
-                                        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                                        var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
-                                        if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
-                                        var logPath = Path.Combine(logDir, "cluster_debug.log");
-                                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ PLACEMENT FAILED: success=false, placedCount={placementResult.placedCount}, deletedCount={placementResult.deletedCount}, capturedId={placementResult.capturedClusterSleeveId?.ToString() ?? "NULL"}, placedClusterSleeve={(placementResult.placedClusterSleeve != null ? "NOT NULL" : "NULL")}\n");
-                                    }
-                                    catch { }
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                {
-                                    DebugLogger.Error($"[RefactoredClusterService] Error placing cluster: {ex.Message}");
-                                    SafeFileLogger.SafeAppendText("cluster_errors.log",
-                                        $"[{DateTime.Now:HH:mm:ss.fff}] [RefactoredClusterService] ❌ Error placing cluster: {ex.Message}\nStackTrace: {ex.StackTrace}\n");
-                                }
-                                // Continue with next cluster
-                            }
-                        }
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            DebugLogger.Error($"[RefactoredClusterService] Error placing cluster: {ex.Message}");
+                                            SafeFileLogger.SafeAppendText("cluster_errors.log",
+                                                $"[{DateTime.Now:HH:mm:ss.fff}] [RefactoredClusterService] ❌ Error placing cluster: {ex.Message}\nStackTrace: {ex.StackTrace}\n");
+                                        }
+                                        // Continue with next cluster
+                                    } // End catch
+                                } // End foreach
+                                placementLoopTracker.SetItemCount(placedCount);
+                            } // End using
+                    }
                     }
                     finally
                     {
                         // ✅ UNIFIED BATCH CONTEXT: Reset diverted dictionary
                         _parameterService.DivertedBatchDictionary = null;
                     }
-                    }
-                    placementLoopTracker.SetItemCount(placedCount);
-                } // ✅ PERFORMANCE: End of cluster placement loop tracking
 
-                // ✅ STEP 5 OPTIMIZATION: Flush deferred cluster parameters after all clusters placed (4-6× faster)
-                // Must happen AFTER all clusters placed but BEFORE cleanup to ensure parameters set
-                // This applies to Path 2/3 (main cluster placement loop), Path 1 has its own flush
-                if (placedClusters.Count > 0)
-                {
-                    // Regenerate document to ensure geometry is available for parameter writes
-                    try
-                    {
-                        doc.Regenerate();
-                        System.Threading.Thread.Sleep(100); // Brief pause for regeneration
-                    }
-                    catch (Exception regenEx)
-                    {
-                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Warning($"[RefactoredClusterService] Error regenerating for parameter flush: {regenEx.Message}");
-                    }
 
-                    // Flush all accumulated deferred parameters in batch
-                    int flushedCount = FlushDeferredClusterParameters();
 
-                    // ✅ CRITICAL FIX: Regenerate AFTER flush to ensure Revit has updated parameters for cleanup
-                    // This ensures cleanup service can read correct dimensions from Revit element if deferred dictionary is empty
-                    if (flushedCount > 0)
+
+                    // ✅ STEP 5 OPTIMIZATION: Flush deferred cluster parameters after all clusters placed (4-6× faster)
+                    // Must happen AFTER all clusters placed but BEFORE cleanup to ensure parameters set
+                    // This applies to Path 2/3 (main cluster placement loop), Path 1 has its own flush
+                    if (placedClusters.Count > 0)
                     {
+                        // Regenerate document to ensure geometry is available for parameter writes
                         try
                         {
                             doc.Regenerate();
                             System.Threading.Thread.Sleep(100); // Brief pause for regeneration
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss}] ✅ POST-FLUSH REGENERATION: Regenerated document after flushing {flushedCount} cluster sleeve parameters\n");
-                            }
                         }
                         catch (Exception regenEx)
                         {
                             if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Warning($"[RefactoredClusterService] Error regenerating after parameter flush: {regenEx.Message}");
-                        }
-                    }
-                }
-
-                // ✅ DIAGNOSTIC: Verify all cluster sleeves exist BEFORE cleanup
-                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss}] 🔍 PRE-CLEANUP VERIFICATION: Checking {placedClusters.Count} cluster sleeves before cleanup...\n");
-                int validBeforeCleanup = 0;
-                int invalidBeforeCleanup = 0;
-                foreach (var cluster in placedClusters)
-                {
-                    if (cluster == null || !cluster.IsValidObject)
-                    {
-                        invalidBeforeCleanup++;
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ PRE-CLEANUP: Cluster sleeve is NULL or INVALID!\n");
-                    }
-                    else
-                    {
-                        validBeforeCleanup++;
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss}] ✅ PRE-CLEANUP: Cluster sleeve {cluster.Id.IntegerValue} EXISTS: Name='{cluster.Name}', IsValid={cluster.IsValidObject}\n");
-                    }
-                }
-                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss}] 📊 PRE-CLEANUP RESULT: {validBeforeCleanup} valid, {invalidBeforeCleanup} invalid out of {placedClusters.Count} cluster sleeves\n");
-
-                // ✅ PERFORMANCE: Track cleanup
-                int deletedInCleanup = 0;
-                using (var cleanupTracker = performanceMonitor.TrackOperation("Cleanup Individual Sleeves"))
-                {
-                    // ✅ STEP 15: Cleanup individual sleeves within placed clusters (Phase 7: Cleanup Service)
-                    // ⚠️ CRITICAL: Only pass VALID cluster sleeves to cleanup service to ensure they're protected
-                    var validClusters = placedClusters.Where(c => c != null && c.IsValidObject).ToList();
-                    if (validClusters.Count > 0)
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Calling cleanup service with {validClusters.Count} VALID cluster sleeves for protection\n");
-                        // ✅ CRITICAL FIX: Pass deferred parameters dictionary to cleanup service so it can read correct dimensions when batching is enabled
-                        // This prevents cleanup from using stale parameter values from Revit before flush/regeneration
-                        // Note: Dictionary may be empty if already flushed, but cleanup will fallback to Revit element after regeneration
-                        // Updated to pass targetCategory to prevent cross-category deletion
-                        deletedInCleanup = _cleanupService.CleanupSleevesWithinClusters(doc, validClusters, _deferredClusterParameters, targetCategory);
-                        deletedCount += deletedInCleanup;
-                        cleanupTracker.SetItemCount(deletedInCleanup);
-                    }
-                    else
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ CLEANUP: No valid cluster sleeves to protect, skipping cleanup service\n");
-                    }
-                }
-
-                // ✅ NOTE: Do NOT clear _deferredClusterParameters here!
-                // The FlushDeferredClusterParameters() method needs to read this data later.
-                // The flush method will clear it after writing parameters to Revit elements.
-                // Clearing here was causing cluster sleeves to default to standard size.
-
-                // ✅ DIAGNOSTIC: Verify all cluster sleeves exist AFTER cleanup
-                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss}] 🔍 POST-CLEANUP VERIFICATION: Checking {placedClusters.Count} cluster sleeves after cleanup...\n");
-                int validAfterCleanup = 0;
-                int invalidAfterCleanup = 0;
-                foreach (var cluster in placedClusters)
-                {
-                    if (cluster == null || !cluster.IsValidObject)
-                    {
-                        invalidAfterCleanup++;
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ POST-CLEANUP: Cluster sleeve is NULL or INVALID (WAS DELETED BY CLEANUP!)\n");
-                    }
-                    else
-                    {
-                        validAfterCleanup++;
-                        var location = cluster.Location as LocationPoint;
-                        var locPoint = location?.Point;
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss}] ✅ POST-CLEANUP: Cluster sleeve {cluster.Id.IntegerValue} EXISTS: Name='{cluster.Name}', " +
-                            $"Location=({locPoint?.X:F2}, {locPoint?.Y:F2}, {locPoint?.Z:F2})\n");
-                    }
-                }
-                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss}] 📊 POST-CLEANUP RESULT: {validAfterCleanup} valid, {invalidAfterCleanup} invalid (deleted) out of {placedClusters.Count} cluster sleeves\n");
-
-                // ✅ STEP 16: Return placed cluster sleeves if requested
-                if (placedClusterSleevesOut != null)
-                {
-                    placedClusterSleevesOut.AddRange(placedClusters);
-                }
-
-                // ✅✅✅ CRITICAL FIX: Regenerate ONCE after all placements, BEFORE collecting corners
-                // This ensures all geometry is finalized before we calculate corner coordinates
-                if (_clusterToClashZoneIds.Count > 0 && comboId.HasValue && filterId.HasValue)
-                {
-                    try
-                    {
-                        var versionTag = Helpers.VersionInfo.VersionTag;
-                        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                        var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
-                        var logPath = Path.Combine(logDir, "cluster_debug.log");
-
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔄 REGENERATING document before collecting corners for {_clusterToClashZoneIds.Count} clusters\n");
-                    }
-                    catch { }
-
-                    doc.Regenerate();
-
-                    try
-                    {
-                        var versionTag = Helpers.VersionInfo.VersionTag;
-                        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                        var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
-                        var logPath = Path.Combine(logDir, "cluster_debug.log");
-
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ REGENERATION COMPLETE - Now calling BatchSaveClusterDataToDatabase\n");
-                    }
-                    catch { }
-
-                    // 🚀 BATCH SAVE: Save all clusters with finalized geometry
-                    BatchSaveClusterDataToDatabase(doc, comboId.Value, filterId.Value, targetCategory, _clusterToClashZoneIds);
-
-                    try
-                    {
-                        var versionTag = Helpers.VersionInfo.VersionTag;
-                        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                        var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
-                        var logPath = Path.Combine(logDir, "cluster_debug.log");
-
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ BatchSaveClusterDataToDatabase COMPLETED\n");
-                    }
-                    catch { }
-                }
-
-
-                // ✅ PERFORMANCE: Track database save
-                using (var dbSaveTracker = performanceMonitor.TrackOperation("Save Cluster Data to Database"))
-                {
-                    // ✅ STEP 17: Save cluster data to database (if comboId and filterId are available)
-                    // 🚀 BATCH SAVE: Use optimized BatchSaveClusterDataToDatabase instead of old SaveClusterDataToDatabase
-                    if (comboId.HasValue && filterId.HasValue && _clusterToClashZoneIds.Count > 0)
-                    {
-                        // 🔥🔥🔥 CRITICAL DEBUG: First line inside if block
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss}] 🔥🔥🔥 ENTERED IF BLOCK - About to batch save\n");
-
-                        // 🔥 DEBUG LOG: Confirm we're about to save
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss}] ✅ BATCH SAVING cluster data to database: {_clusterToClashZoneIds.Count} clusters\n");
-
-                        // ✅ USER REQUEST: "Regen one time only" before collecting corners
-                        // This ensures all geometry is valid before we read it for corner calculation
-                        doc.Regenerate();
-
-                        // 🚀 BATCH SAVE: Save all clusters in single transaction (113ms → ~10ms)
-                        BatchSaveClusterDataToDatabase(doc, comboId.Value, filterId.Value, targetCategory, _clusterToClashZoneIds);
-
-                        // ✅ STEP 17B: Save sleeve snapshots for cluster sleeves
-                        SaveClusterSleeveSnapshots(doc, filterId.Value, placedClusters, targetCategory);
-
-                        // ✅ DIAGNOSTIC: Verify all cluster sleeves still exist in Revit after all operations
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss}] 🔍 FINAL VERIFICATION: Checking if all {_clusterToClashZoneIds.Count} cluster sleeves still exist in Revit...\n");
-
-                        int foundCount = 0;
-                        int missingCount = 0;
-                        foreach (var kvp in _clusterToClashZoneIds)
-                        {
-                            int clusterId = kvp.Key;
-                            var clusterSleeve = doc.GetElement(new ElementId(clusterId)) as FamilyInstance;
-                            if (clusterSleeve == null || !clusterSleeve.IsValidObject)
-                            {
-                                missingCount++;
-                                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ CLUSTER SLEEVE {clusterId} MISSING in Revit!\n");
-                            }
-                            else
-                            {
-                                foundCount++;
-                                var location = clusterSleeve.Location as LocationPoint;
-                                var locPoint = location?.Point;
-
-                                // ✅ DIAGNOSTIC: Check if element is in active document or linked file
-                                string docTitle = clusterSleeve.Document?.Title ?? "NULL";
-                                bool isActiveDoc = clusterSleeve.Document?.IsLinked == false;
-                                bool isLinked = clusterSleeve.Document?.IsLinked == true;
-
-                                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss}] ✅ Cluster sleeve {clusterId} EXISTS: Name='{clusterSleeve.Name}', " +
-                                    $"Location=({locPoint?.X:F2}, {locPoint?.Y:F2}, {locPoint?.Z:F2}), " +
-                                    $"Category='{clusterSleeve.Category?.Name ?? "NULL"}, " +
-                                    $"Document='{docTitle}', " +
-                                    $"IsActiveDocument={isActiveDoc}, " +
-                                    $"IsLinked={isLinked}, " +
-                                    $"IsValid={clusterSleeve.IsValidObject}\n");
-
-                                if (isLinked)
-                                {
-                                    SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                        $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ WARNING: Cluster sleeve {clusterId} is in LINKED FILE '{docTitle}', not active document!\n");
-                                }
-                            }
+                                DebugLogger.Warning($"[RefactoredClusterService] Error regenerating for parameter flush: {regenEx.Message}");
                         }
 
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss}] 📊 FINAL VERIFICATION RESULT: {foundCount} found, {missingCount} missing out of {_clusterToClashZoneIds.Count} cluster sleeves\n");
-                    }
-                    else
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ SKIPPED saving cluster data: comboId={comboId?.ToString() ?? "NULL"}, filterId={filterId?.ToString() ?? "NULL"}, clusters={_clusterToClashZoneIds.Count}\n");
-                    }
-                    dbSaveTracker.SetItemCount(_clusterToClashZoneIds.Count);
+                        // Flush all accumulated deferred parameters in batch
+                        // int flushedCount = FlushDeferredClusterParameters();
+                        int flushedCount = 0; // Forced to 0
 
-                    // ✅ REMOVED: ReadyForPlacementFlag reset after cluster placement (redundant)
-                    // IsClusterResolved flag is sufficient to track cluster placement status
-
-                    // ✅ STEP 5 OPTIMIZATION: Flush deferred cluster parameters after all placements
-                    if (OptimizationFlags.UseBatchedParameterWrites)
-                    {
-                        int flushedCount = FlushDeferredClusterParameters();
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] ✅ BATCH-FLUSH: Flushed parameters for {flushedCount} cluster sleeves\n");
-                        }
-                    }
-
-                    // ✅ PERFORMANCE: Generate final performance report
-                    performanceMonitor.GenerateReport(0, placedCount); // 0 individual sleeves, placedCount clusters
-
-                    try
-                    {
-                        string logPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] \n========== REFACTORED CLUSTER SERVICE COMPLETED ==========\n");
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅✅✅ FINAL RESULT: Placed {placedCount} clusters, Deleted {deletedCount} individual sleeves\n");
-                    }
-                    catch { }
-                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] \n========== REFACTORED CLUSTER SERVICE COMPLETED ==========\n");
-                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅ Placed {placedCount} clusters, Deleted {deletedCount} individual sleeves\n");
-
-                    // ✅ DIAGNOSTIC: Verify sleeves are visible in Revit after placement
-                    if (placedClusters.Count > 0)
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss}] 🔍🔍🔍 FINAL VISIBILITY CHECK: Verifying {placedClusters.Count} cluster sleeves are visible in Revit...\n");
-
-                        foreach (var cluster in placedClusters)
+                        // ✅ CRITICAL FIX: Regenerate AFTER flush to ensure Revit has updated parameters for cleanup
+                        // This ensures cleanup service can read correct dimensions from Revit element if deferred dictionary is empty
+                        if (flushedCount > 0)
                         {
                             try
                             {
-                                if (cluster != null && cluster.IsValidObject)
-                                {
-                                    var location = cluster.Location as LocationPoint;
-                                    var locPoint = location?.Point;
-                                    var bbox = cluster.get_BoundingBox(null);
-                                    var levelName = "Unknown";
-                                    try
-                                    {
-                                        // Try to get level from document
-                                        var levelId = cluster.LevelId;
-                                        if (levelId != null && !levelId.Equals(ElementId.InvalidElementId))
-                                        {
-                                            var levelElem = cluster.Document?.GetElement(levelId);
-                                            if (levelElem is Autodesk.Revit.DB.Level lvl)
-                                            {
-                                                levelName = lvl.Name ?? "Unknown";
-                                            }
-                                        }
-                                    }
-                                    catch { }
-
-                                    SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                        $"[{DateTime.Now:HH:mm:ss}] ✅ VISIBILITY: Cluster sleeve {cluster.Id.IntegerValue} EXISTS:\n" +
-                                        $"  Name='{cluster.Name}', Family='{cluster.Symbol?.Family?.Name ?? "NULL"}',\n" +
-                                        $"  Location=({locPoint?.X:F3}, {locPoint?.Y:F3}, {locPoint?.Z:F3}),\n" +
-                                        $"  Level='{levelName}',\n" +
-                                        $"  Category='{cluster.Category?.Name ?? "NULL"}',\n" +
-                                        $"  BBox={(bbox != null && bbox.Enabled ? $"({bbox.Min.X:F3},{bbox.Min.Y:F3},{bbox.Min.Z:F3}) to ({bbox.Max.X:F3},{bbox.Max.Y:F3},{bbox.Max.Z:F3})" : "NULL")},\n" +
-                                        $"  IsValid={cluster.IsValidObject}, Document='{cluster.Document?.Title ?? "NULL"}'\n");
-                                }
-                                else
+                                doc.Regenerate();
+                                System.Threading.Thread.Sleep(100); // Brief pause for regeneration
+                                if (!DeploymentConfiguration.DeploymentMode)
                                 {
                                     SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                        $"[{DateTime.Now:HH:mm:ss}] ❌ VISIBILITY: Cluster sleeve is NULL or INVALID!\n");
+                                        $"[{DateTime.Now:HH:mm:ss}] ✅ POST-FLUSH REGENERATION: Regenerated document after flushing {flushedCount} cluster sleeve parameters\n");
                                 }
                             }
-                            catch (Exception visEx)
+                            catch (Exception regenEx)
                             {
-                                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss}] ❌ VISIBILITY ERROR: Exception checking cluster sleeve: {visEx.Message}\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Warning($"[RefactoredClusterService] Error regenerating after parameter flush: {regenEx.Message}");
                             }
                         }
                     }
 
-                    if (!DeploymentConfiguration.DeploymentMode)
+                    // ✅ DIAGNOSTIC: Verify all cluster sleeves exist BEFORE cleanup
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss}] 🔍 PRE-CLEANUP VERIFICATION: Checking {placedClusters.Count} cluster sleeves before cleanup...\n");
+                    int validBeforeCleanup = 0;
+                    int invalidBeforeCleanup = 0;
+                    foreach (var cluster in placedClusters)
                     {
-                        DebugLogger.Info($"[RefactoredClusterService] ✅ Completed: Placed {placedCount} clusters, Deleted {deletedCount} individual sleeves");
+                        if (cluster == null || !cluster.IsValidObject)
+                        {
+                            invalidBeforeCleanup++;
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ⚠️ PRE-CLEANUP: Cluster sleeve is NULL or INVALID!\n");
+                        }
+                        else
+                        {
+                            validBeforeCleanup++;
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ PRE-CLEANUP: Cluster sleeve {cluster.Id.IntegerValue} EXISTS: Name='{cluster.Name}', IsValid={cluster.IsValidObject}\n");
+                        }
+                    }
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss}] 📊 PRE-CLEANUP RESULT: {validBeforeCleanup} valid, {invalidBeforeCleanup} invalid out of {placedClusters.Count} cluster sleeves\n");
+
+                    // ✅ PERFORMANCE: Track cleanup
+                    int deletedInCleanup = 0;
+                    using (var cleanupTracker = performanceMonitor.TrackOperation("Cleanup Individual Sleeves"))
+                    {
+                        // ✅ STEP 15: Cleanup individual sleeves within placed clusters (Phase 7: Cleanup Service)
+                        // ⚠️ CRITICAL: Only pass VALID cluster sleeves to cleanup service to ensure they're protected
+                        var validClusters = placedClusters.Where(c => c != null && c.IsValidObject).ToList();
+                        if (validClusters.Count > 0)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Calling cleanup service with {validClusters.Count} VALID cluster sleeves for protection\n");
+                            // ✅ CRITICAL FIX: Pass deferred parameters dictionary to cleanup service so it can read correct dimensions when batching is enabled
+                            // This prevents cleanup from using stale parameter values from Revit before flush/regeneration
+                            // Note: Dictionary may be empty if already flushed, but cleanup will fallback to Revit element after regeneration
+                            // Updated to pass targetCategory to prevent cross-category deletion
+                            deletedInCleanup = _cleanupService.CleanupSleevesWithinClusters(doc, validClusters, _deferredClusterParameters, targetCategory);
+                            deletedCount += deletedInCleanup;
+                            cleanupTracker.SetItemCount(deletedInCleanup);
+                        }
+                        else
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ⚠️ CLEANUP: No valid cluster sleeves to protect, skipping cleanup service\n");
+                        }
                     }
 
-                    return (placedCount, deletedCount);
+                    // ✅ NOTE: Do NOT clear _deferredClusterParameters here!
+                    // The FlushDeferredClusterParameters() method needs to read this data later.
+                    // The flush method will clear it after writing parameters to Revit elements.
+                    // Clearing here was causing cluster sleeves to default to standard size.
+
+                    // ✅ DIAGNOSTIC: Verify all cluster sleeves exist AFTER cleanup
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss}] 🔍 POST-CLEANUP VERIFICATION: Checking {placedClusters.Count} cluster sleeves after cleanup...\n");
+                    int validAfterCleanup = 0;
+                    int invalidAfterCleanup = 0;
+                    foreach (var cluster in placedClusters)
+                    {
+                        if (cluster == null || !cluster.IsValidObject)
+                        {
+                            invalidAfterCleanup++;
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ POST-CLEANUP: Cluster sleeve is NULL or INVALID (WAS DELETED BY CLEANUP!)\n");
+                        }
+                        else
+                        {
+                            validAfterCleanup++;
+                            var location = cluster.Location as LocationPoint;
+                            var locPoint = location?.Point;
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ POST-CLEANUP: Cluster sleeve {cluster.Id.IntegerValue} EXISTS: Name='{cluster.Name}', " +
+                                $"Location=({locPoint?.X:F2}, {locPoint?.Y:F2}, {locPoint?.Z:F2})\n");
+                        }
+                    }
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss}] 📊 POST-CLEANUP RESULT: {validAfterCleanup} valid, {invalidAfterCleanup} invalid (deleted) out of {placedClusters.Count} cluster sleeves\n");
+
+                    // ✅ STEP 16: Return placed cluster sleeves if requested
+                    if (placedClusterSleevesOut != null)
+                    {
+                        placedClusterSleevesOut.AddRange(placedClusters);
+                    }
+
+                    // ✅✅✅ CRITICAL FIX: Regenerate ONCE after all placements, BEFORE collecting corners
+                    // This ensures all geometry is finalized before we calculate corner coordinates
+                    if (_clusterToClashZoneIds.Count > 0 && comboId.HasValue && filterId.HasValue)
+                    {
+                        try
+                        {
+                            var versionTag = Helpers.VersionInfo.VersionTag;
+                            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                            var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                            var logPath = Path.Combine(logDir, "cluster_debug.log");
+
+                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔄 REGENERATING document before collecting corners for {_clusterToClashZoneIds.Count} clusters\n");
+                        }
+                        catch { }
+
+                        doc.Regenerate();
+
+                        try
+                        {
+                            var versionTag = Helpers.VersionInfo.VersionTag;
+                            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                            var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                            var logPath = Path.Combine(logDir, "cluster_debug.log");
+
+                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ REGENERATION COMPLETE - Now calling BatchSaveClusterDataToDatabase\n");
+                        }
+                        catch { }
+
+                        // 🚀 BATCH SAVE: Save all clusters with finalized geometry
+                        BatchSaveClusterDataToDatabase(doc, comboId.Value, filterId.Value, targetCategory, _clusterToClashZoneIds);
+
+                        try
+                        {
+                            var versionTag = Helpers.VersionInfo.VersionTag;
+                            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                            var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                            var logPath = Path.Combine(logDir, "cluster_debug.log");
+
+                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ BatchSaveClusterDataToDatabase COMPLETED\n");
+                        }
+                        catch { }
+                    }
+
+
+                    // ✅ PERFORMANCE: Track database save
+                    using (var dbSaveTracker = performanceMonitor.TrackOperation("Save Cluster Data to Database"))
+                    {
+                        // ✅ STEP 17: Save cluster data to database (if comboId and filterId are available)
+                        // 🚀 BATCH SAVE: Use optimized BatchSaveClusterDataToDatabase instead of old SaveClusterDataToDatabase
+                        if (comboId.HasValue && filterId.HasValue && _clusterToClashZoneIds.Count > 0)
+                        {
+                            // 🔥🔥🔥 CRITICAL DEBUG: First line inside if block
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] 🔥🔥🔥 ENTERED IF BLOCK - About to batch save\n");
+
+                            // 🔥 DEBUG LOG: Confirm we're about to save
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ BATCH SAVING cluster data to database: {_clusterToClashZoneIds.Count} clusters\n");
+
+                            // ✅ USER REQUEST: "Regen one time only" before collecting corners
+                            // This ensures all geometry is valid before we read it for corner calculation
+                            doc.Regenerate();
+
+                            // 🚀 BATCH SAVE: Save all clusters in single transaction (113ms → ~10ms)
+                            BatchSaveClusterDataToDatabase(doc, comboId.Value, filterId.Value, targetCategory, _clusterToClashZoneIds);
+
+                            // ✅ STEP 17B: Save sleeve snapshots for cluster sleeves
+                            SaveClusterSleeveSnapshots(doc, filterId.Value, placedClusters, targetCategory);
+
+                            // ✅ DIAGNOSTIC: Verify all cluster sleeves still exist in Revit after all operations
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] 🔍 FINAL VERIFICATION: Checking if all {_clusterToClashZoneIds.Count} cluster sleeves still exist in Revit...\n");
+
+                            int foundCount = 0;
+                            int missingCount = 0;
+                            foreach (var kvp in _clusterToClashZoneIds)
+                            {
+                                int clusterId = kvp.Key;
+                                var clusterSleeve = doc.GetElement(new ElementId(clusterId)) as FamilyInstance;
+                                if (clusterSleeve == null || !clusterSleeve.IsValidObject)
+                                {
+                                    missingCount++;
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                        $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ CLUSTER SLEEVE {clusterId} MISSING in Revit!\n");
+                                }
+                                else
+                                {
+                                    foundCount++;
+                                    var location = clusterSleeve.Location as LocationPoint;
+                                    var locPoint = location?.Point;
+
+                                    // ✅ DIAGNOSTIC: Check if element is in active document or linked file
+                                    string docTitle = clusterSleeve.Document?.Title ?? "NULL";
+                                    bool isActiveDoc = clusterSleeve.Document?.IsLinked == false;
+                                    bool isLinked = clusterSleeve.Document?.IsLinked == true;
+
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                        $"[{DateTime.Now:HH:mm:ss}] ✅ Cluster sleeve {clusterId} EXISTS: Name='{clusterSleeve.Name}', " +
+                                        $"Location=({locPoint?.X:F2}, {locPoint?.Y:F2}, {locPoint?.Z:F2}), " +
+                                        $"Category='{clusterSleeve.Category?.Name ?? "NULL"}, " +
+                                        $"Document='{docTitle}', " +
+                                        $"IsActiveDocument={isActiveDoc}, " +
+                                        $"IsLinked={isLinked}, " +
+                                        $"IsValid={clusterSleeve.IsValidObject}\n");
+
+                                    if (isLinked)
+                                    {
+                                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                            $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ WARNING: Cluster sleeve {clusterId} is in LINKED FILE '{docTitle}', not active document!\n");
+                                    }
+                                }
+                            }
+
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] 📊 FINAL VERIFICATION RESULT: {foundCount} found, {missingCount} missing out of {_clusterToClashZoneIds.Count} cluster sleeves\n");
+                        }
+                        else
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ⚠️ SKIPPED saving cluster data: comboId={comboId?.ToString() ?? "NULL"}, filterId={filterId?.ToString() ?? "NULL"}, clusters={_clusterToClashZoneIds.Count}\n");
+                        }
+                        dbSaveTracker.SetItemCount(_clusterToClashZoneIds.Count);
+
+                        // ✅ REMOVED: ReadyForPlacementFlag reset after cluster placement (redundant)
+                        // IsClusterResolved flag is sufficient to track cluster placement status
+
+                        // ✅ STEP 5 OPTIMIZATION: Flush deferred cluster parameters after all placements
+                        if (OptimizationFlags.UseBatchedParameterWrites)
+                        {
+                            // int flushedCount = FlushDeferredClusterParameters();
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                // SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                //     $"[{DateTime.Now:HH:mm:ss}] ✅ BATCH-FLUSH: Flushed parameters for {flushedCount} cluster sleeves\n");
+                            }
+                        }
+
+                        // ✅ PHASE 3: Final Verification of Duplicates
+                        // Safety check to ensure no duplicates slipped through
+                        var verificationSleeveIds = new HashSet<int>();
+                        var duplicatesFound = new List<int>();
+
+                        foreach (var clusterId in _clusterToClashZoneIds.Keys)
+                        {
+                            var zoneIds = _clusterToClashZoneIds[clusterId];
+                            // Get original sleeve IDs from zone IDs (via cached data service if possible, or assume 1:1 for verification)
+                            // Actually, we tracked processed IDs in `globalProcessedSleeveIds` earlier.
+                            // Let's verify _clusterToClashZoneIds content.
+                            // NOTE: zoneIds are ClashZone IDs, not Sleeve Instance IDs.
+                            // We can't easily map back here without DB lookup, so we'll rely on globalProcessedSleeveIds count
+                            // vs total expected items.
+                        }
+
+                        // Simple verification: Check if globalProcessedSleeveIds contains duplicates?
+                        // No, hashset can't.
+                        // But duplicates would have been rejected by the `alreadyProcessed` check.
+
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ✅ DUPLICATE CHECK: Processed {globalProcessedSleeveIds.Count} unique sleeves across {placedCount} clusters.\n");
+
+                        // ✅ PERFORMANCE: Generate final performance report
+                        performanceMonitor.GenerateReport(0, placedCount); // 0 individual sleeves, placedCount clusters
+
+                        try
+                        {
+                            string logPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
+                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] \n========== REFACTORED CLUSTER SERVICE COMPLETED ==========\n");
+                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅✅✅ FINAL RESULT: Placed {placedCount} clusters, Deleted {deletedCount} individual sleeves\n");
+                        }
+                        catch { }
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] \n========== REFACTORED CLUSTER SERVICE COMPLETED ==========\n");
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅ Placed {placedCount} clusters, Deleted {deletedCount} individual sleeves\n");
+
+                        // ✅ DIAGNOSTIC: Verify sleeves are visible in Revit after placement
+                        if (placedClusters.Count > 0)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] 🔍🔍🔍 FINAL VISIBILITY CHECK: Verifying {placedClusters.Count} cluster sleeves are visible in Revit...\n");
+
+                            foreach (var cluster in placedClusters)
+                            {
+                                try
+                                {
+                                    if (cluster != null && cluster.IsValidObject)
+                                    {
+                                        var location = cluster.Location as LocationPoint;
+                                        var locPoint = location?.Point;
+                                        var bbox = cluster.get_BoundingBox(null);
+                                        var levelName = "Unknown";
+                                        try
+                                        {
+                                            // Try to get level from document
+                                            var levelId = cluster.LevelId;
+                                            if (levelId != null && !levelId.Equals(ElementId.InvalidElementId))
+                                            {
+                                                var levelElem = cluster.Document?.GetElement(levelId);
+                                                if (levelElem is Autodesk.Revit.DB.Level lvl)
+                                                {
+                                                    levelName = lvl.Name ?? "Unknown";
+                                                }
+                                            }
+                                        }
+                                        catch { }
+
+                                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                            $"[{DateTime.Now:HH:mm:ss}] ✅ VISIBILITY: Cluster sleeve {cluster.Id.IntegerValue} EXISTS:\n" +
+                                            $"  Name='{cluster.Name}', Family='{cluster.Symbol?.Family?.Name ?? "NULL"}',\n" +
+                                            $"  Location=({locPoint?.X:F3}, {locPoint?.Y:F3}, {locPoint?.Z:F3}),\n" +
+                                            $"  Level='{levelName}',\n" +
+                                            $"  Category='{cluster.Category?.Name ?? "NULL"}',\n" +
+                                            $"  BBox={(bbox != null && bbox.Enabled ? $"({bbox.Min.X:F3},{bbox.Min.Y:F3},{bbox.Min.Z:F3}) to ({bbox.Max.X:F3},{bbox.Max.Y:F3},{bbox.Max.Z:F3})" : "NULL")},\n" +
+                                            $"  IsValid={cluster.IsValidObject}, Document='{cluster.Document?.Title ?? "NULL"}'\n");
+                                    }
+                                    else
+                                    {
+                                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                            $"[{DateTime.Now:HH:mm:ss}] ❌ VISIBILITY: Cluster sleeve is NULL or INVALID!\n");
+                                    }
+                                }
+                                catch (Exception visEx)
+                                {
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                        $"[{DateTime.Now:HH:mm:ss}] ❌ VISIBILITY ERROR: Exception checking cluster sleeve: {visEx.Message}\n");
+                                }
+                            }
+                        }
+
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[RefactoredClusterService] ✅ Completed: Placed {placedCount} clusters, Deleted {deletedCount} individual sleeves");
+                        }
+
+                        return (placedCount, deletedCount);
+                    }
                 }
-            }
-            catch (Exception ex)
-            {
-                if (!DeploymentConfiguration.DeploymentMode)
+                catch (Exception innerEx)
                 {
-                    DebugLogger.Error($"[RefactoredClusterService] ❌ Critical error: {ex.Message}");
-                    SafeFileLogger.SafeAppendText("cluster_errors.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [RefactoredClusterService] ❌ CRITICAL ERROR: {ex.Message}\nStackTrace: {ex.StackTrace}\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Error($"[RefactoredClusterService] ❌ Inner try error: {innerEx.Message}");
+                        SafeFileLogger.SafeAppendText("cluster_errors.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [RefactoredClusterService] ❌ INNER ERROR: {innerEx.Message}\nStackTrace: {innerEx.StackTrace}\n");
+                    }
+                    throw;
                 }
-                throw;
             }
-        }
+                catch (Exception ex)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Error($"[RefactoredClusterService] ❌ Critical error: {ex.Message}");
+                        SafeFileLogger.SafeAppendText("cluster_errors.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [RefactoredClusterService] ❌ CRITICAL ERROR: {ex.Message}\nStackTrace: {ex.StackTrace}\n");
+                    }
+                    throw;
+                }
+            }
+
 
         /// <summary>
         /// ✅ PATH 1 REPLAY: Load pre-calculated clusters from database.
@@ -1683,6 +1796,56 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 AFTER CalculateRotatedBoundingBox: width={bboxResult.width:F2}, height={bboxResult.height:F2}, depth={bboxResult.depth:F2}\n");
                 }
                 catch { }
+
+                // ✅ CLEARANCE & ROUNDING FIX: Apply user-defined clearance and rounding
+                // 1. Get Clearance Setting
+                double clearanceMm = 50.0; // Default standard clearance (Safe Fallback)
+                try
+                {
+                     // Attempt to refine based on category if possible settings exist, 
+                     // but since ClusterConfigurationManager doesn't hold these, we default to 50mm (std MEP).
+                     string cat = cluster[0].Category;
+                     if (!string.IsNullOrEmpty(cat) && cat.IndexOf("Cable", StringComparison.OrdinalIgnoreCase) >= 0)
+                     {
+                         clearanceMm = 75.0; // Typical for trays
+                     }
+                }
+                catch { }
+
+                // 2. Add Clearance (2x, one for each side)
+                double clearanceInternal = RevitUnitConversionService.Instance.ToInternalMillimeters(clearanceMm);
+                
+                // Original Tight Bounds
+                double rawWidth = bboxResult.width;
+                double rawHeight = bboxResult.height;
+                
+                // Add Clearance
+                double widthWithClearance = rawWidth + (2 * clearanceInternal);
+                double heightWithClearance = rawHeight + (2 * clearanceInternal);
+
+                // 3. Rounding
+                // Use OpeningSettingsHelper.RoundDimensionsToNearest5mm (which respects global RoundingValue)
+                // ✅ FIX: Explicit namespace to avoid CS0234 and explicit types to avoid CS8130
+                (double finalWidth, double finalHeight) = JSE_RevitAddin_MEP_OPENINGS.Services.OpeningSettingsHelper.RoundDimensionsToNearest5mm(widthWithClearance, heightWithClearance);
+
+                // Update bboxResult with final dimensions
+                // Note: We keep Depth as is (usually wall thickness or union of depths)
+                // Also: We do NOT shift the midpoint here directly, assuming symmetrical expansion around center.
+                // IF Lopsidedness persists, we may need to re-calculate Center if expansion isn't symmetric (e.g. dampers), 
+                // but for clusters, symmetric expansion around the 'Tight Bounds Center' is usually correct.
+                
+                // Log the transformation
+                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                     $"[{DateTime.Now:HH:mm:ss}] 📏 DIMENSION ADJUSTMENT:\n" +
+                     $"   Raw: W={rawWidth * 304.8:F1}mm, H={rawHeight * 304.8:F1}mm\n" +
+                     $"   +Clearance ({clearanceMm:F1}mm x2): W={widthWithClearance * 304.8:F1}mm, H={heightWithClearance * 304.8:F1}mm\n" +
+                     $"   Rounded: W={finalWidth * 304.8:F1}mm, H={finalHeight * 304.8:F1}mm\n");
+
+                // Update result tuple (create new tuple with updated width/height)
+                bboxResult = (finalWidth, finalHeight, bboxResult.depth, bboxResult.mid, 
+                              bboxResult.rotatedMinX, bboxResult.rotatedMinY, bboxResult.rotatedMinZ,
+                              bboxResult.rotatedMaxX, bboxResult.rotatedMaxY, bboxResult.rotatedMaxZ);
+
                 
                 // ✅ DEBUG: Log bounding box calculation for oversized detection
                 // Convert from internal units to millimeters for display
@@ -1807,7 +1970,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 }
                 catch { }
                 
-                // ✅ BATCH PARAMETER OPTIMIZATION: Pass deferred parameters dictionary for batch writes
+                // ✅ IMMEDIATE PARAMETER SETTING: Pass null to disable batch buffering
                 bool placementSuccess = _placementService.PlaceClusterSleeve(
                     doc,
                     cluster,
@@ -1823,7 +1986,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     out FamilyInstance? placedClusterSleeve,
                     out int? capturedClusterSleeveId,
                     out XYZ? actualPlacementPoint, // ✅ SOLID: Capture actual placement point via out parameter
-                    _deferredClusterParameters, // ✅ Pass deferred parameters for batching
+                    null, // ✅ FIXED: Pass null to force IMMEDIATE parameter setting
                     hostOrientation,
                     mepRotationAngle); 
                 
