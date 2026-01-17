@@ -153,6 +153,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     {
                         // For floors (or anything not explicitly X/Y wall), use MEP element rotation angle (from database)
                         // This covers "Floor", "Floors", or any other host type where we rely on the MEP element's rotation
+                        
+                        // ✅ CRITICAL FIX: Skip rotation for all-pipe clusters on floors
+                        // Pipes are circular and don't need rotation
+                        // Mixed clusters (pipe+duct) still rotate (rectangular elements take precedence)
+                        bool allPipes = true;
+                        foreach (var item in cluster)
+                        {
+                            ClashZone? itemCz = null;
+                            if (item is ClashZone clashZone)
+                                itemCz = clashZone;
+                            else if (item?.ClashZone != null)
+                                itemCz = item.ClashZone as ClashZone;
+                            
+                            string category = itemCz?.MepElementCategory ?? "";
+                            // If ANY element is NOT a pipe, then it's not all pipes
+                            if (!string.Equals(category, "Pipes", StringComparison.OrdinalIgnoreCase))
+                            {
+                                allPipes = false;
+                                break;
+                            }
+                        }
+                        
+                        // If ALL elements are pipes (circular), skip rotation
+                        if (allPipes)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] ✅ ALL-PIPE CLUSTER ON FLOOR: Skipping rotation (0°)\n");
+                            }
+                            return 0.0; // No rotation for all-pipe clusters on floors
+                        }
+                        
+                        // For rectangular elements or mixed clusters: use MEP rotation
                         double rotationAngle = firstClashZone.MepElementRotationAngle;
                         
                         // Normalize to 0-2PI
