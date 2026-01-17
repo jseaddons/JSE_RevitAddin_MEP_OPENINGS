@@ -78,9 +78,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 w.ClashZone.StructuralElementType ?? "Unknown",
                 w.ClashZone.MepElementSystemAbbreviation ?? "Unknown", 
                 w.ClashZone.HostOrientation ?? "Unknown",
-                (int)(w.ClashZone.IntersectionPointX / 10), 
-                (int)(w.ClashZone.IntersectionPointY / 10), 
-                (int)(w.ClashZone.IntersectionPointZ / 10)));
+                (int)(w.ClashZone.IntersectionPointX / 100000), // ✅ FIX: Disable Bucketing (Large value effectively puts all in same bucket)
+                (int)(w.ClashZone.IntersectionPointY / 100000), 
+                (int)(w.ClashZone.IntersectionPointZ / 100000)));
             
             var clustersByGroup = _algorithmService.FormClusters(groupedZones, toleranceDist, doc, enableParallel: true);
 
@@ -304,15 +304,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 center = new XYZ(avgX, avgY, avgZ);
             }
 
-            double cX = center.X;
-            double cY = center.Y;
-            double cZ = center.Z;
+            // 3. Placement Calculation (Reuse ClusterPlacementCalculationService)
+            // ✅ FIX: Use shared service for consistent logic (Damper Lateral Shift, etc.)
+            // We create a local instance since we have the list of ClashZones here.
+            
+            var placementService = new JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement.ClusterPlacementCalculationService(
+                (id, path) => zones.FirstOrDefault(z => z.SleeveInstanceId == id) ?? zones.FirstOrDefault(), // Simple lookup
+                null // No existing cluster placement lookup needed for new batch
+            );
+
+            // Wrap zones into dynamic list for the service signature
+            var dynamicCluster = zones.Cast<dynamic>().ToList();
+
+            // Construct Min/Max from tuple (handling nulls)
+            XYZ bboxMin = new XYZ(bboxResult.rotatedMinX ?? 0, bboxResult.rotatedMinY ?? 0, bboxResult.rotatedMinZ ?? 0);
+            XYZ bboxMax = new XYZ(bboxResult.rotatedMaxX ?? 0, bboxResult.rotatedMaxY ?? 0, bboxResult.rotatedMaxZ ?? 0);
+
+            // Calculate Placement Point (Handles Dampers, Walls, Centroids)
+            XYZ placementPoint = placementService.CalculatePlacementPoint(
+                dynamicCluster, 
+                width, 
+                height, 
+                depth,
+                bboxMin, 
+                bboxMax,
+                bboxResult.mid // ✅ Pass Geometric Center from Rotation Service
+            );
+            
+            // Declare and assign properly (removed duplicate declaration above)
+            double cX = placementPoint.X;
+            double cY = placementPoint.Y;
+            double cZ = placementPoint.Z;
 
             // 4. DEDUPLICATION (Location Based)
             string locKey = $"{batchId}_{cX:F1}_{cY:F1}_{cZ:F1}";
             if (!_placedLocations.TryAdd(locKey, 0))
             {
-                SafeFileLogger.SafeAppendText("batch_v2.log", $"⚠️ SKIPPING DUPLICATE at ({cX:F1}, {cY:F1}, {cZ:F1})\n");
+                if (!batchId.Contains("Test"))
+                     SafeFileLogger.SafeAppendText("batch_v2.log", $"⚠️ SKIPPING DUPLICATE at ({cX:F1}, {cY:F1}, {cZ:F1})\n");
                 return null;
             }
             
@@ -334,7 +363,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     first.StructuralElementType ?? "Unknown", 
                     first.MepElementCategory ?? "Unknown", 
                     Math.Max(width, height), 
-                    true), // isCluster = true
+                    zones.Count > 1), // isCluster = true ONLY if multiple items. Single items behave like individual sleeves.
                 ConstituentZoneGuids = string.Join(",", zones.Select(z => z.ClashZoneGuid)),
                 ComboId = comboId, FilterId = filterId, Status = "Pending", ValidationStatus = "Valid"
             };

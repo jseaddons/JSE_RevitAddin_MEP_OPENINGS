@@ -1194,10 +1194,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                         cornerWidth = maxRotY - minRotY;
                                     }
                                     
-                                    rotatedMinX = minRotX;
-                                    rotatedMaxX = maxRotX;
                                     rotatedMinY = minRotY;
                                     rotatedMaxY = maxRotY;
+
+                                    // ✅ CRITICAL FIX: Update placementPoint to be the GEOMETRIC CENTER for Rotated Walls
+                                    // Previously, we left placementPoint as the Intersection Centroid (Average), which causes a "Lateral Shift" 
+                                    // if sleeves are different sizes. We must use the midpoint of the rotated bounds, transformed back to World Space.
+                                    
+                                    double midRotX = (minRotX + maxRotX) / 2.0;
+                                    double midRotY = (minRotY + maxRotY) / 2.0;
+
+                                    // Inverse Rotate (from Rotated Space -> Relative World Space)
+                                    // Matrix Inverse (Transpose):
+                                    // x = x' * cos(A) + y' * sin(A)
+                                    // y = x' * (-sin(A)) + y' * cos(A)
+                                    double relMidX = midRotX * cosCluster + midRotY * sinCluster;
+                                    double relMidY = midRotX * (-sinCluster) + midRotY * cosCluster;
+
+                                    // Add Origin (Relative World Space -> Absolute World Space)
+                                    double worldMidX = originX + relMidX;
+                                    double worldMidY = originY + relMidY;
+
+                                    // Update placementPoint (Z comes from first sleeve logic above)
+                                    placementPoint = new XYZ(worldMidX, worldMidY, placementPoint.Z);
+
+                                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                        $"[{DateTime.Now:HH:mm:ss}]   ✅ ROTATED WALL CENTER: Shifted from Centroid to Geometric Center: ({placementPoint.X:F4}, {placementPoint.Y:F4}). MidRot=({midRotX:F4},{midRotY:F4})\n");
                                     
                                     SafeFileLogger.SafeAppendText("cluster_sizing.log",
                                         $"[{DateTime.Now:HH:mm:ss}]   ✅ ROTATED AXIS WALL: Transformed {transformedCorners.Count} corners to cluster's rotated coordinate system. " +
