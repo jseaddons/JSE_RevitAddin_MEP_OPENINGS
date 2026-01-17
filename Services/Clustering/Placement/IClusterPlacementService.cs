@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 
@@ -24,25 +25,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
         /// <param name="depth">Cluster depth in internal units</param>
         /// <param name="rotationAngle">Rotation angle in radians</param>
         /// <param name="xmlFilePath">Optional XML file path for data lookup</param>
+        /// <param name="sleeveFamilyName">Optional specific family name to use</param>
         /// <param name="placedClusterSleeve">Output: The placed cluster sleeve instance</param>
         /// <param name="capturedClusterSleeveId">Output: The captured cluster sleeve ID</param>
-        /// <returns>True if placement succeeded, false otherwise</returns>
-        /// <summary>
-        /// Place a cluster sleeve in the document.
-        /// </summary>
-        /// <param name="doc">Revit document</param>
-        /// <param name="cluster">List of sleeves in the cluster (dynamic type)</param>
-        /// <param name="groupKey">Group key (host type, system type, orientation)</param>
-        /// <param name="targetCategory">Target MEP category</param>
-        /// <param name="placementPoint">Placement point in world coordinates</param>
-        /// <param name="width">Cluster width in internal units</param>
-        /// <param name="height">Cluster height in internal units</param>
-        /// <param name="depth">Cluster depth in internal units</param>
-        /// <param name="rotationAngle">Rotation angle in radians</param>
-        /// <param name="xmlFilePath">Optional XML file path for data lookup</param>
-        /// <param name="placedClusterSleeve">Output: The placed cluster sleeve instance</param>
-        /// <param name="capturedClusterSleeveId">Output: The captured cluster sleeve ID</param>
+        /// <param name="actualPlacementPoint">Output: The actual placement point used</param>
+        /// <param name="clusterSaveData">Output: The calculated data for database persistence</param>
         /// <param name="deferredParameters">Optional dictionary for batch parameter updates</param>
+        /// <param name="hostOrientation">Optional host orientation string</param>
+        /// <param name="mepRotationAngle">Optional MEP rotation angle</param>
         /// <returns>True if placement succeeded, false otherwise</returns>
         bool PlaceClusterSleeve(
             Document doc,
@@ -59,6 +49,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
             out FamilyInstance? placedClusterSleeve,
             out int? capturedClusterSleeveId,
             out XYZ? actualPlacementPoint,
+            out ClusterSaveData? clusterSaveData,
             Dictionary<ElementId, Dictionary<string, object>>? deferredParameters = null,
             string? hostOrientation = null,
             double mepRotationAngle = 0.0);

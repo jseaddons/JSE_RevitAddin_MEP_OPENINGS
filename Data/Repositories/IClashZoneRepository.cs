@@ -40,7 +40,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         void UpdateSleevePlacement(System.Guid clashZoneGuid, int sleeveInstanceId, double width, double height, double diameter, 
             double placementX, double placementY, double placementZ,
             double placementActiveX, double placementActiveY, double placementActiveZ,
-            double rotationAngleRad, string sleeveFamilyName = null);
+            double rotationAngleRad, string sleeveFamilyName = null, bool markedForClusterProcess = true);
 
         /// <summary>
         /// Update cluster placement
@@ -114,8 +114,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
         /// <summary>
         /// Batch update IsResolvedFlag, IsClusterResolvedFlag, IsCombinedResolved, SleeveInstanceId, and ClusterInstanceId for placed sleeves.
+        /// Now includes IsClusteredFlag, MarkedForClusterProcess, and AfterClusterSleeveId.
         /// </summary>
-        void BatchUpdateFlags(List<(System.Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId)> updates);
+        void BatchUpdateFlags(List<(System.Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsClusteredFlag, bool MarkedForClusterProcess, int AfterClusterSleeveId)> updates);
 
         /// <summary>
         /// Batch update flags including IsCurrentClashFlag.
@@ -175,7 +176,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// <summary>
         /// Retrieves distinct MEP categories from the ClashZones table.
         /// </summary>
-        List<string> GetDistinctCategories();
+
 
         /// <summary>
         /// Updates resolution flags for zones that are part of a combined sleeve.
@@ -224,16 +225,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 double BoundingBoxMaxX, double BoundingBoxMaxY, double BoundingBoxMaxZ,
                 string SleeveFamilyName)> updates);
 
-        /// <summary>
-        /// ✅ PLACEMENT OPTIMIZATION: Batch update sleeve corners in a single transaction.
-        /// Replaces multiple UpdateSleeveCorners calls with one batch operation (50x faster).
-        /// </summary>
-        void BatchUpdateSleeveCorners(
-            IEnumerable<(System.Guid ClashZoneGuid,
-                double Corner1X, double Corner1Y, double Corner1Z,
-                double Corner2X, double Corner2Y, double Corner2Z,
-                double Corner3X, double Corner3Y, double Corner3Z,
-                double Corner4X, double Corner4Y, double Corner4Z)> updates);
+
 
         /// <summary>
         /// ✅ DEBUGTOOL: Reset IsResolved and IsClusterResolved flags to false for all zones 
@@ -246,5 +238,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// ✅ DEBUG: Get flag statistics for all zones in DB
         /// </summary>
         (int Total, int IsCurrentClashSet, int ReadyForPlacementSet, int IsResolvedSet) GetFlagStatistics();
+
+        /// <summary>
+        /// Update calculated sleeve data (Phase 1 result)
+        /// </summary>
+        void UpdateCalculatedSleeveData(System.Guid clashZoneGuid,
+            double width, double height, double depth,
+            double rotation, string familyName,
+            string status, string batchId);
+
+        /// <summary>
+        /// Update sleeve corners in bulk
+        /// </summary>
+        void BatchUpdateSleeveCorners(IEnumerable<(Guid Guid, double c1x, double c1y, double c1z, double c2x, double c2y, double c2z, double c3x, double c3y, double c3z, double c4x, double c4y, double c4z)> updates);
+
+        /// <summary>
+        /// Get distinct categories present in the database
+        /// </summary>
+        List<string> GetDistinctCategories();
+
+        /// <summary>
+        /// Retrieve all clash zones from the database.
+        /// </summary>
+        List<ClashZone> GetAllClashZones();
+
+        /// <summary>
+        /// Update a single clash zone.
+        /// </summary>
+        void Update(ClashZone zone);
     }
 }

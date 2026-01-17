@@ -222,7 +222,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     var clashZoneRepository = new ClashZoneRepository(dbContext);
                     
-                    var updates = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId)>();
+                    var updates = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsClusteredFlag, bool MarkedForClusterProcess, int AfterClusterSleeveId)>();
                     
                     foreach (var zone in invalidatedZones)
                     {
@@ -231,10 +231,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             updates.Add((
                                 zone.Id,
                                 IsResolved: true,
-                                IsClusterResolved: zone.IsClusterResolved,
+                                IsClusterResolved: zone.IsClusterResolvedFlag,
                                 IsCombinedResolved: zone.IsCombinedResolved,
                                 SleeveInstanceId: zone.SleeveInstanceId,
-                                ClusterInstanceId: zone.ClusterSleeveInstanceId)); 
+                                ClusterInstanceId: zone.ClusterSleeveInstanceId,
+                                IsClusteredFlag: zone.IsClusteredFlag,
+                                MarkedForClusterProcess: zone.MarkedForClusterProcess ?? false,
+                                AfterClusterSleeveId: zone.AfterClusterSleevePlacedSleeveInstanceId)); 
                         }
                     }
                     

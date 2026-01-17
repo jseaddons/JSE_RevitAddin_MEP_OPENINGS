@@ -27,15 +27,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
             {
                 var clusters = new List<List<dynamic>>();
                 var sleeves = group.ToList();
-                var visited = new HashSet<dynamic>(); // Objects are assumed distinct references in the dynamic list
+                // ✅ CRITICAL FIX: Track by ClashZone.Id (GUID), not SleeveInstanceId
+                // This is the ROOT CAUSE FIX for batch mode clustering issues.
+                // SleeveInstanceId can be shared by multiple ClashZones (same physical sleeve detected multiple times).
+                // ClashZone.Id is the true unique identifier for each clash detection result.
+                var visitedGuids = new HashSet<Guid>(); 
 
                 for (int i = 0; i < sleeves.Count; i++)
                 {
                     var seed = sleeves[i];
-                    if (visited.Contains(seed)) continue;
+                    ClashZone seedCz = seed?.ClashZone as ClashZone;
+                    if (seedCz == null) continue;
+                    
+                    Guid seedGuid = seedCz.Id;
+                    
+                    if (visitedGuids.Contains(seedGuid)) continue;
 
                     var cluster = new List<dynamic> { seed };
-                    visited.Add(seed);
+                    visitedGuids.Add(seedGuid);
+                    
                     var queue = new Queue<dynamic>();
                     queue.Enqueue(seed);
 
@@ -45,10 +55,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
                         // O(N^2) within group is acceptable as groups are usually small
                         foreach (var other in sleeves)
                         {
-                            if (visited.Contains(other)) continue;
+                            ClashZone otherCz = other?.ClashZone as ClashZone;
+                            if (otherCz == null) continue;
+                            
+                            Guid otherGuid = otherCz.Id;
+                            if (visitedGuids.Contains(otherGuid)) continue;
+                            
                             if (ShouldClusterSleeves(current, other, toleranceDist))
                             {
-                                visited.Add(other);
+                                visitedGuids.Add(otherGuid);
                                 cluster.Add(other);
                                 queue.Enqueue(other);
                             }
@@ -186,7 +201,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
             SafeFileLogger.SafeAppendText("cluster_debug.log", 
                 $"[{DateTime.Now:HH:mm:ss}] 🚨 ShouldClusterSleeves CALLED (tolerance={toleranceDist * 304.8:F0}mm)\n");
             
-            // ✅ CRITICAL FIX: Check HostElementId FIRST, BEFORE proximity
+            // ✅ CRITICAL FIX: Deterministic Validation (Phase 12: Duplicate Placement Fix)
+            // We enforce strict matching of HostID and Category BEFORE checking proximity.
+            // This prevents "Duplicate Placement" where sleeves from different walls/floors get clustered together
+            // simply because they are geometrically close (e.g. at corners).
+            
             ClashZone cz1 = null;
             ClashZone cz2 = null;
             try
@@ -194,55 +213,71 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
                 cz1 = s1?.ClashZone as ClashZone;
                 cz2 = s2?.ClashZone as ClashZone;
                 
-                // ⚠️ DIAGNOSTIC 2: Check if ClashZones exist
-                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss}]   ClashZones: cz1={(cz1 != null ? $"EXISTS (Id={cz1.Id.ToString().Substring(0, 8)})" : "NULL")}, cz2={(cz2 != null ? $"EXISTS (Id={cz2.Id.ToString().Substring(0, 8)})" : "NULL")}\n");
-                
-                if (cz1 == null || cz2 == null)
+                // ✅ BATCH MODE FIX: Prevent same ClashZone from clustering with itself
+                // If both sleeves reference the same ClashZone GUID, they're the same clash detection result
+                if (cz1 != null && cz2 != null)
                 {
-                    SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss}]   ⚠️ WARNING: ClashZone is NULL! Cannot check HostElementId. Proceeding with proximity check only.\n");
-                    // Continue to proximity check
-                }
-                else
-                {
+                    if (cz1.Id == cz2.Id)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}]   ❌ REJECT: Same ClashZone GUID ({cz1.Id}) - cannot cluster with self\n");
+                        return false;
+                    }
+
+                    // 1. Check StructuralElementId (Host)
                     int host1 = cz1.StructuralElementIdValue;
                     int host2 = cz2.StructuralElementIdValue;
                     
-                    // ⚠️ DIAGNOSTIC 3: Show HostElementId values
-                    SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss}]   HostElementIds: host1={host1}, host2={host2}\n");
+                    if (host1 != host2)
+                    {
+                         // Special case: If either is -1 (unknown), we might allow fallback, 
+                         // but for robust de-duping, we should likely reject unless one is truly floating.
+                         // User requested STRICT check: "MUST match: StructuralElementId"
+                         if (host1 > 0 && host2 > 0)
+                         {
+                             SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}]   ❌ REJECT: Different Hosts (host1={host1} != host2={host2})\n");
+                             return false;
+                         }
+                    }
+
+                    // 2. Check MEP Category
+                    // "MUST match: MEP Category"
+                    if (cz1.MepElementCategory != cz2.MepElementCategory)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                           $"[{DateTime.Now:HH:mm:ss}]   ❌ REJECT: Different Categories ('{cz1.MepElementCategory}' != '{cz2.MepElementCategory}')\n");
+                        return false; 
+                    }
                     
-                    // If both have valid IDs and they're different → CANNOT cluster
-                    if (host1 > 0 && host2 > 0 && host1 != host2)
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss}]   ❌ REJECT: Different walls (host1={host1} != host2={host2})\n");
-                        return false; // Different walls/floors - stop immediately
-                    }
-                    else if (host1 > 0 && host2 > 0 && host1 == host2)
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss}]   ✅ ACCEPT: Same wall (host={host1})\n");
-                    }
-                    else
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss}]   ⚠️ WARNING: HostElementId is 0 or invalid (host1={host1}, host2={host2}). Cannot verify walls.\n");
-                    }
+                    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss}]   ✅ MATCH: Same Host ({host1}) & Category ({cz1.MepElementCategory}). Proceeding to proximity check.\n");
                 }
             }
             catch (Exception ex)
             {
                 SafeFileLogger.SafeAppendText("cluster_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss}]   ❌ EXCEPTION in HostElementId check: {ex.Message}\n");
+                    $"[{DateTime.Now:HH:mm:ss}]   ❌ EXCEPTION in Validation: {ex.Message}\n");
             }
             
-            // ✅ Continue with existing proximity logic
+            // ✅ Continue with proximity logic
             double angle1 = cz1?.MepElementRotationAngle ?? 0.0;
             bool isRotated = Math.Abs(angle1) > 1e-6 && !IsAxisAlignedAngle(angle1);
             var checker = ProximityCheckerFactory.CreateChecker(s1, s2, angle1, isRotated);
             
+            // ✅ IMPROVED LOGGING: Calculate distance for debug
+            if (cz1 != null && cz2 != null)
+            {
+                double dist = Math.Sqrt(Math.Pow(cz1.IntersectionPointX - cz2.IntersectionPointX, 2) +
+                                      Math.Pow(cz1.IntersectionPointY - cz2.IntersectionPointY, 2) +
+                                      Math.Pow(cz1.IntersectionPointZ - cz2.IntersectionPointZ, 2));
+                
+                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss}]   📏 Distance Check: {dist * 304.8:F1}mm vs Tolerance {toleranceDist * 304.8:F1}mm\n" +
+                    $"       Zone1: {cz1.DeterministicId} ({cz1.MepElementCategory})\n" +
+                    $"       Zone2: {cz2.DeterministicId} ({cz2.MepElementCategory})\n");
+            }
+
             bool proximityResult = checker.CheckProximity(s1, s2, toleranceDist);
             
             // ⚠️ DIAGNOSTIC 4: Show proximity result

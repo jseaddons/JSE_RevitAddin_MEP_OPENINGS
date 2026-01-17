@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Collections.Concurrent;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
@@ -20,6 +21,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         // Store rotation angle and rotated bounding box for each cluster sleeve
         // Key: ClusterInstanceId
         private readonly Dictionary<int, (double rotationAngleDeg, bool isRotated, XYZ rotatedBboxMin, XYZ rotatedBboxMax, double rotatedWidth, double rotatedHeight, double rotatedDepth)> _clusterRotationData;
+        
+        // ✅ THREAD-SAFE DEDUPLICATION: Track processed IDs to prevent concurrent threads from claiming the same ID
+        private readonly ConcurrentDictionary<int, byte> _processedClusterIds = new ConcurrentDictionary<int, byte>();
 
         // ✅ PERFORMANCE: Cache rotated bounding box calculations by cluster signature + rotation angle
         // Key: Hash of (sorted sleeve IDs + rotation angle), Value: (width, height, depth, mid, rotatedMinX, ...)
@@ -33,12 +37,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
 
         // Delegate for getting ClashZone by sleeve instance ID (injected dependency)
         private readonly Func<int, string, ClashZone> _getClashZoneFunc;
+        
+        // Delegate for getting cluster placement by cluster ID (injected dependency)
+        private readonly Func<int, XYZ> _getClusterPlacementFunc;
 
         /// <summary>
         /// Constructor
         /// </summary>
         /// <param name="getClashZoneFunc">Function to retrieve ClashZone by sleeve instance ID</param>
-        public ClusterRotationService(Func<int, string, ClashZone> getClashZoneFunc)
+        /// <param name="getClusterPlacementFunc">Optional function to retrieve existing cluster placement from DB</param>
+        public ClusterRotationService(
+            Func<int, string, ClashZone> getClashZoneFunc,
+            Func<int, XYZ> getClusterPlacementFunc = null)
         {
             // ✅ VALIDATION: Check for null before assignment (better error message)
             if (getClashZoneFunc == null)
@@ -51,6 +61,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
             _rotatedBboxCache = new Dictionary<string, (double, double, double, XYZ, double?, double?, double?, double?, double?, double?)>();
             _clashZoneCache = new Dictionary<int, ClashZone>();
             _getClashZoneFunc = getClashZoneFunc;
+            _getClusterPlacementFunc = getClusterPlacementFunc;
         }
 
         /// <summary>
@@ -113,7 +124,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                         return 0.0; // Fallback to 0 (will likely be rejected or placed poorly, but safe)
                     }
                     
-                    // ✅ PHASE 4: Use database orientation directly
+                    // ✅ PHASE 4: Use database orientation directly (Simple Logic as requested)
+                    // If HostOrientation is X/X-WALL -> Rotate 90 degrees
+                    // Else -> 0 degrees
                     if (string.Equals(hostOrientation, "X", StringComparison.OrdinalIgnoreCase) || 
                         hostOrientation.IndexOf("X-WALL", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
@@ -128,7 +141,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     else if (string.Equals(hostOrientation, "Y", StringComparison.OrdinalIgnoreCase) || 
                              hostOrientation.IndexOf("Y-WALL", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
-                        double rotationAngle = 0.0; // 0 degrees for Y-walls
+                         double rotationAngle = 0.0; // 0 degrees for Y-walls (User Req: "y should remain at 0 degre")
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
@@ -182,7 +195,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     var sleeveIds = cluster.Select(s => s?.SleeveInstanceId ?? 0).Where(id => id > 0).OrderBy(id => id).ToList();
                     if (sleeveIds.Count == cluster.Count) // Only cache if all sleeves have valid IDs
                     {
-                        string cacheKey = $"RBB_{string.Join("_", sleeveIds)}_{rotationAngle:F6}";
+                        string cacheKey = $"RBB_FIXED_{string.Join("_", sleeveIds)}_{rotationAngle:F6}";
                         
                         if (_rotatedBboxCache.TryGetValue(cacheKey, out var cachedResult))
                         {
@@ -225,7 +238,119 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
 
             // ✅ CRITICAL FIX: Calculate placement point from intersection points (centroid), not bounding box midpoint
             // Individual sleeves are placed at intersection points, so cluster should be at average of intersection points
-            XYZ placementPoint = CalculatePlacementPointFromIntersections(cluster, xmlFilePath);
+            XYZ placementPoint = null;
+            
+            // ✅ BATCH MODE FIX: Try to get existing placement from DB first (Single Source of Truth)
+            // If the cluster already exists in DB (has ClusterInstanceId), we MUST use the stored placement
+            // This bypasses recalculation errors where incorrect grouping in batch mode shifts the centroid
+            if (_getClusterPlacementFunc != null && cluster[0] != null)
+            {
+                try
+                {
+                    // Check if first sleeve has a valid ClusterInstanceId
+                    int clusterId = -1;
+                    dynamic firstSleeve = cluster[0];
+                    object clusterIdObj = null;
+                    
+                    // Try to get ClusterInstanceId from dynamic object (direct property)
+                    try { clusterIdObj = firstSleeve.ClusterInstanceId; } catch { }
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] DEBUG: Sleeve Type={firstSleeve?.GetType().Name}, Direct ID access result={clusterIdObj ?? "null"}\n");
+
+                    // ✅ CRITICAL FIX: Try to get from ClashZone property on dynamic object
+                    if (clusterIdObj == null || (clusterIdObj is int cId1 && cId1 <= 0))
+                    {
+                        try 
+                        {
+                            var cz = firstSleeve.ClashZone;
+                            if (cz != null) 
+                            {
+                                clusterIdObj = cz.ClusterInstanceId;
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] DEBUG: Got ID {clusterIdObj} from ClashZone property\n");
+                            }
+                            else
+                            {
+                                 if (!DeploymentConfiguration.DeploymentMode)
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] DEBUG: firstSleeve.ClashZone IS NULL\n");
+                            }
+                        }
+                        catch (Exception ex) 
+                        { 
+                             if (!DeploymentConfiguration.DeploymentMode)
+                                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] DEBUG: Error accessing ClashZone property: {ex.Message}\n");
+                        }
+                    }
+
+                    // Fallback: try to get from cached/DB ClashZone lookup
+                    if (clusterIdObj == null || (clusterIdObj is int cId2 && cId2 <= 0))
+                    {
+                         var cz = GetCachedClashZone(firstSleeve.SleeveInstanceId, xmlFilePath);
+                         if (cz != null) 
+                         {
+                            clusterId = cz.ClusterInstanceId;
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] DEBUG: Got ID {clusterId} from GetCachedClashZone\n");
+                         }
+                         else
+                         {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] DEBUG: GetCachedClashZone returned NULL for {firstSleeve.SleeveInstanceId}\n");
+                         }
+                    }
+                    else
+                    {
+                        clusterId = (int)clusterIdObj;
+                    }
+                    
+                    if (clusterId > 0)
+                    {
+                        // ✅ THREAD-SAFE DEDUPLICATION: Try to claim this ID for this run.
+                        // If TryAdd returns FALSE, it means another thread or previous call has already claimed this ID.
+                        // We must treat this current cluster as a NEW cluster (ignore DB ID) to prevent stacking.
+                        if (!_processedClusterIds.TryAdd(clusterId, 0))
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ DEDUPLICATION (Thread-Safe): ClusterInstanceId {clusterId} already processed! " +
+                                    $"Treating this duplicate group as a NEW cluster (ignoring DB ID) to prevent stacking.\n");
+                            }
+                            clusterId = -1; // Force new calculation (geometry based)
+                        }
+
+                         // Verify delegate
+                         if (_getClusterPlacementFunc == null)
+                             SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] DEBUG: _getClusterPlacementFunc IS NULL!\n");
+                    }
+                    
+                    if (clusterId > 0)
+                    {
+                        var dbPlacement = _getClusterPlacementFunc(clusterId);
+                        if (dbPlacement != null)
+                        {
+                            placementPoint = dbPlacement;
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] 🎯 DB SOURCE OF TRUTH: Using stored placement for Cluster {clusterId}: ({placementPoint.X:F4}, {placementPoint.Y:F4}, {placementPoint.Z:F4})\n");
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        SafeFileLogger.SafeAppendText("cluster_errors.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ DB Lookup Failed: {ex.Message}\n");
+                }
+            }
+            
+            // Fallback to calculation if DB lookup failed or returned null
+            if (placementPoint == null)
+            {
+                 placementPoint = CalculatePlacementPointFromIntersections(cluster, xmlFilePath);
+            }
             
             if (placementPoint.IsZeroLength() || double.IsNaN(placementPoint.X))
             {
@@ -427,6 +552,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 double circularHeight = circularMaxY - circularMinY;
                 double circularDepth = maxStructuralThickness; // Authoritative Depth from Structural Thickness fullstop
 
+                // ✅ CRITICAL PLACEMENT FIX: 
+                // Previous logic used 'placementPoint' derived from AVERAGE OF INTERSECTIONS (Centerlines).
+                // But the Bounding Box is calculated from EXTREMES (Edges).
+                // If pipes have different sizes (e.g. 100mm & 500mm), the Geometric Center of the box != Average of Centers.
+                // WE MUST RECALCULATE 'placementPoint' to be the GEOMETRIC CENTER of the calculated bounds.
+                // Otherwise, the correctly sized box is placed at the wrong location (lopsided).
+                placementPoint = new XYZ(
+                    (circularMinX + circularMaxX) / 2.0,
+                    (circularMinY + circularMaxY) / 2.0,
+                    (circularMinZ + circularMaxZ) / 2.0
+                );
+
+                if (!DeploymentConfiguration.DeploymentMode)
+                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                        $"[{DateTime.Now:HH:mm:ss}] 🎯 RE-CENTERING: Shifted placement point from Centroid to Geometric Center: ({placementPoint.X:F2}, {placementPoint.Y:F2}, {placementPoint.Z:F2})\n");
+
                 // ✅ ROBUST SIZING: Determine wall direction explicitly from database properties
                 // Do NOT guess based on aspect ratio (Math.Abs(dY) > Math.Abs(dX)) because for square grids or combined clusters it fails.
                 bool isYWall = false;
@@ -506,19 +647,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     {
                         // X-Wall: Length is along X. Width parameter must be Length.
                         // (Placement at 180 deg puts Width along X).
+                        // ✅ CRITICAL FIX: For circular pipes, use rawWidthX (extent along wall), NOT maxSleeveDiameter
+                        // The cluster width is the SPAN of pipes along the wall, not individual diameter
                         circularWidth = rawWidthX;
                         circularDepth = maxStructuralThickness;
                         if (!DeploymentConfiguration.DeploymentMode)
-                            SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] 🔧 WALL FIX (X-Wall): Forced Width=RawX (Length), Depth=StructuralThickness\n");
+                            SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] 🔧 WALL FIX (X-Wall): Forced Width=RawX (Length={rawWidthX*304.8:F1}mm), Depth=StructuralThickness\n");
                     }
                     else // isYWall
                     {
                         // Y-Wall: Length is along Y. Width parameter must be Length.
                         // (Placement at 90 deg puts Width along Y).
+                        // ✅ CRITICAL FIX: For circular pipes, use rawWidthY (extent along wall), NOT maxSleeveDiameter
                         circularWidth = rawWidthY;
                         circularDepth = maxStructuralThickness;
                         if (!DeploymentConfiguration.DeploymentMode)
-                            SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] 🔧 WALL FIX (Y-Wall): Forced Width=RawY (Length), Depth=StructuralThickness\n");
+                            SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] 🔧 WALL FIX (Y-Wall): Forced Width=RawY (Length={rawWidthY*304.8:F1}mm), Depth=StructuralThickness\n");
                     }
                 }
                 
@@ -576,7 +720,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     var sleeveIds = cluster.Select(s => s?.SleeveInstanceId ?? 0).Where(id => id > 0).OrderBy(id => id).ToList();
                     if (sleeveIds.Count == cluster.Count)
                     {
-                        string cacheKey = $"RBB_{string.Join("_", sleeveIds)}_{rotationAngle:F6}";
+                        string cacheKey = $"RBB_FIXED_{string.Join("_", sleeveIds)}_{rotationAngle:F6}";
                         var circularResult = (circularWidth, circularHeight, circularDepth, placementPoint, (double?)circularMinX, (double?)circularMinY, (double?)circularMinZ, (double?)circularMaxX, (double?)circularMaxY, (double?)circularMaxZ);
                         
                         if (_rotatedBboxCache.Count < MAX_ROTATED_BBOX_CACHE_SIZE)
@@ -2055,6 +2199,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         public void ClearRotationData()
         {
             _clusterRotationData.Clear();
+            _processedClusterIds.Clear(); // ✅ Also clear the deduplication tracker
         }
 
         /// <summary>

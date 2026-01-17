@@ -11,7 +11,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
     /// Tracks performance metrics for placement operations (individual and cluster sleeves)
     /// Similar to Refresh PerformanceMonitor but tailored for placement operations
     /// </summary>
-    public class PlacementPerformanceMonitor
+    public class PlacementPerformanceMonitor : JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IPerformanceMonitor
     {
         private readonly string _logFileName;
         private readonly Stopwatch _totalTimer;
@@ -24,6 +24,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             _totalTimer = Stopwatch.StartNew();
             _operations = new Dictionary<string, OperationMetrics>();
             _startMemoryBytes = GC.GetTotalMemory(false);
+            _activeTrackers = new Dictionary<string, JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IOperationTracker>();
             
             // ✅ INITIALIZE LOG: Log start time (ALWAYS log, even in deployment mode)
             SafeFileLogger.SafeAppendTextAlways($"performance_{_logFileName}", 
@@ -32,11 +33,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 $"Log File: {_logFileName}\n" +
                 $"Start Memory: {_startMemoryBytes / 1024.0 / 1024.0:F2} MB\n\n");
         }
+
+        private readonly Dictionary<string, JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IOperationTracker> _activeTrackers;
+        
+        public bool IsEnabled => true;
+
+        public void StartOperation(string operationName)
+        {
+            if (!_activeTrackers.ContainsKey(operationName))
+            {
+                _activeTrackers[operationName] = TrackOperation(operationName);
+            }
+        }
+
+        public void StopOperation(string operationName, int itemCount = 0)
+        {
+            if (_activeTrackers.ContainsKey(operationName))
+            {
+                var tracker = _activeTrackers[operationName];
+                tracker.SetItemCount(itemCount);
+                tracker.Dispose();
+                _activeTrackers.Remove(operationName);
+            }
+        }
+
+        public void LogMetric(string metricName, object value)
+        {
+             SafeFileLogger.SafeAppendTextAlways($"performance_{_logFileName}", 
+                $"[{DateTime.Now:HH:mm:ss.fff}] METRIC: {metricName} = {value}\n");
+        }
         
         /// <summary>
         /// Start tracking an operation
         /// </summary>
-        public OperationTracker TrackOperation(string operationName)
+        /// <summary>
+        /// Start tracking an operation
+        /// </summary>
+        public JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IOperationTracker TrackOperation(string operationName)
         {
             return new OperationTracker(this, operationName);
         }
@@ -155,7 +188,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             public long MaxMilliseconds { get; set; }
         }
         
-        public class OperationTracker : IDisposable
+        public class OperationTracker : JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IOperationTracker
         {
             private readonly PlacementPerformanceMonitor _monitor;
             private readonly string _operationName;
@@ -181,7 +214,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             /// <summary>
             /// Track a sub-operation within this operation
             /// </summary>
-            public SubOperationTracker TrackSubOperation(string subOperationName)
+            /// <summary>
+            /// Track a sub-operation within this operation
+            /// </summary>
+            public JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IOperationTracker TrackSubOperation(string subOperationName)
             {
                 return new SubOperationTracker(this, subOperationName);
             }
@@ -219,15 +255,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     $"[{DateTime.Now:HH:mm:ss.fff}] {_operationName}: {_timer.ElapsedMilliseconds}ms, Memory: {memoryDelta / 1024.0:F2} KB, Items: {_itemCount}\n");
                 
                 // Log sub-operations (ALWAYS log, even in deployment mode)
+                SafeFileLogger.SafeAppendTextAlways($"performance_{_monitor._logFileName}",
+                     $"[{DateTime.Now:HH:mm:ss.fff}] DEBUG: Disposing OperationTracker '{_operationName}'. SubOpCount: {_subOperations.Count}\n");
+
                 foreach (var subOp in _subOperations.Values.OrderByDescending(o => o.TotalMilliseconds))
                 {
                     double avgMs = subOp.CallCount > 0 ? (double)subOp.TotalMilliseconds / subOp.CallCount : 0;
                     SafeFileLogger.SafeAppendTextAlways($"performance_{_monitor._logFileName}",
-                        $"[{DateTime.Now:HH:mm:ss.fff}]   {subOp.Name}: {subOp.TotalMilliseconds}ms (avg: {avgMs:F1}ms, calls: {subOp.CallCount}, items: {subOp.TotalItemCount})\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}]   (Sub) {subOp.Name}: {subOp.TotalMilliseconds}ms (avg: {avgMs:F1}ms, calls: {subOp.CallCount}, items: {subOp.TotalItemCount})\n");
                 }
             }
             
-            public class SubOperationTracker : IDisposable
+            public class SubOperationTracker : JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IOperationTracker
             {
                 private readonly OperationTracker _parent;
                 private readonly string _subOperationName;
@@ -246,6 +285,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 public void SetItemCount(int count)
                 {
                     _itemCount = count;
+                }
+
+                /// <summary>
+                /// Track a sub-operation (delegates to parent to keep hierarchy flat for now)
+                /// </summary>
+                public JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IOperationTracker TrackSubOperation(string subOperationName)
+                {
+                    // For now, flatten sub-operations by tracking them on the parent operation
+                    return _parent.TrackSubOperation(subOperationName);
                 }
                 
                 public void Dispose()

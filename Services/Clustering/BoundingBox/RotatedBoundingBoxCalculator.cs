@@ -76,14 +76,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
                     var cz = clashZone as Models.ClashZone;
                     if (cz == null) continue;
 
+                    // Check for Rotated Bounding Box
                     bool hasRotatedBbox = cz.RotatedBoundingBoxMinX.HasValue &&
                                          cz.RotatedBoundingBoxMinY.HasValue &&
                                          cz.RotatedBoundingBoxMaxX.HasValue &&
                                          cz.RotatedBoundingBoxMaxY.HasValue;
 
+                    // Check for Pre-Calculated Corners (Phase 2 Geometry)
+                    bool hasCalculatedCorners = cz.SleeveCorner1X.HasValue && cz.SleeveCorner1Y.HasValue;
+
                     if (hasRotatedBbox)
                     {
-                        DebugLogger.Info($"[RotatedBoundingBoxCalculator] Extracted Corners from DB for Sleeve {sId}: X=[{cz.RotatedBoundingBoxMinX}, {cz.RotatedBoundingBoxMaxX}], Y=[{cz.RotatedBoundingBoxMinY}, {cz.RotatedBoundingBoxMaxY}]");
+                        DebugLogger.Info($"[RotatedBoundingBoxCalculator] Extracted RotatedBox from DB for Sleeve {sId}");
                         
                         rotatedBboxes.Add((
                             new XYZ(cz.RotatedBoundingBoxMinX.Value,
@@ -94,6 +98,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
                                    cz.RotatedBoundingBoxMaxZ ?? cz.SleeveBoundingBoxMaxZ)
                         ));
                         hasRotatedBboxes = true;
+                    }
+                    else if (hasCalculatedCorners)
+                    {
+                         // If we have corners but no RotatedBox, we still want to trigger the CornerBased/Watertight algo.
+                         // valid corners imply we can calculate the rotated box.
+                         hasRotatedBboxes = true; // Set flag to true to trigger the calculation block below
+                         DebugLogger.Info($"[RotatedBoundingBoxCalculator] Found Corners (Phase 2) for Sleeve {sId}. enabling CornerCalc.");
                     }
                     else
                     {
@@ -109,8 +120,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
                     }
                 }
 
-                // ✅ Use corner-based watertight algorithm if we have rotated bounding boxes
-                if (hasRotatedBboxes && rotatedBboxes.Count > 0 && Math.Abs(rotationAngle) > 1e-6)
+                // ✅ Use corner-based watertight algorithm if we have rotated bounding boxes OR raw corners
+                if (hasRotatedBboxes && Math.Abs(rotationAngle) > 1e-6)
                 {
                     // ✅ PROPER WATERTIGHT ALGORITHM: Use corner-based calculation
                     var cornerResult = CornerBasedBoundingBoxCalculator.CalculateFromCorners(

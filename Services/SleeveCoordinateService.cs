@@ -1475,37 +1475,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             else
                             {
                                 // ✅ INDIVIDUAL SLEEVE: Update individual sleeve bounding box
-                                // ✅ CRITICAL LOGGING: Log BEFORE SetSleeveBoundingBox - Direct file write to placement_debug.log
-                                try 
-                                { 
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_BEFORE_SET] ClashZone {clashZone.Id}, Sleeve {clashZone.SleeveInstanceId}: " +
-                                        $"BEFORE - ClashZone has: MinX={clashZone.SleeveBoundingBoxMinX:F6}, MinY={clashZone.SleeveBoundingBoxMinY:F6}, MinZ={clashZone.SleeveBoundingBoxMinZ:F6}, " +
-                                        $"MaxX={clashZone.SleeveBoundingBoxMaxX:F6}, MaxY={clashZone.SleeveBoundingBoxMaxY:F6}, MaxZ={clashZone.SleeveBoundingBoxMaxZ:F6}\n");
-                                    }
-                                    
-                                    System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_BEFORE_SET] Revit bbox from sleeve {matchedSleeve.Id.IntegerValue}: " +
-                                        $"Min=({bbox.Min.X:F6}, {bbox.Min.Y:F6}, {bbox.Min.Z:F6}), Max=({bbox.Max.X:F6}, {bbox.Max.Y:F6}, {bbox.Max.Z:F6})\n");
-                                } 
-                                catch { }
+                                // ✅ CRITICAL FIX: For circular pipes, calculate bbox from diameter, NOT from geometry
+                                // Revit geometry bbox for circular opening is 2x diameter (square around circle)
                                 
-                                // ✅ CORRECT: Update bounding box and instance ID
-                                clashZone.SetSleeveBoundingBox(bbox);
+                                bool isCircularPipe = string.Equals(clashZone.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
+                                bool isRoundDuct = false;
+                                if (string.Equals(clashZone.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase) ||
+                                    string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    isRoundDuct = string.Equals(clashZone.DuctShape, "Round", StringComparison.OrdinalIgnoreCase) ||
+                                                 string.Equals(clashZone.DuctShape, "Circular", StringComparison.OrdinalIgnoreCase);
+                                }
                                 
-                                // ✅ CRITICAL LOGGING: Log AFTER SetSleeveBoundingBox - Direct file write to placement_debug.log
-                                try 
-                                { 
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_AFTER_SET] ClashZone {clashZone.Id}, Sleeve {clashZone.SleeveInstanceId}: " +
-                                        $"AFTER - ClashZone now has: MinX={clashZone.SleeveBoundingBoxMinX:F6}, MinY={clashZone.SleeveBoundingBoxMinY:F6}, MinZ={clashZone.SleeveBoundingBoxMinZ:F6}, " +
-                                        $"MaxX={clashZone.SleeveBoundingBoxMaxX:F6}, MaxY={clashZone.SleeveBoundingBoxMaxY:F6}, MaxZ={clashZone.SleeveBoundingBoxMaxZ:F6}\n");
-                                    }
+                                if (isCircularPipe || isRoundDuct)
+                                {
+                                    // ✅ CIRCULAR SLEEVE: Calculate bounding box from diameter
+                                    double diameter = clashZone.SleeveDiameter;
+                                    double halfDiameter = diameter / 2.0;
                                     
-                                    System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UPDATED] Sleeve {clashZone.SleeveInstanceId}: Min=({bbox.Min.X:F6}, {bbox.Min.Y:F6}, {bbox.Min.Z:F6}), Max=({bbox.Max.X:F6}, {bbox.Max.Y:F6}, {bbox.Max.Z:F6})\n");
-                                } 
-                                catch { }
+                                    // Get placement point (center of sleeve)
+                                    XYZ center = new XYZ(
+                                        clashZone.SleevePlacementPointX,
+                                        clashZone.SleevePlacementPointY,
+                                        clashZone.SleevePlacementPointZ
+                                    );
+                                    
+                                    // Calculate bbox from center ± half diameter
+                                    clashZone.SleeveBoundingBoxMinX = center.X - halfDiameter;
+                                    clashZone.SleeveBoundingBoxMinY = center.Y - halfDiameter;
+                                    clashZone.SleeveBoundingBoxMinZ = center.Z - halfDiameter;
+                                    clashZone.SleeveBoundingBoxMaxX = center.X + halfDiameter;
+                                    clashZone.SleeveBoundingBoxMaxY = center.Y + halfDiameter;
+                                    clashZone.SleeveBoundingBoxMaxZ = center.Z + halfDiameter;
+                                    
+                                    try
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [CIRCULAR-BBOX-CALCULATED] ClashZone {clashZone.Id}, Sleeve {clashZone.SleeveInstanceId}: " +
+                                                $"Calculated from Diameter={diameter*304.8:F1}mm, Center=({center.X:F6}, {center.Y:F6}, {center.Z:F6}), " +
+                                                $"BBox Range={(clashZone.SleeveBoundingBoxMaxX - clashZone.SleeveBoundingBoxMinX)*304.8:F1}mm\n");
+                                        }
+                                    }
+                                    catch { }
+                                }
+                                else
+                                {
+                                    // ✅ RECTANGULAR SLEEVE: Use geometry bounding box
+                                    clashZone.SetSleeveBoundingBox(bbox);
+                                }
                             }
                         }
                         else

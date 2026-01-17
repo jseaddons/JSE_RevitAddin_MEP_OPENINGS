@@ -67,10 +67,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data
         /// <summary>
         /// Update pre-calculated 4 corner coordinates for Cluster Sleeves (Phase 3 Persistence).
         /// </summary>
-        void UpdateClusterSleeveCorners(int clusterInstanceId,
+        public void UpdateClusterSleeveCorners(int clusterInstanceId,
             double corner1X, double corner1Y, double corner1Z,
             double corner2X, double corner2Y, double corner2Z,
             double corner3X, double corner3Y, double corner3Z,
             double corner4X, double corner4Y, double corner4Z);
+
+        /// <summary>
+        /// Get the placement point for a cluster sleeve from the database.
+        /// Returns null if not found.
+        /// </summary>
+        /// <param name="clusterInstanceId">Cluster sleeve instance ID</param>
+        /// <returns>Placement point (XYZ) or null</returns>
+        XYZ GetClusterPlacement(int clusterInstanceId);
     }
 }

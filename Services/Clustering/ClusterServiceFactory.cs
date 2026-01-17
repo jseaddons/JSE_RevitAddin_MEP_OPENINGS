@@ -50,7 +50,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             Document doc,
             JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor.IFlagManager flagManager = null,
             FilterManagementService filterService = null,
-            int timeoutLimitMs = 300000)
+            int timeoutLimitMs = 300000,
+            JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IPerformanceMonitor performanceMonitor = null)
         {
             // Phase 9: Data Service (needed for getClashZoneFunc)
             var dataService = new ClusterDataService(doc);
@@ -155,11 +156,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 return null;
             };
             
-            // ✅ VALIDATION: Ensure function is not null before passing to constructor
-            if (getClashZoneFunc == null)
-                throw new InvalidOperationException("getClashZoneFunc cannot be null");
+            // ✅ Phase 9b: Cluster Placement Lookup Delegate (for Rotation Service)
+            Func<int, XYZ> getClusterPlacementFunc = (clusterId) =>
+            {
+                return dataService.GetClusterPlacement(clusterId);
+            };
             
-            var rotationService = new ClusterRotationService(getClashZoneFunc);
+            var rotationService = new ClusterRotationService(getClashZoneFunc, getClusterPlacementFunc);
 
             // Phase 7: Cleanup Service
             var cleanupService = new ClusterCleanupService();
@@ -200,7 +203,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 cornerService: cornerService,
                 strategyFactory: strategyFactory,
                 flagManager: flagManagerRefactor,
-                filterService: filterService
+                filterService: filterService,
+                performanceMonitor: performanceMonitor
             );
         }
 
@@ -233,7 +237,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             Document doc,
             JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor.IFlagManager? flagManager = null,
             FilterManagementService? filterService = null,
-            int timeoutLimitMs = 300000)
+            int timeoutLimitMs = 300000,
+            JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IPerformanceMonitor? performanceMonitor = null)
         {
             // ✅ Phase 9: Data Service (required for all other services)
             var dataService = new ClusterDataService(doc);
@@ -258,7 +263,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 // For now, return null - RotationService will handle fallback
                 return null;
             };
-            var rotationService = new ClusterRotationService(getClashZoneFunc);
+            // ✅ Phase 9b: Cluster Placement Lookup Delegate
+            Func<int, XYZ> getClusterPlacementFunc = (clusterId) =>
+            {
+                return dataService.GetClusterPlacement(clusterId);
+            };
+            
+            var rotationService = new ClusterRotationService(getClashZoneFunc, getClusterPlacementFunc);
 
             // ✅ Phase 4: Strategy Factory (stateless)
             var strategyFactory = new ClusteringStrategyFactory();
@@ -285,7 +296,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 cornerService: cornerService,
                 strategyFactory: strategyFactory,
                 flagManager: flagManagerToUse,
-                filterService: filterService
+                filterService: filterService,
+                performanceMonitor: performanceMonitor
             );
         }
 

@@ -31,6 +31,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public Guid Id { get; set; } = Guid.NewGuid();
 
         /// <summary>
+        /// ✅ DATABASE GUID: Actual GUID stored in database (ClashZoneGuid column)
+        /// This is the authoritative identifier used for clustering and database operations
+        /// NOTE: No default initializer - GUID must be set from database or explicitly assigned
+        /// </summary>
+        public string ClashZoneGuid { get; set; }
+
+        /// <summary>
+        /// ✅ DETERMINISTIC ID: Stable identifier based on HostID and Category.
+        /// Format: "StructuralId_Category_X_Y_Z" (e.g., "12345_Pipes_100_200_0")
+        /// Used for consistent identification across sessions and debugging.
+        /// This is a COMPUTED property for backward compatibility with code that uses deterministic IDs.
+        /// </summary>
+        public string DeterministicId
+        {
+            get
+            {
+                // Rounded coordinates to avoid double precision noise in Ids
+                return $"{StructuralElementIdValue}_{MepElementCategory}_{(int)Math.Round(IntersectionPointX * 304.8)}_{(int)Math.Round(IntersectionPointY * 304.8)}_{(int)Math.Round(IntersectionPointZ * 304.8)}";
+            }
+        }
+
+        /// <summary>
         /// Database auto-increment ID (for SQLite operations)
         /// Not serialized to XML, only used for database indexing
         /// </summary>
@@ -254,6 +276,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public double MepOrientationX { get; set; } = 0.0;
         public double MepOrientationY { get; set; } = 0.0;
         public double MepOrientationZ { get; set; } = 0.0;
+
+        /// <summary>
+        /// The system type of the MEP element (e.g., "Supply Air", "Sanitary")
+        /// </summary>
+
+
+        /// <summary>
+        /// ✅ MEP SYSTEM NAME: The specific name of the system (e.g., "H-1", "Sanitary 1")
+        /// Distinct from System Type (which is the family name)
+        /// </summary>
+        public string MepSystemName { get; set; }
+
+        /// <summary>
+        /// The service type of the MEP element (e.g., "Hydronic Supply", "Waste")
+        /// </summary>
+
         
 
 
@@ -743,6 +781,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// Pre-calculated during refresh to avoid linked file access during placement
         /// </summary>
         public string MepElementSystemAbbreviation { get; set; } = string.Empty;
+
+        /// <summary>
+        /// ✅ NEW: MEP System Type name (e.g., "Supply Air", "Domestic Hot Water")
+        /// Stored during refresh for reference and parameter transfer
+        /// </summary>
+        public string MepSystemType { get; set; } = string.Empty;
+
+        /// <summary>
+        /// ✅ NEW: MEP Service Type name (specific to some projects/standards)
+        /// Stored during refresh for reference and parameter transfer
+        /// </summary>
+        public string MepServiceType { get; set; } = string.Empty;
         
         /// <summary>
         /// ✅ OOP METHOD: Connector side direction ("Left", "Right", "Top", "Bottom")
@@ -783,6 +833,61 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// The document title where the structural element is located (for linked elements)
         /// </summary>
         public string StructuralElementDocumentTitle { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Validation status (e.g., "Valid", "Invalid", "Failed")
+        /// </summary>
+        public string ValidationStatus { get; set; } = "Current";
+
+        /// <summary>
+        /// Validation message or error details
+        /// </summary>
+        public string ValidationMessage { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Status of placement (e.g. "Pending", "Placed", "Failed")
+        /// </summary>
+        public string PlacementStatus { get; set; } = "Pending";
+
+        /// <summary>
+        /// ID of the calculation batch
+        /// </summary>
+        public string CalculationBatchId { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Timestamp of calculation
+        /// </summary>
+        public DateTime CalculatedAt { get; set; } = DateTime.MinValue;
+
+        /// <summary>
+        /// Calculated Width
+        /// </summary>
+        public double CalculatedSleeveWidth { get; set; }
+
+        /// <summary>
+        /// Calculated Height
+        /// </summary>
+        public double CalculatedSleeveHeight { get; set; }
+
+        /// <summary>
+        /// Calculated Depth
+        /// </summary>
+        public double CalculatedSleeveDepth { get; set; }
+
+        /// <summary>
+        /// Calculated Rotation (Radians)
+        /// </summary>
+        public double CalculatedRotation { get; set; }
+
+        /// <summary>
+        /// Calculated Family Name
+        /// </summary>
+        public string CalculatedFamilyName { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Combo ID for batch processing
+        /// </summary>
+        public int ComboId { get; set; } = 0;
         
         /// <summary>
         /// The type of structural element (Wall, Structural Framing, Floor)
@@ -1029,6 +1134,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// Pre-calculated MEP element level elevation (no linked file access needed during placement)
         /// </summary>
         public double MepElementLevelElevation { get; set; } = 0.0;
+
+        /// <summary>
+        /// ✅ NEW: Elevation from Level (Offset from the Reference Level)
+        /// Stored during refresh for reference and parameter transfer
+        /// </summary>
+        public double ElevationFromLevel { get; set; } = 0.0;
         
         /// <summary>
         /// Additional metadata about the clash

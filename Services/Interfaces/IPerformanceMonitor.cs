@@ -31,6 +31,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces
         /// <summary>
         /// Check if performance monitoring is enabled.
         /// </summary>
+        /// <summary>
+        /// Track an operation with a using block for automatic timing.
+        /// </summary>
+        /// <param name="operationName">Name of the operation</param>
+        /// <returns>Disposable tracker that logs completion on disposal</returns>
+        IOperationTracker TrackOperation(string operationName);
+
+        /// <summary>
+        /// Generate final performance report.
+        /// </summary>
+        void GenerateReport(int totalIndividualSleeves, int totalClusters);
+
+        /// <summary>
+        /// Check if performance monitoring is enabled.
+        /// </summary>
         bool IsEnabled { get; }
+    }
+
+    /// <summary>
+    /// Tracker for a single operation, allows updating item counts.
+    /// </summary>
+    public interface IOperationTracker : IDisposable
+    {
+        /// <summary>
+        /// update the item count for this operation
+        /// </summary>
+        void SetItemCount(int count);
+
+        /// <summary>
+        /// Track a sub-operation within this operation.
+        /// </summary>
+        IOperationTracker TrackSubOperation(string subOperationName);
     }
 }

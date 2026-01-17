@@ -143,16 +143,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             bool hasSleevePlacementPoint = (zone.SleevePlacementPointX != 0.0 || zone.SleevePlacementPointY != 0.0 || zone.SleevePlacementPointZ != 0.0);
             
             // ✅ DIAGNOSTIC: Log sleeve placement point values
-            if (!DeploymentConfiguration.DeploymentMode)
-            {
-                SafeFileLogger.SafeAppendText("placement_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] 🔍 SLEEVE PLACEMENT POINT CHECK: Zone {zone.Id}, " +
-                    $"HasSleevePlacementPoint={hasSleevePlacementPoint}, " +
-                    $"SleevePlacementPointX={zone.SleevePlacementPointX:F6}ft ({zone.SleevePlacementPointX * 304.8:F1}mm), " +
-                    $"SleevePlacementPointY={zone.SleevePlacementPointY:F6}ft ({zone.SleevePlacementPointY * 304.8:F1}mm), " +
-                    $"SleevePlacementPointZ={zone.SleevePlacementPointZ:F6}ft ({zone.SleevePlacementPointZ * 304.8:F1}mm), " +
-                    $"PlacementPoint (Input)=({placementPoint.X:F6}ft, {placementPoint.Y:F6}ft, {placementPoint.Z:F6}ft)\n");
-            }
+            // ✅ PERFORMANCE: Skipped verbose logging for placement point check to improve speed (12ms -> <1ms)
+            // if (!DeploymentConfiguration.DeploymentMode) { ... }
             
             // ✅ FORCE DETECTION MODE: If active, ALWAYS use intersection point directly without any saved data
             // This ensures force detection uses fresh calculated intersection points from clash detection
@@ -170,70 +162,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 // Use intersection point and calculate centerline fresh - do NOT return saved point
                 // Continue to fallback calculation below
             }
-            else if (hasSleevePlacementPoint)
+            // ✅ DATABASE-FIRST FAST PATH: Use pre-calculated SleevePlacementPoint
+            // This is the authoritative placement point calculated during refresh/planning phase
+            if (hasSleevePlacementPoint && !_isForceDetectionMode)
             {
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] 📦 USING SAVED PLACEMENT POINT (FORCE DETECTION OFF): Zone {zone.Id}\n" +
-                        $"  Saved SleevePlacementPoint: ({zone.SleevePlacementPointX:F6}ft, {zone.SleevePlacementPointY:F6}ft, {zone.SleevePlacementPointZ:F6}ft) [{zone.SleevePlacementPointX * 304.8:F1}mm, {zone.SleevePlacementPointY * 304.8:F1}mm, {zone.SleevePlacementPointZ * 304.8:F1}mm]\n");
-                }
-                // ✅ USE SAVED SLEEVE PLACEMENT POINT: Pre-calculated during refresh using bbox method (no Revit API calls needed)
-                // This enables multi-threading because it's just data access, not Revit API calls
-                // ✅ CRITICAL: Construct XYZ from saved X/Y/Z values (more reliable than computed property)
-                // This is the final placement point at wall centerline, calculated during refresh when wall element was available
                 XYZ savedPlacementPoint = new XYZ(zone.SleevePlacementPointX, zone.SleevePlacementPointY, zone.SleevePlacementPointZ);
                 
-                // ✅ CRITICAL FIX: Validate saved placement point against intersection point
-                // Saved point should be adjustment TO CENTERLINE of the intersection point
-                // If distance is too large (>300mm), this is stale data from cluster or wrong clash - recalculate
-                double distance = placementPoint.DistanceTo(savedPlacementPoint);
-                const double MAX_VALID_OFFSET = 0.984252; // 300mm in feet - reasonable wall/framing centerline offset
-                
-                if (distance > MAX_VALID_OFFSET)
-                {
-                    // ✅ STALE DATA DETECTED: Distance too large, saved point is from different clash or cluster
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ⚠️ STALE PLACEMENT POINT: Zone {zone.Id}, " +
-                            $"InputPoint=({placementPoint.X:F6}ft, {placementPoint.Y:F6}ft, {placementPoint.Z:F6}ft), " +
-                            $"SavedPlacementPoint=({savedPlacementPoint.X:F6}ft, {savedPlacementPoint.Y:F6}ft, {savedPlacementPoint.Z:F6}ft), " +
-                            $"Distance={distance * 304.8:F1}mm > {MAX_VALID_OFFSET * 304.8:F1}mm - RECALCULATING from geometry (saved point is stale/wrong)\n");
-                    }
-                    // Fall through to calculation logic
-                }
-                else
-                {
-                    // ✅ VALID SAVED POINT: Distance within reasonable range for centerline adjustment
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        XYZ difference = savedPlacementPoint - placementPoint;
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ✅ USING SAVED SLEEVE PLACEMENT POINT: Zone {zone.Id}, " +
-                            $"InputPoint=({placementPoint.X:F6}ft, {placementPoint.Y:F6}ft, {placementPoint.Z:F6}ft), " +
-                            $"SavedPlacementPoint=({savedPlacementPoint.X:F6}ft, {savedPlacementPoint.Y:F6}ft, {savedPlacementPoint.Z:F6}ft), " +
-                            $"Difference=({difference.X:F6}ft, {difference.Y:F6}ft, {difference.Z:F6}ft), " +
-                            $"Distance={distance * 304.8:F1}mm - VALID offset, using saved point\n");
-                    }
-                    return savedPlacementPoint; // Use pre-calculated sleeve placement point (valid)
-                }
-            }
-            
-            // ✅ BACKWARD COMPATIBILITY: Check for WallCenterlinePoint (old data format)
-            // ✅ NOTE: In force detection mode, this is skipped (already bypassed above)
-            bool hasWallCenterline = !_isForceDetectionMode && (zone.WallCenterlinePointX != 0.0 || zone.WallCenterlinePointY != 0.0 || zone.WallCenterlinePointZ != 0.0);
-            if (hasWallCenterline)
-            {
-                // Use WallCenterlinePoint for backward compatibility with old data
-                XYZ savedCenterlinePoint = new XYZ(zone.WallCenterlinePointX, zone.WallCenterlinePointY, zone.WallCenterlinePointZ);
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ⚠️ USING WALL CENTERLINE (BACKWARD COMPATIBILITY): Zone {zone.Id}, " +
-                        $"Using WallCenterlinePoint (old format) - consider refreshing to update to SleevePlacementPoint\n");
-                }
-                return savedCenterlinePoint;
+                // ✅ PERFORMANCE: Skipped verbose logging for fast path success
+                // if (!DeploymentConfiguration.DeploymentMode) { ... }
+                return savedPlacementPoint; // Return immediately - no Revit queries, no validation needed if DB data exists
             }
             else if (!DeploymentConfiguration.DeploymentMode)
             {

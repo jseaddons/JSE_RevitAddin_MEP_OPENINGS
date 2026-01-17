@@ -659,30 +659,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         double storedHeight = clashZone.SleeveHeight > 0 ? clashZone.SleeveHeight : 0;
                         
                         // ? CRITICAL FIX: Calculate depth from wall/structural thickness (same logic as SetSleeveParameters)
+
                         double storedDepth = 0.0;
-                        if (clashZone.SleeveDiameter > 0)
+                        
+                        // ALWAYS calculate depth from structural element thickness (Geometry Depth != Diameter)
+                        bool isWallHost = clashZone.StructuralElementType == "Wall" || clashZone.StructuralElementType == "Walls";
+                        bool isFramingHost = string.Equals(clashZone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
+                        
+                        if (isWallHost)
                         {
-                            // For circular, depth = diameter
-                            storedDepth = clashZone.SleeveDiameter;
+                            storedDepth = clashZone.WallThickness > 0 ? clashZone.WallThickness : clashZone.StructuralElementThickness;
+                        }
+                        else if (isFramingHost)
+                        {
+                            storedDepth = clashZone.FramingThickness > 0 ? clashZone.FramingThickness : clashZone.StructuralElementThickness;
                         }
                         else
                         {
-                            // For rectangular, calculate depth from structural element thickness
-                            bool isWallHost = clashZone.StructuralElementType == "Wall" || clashZone.StructuralElementType == "Walls";
-                            bool isFramingHost = string.Equals(clashZone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
-                            
-                            if (isWallHost)
-                            {
-                                storedDepth = clashZone.WallThickness > 0 ? clashZone.WallThickness : clashZone.StructuralElementThickness;
-                            }
-                            else if (isFramingHost)
-                            {
-                                storedDepth = clashZone.FramingThickness > 0 ? clashZone.FramingThickness : clashZone.StructuralElementThickness;
-                            }
-                            else
-                            {
-                                storedDepth = clashZone.StructuralElementThickness;
-                            }
+                            storedDepth = clashZone.StructuralElementThickness;
+                        }
                             
                             // ? ROBUST: No fallback - depth MUST be valid
                             if (storedDepth <= 0)
@@ -698,7 +693,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 
                                 throw new InvalidOperationException(errorMsg);
                             }
-                        }
+
                         
                         // If dimensions not set, try to get from deferred parameters
                         if (storedWidth <= 0 || storedHeight <= 0)
@@ -1036,6 +1031,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                          SafeFileLogger.SafeAppendText("placement_debug.log", $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ⚠️ Shape Mismatch Corrected: Zone {zone.Id} is Circular (Dia={diameter}) but treated as Rectangular (Family='{familyName}', Threshold={exceedsThreshold}). Forcing params ({width}x{height}).\n");
+                         SafeFileLogger.SafeAppendText("placement_sizing_error.log", $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ⚠️ Shape Mismatch Corrected: Zone {zone.Id} is Circular (Dia={diameter}) but treated as Rectangular (Family='{familyName}', Threshold={exceedsThreshold}). Forcing params ({width}x{height}).\n");
                          SafeFileLogger.SafeAppendText("batch_mode_entry.log", 
                             $"[{DateTime.Now:HH:mm:ss.fff}] 🕵️ DEBUG POST-FIX: Zone {zone.Id} Updated!\n" +
                             $"  - New W={width*304.8:F1}, H={height*304.8:F1}, D={diameter*304.8:F1}, Circ={isCircular}\n");
@@ -1098,50 +1094,58 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             SafeFileLogger.SafeAppendText("placement_debug.log",
                 $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ?? PlaceSleeveNormal START: Zone {zone.Id}, HasPlanningDto={planningDto != null}\n");
             
-            // ? PARALLEL PLANNING: Pass planningDto to dimension calculation
-            // If planningDto is provided, CalculateSleeveDimensions will use pre-computed values (faster)
-            // This includes dampers - parallel planning handles all categories
-            var (width, height, diameter, isCircular) = CalculateSleeveDimensions(zone, planningDto);
+            // ? DB-FIRST OPTIMIZATION: Use pre-processed dimensions from zone or planningDto directly
+            // Skip CalculateSleeveDimensions service call to avoid overhead (8-70ms)
+            double width, height, diameter;
+            bool isCircular;
+
+            if (planningDto != null && DeploymentConfiguration.EnableParallelPlanning && !planningDto.ShouldSkip)
+            {
+                width = planningDto.TargetWidthFt;
+                height = planningDto.TargetHeightFt;
+                diameter = Math.Max(width, height);
+                isCircular = false; // Planning phase currently focuses on rectangular/offset handling
+            }
+            else if (zone.SleeveWidth > 0 || zone.SleeveHeight > 0 || zone.SleeveDiameter > 0)
+            {
+                width = zone.SleeveWidth;
+                height = zone.SleeveHeight;
+                diameter = zone.SleeveDiameter;
+                isCircular = zone.SleeveDiameter > 0 && zone.SleeveWidth <= 0;
+            }
+            else
+            {
+                // Fallback to calculation if DB data is missing
+                var dims = CalculateSleeveDimensions(zone, planningDto);
+                width = dims.width;
+                height = dims.height;
+                diameter = dims.diameter;
+                isCircular = dims.isCircular;
+            }
             
-            // ? DIAGNOSTIC: Log calculated dimensions (in both feet and mm for readability)
-            double widthMm = width * 304.8;
-            double heightMm = height * 304.8;
-            double diameterMm = diameter * 304.8;
+            // ? DIAGNOSTIC: Log final dimensions
             SafeFileLogger.SafeAppendText("placement_debug.log",
                 $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ?? FINAL DIMENSIONS: Zone {zone.Id}, " +
-                $"W={width:F6}ft ({widthMm:F1}mm), H={height:F6}ft ({heightMm:F1}mm), D={diameter:F6}ft ({diameterMm:F1}mm), Circular={isCircular}\n");
+                $"W={width:F6}ft ({width * 304.8:F1}mm), H={height:F6}ft ({height * 304.8:F1}mm), D={diameter:F6}ft ({diameter * 304.8:F1}mm), Circular={isCircular}\n");
             
             if (width <= 0 && height <= 0 && diameter <= 0)
             {
                 SafeFileLogger.SafeAppendText("placement_debug.log",
                     $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ? INVALID DIMENSIONS: Zone {zone.Id}, all dimensions <= 0\n");
-                return null; // Invalid dimensions
+                return null;
             }
 
             // Select Family
-            // ✅ USER REQUIREMENT: Unify family determination logic using ClusterPlacementService.GetFamilyName
-            string familyName = ClusterPlacementService.GetFamilyName(zone.StructuralElementType, zone.MepElementCategory, Math.Max(width, height), isCluster: false);
+            // ✅ DB-FIRST: Use saved family name if available, otherwise determine it
+            string familyName = !string.IsNullOrEmpty(zone.SleeveFamilyName) 
+                ? zone.SleeveFamilyName 
+                : ClusterPlacementService.GetFamilyName(zone.StructuralElementType, zone.MepElementCategory, Math.Max(width, height), isCluster: false);
             
             SafeFileLogger.SafeAppendText("placement_debug.log",
                 $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ?? FAMILY: Zone {zone.Id}, FamilyName='{familyName}'\n");
             
-            // ✅ USER REQUIREMENT: Persist family name BEFORE placement for robustness
-            try
-            {
-                using (var dbContext = new SleeveDbContext(_doc))
-                {
-                    var clashZoneRepo = new ClashZoneRepository(dbContext);
-                    clashZoneRepo.UpdateSleeveFamilyName(zone.Id, familyName);
-                    
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[NewSleevePlacer] ✅ Pre-placement persistence: Saved family '{familyName}' for zone {zone.Id}");
-                }
-            }
-            catch (Exception dbEx)
-            {
-                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Warning($"[NewSleevePlacer] ⚠️ Pre-placement persistence failed (non-critical): {dbEx.Message}");
-            }
+            // ✅ REMOVED: Redundant per-sleeve DB update for family name (slow!)
+            // Family name should already be in DB from refresh/planning phase
             
             FamilySymbol symbol = LoadFamilySymbol(familyName);
             
@@ -1178,9 +1182,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 damperOffsetVector = offsetVector;
             }
             
-            // ? DELEGATE TO SERVICE: PlacementPointAdjustmentService delegates to DamperPlacementPointService for dampers
-            // This maintains SRP - one class handles damper placement, another handles other MEP elements
-            placementPoint = _placementPointAdjustmentService.AdjustPlacementPoint(zone, placementPoint, null);
+            // Determine Placement Point
+            // ✅ DB-FIRST: Use saved sleeve placement point if available
+            bool hasSavedPoint = !_isForceDetectionMode && (zone.SleevePlacementPointX != 0 || zone.SleevePlacementPointY != 0 || zone.SleevePlacementPointZ != 0);
+
+            if (hasSavedPoint)
+            {
+                placementPoint = new XYZ(zone.SleevePlacementPointX, zone.SleevePlacementPointY, zone.SleevePlacementPointZ);
+                SafeFileLogger.SafeAppendText("placement_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ✅ FAST PATH: Using saved SleevePlacementPoint from DB: Zone {zone.Id}\n");
+            }
+            else
+            {
+                // ? DELEGATE TO SERVICE: PlacementPointAdjustmentService handles non-dampers, DamperPlacementPointService handles dampers
+                placementPoint = _placementPointAdjustmentService.AdjustPlacementPoint(zone, placementPoint, null);
+            }
             
             // ? CRITICAL FIX: Apply connector-side offset for dampers with MEP connector
             // The offset shifts the sleeve toward the connector side to achieve:
@@ -1207,7 +1223,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ?? PLACEMENT POINT: Zone {zone.Id}, Point=({placementPoint.X:F3}, {placementPoint.Y:F3}, {placementPoint.Z:F3})\n");
             
             // ? SRP: Use rotation service to determine correct rotation for host type
-            double rotation = _rotationService.DetermineRotation(zone);
+            // ✅ DB-FIRST: Use saved rotation angle if available (faster than Revit query)
+            double rotation = (zone.MepElementRotationAngle != 0 && !_isForceDetectionMode)
+                ? zone.MepElementRotationAngle
+                : _rotationService.DetermineRotation(zone);
 
             // Place Instance
             FamilyInstance instance = PlaceSleeveInstance(symbol, placementPoint, zone, rotation);

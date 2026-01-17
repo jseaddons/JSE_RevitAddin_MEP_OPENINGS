@@ -2737,6 +2737,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             var systemAbbreviation = GetMepSystemAbbreviation(mepElement);
             
+            // ✅ MEP METADATA: Extract System Type, Service Type, and Elevation
+            var mepSystemType = GetMepSystemType(mepElement, mepCategory);
+            // ✅ MEP METADATA: Extract System Name (e.g. "H-1")
+            string mepSystemName = string.Empty;
+            try 
+            {
+                var sysNameParam = mepElement?.get_Parameter(BuiltInParameter.RBS_SYSTEM_NAME_PARAM);
+                if (sysNameParam != null && sysNameParam.HasValue) 
+                    mepSystemName = sysNameParam.AsString();
+            } catch {}
+            
+            var mepServiceType = GetMepServiceType(mepElement);
+            
+            // ✅ USER REQUEST: Read "Offset" parameter directly for individual sleeves
+            // Calculation is only for cluster/combined sleeves (handled elsewhere)
+            double elevationFromLevel = GetMepElementOffset(mepElement);
+            
             // ✅ WALL-AWARE DETECTION: Wall orientation already retrieved above
             // string wallOrientation = WallDirectionService.GetHostOrientation(structuralElement);
             
@@ -2873,6 +2890,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
             
+            // ✅ MEP METADATA: Extract type and family names for persistence
+            // This ensures they are available in the DB for UI and reporting without Revit access
+            string? mepElementTypeName = null;
+            string? mepElementFamilyName = null;
+            try
+            {
+                var typeId = mepElement?.GetTypeId();
+                if (typeId != null && typeId != ElementId.InvalidElementId)
+                {
+                    var typeElem = mepElement?.Document?.GetElement(typeId);
+                    if (typeElem != null)
+                    {
+                        mepElementTypeName = typeElem.Name;
+                        if (typeElem is ElementType et)
+                        {
+                            mepElementFamilyName = et.FamilyName;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    _log($"[METADATA-ERROR] Failed to extract MEP type/family for ID={mepElement?.Id}: {ex.Message}");
+            }
+
             var clashZone = new ClashZone
             {
                 MepElementId = mepElement.Id,
@@ -2939,10 +2982,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 PipeOpeningType = pipeOpeningType,
                 MepElementLevelName = levelName,
                 MepElementLevelElevation = levelElevation,
+                MepElementTypeName = mepElementTypeName, // ✅ MEP METADATA: Type name for pipes/ducts
+                MepElementFamilyName = mepElementFamilyName, // ✅ MEP METADATA: Family name for pipes/ducts
                 MepElementUniqueId = mepElement?.UniqueId ?? string.Empty, // Pre-calculated unique ID for robust tracking
                 MepElementFormattedSize = formattedSize, // Pre-calculated formatted size (e.g., "600x300", "Ø200")
                 MepElementSizeParameterValue = sizeParameterValue, // ✅ SIZE PARAMETER VALUE: Raw Size parameter as string (e.g., "20 mmø", "200 mm dia symbol") for snapshot table and parameter transfer
                 MepElementSystemAbbreviation = systemAbbreviation, // Pre-calculated system abbreviation (e.g., "SA", "RA")
+                MepSystemType = mepSystemType, // ✅ MEP METADATA: System Type (e.g., "Supply Air", "Hydronic Supply")
+                MepSystemName = mepSystemName, // ✅ MEP METADATA: System Name (e.g. "H-1")
+                MepServiceType = mepServiceType, // ✅ MEP METADATA: Service Type (e.g., "Ventilation", "Heating")
+                ElevationFromLevel = elevationFromLevel, // ✅ MEP METADATA: Height above level (Offset)
                 
                 // ✅ WALL CENTERLINE POINT: Pre-calculated during refresh (passed from caller, calculated once before CreateClashZone using bbox method)
                 // For ducts, pipes, cable trays: uses bbox method (same as dampers) - cheaper and more reliable than ray-trace
@@ -3154,6 +3203,97 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             catch
             {
                 return "Unknown";
+            }
+        }
+
+        /// <summary>
+        /// Get MEP System Type for all categories (Pipes, Ducts, etc.)
+        /// </summary>
+        private string GetMepSystemType(Element mepElement, string category)
+        {
+            try
+            {
+                // 1. Try Specific System Type Parameters based on Category
+                if (category == "Ducts" || category == "Duct Accessories")
+                {
+                     var param = mepElement.get_Parameter(BuiltInParameter.RBS_DUCT_SYSTEM_TYPE_PARAM); // System Type
+                     if (param != null) return param.AsValueString() ?? string.Empty;
+                }
+                else if (category == "Pipes" || category == "Pipe Accessories")
+                {
+                     var param = mepElement.get_Parameter(BuiltInParameter.RBS_PIPING_SYSTEM_TYPE_PARAM); // System Type
+                     if (param != null) return param.AsValueString() ?? string.Empty;
+                }
+
+                // 2. Try Generic "System Type" Parameter (Lookup)
+                var sysTypeParam = mepElement.LookupParameter("System Type");
+                 if (sysTypeParam != null) return sysTypeParam.AsValueString() ?? string.Empty;
+
+                // 3. Try "System Classification" (Often used if System Type is missing)
+                var classParam = mepElement.get_Parameter(BuiltInParameter.RBS_SYSTEM_CLASSIFICATION_PARAM);
+                if (classParam != null) return classParam.AsValueString() ?? string.Empty;
+                
+                return string.Empty;
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// Get MEP Service Type (shared parameter) for all categories
+        /// </summary>
+        private string GetMepServiceType(Element mepElement)
+        {
+            try
+            {
+                // 1. Try "Service Type" (Common Shared Parameter)
+                var param = mepElement.LookupParameter("Service Type");
+                if (param != null) return param.AsString() ?? param.AsValueString() ?? string.Empty;
+
+                // 2. Try "Service"
+                var param2 = mepElement.LookupParameter("Service");
+                if (param2 != null) return param2.AsString() ?? param2.AsValueString() ?? string.Empty;
+                
+                return string.Empty;
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// Get MEP Element Offset/Elevation from Level parameter
+        /// </summary>
+        private double GetMepElementOffset(Element mepElement)
+        {
+            try
+            {
+                // 1. Try "Offset" (Common for Ducts, Pipes, Cable Trays)
+                // Use BuiltInParameter if possible for language independence, but "Offset" is often instance param
+                
+                // Try BuiltIn types first
+                var param = mepElement.get_Parameter(BuiltInParameter.RBS_OFFSET_PARAM); // "Offset"
+                if (param != null && param.StorageType == StorageType.Double) return param.AsDouble();
+                
+                // RBS_OFFSET_PARAM (Offset) typically handles Middle Elevation for Ducts/Pipes in standard Revit templates.
+
+                
+                // Try Lookup "Offset"
+                var param3 = mepElement.LookupParameter("Offset");
+                if (param3 != null && param3.StorageType == StorageType.Double) return param3.AsDouble();
+                
+                // Try Lookup "Middle Elevation"
+                var param4 = mepElement.LookupParameter("Middle Elevation");
+                if (param4 != null && param4.StorageType == StorageType.Double) return param4.AsDouble();
+
+                return 0.0;
+            }
+            catch
+            {
+                return 0.0;
             }
         }
 
@@ -5388,6 +5528,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             existingZone.RequiredClearance = CalculateRequiredClearance(existingZone.MepElementSize);
             existingZone.MepElementGeometryHash = CalculateElementGeometryHash(mepElement);
             existingZone.StructuralElementGeometryHash = CalculateElementGeometryHash(structuralElement);
+            
+            // ✅ MEP METADATA: Update System Type, Service Type, and Elevation
+            existingZone.MepSystemType = GetMepSystemType(mepElement, mepCategory);
+            existingZone.MepServiceType = GetMepServiceType(mepElement);
+            
+            // Recalculate level info in case element moved
+            var (levelName, levelElevation) = GetMepElementLevelInfo(mepElement);
+            existingZone.MepElementLevelName = levelName;
+            existingZone.MepElementLevelElevation = levelElevation;
+            
+            // ✅ USER REQUEST: Read "Offset" parameter directly for individual sleeves
+            existingZone.ElevationFromLevel = GetMepElementOffset(mepElement);
             
             // ✅ STAGE 1 (REFRESH): Capture MEP and Host parameters using ParameterSnapshotService
             // This ensures existing ClashZones also get parameter snapshots updated during refresh

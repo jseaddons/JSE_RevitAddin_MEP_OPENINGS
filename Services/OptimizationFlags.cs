@@ -1146,5 +1146,11 @@ Refactoring Flags: SleeveRepository={UseNewSleeveRepository}, ZoneFilter={UseNew
         }
         
         #endregion
+        /// <summary>
+        /// Enable logic for V3 Unified Batch Mode (Calculate -> Persist -> Place).
+        /// Replaces the legacy placement + clustering sequence with a unified workflow.
+        /// </summary>
+        public static bool EnableUnifiedBatchMode { get; set; } = true;
+
     }
 }

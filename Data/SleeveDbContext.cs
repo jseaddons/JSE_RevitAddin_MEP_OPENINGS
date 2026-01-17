@@ -362,6 +362,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                             StructuralThickness REAL DEFAULT 0.0,
                             WallThickness REAL DEFAULT 0.0,
                             FramingThickness REAL DEFAULT 0.0,
+                            MepSystemType TEXT,
+                            MepSystemName TEXT,
+                            MepServiceType TEXT,
+                            ElevationFromLevel REAL DEFAULT 0.0,
                             UpdatedAt     DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
                             FOREIGN KEY(ComboId) REFERENCES FileCombos(ComboId) ON DELETE CASCADE,
                             UNIQUE(ComboId, MepElementId, HostElementId, IntersectionX, IntersectionY, IntersectionZ)
@@ -418,6 +422,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     EnsureParameterTransferFlagsTable(transaction);
                     EnsureCategoryProcessingMarkersTable(transaction);
                     EnsureClusterSleevesTable(transaction);
+                    EnsureClusterSleevesV2Table(transaction); // ✅ BATCH V2: Cluster calculation table
                     EnsureCombinedSleevesTables(transaction);
                     EnsureSessionContextTable(transaction); // ✅ SESSION CONTEXT: Store section box bounds and session data
                     
@@ -564,6 +569,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     EnsureParameterTransferFlagsTable(transaction);
                     EnsureCategoryProcessingMarkersTable(transaction);
                     EnsureClusterSleevesTable(transaction);
+                    EnsureClusterSleevesV2Table(transaction); // ✅ BATCH V2: New table for decoupled calculation
                     
                     // ✅ CRITICAL: Call EnsureCombinedSleevesTables BEFORE any AddColumnIfMissing calls
                     // This ensures the CombinedSleeves table exists before any code tries to modify it
@@ -586,6 +592,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     AddColumnIfMissing("ClashZones", "MepOrientationZ", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "MepRotationAngleRad", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "MepRotationAngleDeg", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "MepRotationAngleDeg", "REAL", transaction);
+                    
+                    // ✅ UNIFIED BATCH MODE (PHASE 3): New columns for individual sleeve calculation & persistence
+                    if (AddColumnIfMissing("ClashZones", "PlacementStatus", "TEXT DEFAULT 'NotReady'", transaction))
+                        _logger("[SQLite] ✅ Added PlacementStatus column to ClashZones");
+                        
+                    AddColumnIfMissing("ClashZones", "CalculatedSleeveWidth", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "CalculatedSleeveHeight", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "CalculatedSleeveDepth", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "CalculatedRotation", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "CalculatedFamilyName", "TEXT", transaction);
+                    AddColumnIfMissing("ClashZones", "ValidationStatus", "TEXT DEFAULT 'Valid'", transaction);
+                    AddColumnIfMissing("ClashZones", "ValidationMessage", "TEXT", transaction);
+                    AddColumnIfMissing("ClashZones", "CalculationBatchId", "TEXT", transaction);
+                    AddColumnIfMissing("ClashZones", "CalculatedAt", "TEXT", transaction);
+                    AddColumnIfMissing("ClashZones", "PlacedAt", "TEXT", transaction);
+
                     // ✅ ROTATION MATRIX: Pre-calculated cos/sin for "dump once use many times" principle
                     // Calculated once during placement, stored for reuse during clustering (avoids repeated Math.Cos/Sin calls)
                     AddColumnIfMissing("ClashZones", "MepRotationCos", "REAL", transaction);
@@ -630,9 +653,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     if (AddColumnIfMissing("ClashZones", "MepElementFormattedSize", "TEXT", transaction))
                         _logger("[SQLite] ✅ Added MepElementFormattedSize column to ClashZones");
                     
-                    // ✅ DAMPER INFO: Add standard damper flag
                     if (AddColumnIfMissing("ClashZones", "IsStandardDamper", "INTEGER NOT NULL DEFAULT 0", transaction))
                         _logger("[SQLite] ✅ Added IsStandardDamper column to ClashZones");
+
+                    // ✅ MEP METADATA: Add system type, service type, and elevation from level
+                    if (AddColumnIfMissing("ClashZones", "MepSystemType", "TEXT", transaction))
+                        _logger("[SQLite] ✅ Added MepSystemType column to ClashZones");
+                    if (AddColumnIfMissing("ClashZones", "MepServiceType", "TEXT", transaction))
+                        _logger("[SQLite] ✅ Added MepServiceType column to ClashZones");
+                    if (AddColumnIfMissing("ClashZones", "ElevationFromLevel", "REAL DEFAULT 0.0", transaction))
+                        _logger("[SQLite] ✅ Added ElevationFromLevel column to ClashZones");
                     AddColumnIfMissing("ClashZones", "SleeveFamilyName", "TEXT", transaction);
                     AddColumnIfMissing("ClashZones", "SleevePlacementActiveX", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "SleevePlacementActiveY", "REAL", transaction);
@@ -972,6 +1002,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                         // Non-fatal - table might not exist yet or already migrated
                     }
 
+                    // ✅ BATCH V2: Ensure ConstituentZoneGuids column exists in ClusterSleeves_v2
+                    // This column is critical for cluster placement - stores GUIDs of constituent ClashZones
+                    AddColumnIfMissing("ClusterSleeves_v2", "ConstituentZoneGuids", "TEXT", transaction);
+                    
+                    // ✅ USER REQUEST: Add MepSystemName to ClashZones
+                    AddColumnIfMissing("ClashZones", "MepSystemName", "TEXT", transaction);
+
                     transaction.Commit();
                 }
             }
@@ -1162,6 +1199,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
             AddColumnIfMissing("ClusterSleeves", "ClashZoneGuids", "TEXT", transaction);
             AddColumnIfMissing("ClusterSleeves", "MepSizes", "TEXT", transaction);
             AddColumnIfMissing("ClusterSleeves", "MepSystemNames", "TEXT", transaction);
+            AddColumnIfMissing("ClusterSleeves", "MepServiceTypes", "TEXT", transaction); // ✅ ADDED: MepServiceTypes
             AddColumnIfMissing("ClusterSleeves", "MepElementIds", "TEXT", transaction);
             
             // ✅ MIGRATION: Add Corner columns if they don't exist (Phase 3 Persistence)
@@ -1558,6 +1596,83 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
         /// <summary>
         /// Ensures Combined Sleeves tables exist (Phase 4)
         /// </summary>
+        /// <summary>
+        /// ✅ BATCH V2: Ensure ClusterSleeves_v2 table exists
+        /// Designed for decoupled "Calculation First" workflow using GUIDs
+        /// </summary>
+        private void EnsureClusterSleevesV2Table(SQLiteTransaction transaction)
+        {
+            ExecuteCommand(@"
+                CREATE TABLE IF NOT EXISTS ClusterSleeves_v2 (
+                    -- Identity
+                    ClusterGUID             TEXT PRIMARY KEY,
+                    ClusterBatchId          TEXT NOT NULL,
+                    
+                    -- Placement Data (calculated in Phase 1)
+                    PlacementX              REAL NOT NULL,
+                    PlacementY              REAL NOT NULL,
+                    PlacementZ              REAL NOT NULL,
+                    ClusterWidth            REAL NOT NULL,
+                    ClusterHeight           REAL NOT NULL,
+                    ClusterDepth            REAL NOT NULL,
+                    RotationAngleRad        REAL DEFAULT 0.0,
+                    
+                    -- Host/Context
+                    HostElementId           INTEGER,
+                    HostType                TEXT,
+                    HostOrientation         TEXT,
+                    Category                TEXT,
+                    FamilyName              TEXT,
+                    
+                    -- Relationships
+                    ConstituentZoneGuids    TEXT,  -- JSON array
+                    ComboId                 INTEGER,
+                    FilterId                INTEGER,
+                    
+                    -- Revit State (updated in Phase 2)
+                    ClusterInstanceId       INTEGER DEFAULT -1,
+                    Status                  TEXT DEFAULT 'Pending',  -- 'Pending', 'Placed', 'Failed', 'Skipped'
+                    
+                    -- Validation
+                    ValidationStatus        TEXT DEFAULT 'Valid',
+                    ValidationMessage       TEXT,
+                    
+                    -- Timestamps
+                    CalculatedAt            DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    PlacedAt                DATETIME
+                )", transaction);
+
+            // Create indexes for performance
+            ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_clustersleevesv2_batchid ON ClusterSleeves_v2(ClusterBatchId)", transaction);
+            ExecuteCommand("CREATE INDEX IF NOT EXISTS idx_clustersleevesv2_status ON ClusterSleeves_v2(Status)", transaction);
+            
+            // ✅ MIGRATION: Add columns to match V1 functionality
+            AddColumnIfMissing("ClusterSleeves_v2", "ClashZoneIdsJson", "TEXT", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "ClashZoneGuids", "TEXT", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "MepSizes", "TEXT", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "MepSystemNames", "TEXT", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "MepServiceTypes", "TEXT", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "MepElementIds", "TEXT", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "IsRotated", "INTEGER DEFAULT 0", transaction);
+            
+            // ✅ CORNERS: Add all corner columns
+            AddColumnIfMissing("ClusterSleeves_v2", "Corner1X", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "Corner1Y", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "Corner1Z", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "Corner2X", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "Corner2Y", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "Corner2Z", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "Corner3X", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "Corner3Y", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "Corner3Z", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "Corner4X", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "Corner4Y", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "Corner4Z", "REAL DEFAULT 0.0", transaction);
+
+            // ✅ SLEEVE FAMILY NAME: Add family name column
+            AddColumnIfMissing("ClusterSleeves_v2", "SleeveFamilyName", "TEXT", transaction);
+        }
+
         private void EnsureCombinedSleevesTables(SQLiteTransaction transaction)
         {
             // ✅ CRITICAL FIX: Ensure table exists BEFORE adding columns
@@ -1709,6 +1824,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     ExecuteCommand("DELETE FROM CombinedSleeveConstituents;", transaction);
                     ExecuteCommand("DELETE FROM CombinedSleeves;", transaction);
                     ExecuteCommand("DELETE FROM ClusterSleeves;", transaction);
+                    ExecuteCommand("DELETE FROM ClusterSleeves_v2;", transaction); // ✅ BATCH V2: Clear cluster calculation data
                     ExecuteCommand("DELETE FROM SleeveSnapshots;", transaction);
                     ExecuteCommand("DELETE FROM ParameterTransferFlags;", transaction);
                     ExecuteCommand("DELETE FROM CategoryProcessingMarkers;", transaction);
@@ -1717,7 +1833,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     ExecuteCommand("DELETE FROM Filters;", transaction);
                     
                     // Reset auto-increment counters
-                    ExecuteCommand("DELETE FROM sqlite_sequence WHERE name IN ('SleeveEvents', 'ClashZones', 'ClusterSleeves', 'SleeveSnapshots', 'ParameterTransferFlags', 'CategoryProcessingMarkers', 'Conditions', 'FileCombos', 'Filters');", transaction);
+                    ExecuteCommand("DELETE FROM sqlite_sequence WHERE name IN ('SleeveEvents', 'ClashZones', 'ClusterSleeves', 'ClusterSleeves_v2', 'SleeveSnapshots', 'ParameterTransferFlags', 'CategoryProcessingMarkers', 'Conditions', 'FileCombos', 'Filters');", transaction);
 
                     // Re-enable foreign keys
                     ExecuteCommand("PRAGMA foreign_keys = ON;", transaction);

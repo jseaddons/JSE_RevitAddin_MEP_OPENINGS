@@ -393,5 +393,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data
                 }
             }
         }
+
+
+        /// <summary>
+        /// Get the placement point for a cluster sleeve from the database.
+        /// Returns null if not found.
+        /// </summary>
+        public XYZ GetClusterPlacement(int clusterInstanceId)
+        {
+            if (clusterInstanceId <= 0) return null;
+
+            try
+            {
+                using (var dbContext = new SleeveDbContext(_doc))
+                {
+                    var repository = new ClusterSleeveRepository(dbContext);
+                    // Use a raw query or add a method to repository if needed
+                    // For now, we'll fetch the cluster sleeve by ID
+                    var clusterSleeve = repository.GetClusterSleeveById(clusterInstanceId);
+                    
+                    if (clusterSleeve != null)
+                    {
+                        return new XYZ(clusterSleeve.PlacementX, clusterSleeve.PlacementY, clusterSleeve.PlacementZ);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ Failed to get cluster placement for {clusterInstanceId}: {ex.Message}\n");
+                }
+            }
+            
+            return null;
+        }
     }
 }

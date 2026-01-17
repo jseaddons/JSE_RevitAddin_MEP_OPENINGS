@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
@@ -100,6 +101,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
             out FamilyInstance? placedClusterSleeve,
             out int? capturedClusterSleeveId,
             out XYZ? actualPlacementPoint,
+            out ClusterSaveData? clusterSaveData,
             Dictionary<ElementId, Dictionary<string, object>>? deferredParameters = null,
             string? hostOrientation = null,
             double mepRotationAngle = 0.0)
@@ -107,6 +109,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
             placedClusterSleeve = null;
             capturedClusterSleeveId = null;
             actualPlacementPoint = null;
+            clusterSaveData = null;
 
             // ✅ CRASH-SAFE: Validate inputs
             if (doc == null)
@@ -485,6 +488,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                         {
                             _markClusterResolved(cluster, inst.Id, xmlFilePath, clusterBbox, null);
                         }
+
+                        // ✅ BATCH PERSISTENCE FIX: Populate clusterSaveData for database save
+                        // This allows RefactoredClusterService to save accurate data even when Revit parameters are deferred
+                        clusterSaveData = new ClusterSaveData
+                        {
+                            ClusterInstanceId = inst.Id.IntegerValue,
+                            PlacementX = placementPoint.X,
+                            PlacementY = placementPoint.Y,
+                            PlacementZ = placementPoint.Z,
+                            ClusterWidth = width,
+                            ClusterHeight = height,
+                            ClusterDepth = depth,
+                            RotationAngleDeg = rotationAngle * 180.0 / Math.PI,
+                            IsRotated = Math.Abs(rotationAngle) > 1e-6,
+                            HostType = groupKey.hostType,
+                            HostOrientation = hostOrientation ?? groupKey.orientation,
+                            Category = targetCategory,
+                            SleeveFamilyName = familyName,
+                            ClashZoneIds = cluster
+                                .Select(s => {
+                                    ClashZone? cz = null;
+                                    if (s is ClashZone icz) cz = icz;
+                                    else if (s?.ClashZone != null) cz = s.ClashZone as ClashZone;
+                                    return cz?.Id;
+                                })
+                                .Where(id => id.HasValue)
+                                .Select(id => id!.Value)
+                                .ToList()
+                        };
 
                         placedClusterSleeve = inst;
                         

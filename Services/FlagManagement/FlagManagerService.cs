@@ -256,7 +256,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                         clashZone.ClusterSleeveInstanceId,
                         true, // ✅ UNIFIED: Always keep IsCurrentClash true during placement (Reset only on Refresh)
                         clashZone.IsClusteredFlag,
-                        clashZone.MarkedForClusterProcess, // Pass MarkedForClusterProcess
+
+                        isCluster ? clashZone.MarkedForClusterProcess : false, // ✅ FIXED: Reset MarkedForClusterProcess to false for individual sleeves
                         clashZone.AfterClusterSleevePlacedSleeveInstanceId, // Pass AfterClusterSleeveId
                         isCluster ? clusterWidth : 0,    // SleeveWidth
                         isCluster ? clusterHeight : 0,   // SleeveHeight
@@ -333,8 +334,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                 zone.IsResolvedFlag = false;
                 
                 // Update DB
-                // Update DB
-                var updates = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId)>();
+                var updates = new List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsClusteredFlag, bool MarkedForClusterProcess, int AfterClusterSleeveId)>();
                 
                 updates.Add((
                     zone.Id, 
@@ -342,7 +342,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                     zone.IsClusterResolvedFlag, 
                     zone.IsCombinedResolved,
                     0, // SleeveInstanceId
-                    zone.ClusterSleeveInstanceId
+                    zone.ClusterSleeveInstanceId,
+                    zone.IsClusteredFlag,
+                    zone.MarkedForClusterProcess ?? false,
+                    zone.AfterClusterSleevePlacedSleeveInstanceId
                 ));
                 
                 _repository.BatchUpdateFlags(updates);

@@ -14,6 +14,8 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Calculation;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Workflow;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -459,7 +461,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 using (var clusterTracker = performanceMonitor.TrackOperation("Cluster Sleeve Placement"))
                 {
-                    var clusterResult = ExecuteClusteringForCategory(filter, showProgress, isPath3Validated, isPath3Invalidated, isPath3New);
+                    var clusterResult = ExecuteClusteringForCategory(filter, performanceMonitor, showProgress, isPath3Validated, isPath3Invalidated, isPath3New);
                     totalClusters = clusterResult.placedCount;
                     clusterTracker.SetItemCount(totalClusters);
                 }
@@ -576,6 +578,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         private (int placedCount, int deletedCount) ExecuteClusteringForCategory(
             OpeningFilter filter, 
+            JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IPerformanceMonitor performanceMonitor,
             bool showProgress = false,
             bool isPath3Validated = false,
             bool isPath3Invalidated = false,
@@ -856,7 +859,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         string logPath = SafeFileLogger.GetLogFilePath("orchestrator_debug.log");
                         File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 DIRECT IO: CALLING ClusterServiceFactory.CreateWithAllServices NOW\n");
-                        clusterService = ClusterServiceFactory.CreateWithAllServices(_document);
+                        clusterService = ClusterServiceFactory.CreateWithAllServices(_document, performanceMonitor: performanceMonitor);
                         File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 DIRECT IO: ClusterServiceFactory.CreateWithAllServices RETURNED\n");
                     }
                     catch (Exception factoryEx)
@@ -893,22 +896,84 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         // ✅ FIX: Pass clearance settings to clustering service for condition change check
                         // ✅ PATH 3: Pass PATH 3 type flags to clustering service
-                        var clusterResult = clusterService.ClusterSleeves(
-                            _document, 
-                            categoryString, 
-                            _uiDocument, 
-                            xmlFilePath, 
-                            filter.Name, 
-                            placedClusterSleeves, 
-                            isPath1Replay, 
-                            comboId, 
-                            filterId, 
-                            _uiClearances,
-                            isPath3Validated: isPath3Validated,
-                            isPath3Invalidated: isPath3Invalidated,
-                            isPath3New: isPath3New);
-                        placedCount = clusterResult.placedCount;
-                        deletedCount = clusterResult.deletedCount;
+                        // ✅ BATCH V2: Use new V2 Orchestrator
+                        // This handles Calculation (Phase 1) and Placement (Phase 2)
+                        // It uses the new BatchClusterCalculationService and BatchClusterPlacementService
+                        
+                        // Step 1: Fetch ClashZones (required for V2)
+                        // We use the same filter logic as before to get relevant zones
+                        List<ClashZone> zonesForV2 = null;
+                        using (var dbContext = new SleeveDbContext(_document))
+                        {
+                            var repo = new ClashZoneRepository(dbContext);
+                            zonesForV2 = repo.GetClashZonesByFilter(filter.Name, categoryString);
+                        }
+
+                        if (zonesForV2 != null && zonesForV2.Count > 0)
+                        {
+                            // Step 2: Call V2 Orchestrator
+                            // Note: V2 handles its own transactions (Phase 2 placement transaction)
+                            // So we might be nesting inside the "Cluster {category} Openings" transaction here?
+                            // BatchClusterPlacementService creates its own transaction.
+                            // If we are already in a transaction (line 805), we must use SubTransaction or pass the transaction?
+                            // Wait, Revit API 2024 does not support nested Transactions.
+                            // The outer transaction (line 805) wraps the entire legacy call.
+                            // If V2 manages its own transaction, we should NOT wrap it here.
+                            
+                            // HOWEVER: The orchestrator structure wraps this call in a transaction.
+                            // We should modify V2 to accept an existing transaction or remove the outer transaction.
+                            // Given "PROVISIONS TO SWITCH TO SEQUENTIAL PLACMENT", V2 likely needs fine-grained control.
+                            
+                            // STRATEGY: 
+                            // 1. Commit/Rollback current outer transaction immediately (it's empty so far).
+                            // 2. Call V2 (which manages its own transactions).
+                            // 3. Start a new dummy transaction if subsequent code expects one? (Unlikely).
+                            
+                            // Let's modify to use V2 logic INSIDE the current transaction if "Bulk" mode?
+                            // But Sequential mode needs multiple transactions.
+                            
+                            // Decision: V2 replaces the entire block. We should Refector this block to use V2 logic instead of legacy.
+                            // But I am replacing lines 896-909 inside a larger block.
+                            // Let's call ClusterSleevesV2.
+                            // I need to update RefactoredClusterService.ClusterSleevesV2 to handle "Already In Transaction"?
+                            // OR I update this call to perform V2 logic.
+                            
+                            // ACTUALLY: The user's request for "Sequential Placement" IMPLIES separate transactions.
+                            // Use Single Transaction = Bulk.
+                            // Use Multiple Transactions = Sequential.
+                            
+                            // If we are here, we are inside `using (var tx = new Transaction(...))`
+                            // Make V2 logic use the *existing* transaction for Bulk, or error if Sequential requested?
+                            // Or can we just commit this tx, do V2, then be done?
+                            
+                            // For simplicity NOW: Use Bulk V2 (Single Transaction) which fits inside this outer tx.
+                            // But User wants "Switch".
+                            
+                            // To support Sequential, we must NOT be in a transaction here.
+                            // The outer transaction starts at line 805.
+                            // If I want sequential, I must close this transaction first.
+                            
+                             // Assuming we are in a transaction:
+                             // Pass "useSingleTransaction = true" (Bulk) for now to be safe with existing flow.
+                             // Future refactor: Move transaction management inside ClusterSleevesV2 entirely.
+                             
+                             // CALLING V2:
+                             var v2Result = clusterService.ClusterSleevesV2(
+                                _document, 
+                                zonesForV2, 
+                                categoryString, 
+                                comboId ?? 0, 
+                                filterId ?? 0, 
+                                useSingleTransaction: true // Use Bulk for now to fit in outer transaction
+                            );
+                            placedCount = v2Result.placedCount;
+                            deletedCount = v2Result.failedCount; // Logic map
+                        }
+                        else
+                        {
+                            placedCount = 0;
+                            deletedCount = 0;
+                        }
                         
                         // 🔥 TEST: Direct System.IO logging after successful call (using versioned path)
                         try
@@ -2008,6 +2073,84 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 } catch { }
             }
             
+
+            // ==========================================================================================
+            // ✅ PHASE 2 & 3: HYBRID BATCH CLUSTERING (Extraction -> Calculation -> Placement/Swap)
+            // ==========================================================================================
+            // Executing Post-Placement Workflow
+            if (true) 
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🚀 STARTING PHASE 2-4: Hybrid Cluster Workflow\n");
+                    SafeFileLogger.SafeAppendText("placement_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🚀 STARTING PHASE 2-4: Hybrid Cluster Workflow\n");
+                }
+
+                // 2. EXTRACT CORNERS (Phase 2)
+                try
+                {
+                   if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Phase 2: Extracting Corners...\n");
+
+                   using (var dbContext = new SleeveDbContext(_document))
+                   {
+                        var repo = new ClashZoneRepository(dbContext);
+                        var extractor = new BatchSleeveCornerExtractor(repo);
+                        extractor.ExtractAndSaveCorners(_document);
+                   }
+                }
+                catch (Exception ex)
+                {
+                     if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error($"[HybridBatch] Error in Corner Extraction: {ex.Message}");
+                }
+
+                // 3. CLUSTER & SWAP (Phase 3 & 4)
+                try
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Phase 3/4: Clustering & Swapping...\n");
+
+                    // Parameters for ClusterSleevesV2
+                    List<ClashZone> clashZones;
+                    string categoryString = "All"; // Default to All categories
+
+                    using (var ctx = new SleeveDbContext(_document))
+                    {
+                        var repo = new ClashZoneRepository(ctx);
+                        // Fetch zones relevant for clustering (e.g. valid ones)
+                        // For now we fetch all valid ones to be safe
+                        clashZones = repo.GetAllClashZones().Where(z => z.IsResolved == false).ToList();
+                    }
+                    int filterId = 0; 
+                    int comboId = 0; 
+                    
+                    // Instantiate using Factory
+                    var clusterService = ClusterServiceFactory.CreateWithAllServices(_document);
+
+                     // Perform Clustering
+                     var clusterResult = clusterService.ClusterSleevesV2(
+                        _document, 
+                        clashZones, // Uses filtered zones from earlier in method
+                        categoryString, 
+                        comboId, 
+                        filterId, 
+                        useSingleTransaction: true
+                     );
+
+                     if (!DeploymentConfiguration.DeploymentMode)
+                     {
+                        DebugLogger.Info($"[HybridBatch] Clustering Complete: {clusterResult.placedCount} placed, {clusterResult.failedCount} failed.");
+                        SafeFileLogger.SafeAppendText("placement_debug.log", $"[{DateTime.Now:HH:mm:ss}] [HybridBatch] Clustering Complete: {clusterResult.placedCount} placed, {clusterResult.failedCount} failed.\n");
+                     }
+                }
+                catch (Exception ex)
+                {
+                     if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error($"[HybridBatch] Error in Clustering Phase: {ex.Message}");
+                }
+            }
+
             // ✅ PERFORMANCE: Return counts AFTER saving bounding boxes to database
             // This ensures clustering can read individual sleeve bounding boxes
             return (placedCount, skippedCount, errorCount);

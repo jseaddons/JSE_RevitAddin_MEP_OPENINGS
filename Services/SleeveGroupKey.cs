@@ -9,30 +9,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public string hostType;
         public string systemType;
         public string orientation;
-        public int HostElementId; // ✅ NEW: Track host element ID to prevent cross-wall clustering
+        public int SpatialX;
+        public int SpatialY;
+        public int SpatialZ;
 
-        public SleeveGroupKey(string hostType, string systemType, string orientation, int hostElementId = -1)
+        public SleeveGroupKey(string hostType, string systemType, string orientation, int spatialX, int spatialY, int spatialZ)
         {
             this.hostType = hostType;
             this.systemType = systemType;
             this.orientation = orientation;
-            this.HostElementId = hostElementId;
+            this.SpatialX = spatialX;
+            this.SpatialY = spatialY;
+            this.SpatialZ = spatialZ;
         }
 
         public override bool Equals(object obj)
         {
             if (!(obj is SleeveGroupKey)) return false;
             var other = (SleeveGroupKey)obj;
-            // ✅ Include HostId in equality check to separate sleeves in different walls
+            // ✅ SPATIAL GROUPING: Group by category/orientation/spatial-bucket instead of HostID
+            // This ensures sleeves on the same wall/floor AND nearby are grouped together, preventing duplicates
             return hostType == other.hostType && 
                    systemType == other.systemType && 
                    orientation == other.orientation &&
-                   HostElementId == other.HostElementId;
+                   SpatialX == other.SpatialX &&
+                   SpatialY == other.SpatialY &&
+                   SpatialZ == other.SpatialZ;
         }
 
         public override int GetHashCode()
         {
-            return (hostType, systemType, orientation, HostElementId).GetHashCode();
+            return (hostType, systemType, orientation, SpatialX, SpatialY, SpatialZ).GetHashCode();
         }
     }
 }

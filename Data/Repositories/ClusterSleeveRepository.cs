@@ -250,6 +250,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             }
             return clusters;
         }
+
+        /// <summary>
+        /// Retrieves a single cluster sleeve by its instance ID.
+        /// </summary>
+        public ClusterSleeveData GetClusterSleeveById(int clusterInstanceId)
+        {
+            var result = GetClusterSleevesByInstanceIds(new[] { clusterInstanceId });
+            return result.FirstOrDefault();
+        }
             // ...existing code...
         
 
@@ -282,6 +291,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         {
             if (clusterInstanceId <= 0)
                 throw new ArgumentException("ClusterInstanceId must be greater than 0", nameof(clusterInstanceId));
+
+            // ✅ DIAGNOSTIC: Log method entry
+            _logger($"[{DateTime.Now:HH:mm:ss}]       SaveClusterSleeve CALLED\n" +
+                   $"           clusterInstanceId={clusterInstanceId}, comboId={comboId}, filterId={filterId}\n");
 
             // ✅ CRITICAL FIX: Generate deterministic ClusterGuid from sorted ClashZoneIds (like ClashZoneGuid for snapshots)
             // This allows proper upserting even if ClusterInstanceId changes
@@ -350,6 +363,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                             MepSizes = @MepSizes,
                                             MepSystemNames = @MepSystemNames,
                                             MepElementIds = @MepElementIds,
+                                            Corner1X = @Corner1X, Corner1Y = @Corner1Y, Corner1Z = @Corner1Z,
+                                            Corner2X = @Corner2X, Corner2Y = @Corner2Y, Corner2Z = @Corner2Z,
+                                            Corner3X = @Corner3X, Corner3Y = @Corner3Y, Corner3Z = @Corner3Z,
+                                            Corner4X = @Corner4X, Corner4Y = @Corner4Y, Corner4Z = @Corner4Z,
                                             UpdatedAt = CURRENT_TIMESTAMP
                                         WHERE ClusterGuid = @ClusterGuid";
                                 }
@@ -382,6 +399,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                         MepSizes = @MepSizes,
                                         MepSystemNames = @MepSystemNames,
                                         MepElementIds = @MepElementIds,
+                                        Corner1X = @Corner1X, Corner1Y = @Corner1Y, Corner1Z = @Corner1Z,
+                                        Corner2X = @Corner2X, Corner2Y = @Corner2Y, Corner2Z = @Corner2Z,
+                                        Corner3X = @Corner3X, Corner3Y = @Corner3Y, Corner3Z = @Corner3Z,
+                                        Corner4X = @Corner4X, Corner4Y = @Corner4Y, Corner4Z = @Corner4Z,
                                         UpdatedAt = CURRENT_TIMESTAMP
                                     WHERE ClusterInstanceId = @ClusterInstanceId";
                                 }
@@ -425,7 +446,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                         PlacementX, PlacementY, PlacementZ,
                                         HostType, HostOrientation, ClashZoneIdsJson,
                                         SleeveFamilyName,
-                                        ClashZoneGuids, MepSizes, MepSystemNames, MepElementIds,
+                                        ClashZoneGuids, MepSizes, MepSystemNames, MepServiceTypes, MepElementIds,
+                                        Corner1X, Corner1Y, Corner1Z,
+                                        Corner2X, Corner2Y, Corner2Z,
+                                        Corner3X, Corner3Y, Corner3Z,
+                                        Corner4X, Corner4Y, Corner4Z,
                                         CreatedAt, UpdatedAt
                                     ) VALUES (
                                         @ClusterInstanceId, @ClusterGuid, @ComboId, @FilterId, @Category,
@@ -436,7 +461,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                         @PlacementX, @PlacementY, @PlacementZ,
                                         @HostType, @HostOrientation, @ClashZoneIdsJson,
                                         @SleeveFamilyName,
-                                        @ClashZoneGuids, @MepSizes, @MepSystemNames, @MepElementIds,
+                                        @ClashZoneGuids, @MepSizes, @MepSystemNames, @MepServiceTypes, @MepElementIds,
+                                        @Corner1X, @Corner1Y, @Corner1Z,
+                                        @Corner2X, @Corner2Y, @Corner2Z,
+                                        @Corner3X, @Corner3Y, @Corner3Z,
+                                        @Corner4X, @Corner4Y, @Corner4Z,
                                         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                                     )";
 
@@ -453,13 +482,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     corner4X, corner4Y, corner4Z,
                                     clusterGuid);
 
+                                // ✅ DIAGNOSTIC: Log before INSERT execution
+                                _logger($"[{DateTime.Now:HH:mm:ss}]           About to execute INSERT\n");
+
                                 var rowsAffected = insertCmd.ExecuteNonQuery();
+
+                                // ✅ DIAGNOSTIC: Log after INSERT execution
+                                _logger($"[{DateTime.Now:HH:mm:ss}]           ✅ INSERT executed: {rowsAffected} row(s) affected\n");
+                                
+                                if (rowsAffected == 0)
+                                {
+                                    _logger($"[{DateTime.Now:HH:mm:ss}]           ⚠️ WARNING: No rows inserted!\n");
+                                }
 
                                 // ✅ LOG: INSERT operation - ALL COLUMNS (one sample row)
                                 var clashZoneIdsJson = clashZoneIds != null && clashZoneIds.Count > 0
                                     ? JsonSerializer.Serialize(clashZoneIds.Select(g => g.ToString()).ToList())
                                     : "[]";
-                                var (clashZoneGuids, mepSizes, mepSystemNames, mepElementIds) = GetCommaSeparatedMepData(clashZoneIds);
+                                var (clashZoneGuids, mepSizes, mepSystemNames, mepServiceTypes, mepElementIds) = GetCommaSeparatedMepData(clashZoneIds);
 
                                 var insertParams = new Dictionary<string, object>
                                 {
@@ -599,6 +639,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                                 MepSizes = @MepSizes,
                                                 MepSystemNames = @MepSystemNames,
                                                 MepElementIds = @MepElementIds,
+                                                Corner1X = @Corner1X, Corner1Y = @Corner1Y, Corner1Z = @Corner1Z,
+                                                Corner2X = @Corner2X, Corner2Y = @Corner2Y, Corner2Z = @Corner2Z,
+                                                Corner3X = @Corner3X, Corner3Y = @Corner3Y, Corner3Z = @Corner3Z,
+                                                Corner4X = @Corner4X, Corner4Y = @Corner4Y, Corner4Z = @Corner4Z,
                                                 UpdatedAt = CURRENT_TIMESTAMP
                                             WHERE ClusterGuid = @ClusterGuid";
                                     }
@@ -724,6 +768,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             {
                 try
                 {
+                    // ✅ SCOPED DELETE: Delete ALL old clusters for the affected scopes (Combo/Filter/Category)
+                    // This is critical to remove "Ghost Clusters" if the cluster composition changes (and thus GUID changes).
+                    // We simply wipe the slate clean for the scopes we are about to update.
+                    var scopes = clusters
+                        .Select(c => new { c.ComboId, c.FilterId, Category = c.Category ?? string.Empty })
+                        .Distinct()
+                        .ToList();
+
+                    using (var deleteCmd = _context.Connection.CreateCommand())
+                    {
+                        deleteCmd.Transaction = transaction;
+                        foreach (var scope in scopes)
+                        {
+                            deleteCmd.CommandText = @"
+                                DELETE FROM ClusterSleeves_v2 
+                                WHERE ComboId = @ComboId 
+                                  AND FilterId = @FilterId 
+                                  AND Category = @Category";
+                            deleteCmd.Parameters.Clear();
+                            deleteCmd.Parameters.AddWithValue("@ComboId", scope.ComboId);
+                            deleteCmd.Parameters.AddWithValue("@FilterId", scope.FilterId);
+                            deleteCmd.Parameters.AddWithValue("@Category", scope.Category);
+                            deleteCmd.ExecuteNonQuery();
+                        }
+                    }
+
                     int savedCount = 0;
 
                     foreach (var cluster in clusters)
@@ -736,75 +806,77 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             var clusterGuid = GenerateDeterministicClusterGuid(cluster.ClashZoneIds);
 
                             // Get comma-separated MEP data
-                            var (clashZoneGuids, mepSizes, mepSystemNames, mepElementIds) = GetCommaSeparatedMepData(cluster.ClashZoneIds);
+                            var (clashZoneGuids, mepSizes, mepSystemNames, mepServiceTypes, mepElementIds) = GetCommaSeparatedMepData(cluster.ClashZoneIds);
 
                             // Serialize ClashZoneIds to JSON
                             var clashZoneIdsJson = cluster.ClashZoneIds != null && cluster.ClashZoneIds.Count > 0
                                 ? JsonSerializer.Serialize(cluster.ClashZoneIds.Select(g => g.ToString()).ToList())
                                 : "[]";
 
-                            // ✅ SIMPLE: INSERT OR REPLACE based on ClusterInstanceId (PRIMARY KEY)
+                            // ✅ BATCH ID: Generate one per save operation (or use existing if available)
+                            var clusterBatchId = Guid.NewGuid().ToString().ToUpperInvariant();
+                            
+                            // (Per-row DELETE removed - handled by Scoped Delete above)
+
+                            // Now INSERT new record
+                            // ✅ SIMPLE: INSERT (Duplicates within batch are impossible if logic is correct, and DB is cleared)
+                            // We use INSERT OR REPLACE just to be extra safe against constraint violations if batch has dupes
                             cmd.CommandText = @"
-                                INSERT OR REPLACE INTO ClusterSleeves (
-                                    ClusterInstanceId, ClusterGuid, ComboId, FilterId, Category,
-                                    BoundingBoxMinX, BoundingBoxMinY, BoundingBoxMinZ,
-                                    BoundingBoxMaxX, BoundingBoxMaxY, BoundingBoxMaxZ,
-                                    ClusterWidth, ClusterHeight, ClusterDepth,
-                                    RotationAngleDeg, IsRotated,
+                                INSERT OR REPLACE INTO ClusterSleeves_v2 (
+                                    ComboId, FilterId, ClusterGUID, ClusterBatchId,
                                     PlacementX, PlacementY, PlacementZ,
-                                    HostType, HostOrientation, ClashZoneIdsJson,
-                                    SleeveFamilyName,
-                                    ClashZoneGuids, MepSizes, MepSystemNames, MepElementIds,
+                                    ClusterWidth, ClusterHeight, ClusterDepth,
+                                    RotationAngleRad, IsRotated,
+                                    HostType, HostOrientation, Category,
+                                    ValidationStatus, ValidationMessage,
+                                    ClashZoneIdsJson, ConstituentZoneGuids, ClashZoneGuids,
+                                    MepSizes, MepSystemNames, MepServiceTypes, MepElementIds,
                                     Corner1X, Corner1Y, Corner1Z,
                                     Corner2X, Corner2Y, Corner2Z,
                                     Corner3X, Corner3Y, Corner3Z,
                                     Corner4X, Corner4Y, Corner4Z,
-                                    CreatedAt, UpdatedAt
+                                    SleeveFamilyName,
+                                    CalculatedAt, PlacedAt, Status
                                 ) VALUES (
-                                    @ClusterInstanceId, @ClusterGuid, @ComboId, @FilterId, @Category,
-                                    @BoundingBoxMinX, @BoundingBoxMinY, @BoundingBoxMinZ,
-                                    @BoundingBoxMaxX, @BoundingBoxMaxY, @BoundingBoxMaxZ,
-                                    @ClusterWidth, @ClusterHeight, @ClusterDepth,
-                                    @RotationAngleDeg, @IsRotated,
+                                    @ComboId, @FilterId, @ClusterGuid, @ClusterBatchId,
                                     @PlacementX, @PlacementY, @PlacementZ,
-                                    @HostType, @HostOrientation, @ClashZoneIdsJson,
-                                    @SleeveFamilyName,
-                                    @ClashZoneGuids, @MepSizes, @MepSystemNames, @MepElementIds,
+                                    @ClusterWidth, @ClusterHeight, @ClusterDepth,
+                                    @RotationAngleRad, @IsRotated,
+                                    @HostType, @HostOrientation, @Category,
+                                    'Valid', '',
+                                    @ClashZoneIdsJson, @ClashZoneGuids, @ClashZoneGuids,
+                                    @MepSizes, @MepSystemNames, @MepServiceTypes, @MepElementIds,
                                     @Corner1X, @Corner1Y, @Corner1Z,
                                     @Corner2X, @Corner2Y, @Corner2Z,
                                     @Corner3X, @Corner3Y, @Corner3Z,
                                     @Corner4X, @Corner4Y, @Corner4Z,
-                                    COALESCE((SELECT CreatedAt FROM ClusterSleeves WHERE ClusterInstanceId = @ClusterInstanceId), CURRENT_TIMESTAMP),
-                                    CURRENT_TIMESTAMP
+                                    @SleeveFamilyName,
+                                    CURRENT_TIMESTAMP, NULL, 'Pending'
                                 )";
 
-                            // Add parameters in exact order
-                            cmd.Parameters.AddWithValue("@ClusterInstanceId", cluster.ClusterInstanceId);
-                            cmd.Parameters.AddWithValue("@ClusterGuid", string.IsNullOrWhiteSpace(clusterGuid) ? (object)DBNull.Value : clusterGuid);
+                            // Clear and re-add all parameters for the INSERT
+                            cmd.Parameters.Clear();
                             cmd.Parameters.AddWithValue("@ComboId", cluster.ComboId);
                             cmd.Parameters.AddWithValue("@FilterId", cluster.FilterId);
-                            cmd.Parameters.AddWithValue("@Category", cluster.Category ?? string.Empty);
-                            cmd.Parameters.AddWithValue("@BoundingBoxMinX", cluster.BoundingBoxMinX);
-                            cmd.Parameters.AddWithValue("@BoundingBoxMinY", cluster.BoundingBoxMinY);
-                            cmd.Parameters.AddWithValue("@BoundingBoxMinZ", cluster.BoundingBoxMinZ);
-                            cmd.Parameters.AddWithValue("@BoundingBoxMaxX", cluster.BoundingBoxMaxX);
-                            cmd.Parameters.AddWithValue("@BoundingBoxMaxY", cluster.BoundingBoxMaxY);
-                            cmd.Parameters.AddWithValue("@BoundingBoxMaxZ", cluster.BoundingBoxMaxZ);
-                            cmd.Parameters.AddWithValue("@ClusterWidth", cluster.ClusterWidth);
-                            cmd.Parameters.AddWithValue("@ClusterHeight", cluster.ClusterHeight);
-                            cmd.Parameters.AddWithValue("@ClusterDepth", cluster.ClusterDepth);
-                            cmd.Parameters.AddWithValue("@RotationAngleDeg", cluster.RotationAngleDeg);
-                            cmd.Parameters.AddWithValue("@IsRotated", cluster.IsRotated ? 1 : 0);
+                            cmd.Parameters.AddWithValue("@ClusterGuid", string.IsNullOrWhiteSpace(clusterGuid) ? (object)DBNull.Value : clusterGuid);
+                            cmd.Parameters.AddWithValue("@ClusterBatchId", clusterBatchId);
                             cmd.Parameters.AddWithValue("@PlacementX", cluster.PlacementX);
                             cmd.Parameters.AddWithValue("@PlacementY", cluster.PlacementY);
                             cmd.Parameters.AddWithValue("@PlacementZ", cluster.PlacementZ);
+                            cmd.Parameters.AddWithValue("@ClusterWidth", cluster.ClusterWidth);
+                            cmd.Parameters.AddWithValue("@ClusterHeight", cluster.ClusterHeight);
+                            cmd.Parameters.AddWithValue("@ClusterDepth", cluster.ClusterDepth);
+                            // ✅ ANGLE: Convert Deg to Rad for V2
+                            cmd.Parameters.AddWithValue("@RotationAngleRad", cluster.RotationAngleDeg * (Math.PI / 180.0));
+                            cmd.Parameters.AddWithValue("@IsRotated", cluster.IsRotated ? 1 : 0);
                             cmd.Parameters.AddWithValue("@HostType", cluster.HostType ?? (object)DBNull.Value);
                             cmd.Parameters.AddWithValue("@HostOrientation", cluster.HostOrientation ?? (object)DBNull.Value);
+                            cmd.Parameters.AddWithValue("@Category", cluster.Category ?? string.Empty);
                             cmd.Parameters.AddWithValue("@ClashZoneIdsJson", clashZoneIdsJson);
-                            cmd.Parameters.AddWithValue("@SleeveFamilyName", cluster.SleeveFamilyName ?? (object)DBNull.Value);
                             cmd.Parameters.AddWithValue("@ClashZoneGuids", clashZoneGuids ?? (object)DBNull.Value);
                             cmd.Parameters.AddWithValue("@MepSizes", mepSizes ?? (object)DBNull.Value);
                             cmd.Parameters.AddWithValue("@MepSystemNames", mepSystemNames ?? (object)DBNull.Value);
+                            cmd.Parameters.AddWithValue("@MepServiceTypes", mepServiceTypes ?? (object)DBNull.Value);
                             cmd.Parameters.AddWithValue("@MepElementIds", mepElementIds ?? (object)DBNull.Value);
 
                             // ✅ CORNERS: Add in exact order
@@ -820,6 +892,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             cmd.Parameters.AddWithValue("@Corner4X", cluster.Corner4X);
                             cmd.Parameters.AddWithValue("@Corner4Y", cluster.Corner4Y);
                             cmd.Parameters.AddWithValue("@Corner4Z", cluster.Corner4Z);
+                            
+                            // ✅ FAMILY NAME: Add family name explicitly
+                            cmd.Parameters.AddWithValue("@SleeveFamilyName", cluster.SleeveFamilyName ?? (object)DBNull.Value);
 
                             // 🔥 DEBUG: Log before execution
                             try
@@ -1090,7 +1165,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 case "MepSizes":
                 case "MepSystemNames":
                 case "MepElementIds":
-                    var (guids, sizes, names, ids) = GetCommaSeparatedMepData(cluster.ClashZoneIds);
+                    var (guids, sizes, names, serviceTypes, ids) = GetCommaSeparatedMepData(cluster.ClashZoneIds);
                     switch (fieldName)
                     {
                         case "ClashZoneGuids": return guids ?? (object)DBNull.Value;
@@ -1149,10 +1224,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             cmd.Parameters.AddWithValue($"@ClashZoneIdsJson{index}", clashZoneIdsJson);
 
             // ✅ COMMA-SEPARATED VALUES: Load MEP data from SleeveSnapshots table
-            var (clashZoneGuids, mepSizes, mepSystemNames, mepElementIds) = GetCommaSeparatedMepData(cluster.ClashZoneIds);
+            var (clashZoneGuids, mepSizes, mepSystemNames, mepServiceTypes, mepElementIds) = GetCommaSeparatedMepData(cluster.ClashZoneIds);
             cmd.Parameters.AddWithValue($"@ClashZoneGuids{index}", clashZoneGuids ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue($"@MepSizes{index}", mepSizes ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue($"@MepSystemNames{index}", mepSystemNames ?? (object)DBNull.Value);
+            cmd.Parameters.AddWithValue($"@MepServiceTypes{index}", mepServiceTypes ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue($"@MepElementIds{index}", mepElementIds ?? (object)DBNull.Value);
 
             // ✅ Corners
@@ -1273,10 +1349,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             cmd.Parameters.AddWithValue("@ClashZoneIdsJson", clashZoneIdsJson);
 
             // ✅ COMMA-SEPARATED VALUES: Load MEP data from SleeveSnapshots table
-            var (clashZoneGuids, mepSizes, mepSystemNames, mepElementIds) = GetCommaSeparatedMepData(clashZoneIds);
+            var (clashZoneGuids, mepSizes, mepSystemNames, mepServiceTypes, mepElementIds) = GetCommaSeparatedMepData(clashZoneIds);
             cmd.Parameters.AddWithValue("@ClashZoneGuids", clashZoneGuids ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue("@MepSizes", mepSizes ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue("@MepSystemNames", mepSystemNames ?? (object)DBNull.Value);
+            cmd.Parameters.AddWithValue("@MepServiceTypes", mepServiceTypes ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue("@MepElementIds", mepElementIds ?? (object)DBNull.Value);
 
             // ✅ Corners
@@ -1300,10 +1377,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// ✅ CRITICAL FIX: Queries SleeveSnapshots.MepParametersJson to get Size parameter (aggregated from snapshot)
         /// Falls back to ClashZones.MepElementSizeParameterValue if snapshot not found
         /// </summary>
-        private (string clashZoneGuids, string mepSizes, string mepSystemNames, string mepElementIds) GetCommaSeparatedMepData(List<Guid> clashZoneIds)
+        private (string clashZoneGuids, string mepSizes, string mepSystemNames, string mepServiceTypes, string mepElementIds) GetCommaSeparatedMepData(List<Guid> clashZoneIds)
         {
             if (clashZoneIds == null || clashZoneIds.Count == 0)
-                return (null, null, null, null);
+                return (null, null, null, null, null);
 
             try
             {
@@ -1323,8 +1400,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             cz.MepElementId,
                             cz.MepElementSizeParameterValue,
                             cz.MepElementFormattedSize,
-                            cz.MepElementSizeData,
-                            cz.MepElementSystemName,
+                            cz.MepSystemType,
+                            cz.MepServiceType,
                             cz.MepElementSystemAbbreviation
                         FROM ClashZones cz
                         LEFT JOIN SleeveSnapshots ss ON UPPER(ss.ClashZoneGuid) = UPPER(cz.ClashZoneGuid)
@@ -1341,6 +1418,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     var guidList = new List<string>();
                     var sizeList = new List<string>();
                     var systemNameList = new List<string>();
+                    var serviceTypeList = new List<string>();
                     var elementIdList = new List<string>();
 
                     using (var reader = cmd.ExecuteReader())
@@ -1353,9 +1431,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             var mepElementId = reader.IsDBNull(3) ? (long?)null : reader.GetInt64(3);
                             var mepSizeParameterValue = reader.IsDBNull(4) ? null : reader.GetString(4); // ✅ FALLBACK: MepElementSizeParameterValue from ClashZones
                             var mepFormattedSize = reader.IsDBNull(5) ? null : reader.GetString(5); // ✅ FALLBACK: MepElementFormattedSize
-                            var mepSizeDataJson = reader.IsDBNull(6) ? null : reader.GetString(6);
-                            var systemName = reader.IsDBNull(7) ? null : reader.GetString(7);
-                            var systemAbbr = reader.IsDBNull(8) ? null : reader.GetString(8);
+                            var systemName = reader.IsDBNull(6) ? null : reader.GetString(6); // ✅ FIXED: Was index 7, now 6 after removing MepElementSizeData
+                            var serviceType = reader.IsDBNull(7) ? null : reader.GetString(7); // ✅ FIXED: Was index 8, now 7
+                            var systemAbbr = reader.IsDBNull(8) ? null : reader.GetString(8); // ✅ FIXED: Was index 9, now 8
 
                             if (!string.IsNullOrWhiteSpace(guid))
                                 guidList.Add(guid);
@@ -1414,39 +1492,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 _logger($"[ClusterSleeve] ⚠️ ClashZones.MepElementSizeParameterValue is empty for ClashZoneGuid={guid}");
                             }
                             // Priority 3: Fall back to MepElementFormattedSize (formatted size, e.g., "Ø20")
-                            else if (string.IsNullOrWhiteSpace(sizeValue) && !string.IsNullOrWhiteSpace(mepFormattedSize))
+                            if (string.IsNullOrWhiteSpace(sizeValue) && !string.IsNullOrWhiteSpace(mepFormattedSize))
                             {
                                 sizeValue = mepFormattedSize.Trim();
-                            }
-                            // Priority 4: Fall back to JSON parsing (legacy support)
-                            else if (string.IsNullOrWhiteSpace(sizeValue) && !string.IsNullOrWhiteSpace(mepSizeDataJson))
-                            {
-                                try
-                                {
-                                    var sizeData = JsonSerializer.Deserialize<Dictionary<string, object>>(mepSizeDataJson);
-                                    if (sizeData != null)
-                                    {
-                                        if (sizeData.TryGetValue("FormattedSize", out var formattedSizeObj) && formattedSizeObj != null)
-                                        {
-                                            sizeValue = formattedSizeObj.ToString();
-                                        }
-                                        else if (sizeData.TryGetValue("Shape", out var shapeObj) && shapeObj?.ToString() == "Round")
-                                        {
-                                            if (sizeData.TryGetValue("Diameter", out var diamObj))
-                                            {
-                                                var diamMm = Convert.ToDouble(diamObj) * 304.8; // Convert feet to mm
-                                                sizeValue = $"Ø{diamMm:F0}";
-                                            }
-                                        }
-                                        else if (sizeData.TryGetValue("Width", out var widthObj) && sizeData.TryGetValue("Height", out var heightObj))
-                                        {
-                                            var widthMm = Convert.ToDouble(widthObj) * 304.8;
-                                            var heightMm = Convert.ToDouble(heightObj) * 304.8;
-                                            sizeValue = $"{widthMm:F0}×{heightMm:F0}";
-                                        }
-                                    }
-                                }
-                                catch { /* Ignore JSON parse errors */ }
                             }
 
                             if (!string.IsNullOrWhiteSpace(sizeValue))
@@ -1476,6 +1524,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         guidList.Count > 0 ? string.Join(", ", guidList) : null,
                         sizeList.Count > 0 ? string.Join(", ", sizeList) : null,
                         systemNameList.Count > 0 ? string.Join(", ", systemNameList) : null,
+                        serviceTypeList.Count > 0 ? string.Join(", ", serviceTypeList) : null,
                         elementIdList.Count > 0 ? string.Join(", ", elementIdList) : null
                     );
                 }
@@ -1483,7 +1532,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             catch (Exception ex)
             {
                 _logger($"[SQLite] ⚠️ Error loading MEP data for cluster: {ex.Message}");
-                return (null, null, null, null);
+                return (null, null, null, null, null);
             }
         }
 
@@ -1626,14 +1675,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             using (var cmd = _context.Connection.CreateCommand())
             {
                 cmd.CommandText = @"
-                    SELECT ClusterInstanceId, ComboId, FilterId, Category,
-                           BoundingBoxMinX, BoundingBoxMinY, BoundingBoxMinZ,
-                           BoundingBoxMaxX, BoundingBoxMaxY, BoundingBoxMaxZ,
+                    SELECT ClusterGUID, ClusterInstanceId, ComboId, FilterId, Category,
                            ClusterWidth, ClusterHeight, ClusterDepth,
-                           RotationAngleDeg, IsRotated,
+                           RotationAngleRad, IsRotated,
                            PlacementX, PlacementY, PlacementZ,
-                           HostType, HostOrientation, ClashZoneIdsJson
-                    FROM ClusterSleeves
+                           HostType, HostOrientation, ClashZoneIdsJson,
+                           SleeveFamilyName, Status
+                    FROM ClusterSleeves_v2
                     WHERE FilterId = @FilterId AND Category = @Category";
                 cmd.Parameters.AddWithValue("@FilterId", filterId);
                 cmd.Parameters.AddWithValue("@Category", category);
@@ -1707,14 +1755,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 if (string.IsNullOrWhiteSpace(category))
                 {
                     cmd.CommandText = @"
-                        SELECT COUNT(*) FROM ClusterSleeves 
+                        SELECT COUNT(*) FROM ClusterSleeves_v2 
                         WHERE ComboId = @ComboId";
                     cmd.Parameters.AddWithValue("@ComboId", comboId);
                 }
                 else
                 {
                     cmd.CommandText = @"
-                        SELECT COUNT(*) FROM ClusterSleeves 
+                        SELECT COUNT(*) FROM ClusterSleeves_v2 
                         WHERE ComboId = @ComboId AND Category = @Category";
                     cmd.Parameters.AddWithValue("@ComboId", comboId);
                     cmd.Parameters.AddWithValue("@Category", category);
@@ -1732,7 +1780,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         {
             using (var cmd = _context.Connection.CreateCommand())
             {
-                cmd.CommandText = "DELETE FROM ClusterSleeves WHERE ClusterInstanceId = @ClusterInstanceId";
+                // ✅ V2: Delete by GUID or InstanceId depending on what's available
+                // Usually called with InstanceId from Revit, so we might need to lookup or delete where InstanceId matches
+                // For now, assume InstanceId is populated in V2 (it defaults to -1 but is updated after placement)
+                cmd.CommandText = "DELETE FROM ClusterSleeves_v2 WHERE ClusterInstanceId = @ClusterInstanceId";
                 cmd.Parameters.AddWithValue("@ClusterInstanceId", clusterInstanceId);
                 cmd.ExecuteNonQuery();
                 _logger($"[SQLite] ✅ Deleted cluster sleeve {clusterInstanceId} from database");
