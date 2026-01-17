@@ -1478,9 +1478,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
             // ✅ SIMPLE LOGIC FOR CLUSTERS: Clusters are ALWAYS rectangular
             if (isCluster)
             {
-                bool isWallOrFraming = hostType == "Wall" || hostType == "Walls" || 
-                                      hostType == "Structural Framing" || 
-                                      hostType.Contains("Wall", StringComparison.OrdinalIgnoreCase);
+                // ✅ CLUSTER SIMPLIFICATION: If it's a wall or framing, use Wall family; otherwise always use Slab family
+                bool isWallOrFraming = hostType.IndexOf("Wall", StringComparison.OrdinalIgnoreCase) >= 0 || 
+                                      hostType.IndexOf("Framing", StringComparison.OrdinalIgnoreCase) >= 0;
                                       
                 return isWallOrFraming ? "RectangularOpeningOnWall" : "RectangularOpeningOnSlab";
             }
@@ -1526,7 +1526,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
             {
                 return isCircular ? "CircularOpeningOnWall" : "RectangularOpeningOnWall";
             }
-            else if (hostType == "Floor")
+            else if (hostType.IndexOf("Floor", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 return isCircular ? "CircularOpeningOnSlab" : "RectangularOpeningOnSlab";
             }

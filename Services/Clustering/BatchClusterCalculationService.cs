@@ -330,7 +330,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 HostType = first.StructuralElementType,
                 HostOrientation = first.HostOrientation,
                 Category = first.MepElementCategory,
-                FamilyName = "RectangularOpeningOnWall",
+                FamilyName = JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement.ClusterPlacementService.GetFamilyName(
+                    first.StructuralElementType ?? "Unknown", 
+                    first.MepElementCategory ?? "Unknown", 
+                    Math.Max(width, height), 
+                    true), // isCluster = true
                 ConstituentZoneGuids = string.Join(",", zones.Select(z => z.ClashZoneGuid)),
                 ComboId = comboId, FilterId = filterId, Status = "Pending", ValidationStatus = "Valid"
             };

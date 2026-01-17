@@ -2516,22 +2516,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             continue; // Conflicting individual sleeves exist, skip cluster placement (Path 3 will handle)
                         }
 
-                        // Get family symbol based on host type
-                        string familyName = "";
-                        if (clusterData.HostType == "Wall" || clusterData.HostType == "Structural Framing")
-                        {
-                            familyName = "RectangularOpeningOnWall";
-                        }
-                        else if (clusterData.HostType == "Floor")
-                        {
-                            familyName = "RectangularOpeningOnSlab";
-                        }
-                        else
-                        {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Warning($"[RefactoredClusterService] PATH 1: Unknown host type '{clusterData.HostType}' for cluster {clusterData.ClusterInstanceId}, skipping");
-                            continue;
-                        }
+                        // ✅ CLUSTER FIX: Use dynamic family selection instead of hardcoded Wall family
+                        string hostType = clusterData.HostType ?? "Unknown";
+                        string familyName = JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement.ClusterPlacementService.GetFamilyName(
+                            hostType, 
+                            targetCategory, 
+                            Math.Max(clusterData.ClusterWidth, clusterData.ClusterHeight), 
+                            true); // isCluster = true
 
                         var universalSymbols = new FilteredElementCollector(doc)
                             .OfClass(typeof(FamilySymbol))

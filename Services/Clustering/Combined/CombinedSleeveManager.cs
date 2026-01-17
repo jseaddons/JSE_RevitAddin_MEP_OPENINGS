@@ -156,8 +156,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined
 
                                 // B. Determine Family Name
                                 // Always place opening families here; dampers are handled by dedicated placement services
-                                string familyName = "RectangularOpeningOnWall";
-                                // Future: Use logic to determine "RectangularOpeningOnFloor" if host is floor.
+                                // ✅ CLUSTER FIX: Use dynamic family selection instead of hardcoded Wall family
+                                string familyName = JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement.ClusterPlacementService.GetFamilyName(
+                                    candidate.HostType ?? "Wall", 
+                                    candidate.CategoriesInvolved?.FirstOrDefault() ?? "Unknown", 
+                                    Math.Max(candidate.CombinedWidth, candidate.CombinedHeight), 
+                                    true); // isCluster = true
                                 
                                 if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[CombinedSleeveManager] Creating '{familyName}' for {string.Join(",", candidate.CategoriesInvolved)}");

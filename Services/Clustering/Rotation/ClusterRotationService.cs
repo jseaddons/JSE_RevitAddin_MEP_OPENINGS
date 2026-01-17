@@ -606,8 +606,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 // Do NOT guess based on aspect ratio (Math.Abs(dY) > Math.Abs(dX)) because for square grids or combined clusters it fails.
                 bool isYWall = false;
                 bool isXWall = false;
+                bool isFloorHost = false;
                 
-                // Inspect first few elements to find authoritative wall direction
+                // Inspect first few elements to find authoritative host type and direction from DATABASE
                 foreach (var sleeveData in cluster)
                 {
                     if (sleeveData == null) continue;
@@ -617,30 +618,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                         var cz = GetCachedClashZone(sleeveId, xmlFilePath);
                         if (cz != null)
                         {
+                            // ✅ AUTHORITATIVE CHECK 1: Is it a floor?
+                            string hType = cz.StructuralElementType ?? "";
+                            if (hType.Contains("Floor", StringComparison.OrdinalIgnoreCase))
+                            {
+                                isFloorHost = true;
+                                break; // Floor host found
+                            }
+
+                            // ✅ AUTHORITATIVE CHECK 2: Wall direction
                             string wDir = cz.WallDirectionType ?? "";
                             string hOri = cz.HostOrientation ?? "";
                             
-                            // Check explicit flags first
                             isXWall = wDir.Contains("X-WALL", StringComparison.OrdinalIgnoreCase) || hOri.Equals("X", StringComparison.OrdinalIgnoreCase);
                             isYWall = wDir.Contains("Y-WALL", StringComparison.OrdinalIgnoreCase) || hOri.Equals("Y", StringComparison.OrdinalIgnoreCase);
                             
-                            if (isXWall || isYWall) break; // Found authoritative direction
+                            if (isXWall || isYWall) break; // Authoritative wall direction found
                         }
                     }
                     catch { }
                 }
 
-                // Fallback heuristic ONLY if explicit flags missing
-                if (!isXWall && !isYWall)
-                {
-                    // If height is dominant (vertical/stacked), aspect ratio of X/Y might be misleading about wall direction
-                    // But we have no choice but to guess if DB lacks info.
-                    isYWall = (circularMaxY - circularMinY) > (circularMaxX - circularMinX); 
-                    isXWall = !isYWall;
-                    
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ Wall direction unknown, guessing: IsYWall={isYWall} (based on aspect ratio)\n");
-                }
+                // ❌ REMOVED: Aspect-ratio guessing logic. 
+                // We now strictly trust the database host type or fall back to generic logic.
                 
                 // Calculate raw bounding box dimensions
                 double rawWidthX = circularMaxX - circularMinX;
@@ -674,7 +674,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 // FIX: For Walls, ignoring rotation and strictly mapping Along-Wall dimension to Width.
                 
                 bool handledByWallLogic = false;
-                if (isXWall || isYWall)
+                if (isFloorHost)
+                {
+                    handledByWallLogic = true;
+                    // ✅ FLOOR SIZING: Map horizontal spans (X/Y) to Revit Width/Height
+                    // For floors, Width and Height must be in the World XY plane.
+                    // If rotated lengthwise (rotation angle around 90/270), swap X and Y spans.
+                    circularWidth = isRotatedLengthwise ? rawWidthY : rawWidthX;
+                    circularHeight = isRotatedLengthwise ? rawWidthX : rawWidthY;
+                    circularDepth = maxStructuralThickness;
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] 🎯 FLOOR SIZING: Width={circularWidth * 304.8:F1}mm, Height={circularHeight * 304.8:F1}mm (X={rawWidthX * 304.8:F1}mm, Y={rawWidthY * 304.8:F1}mm)\n");
+                }
+                else if (isXWall || isYWall)
                 {
                     handledByWallLogic = true;
                     if (isXWall)
