@@ -444,21 +444,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             
             // ... existing logic ...
 
-            // ✅ SAFETY FLAG: Prevent multiple flushes (critical for performance)
-            if (_hasFlushedParameters)
-            {
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    var stackTrace = new System.Diagnostics.StackTrace(skipFrames: 1, fNeedFileInfo: false);
-                    var caller = stackTrace.GetFrame(0)?.GetMethod()?.Name ?? "Unknown";
-                    DebugLogger.Warning($"[SleeveParameterService] [BATCH-PARAMS] ⚠️ SAFETY: FlushDeferredParameters called AGAIN from {caller} - IGNORING (already flushed once). This indicates a bug - parameters should only flush once at the end!");
-                }
-                return 0; // ✅ CRITICAL: Exit early to prevent duplicate flushes
-            }
-            
             if (targetDict == null || targetDict.Count == 0)
             {
-                _hasFlushedParameters = true; // Mark as flushed even if empty
                 return 0;
             }
             
@@ -646,11 +633,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             }
             finally
             {
-                // Only mark as flushed and clear if requested (allows double-flush strategy)
-                if (clearList)
-                {
-                    _hasFlushedParameters = true;
-                }
+                // Clear deferred parameters after flush (ready for next placement batch)
                 
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
@@ -1288,43 +1271,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 
             try
             {
-                // ✅ DB-FIRST: Calculate "Elevation from Level" from Placement Point and Level Elevation (no Revit API lookup)
-                double? elevationFromLevel = null;
-                
                 // Get level for elevation lookup
                 Level level = null;
                 if (!string.IsNullOrEmpty(zone.MepElementLevelName))
                 {
                     level = GetCachedLevel(zone.MepElementLevelName);
                 }
-                
-                if (level != null)
+
+                double? elevationFromLevel = null;
+                Parameter elevationFromLevelParam = instance.LookupParameter("Elevation from Level");
+                if (elevationFromLevelParam != null && elevationFromLevelParam.StorageType == StorageType.Double)
                 {
-                    // Formula: Elevation from Level = Placement Z - Level Elevation
-                    elevationFromLevel = zone.SleevePlacementPointZ - level.Elevation;
-                    
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ✅ Zone={zone?.Id}, Sleeve={instance.Id}: " +
-                            $"Calculated Elevation from Level={elevationFromLevel.Value * 304.8:F1}mm (Point Z={zone.SleevePlacementPointZ * 304.8:F1}mm, Level Elevation={level.Elevation * 304.8:F1}mm)\n");
-                    }
-                }
-                else
-                {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] ⚠️ Zone={zone?.Id}, Sleeve={instance.Id}: " +
-                            $"Level not found - cannot calculate Elevation from Level. Falling back to Revit parameter probe as last resort.\n");
-                    }
-                    
-                    // Last resort fallback (only if Level not found)
-                    Parameter elevationFromLevelParam = instance.LookupParameter("Elevation from Level");
-                    if (elevationFromLevelParam != null && elevationFromLevelParam.StorageType == StorageType.Double)
-                    {
-                        elevationFromLevel = elevationFromLevelParam.AsDouble();
-                    }
+                    elevationFromLevel = elevationFromLevelParam.AsDouble();
                 }
 
                 // ✅ Use elevationFromLevel for calculation (renamed from scheduleOfLevel)
@@ -1455,259 +1413,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             }
         }
 
-        /// <summary>
-        /// ✅ NEW: Set Schedule Level and Elevation from Level for cluster sleeves.
-        /// Uses the first ClashZone in the cluster to get MEP element level information.
-        /// 
-        /// ✅ CRITICAL: For cluster sleeves, parameters are set directly (not deferred) to ensure they are applied.
-        /// This is safe because cluster sleeves are placed in their own transaction context.
-        /// </summary>
-        public void SetScheduleLevelAndElevationForCluster(
-            FamilyInstance clusterSleeve,
-            ClashZone? firstClashZone,
-            ElementId currentSleeveId)
-        {
-            if (clusterSleeve == null || firstClashZone == null) return;
 
-            // ✅ CRITICAL: Set Schedule Level only - "Elevation from Level" is a built-in parameter
-            // that automatically calculates from Schedule Level, so we don't need to set it manually.
-            // Setting it manually was causing the sleeve to move incorrectly.
-            
-            // Set Schedule Level directly
-            try
-            {
-                Level? mepLevel = null;
-                if (!string.IsNullOrWhiteSpace(firstClashZone.MepElementLevelName))
-                {
-                    mepLevel = new FilteredElementCollector(_doc)
-                        .OfClass(typeof(Level))
-                        .Cast<Level>()
-                        .FirstOrDefault(l => string.Equals(l.Name, firstClashZone.MepElementLevelName, StringComparison.OrdinalIgnoreCase));
-                }
-
-                if (mepLevel != null)
-                {
-                    var scheduleLevelParam = clusterSleeve.LookupParameter("Schedule of Level")
-                                         ?? clusterSleeve.LookupParameter("Schedule Level")
-                                         ?? clusterSleeve.LookupParameter("ScheduleLevel")
-                                         ?? clusterSleeve.Symbol?.LookupParameter("Schedule of Level")
-                                         ?? clusterSleeve.Symbol?.LookupParameter("Schedule Level")
-                                         ?? clusterSleeve.Symbol?.LookupParameter("ScheduleLevel");
-                    
-                    if (scheduleLevelParam != null && !scheduleLevelParam.IsReadOnly)
-                    {
-                        if (scheduleLevelParam.StorageType == StorageType.ElementId)
-                        {
-                            scheduleLevelParam.Set(mepLevel.Id);
-                        }
-                        else if (scheduleLevelParam.StorageType == StorageType.String)
-                        {
-                            scheduleLevelParam.Set(mepLevel.Name);
-                        }
-                        
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("placement_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [CLUSTER-SCHEDULE-LEVEL] ✅ Set Schedule Level to '{mepLevel.Name}' on cluster sleeve {currentSleeveId.IntegerValue}. " +
-                                $"Elevation from Level will be automatically calculated by Revit.\n");
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [CLUSTER-SCHEDULE-LEVEL] ❌ Error: {ex.Message}\n");
-                }
-            }
-            
-            // ✅ REMOVED: "Elevation from Level" is a built-in parameter that automatically calculates
-            // from Schedule Level. We should NOT set it manually as it was causing incorrect placement.
-            // Revit will calculate it automatically after Schedule Level is set.
-        }
-
-        /// <summary>
-        /// ✅ NEW: Set Elevation from Level parameter on sleeve.
-        /// Elevation from Level = Placement Point Z - Reference Level Elevation (without Height/2 subtraction).
-        /// 
-        /// This is different from Bottom of Opening which subtracts Height/2.
-        /// Applies to: Both individual and cluster sleeves.
-        /// </summary>
-        private void SetElevationFromLevelParameter(FamilyInstance instance, ClashZone zone, ElementId currentSleeveId)
-        {
-            if (instance == null || zone == null) return;
-
-            try
-            {
-                // ✅ STEP 1: Get Reference Level Elevation
-                // ✅ CRITICAL: Level elevation is essential for calculating Elevation from Level and Bottom of Opening
-                double? referenceLevelElevation = null;
-
-                // ✅ PRIORITY 1: Try to get from ClashZone.MepElementLevelElevation (saved directly to database during refresh)
-                // ✅ CRITICAL: This is the MOST RELIABLE source as it's pre-calculated and persisted during refresh
-                // This ensures Elevation from Level and Bottom of Opening calculate correctly, not from 0 level
-                // ✅ FIX: Check if value is valid (not 0.0 and not default) - level elevations are typically > 0 (even for Level 1)
-                if (zone.MepElementLevelElevation != 0.0 && Math.Abs(zone.MepElementLevelElevation) > 1e-6)
-                {
-                    referenceLevelElevation = zone.MepElementLevelElevation;
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [ELEVATION-FROM-LEVEL] ✅ Zone={zone.Id}, Sleeve={instance.Id}: " +
-                            $"Found Reference Level elevation {referenceLevelElevation.Value * 304.8:F1}mm from MepElementLevelElevation (database) - PRIORITY 1\n");
-                    }
-                }
-                else if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    // ✅ DIAGNOSTIC: Log when MepElementLevelElevation is 0.0 or invalid (this will cause incorrect calculations)
-                    SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [ELEVATION-FROM-LEVEL] ⚠️ Zone={zone.Id}, Sleeve={instance.Id}: " +
-                        $"MepElementLevelElevation={zone.MepElementLevelElevation * 304.8:F1}mm is 0.0 or invalid - will try other sources\n");
-                }
-
-                // ✅ PRIORITY 2: Try to get from MEP element directly (if MepElementLevelElevation not available)
-                if (referenceLevelElevation == null && zone.MepElementId != null && zone.MepElementId != ElementId.InvalidElementId)
-                {
-                    try
-                    {
-                        var mepElement = ElementRetrievalService.GetElementFromDocumentOrLinked(_doc, zone.MepElementId);
-                        if (mepElement != null && mepElement.IsValidObject)
-                        {
-                            referenceLevelElevation = HostLevelHelper.GetHostReferenceLevelElevation(_doc, mepElement);
-                            if (referenceLevelElevation.HasValue && !DeploymentConfiguration.DeploymentMode)
-                            {
-                                SafeFileLogger.SafeAppendText("placement_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [ELEVATION-FROM-LEVEL] ✅ Zone={zone.Id}, Sleeve={instance.Id}: " +
-                                    $"Found Reference Level elevation {referenceLevelElevation.Value * 304.8:F1}mm from MEP element directly - PRIORITY 2\n");
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("placement_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [ELEVATION-FROM-LEVEL] ⚠️ Zone={zone.Id}, Sleeve={instance.Id}: " +
-                                $"Error getting Reference Level elevation from MEP element: {ex.Message}\n");
-                        }
-                    }
-                }
-
-                // ✅ PRIORITY 2: Try to get from ClashZone.MepElementLevelName (from database)
-                if (referenceLevelElevation == null && !string.IsNullOrWhiteSpace(zone.MepElementLevelName))
-                {
-                    var levelByName = new FilteredElementCollector(_doc)
-                        .OfClass(typeof(Level))
-                        .Cast<Level>()
-                        .FirstOrDefault(l => string.Equals(l.Name, zone.MepElementLevelName, StringComparison.OrdinalIgnoreCase));
-                    
-                    if (levelByName != null)
-                    {
-                        referenceLevelElevation = levelByName.Elevation;
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("placement_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [ELEVATION-FROM-LEVEL] ✅ Zone={zone.Id}, Sleeve={instance.Id}: " +
-                                $"Found Reference Level elevation from MepElementLevelName: {referenceLevelElevation.Value * 304.8:F1}mm\n");
-                        }
-                    }
-                }
-
-                // ✅ PRIORITY 3: Try to get from ClashZone.MepParameterValues
-                if (referenceLevelElevation == null && zone.MepParameterValues != null)
-                {
-                    referenceLevelElevation = HostLevelHelper.GetReferenceLevelElevationFromParameters(_doc, zone.MepParameterValues);
-                    
-                    if (referenceLevelElevation.HasValue && !DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [ELEVATION-FROM-LEVEL] ✅ Zone={zone.Id}, Sleeve={instance.Id}: " +
-                            $"Found Reference Level elevation from MepParameterValues: {referenceLevelElevation.Value * 304.8:F1}mm\n");
-                    }
-                }
-
-                // ✅ STEP 2: Calculate Elevation from Level = Placement Z - Reference Level Elevation
-                if (referenceLevelElevation.HasValue)
-                {
-                    // Get actual placement point from the sleeve instance
-                    double placementZ = 0.0;
-                    if (instance.Location is LocationPoint locationPoint)
-                    {
-                        placementZ = locationPoint.Point.Z;
-                    }
-                    else if (instance.Location is LocationCurve locationCurve)
-                    {
-                        placementZ = locationCurve.Curve.GetEndPoint(0).Z;
-                    }
-                    else
-                    {
-                        // Fallback: Use transform origin
-                        placementZ = instance.GetTransform().Origin.Z;
-                    }
-                    
-                    double levelElevation = referenceLevelElevation.Value;
-                    // ✅ FORMULA: Elevation from Level = Placement Z - Reference Level Elevation (without Height/2)
-                    double elevationFromLevel = placementZ - levelElevation;
-
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [ELEVATION-FROM-LEVEL] ✅ Zone={zone.Id}, Sleeve={instance.Id}: " +
-                            $"Calculated Elevation from Level={elevationFromLevel * 304.8:F1}mm " +
-                            $"(PlacementZ={placementZ * 304.8:F1}mm - ReferenceLevelElevation={levelElevation * 304.8:F1}mm)\n");
-                    }
-
-                    // ✅ STEP 3: Set Elevation from Level parameter on sleeve
-                    var elevationParam = instance.LookupParameter("Elevation from Level")
-                                      ?? instance.LookupParameter("Schedule of Level");
-
-                    if (elevationParam != null && elevationParam.StorageType == StorageType.Double && !elevationParam.IsReadOnly)
-                    {
-                        if (OptimizationFlags.UseBatchedParameterWrites)
-                        {
-                            var targetDict = ActiveBatchDictionary;
-                            if (!targetDict.ContainsKey(currentSleeveId))
-                                targetDict[currentSleeveId] = new Dictionary<string, object>();
-                            targetDict[currentSleeveId][elevationParam.Definition.Name] = elevationFromLevel;
-                        }
-                        else
-                        {
-                            elevationParam.Set(elevationFromLevel);
-                        }
-
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("placement_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [ELEVATION-FROM-LEVEL] ✅ Zone={zone.Id}, Sleeve={instance.Id}: " +
-                                $"Set Elevation from Level={elevationFromLevel * 304.8:F1}mm on sleeve\n");
-                        }
-                    }
-                    else if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [ELEVATION-FROM-LEVEL] ⚠️ Zone={zone.Id}, Sleeve={instance.Id}: " +
-                            $"Elevation from Level parameter not found or read-only - skipping\n");
-                    }
-                }
-                else if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [ELEVATION-FROM-LEVEL] ⚠️ Zone={zone.Id}, Sleeve={instance.Id}: " +
-                        $"Could not find Reference Level elevation - Elevation from Level not set\n");
-                }
-            }
-            catch (Exception ex)
-            {
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [ELEVATION-FROM-LEVEL] ❌ Zone={zone?.Id}, Sleeve={instance?.Id}: " +
-                        $"Error setting Elevation from Level: {ex.Message}\n");
-                }
-            }
-        }
 
         #region Performance Optimization Methods
 

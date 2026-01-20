@@ -2113,14 +2113,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     // Parameters for ClusterSleevesV2
                     List<ClashZone> clashZones;
-                    string categoryString = "All"; // Default to All categories
+                    // FIX: Use current filter category instead of "All" to prevent "Zombie" placement of unselected categories
+                    string categoryString = Models.MepCategoryConstants.Normalize(filter.Category.ToString());
 
                     using (var ctx = new SleeveDbContext(_document))
                     {
                         var repo = new ClashZoneRepository(ctx);
-                        // Fetch zones relevant for clustering (e.g. valid ones)
-                        // For now we fetch all valid ones to be safe
-                        clashZones = repo.GetAllClashZones().Where(z => z.IsResolved == false).ToList();
+                        // Fetch only zones for the current category
+                        clashZones = repo.GetAllClashZones()
+                                         .Where(z => !z.IsResolved && string.Equals(z.MepElementCategory, categoryString, StringComparison.OrdinalIgnoreCase))
+                                         .ToList();
                     }
                     int filterId = 0; 
                     int comboId = 0; 
