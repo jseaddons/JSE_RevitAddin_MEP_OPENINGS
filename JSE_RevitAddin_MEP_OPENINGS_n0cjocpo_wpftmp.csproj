@@ -1,0 +1,253 @@
+<!-- IMPORTANT: THERE IS NO HOST WALL, ONLY LINKED WALLS. ALL CODE AND LOGIC MUST ASSUME WALLS ARE LINKED. -->
+<!-- WARNING: THIS PROJECT NOW BUILDS FOR REVIT 2023 & 2024 ONLY. -->
+<!-- Older (2021/2022) and future (2025/2026) versions pruned for minimal dual-build. -->
+<!-- Package versions remain pinned to 2023 toolkit; direct Revit DLL references vary by RevitVersion for 2024 build. -->
+<!-- Future extension: reintroduce csproj blocks + update toolkit packages to matching major version. -->
+<Project>
+  <PropertyGroup>
+    <AssemblyName>JSE_RevitAddin_MEP_OPENINGS</AssemblyName>
+    <IntermediateOutputPath>obj\Release R24\</IntermediateOutputPath>
+    <BaseIntermediateOutputPath>obj\</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\</MSBuildProjectExtensionsPath>
+    <_TargetAssemblyProjectName>JSE_RevitAddin_MEP_OPENINGS</_TargetAssemblyProjectName>
+    <RootNamespace>JSE_RevitAddin_MEP_OPENINGS</RootNamespace>
+  </PropertyGroup>
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+  <PropertyGroup>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <ImplicitUsings>true</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <TargetFramework>net48</TargetFramework>
+    <Configurations>Debug R23;Debug R24;Release R23;Release R24</Configurations>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Deterministic>false</Deterministic>
+  </PropertyGroup>
+  <!-- Revit configuration -->
+  <PropertyGroup Condition="$(Configuration.Contains('R23'))">
+    <RevitVersion>2023</RevitVersion>
+    <TargetFramework>net48</TargetFramework>
+  </PropertyGroup>
+  <PropertyGroup Condition="$(Configuration.Contains('R23'))">
+    <DefineConstants>$(DefineConstants);REVIT2023_OR_LESS</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="$(Configuration.Contains('R24'))">
+    <RevitVersion>2024</RevitVersion>
+    <TargetFramework>net48</TargetFramework>
+  </PropertyGroup>
+  <PropertyGroup Condition="$(Configuration.Contains('R24'))">
+    <DefineConstants>$(DefineConstants);REVIT2024_OR_GREATER</DefineConstants>
+  </PropertyGroup>
+  <!-- Launch configuration -->
+  <PropertyGroup>
+    <StartAction>Program</StartAction>
+    <StartProgram>C:\Program Files\Autodesk\Revit $(RevitVersion)\Revit.exe</StartProgram>
+    <StartArguments>/language ENG</StartArguments>
+  </PropertyGroup>
+  <!-- Build configuration -->
+  <PropertyGroup>
+    <IsRepackable>true</IsRepackable>
+    <DeployRevitAddin>false</DeployRevitAddin>
+    <BaseOutputPath>bin\$(Configuration)</BaseOutputPath>
+    <Company>JSE</Company>
+    <Description>OPENING PLACEMENT</Description>
+  </PropertyGroup>
+  <!-- ✅ Exclude native DLLs from ILRepack (native DLLs cannot be merged) -->
+  <!-- ILRepack will fail if it tries to merge native DLLs like e_sqlite3.dll -->
+  <!-- Native DLLs must remain as separate files and be copied alongside the merged DLL -->
+  <!-- Nice3point.Revit.Build.Tasks uses RepackBinariesExcludes property to exclude files from ILRepack -->
+  <PropertyGroup Condition="'$(IsRepackable)' == 'true'">
+    <RepackBinariesExcludes>e_sqlite3.dll</RepackBinariesExcludes>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- ✅ OOP REFACTORING: Exclude backup folders from compilation to avoid duplicate class errors -->
+    <Compile Remove="_BACKUPS\**" />
+    <EmbeddedResource Remove="_BACKUPS\**" />
+    <None Remove="_BACKUPS\**" />
+    <!-- Additional strict removal patterns to suppress lingering backup code from build -->
+    <Compile Remove="_BACKUPS/**/*.cs" />
+    <Compile Remove="Services/Backup/**/*.cs" />
+    <Compile Remove="Services/Backup2/**/*.cs" />
+    <Compile Remove="Services\\Backup\\**\\*.cs" />
+    <Compile Remove="Services\\Backup2\\**\\*.cs" />
+    <Compile Remove="Commands\ApplyOpeningsFromCsvCommand.cs" />
+    <Compile Remove="ViewModels\OpeningStatusPanelViewModel.cs" />
+    <Compile Remove="ViewModels\OpeningStatusDialogViewModel.cs" />
+    <Compile Remove="ViewModels\OpeningStatusItem.cs" />
+    <PackageReference Include="Nice3point.Revit.Build.Tasks" Version="3.0.1" />
+    <PackageReference Include="Nice3point.Revit.Toolkit" Version="2023.1.0" />
+    <PackageReference Include="Nice3point.Revit.Extensions" Version="2023.1.0" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2023.1.1" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2023.1.1" />
+    <PackageReference Include="Serilog" Version="4.2.0" />
+    <PackageReference Include="Serilog.Sinks.Debug" Version="3.0.0" />
+    <PackageReference Include="ILRepack" Version="2.0.41" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+    <PackageReference Include="System.Data.SQLite.Core" Version="1.0.118.0" />
+    <PackageReference Include="System.Text.Json" Version="6.0.11" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="JSE_RevitAddin_MEP_OPENINGS.addin">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <!-- ✅ Ensure SQLite native DLLs are copied to output directory for team deployment -->
+  <ItemGroup>
+    <!-- Managed provider assembly -->
+    <None Include="$(NuGetPackageRoot)system.data.sqlite.core\1.0.118.0\lib\net46\System.Data.SQLite.dll" Condition="Exists('$(NuGetPackageRoot)system.data.sqlite.core\1.0.118.0\lib\net46\System.Data.SQLite.dll')">
+      <Link>System.Data.SQLite.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- Ensure System.Data.SQLite native runtime (x64) is available in output -->
+    <None Include="$(NuGetPackageRoot)system.data.sqlite.core\1.0.118.0\runtimes\win-x64\native\SQLite.Interop.dll" Condition="Exists('$(NuGetPackageRoot)system.data.sqlite.core\1.0.118.0\runtimes\win-x64\native\SQLite.Interop.dll')">
+      <Link>x64\SQLite.Interop.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <Target Name="PostBuild" AfterTargets="Build">
+    <PropertyGroup>
+      <RevitAddinFolder>C:\ProgramData\Autodesk\Revit\Addins\$(RevitVersion)\</RevitAddinFolder>
+    </PropertyGroup>
+    <MakeDir Directories="$(RevitAddinFolder)" />
+    <!-- Copy main add-in DLL -->
+    <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(RevitAddinFolder)" SkipUnchangedFiles="true" />
+    <!-- Copy .addin manifest -->
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\$(AssemblyName).addin" DestinationFolder="$(RevitAddinFolder)" SkipUnchangedFiles="true" />
+    <!-- ✅ Copy SQLite native DLLs for team deployment -->
+    <ItemGroup>
+      <SqliteDlls Include="$(OutputPath)System.Data.SQLite.dll" Condition="Exists('$(OutputPath)System.Data.SQLite.dll')" />
+      <SqliteDlls Include="$(OutputPath)SQLite.Interop.dll" Condition="Exists('$(OutputPath)SQLite.Interop.dll')" />
+    </ItemGroup>
+    <Message Text="[PostBuild] Copying SQLite DLLs to $(RevitAddinFolder)" Importance="high" />
+    <Message Text="[PostBuild] Found @(SqliteDlls-&gt;Count()) SQLite DLL(s) to copy" Importance="high" />
+    <Copy SourceFiles="@(SqliteDlls)" DestinationFolder="$(RevitAddinFolder)" SkipUnchangedFiles="true">
+      <Output TaskParameter="CopiedFiles" ItemName="CopiedSqliteDlls" />
+    </Copy>
+    <Message Text="[PostBuild] Copied @(CopiedSqliteDlls-&gt;Count()) SQLite DLL(s)" Importance="high" />
+    <!-- Copy architecture-specific native runtime if present -->
+    <ItemGroup>
+      <SqliteInteropX64 Include="$(OutputPath)x64\SQLite.Interop.dll" Condition="Exists('$(OutputPath)x64\SQLite.Interop.dll')" />
+    </ItemGroup>
+    <MakeDir Directories="$(RevitAddinFolder)x64\" Condition="@(SqliteInteropX64) != ''" />
+    <Copy SourceFiles="@(SqliteInteropX64)" DestinationFolder="$(RevitAddinFolder)x64\" SkipUnchangedFiles="true" Condition="@(SqliteInteropX64) != ''" />
+    <!-- Warn if critical native DLL is missing -->
+    <Warning Text="[PostBuild] ⚠️ WARNING: SQLite.Interop.dll not found in build output! SQLite will not work. Check System.Data.SQLite package restore." Condition="!Exists('$(OutputPath)SQLite.Interop.dll') AND !Exists('$(OutputPath)x64\SQLite.Interop.dll')" />
+  </Target>
+  <!-- Exclude backup files and reference files -->
+  <!-- IMPORTANT: THERE IS NO HOST WALL, ONLY LINKED WALLS. DO NOT FILTER OR HANDLE HOST WALLS. -->
+  <ItemGroup>
+    <Compile Remove="Services\*BKP*.cs" />
+    <Compile Remove="Commands\*BKP*.cs" />
+    <Compile Remove="Services\Archive\**\*.cs" />
+    <Compile Remove="Archive\**\*.cs" />
+    <!-- ✅ ENABLED: refresh refactor files are now included for compilation -->
+    <!-- <Compile Remove="refresh refactor\**\*.cs" /> -->
+    <Compile Remove="Commands\Backup\**\*.cs" />
+    <Compile Remove="Views\Backup\**\*.cs" />
+    <Compile Remove="ViewModels\Backup\**\*.cs" />
+    <Compile Remove="Helpers\Backup\**\*.cs" />
+    <Compile Remove="Services\Backup\**\*.cs" />
+    <Compile Remove="Services\Backup2\**\*.cs" />
+    <!-- ✅ PHASE 2: Legacy RefreshService excluded - only refactored service is used -->
+    <Compile Remove="Services\RefreshService.cs" />
+    <Compile Remove="Commands\ClusterMergeCommand.cs" />
+    <Compile Remove="Commands\CleanCableTraySleevesCommand.cs" />
+    <Compile Remove="Commands\IndividualDuctSleeveCommand.cs" />
+    <Compile Remove="Services\Archive\ClusterMergeCommand.cs" />
+    <Compile Remove="Services\Archive\ClusterFamilyData.cs" />
+    <Compile Remove="Services\Archive\CompareDuctCableTrayPlacementCommand.cs" />
+    <Compile Remove="ViewModels\ClusterMergeToolViewModel.cs" />
+    <Compile Remove="Services\Backup\*BKP*.cs" />
+    <Compile Remove="Commands\Backup\*BKP*.cs" />
+    <Compile Remove="*BKP*.cs" />
+    <Compile Remove="*Backup*.cs" />
+    <Compile Remove="Backup\*.cs" />
+    <Compile Remove="Reference\**" />
+    <None Remove="BACKUP_WORKING_2025-06-26_16-30-47_CableTrayFixed\**" />
+    <None Remove="Reference\**" />
+    <Content Remove="BACKUP_WORKING_2025-06-26_16-30-47_CableTrayFixed\**" />
+    <Content Remove="Reference\**" />
+    <EmbeddedResource Remove="BACKUP_WORKING_2025-06-26_16-30-47_CableTrayFixed\**" />
+    <EmbeddedResource Remove="Reference\**" />
+  </ItemGroup>
+  <ItemGroup>
+  </ItemGroup>
+  <ItemGroup>
+  </ItemGroup>
+  <!-- Exclude backup folder from compilation -->
+  <ItemGroup>
+    <Compile Remove="_BACKUPS/**/*.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\communitytoolkit.mvvm\8.2.2\lib\netstandard2.0\CommunityToolkit.Mvvm.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\jetbrains.annotations\2022.3.1\lib\net20\JetBrains.Annotations.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\microsoft.bcl.asyncinterfaces\7.0.0\lib\net462\Microsoft.Bcl.AsyncInterfaces.dll" />
+    <ReferencePath Include="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\Microsoft.CSharp.dll" />
+    <ReferencePath Include="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\mscorlib.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\nice3point.revit.extensions\2023.1.0\lib\net48\Nice3point.Revit.Extensions.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\nice3point.revit.toolkit\2023.1.0\lib\net48\Nice3point.Revit.Toolkit.dll" />
+    <ReferencePath Include="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\PresentationCore.dll" />
+    <ReferencePath Include="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\PresentationFramework.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\nice3point.revit.api.revitapi\2023.1.1\ref\net48\RevitAPI.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\nice3point.revit.api.revitapiui\2023.1.1\ref\net48\RevitAPIUI.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\serilog\4.2.0\lib\net471\Serilog.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\serilog.sinks.debug\3.0.0\lib\net471\Serilog.Sinks.Debug.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\system.buffers\4.5.1\ref\net45\System.Buffers.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\system.componentmodel.annotations\5.0.0\ref\net461\System.ComponentModel.Annotations.dll" />
+    <ReferencePath Include="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\System.ComponentModel.DataAnnotations.dll" />
+    <ReferencePath Include="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\System.Core.dll" />
+    <ReferencePath Include="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\System.Data.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\stub.system.data.sqlite.core.netframework\1.0.118\lib\net46\System.Data.SQLite.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\system.diagnostics.diagnosticsource\8.0.1\lib\net462\System.Diagnostics.DiagnosticSource.dll" />
+    <ReferencePath Include="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\System.dll" />
+    <ReferencePath Include="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\System.Drawing.dll" />
+    <ReferencePath Include="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\System.IO.Compression.FileSystem.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\system.memory\4.5.5\lib\net461\System.Memory.dll" />
+    <ReferencePath Include="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\System.Numerics.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\system.numerics.vectors\4.5.0\ref\net46\System.Numerics.Vectors.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\system.runtime.compilerservices.unsafe\6.0.0\lib\net461\System.Runtime.CompilerServices.Unsafe.dll" />
+    <ReferencePath Include="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\System.Runtime.Serialization.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\system.text.encodings.web\6.0.1\lib\net461\System.Text.Encodings.Web.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\system.text.json\6.0.11\lib\net461\System.Text.Json.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\system.threading.channels\8.0.0\lib\net462\System.Threading.Channels.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\system.threading.tasks.extensions\4.5.4\lib\net461\System.Threading.Tasks.Extensions.dll" />
+    <ReferencePath Include="C:\Users\jse2084\.nuget\packages\system.valuetuple\4.5.0\ref\net47\System.ValueTuple.dll" />
+    <ReferencePath Include="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\System.Windows.Controls.Ribbon.dll" />
+    <ReferencePath Include="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\System.Windows.Forms.dll" />
+    <ReferencePath Include="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\System.Xaml.dll" />
+    <ReferencePath Include="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\System.Xml.dll" />
+    <ReferencePath Include="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\System.Xml.Linq.dll" />
+    <ReferencePath Include="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\UIAutomationClient.dll" />
+    <ReferencePath Include="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\UIAutomationClientsideProviders.dll" />
+    <ReferencePath Include="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\UIAutomationProvider.dll" />
+    <ReferencePath Include="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\UIAutomationTypes.dll" />
+    <ReferencePath Include="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\WindowsBase.dll" />
+    <ReferencePath Include="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\WindowsFormsIntegration.dll" />
+    <ReferencePath Include="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\Facades\netstandard.dll" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Release R24\ViewModels\FamilySelectionWindow.g.cs" />
+    <Compile Include="C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Release R24\Views\JSE_RevitAddin_MEP_OPENINGSDialog.g.cs" />
+    <Compile Include="C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Release R24\Views\JSE_RevitAddin_MEP_OPENINGSView.g.cs" />
+    <Compile Include="C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Release R24\Views\LeftPanel.g.cs" />
+    <Compile Include="C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Release R24\Views\MainDialog.g.cs" />
+    <Compile Include="C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Release R24\Views\MiddlePanel.g.cs" />
+    <Compile Include="C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Release R24\Views\OpeningStatusDialog.g.cs" />
+    <Compile Include="C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Release R24\Views\OpeningStatusPanel.g.cs" />
+    <Compile Include="C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Release R24\Views\ProfileManagementDialog.g.cs" />
+    <Compile Include="C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Release R24\Views\ProfileSetupDialog.g.cs" />
+    <Compile Include="C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Release R24\Views\RightPanel.g.cs" />
+    <Compile Include="C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Release R24\Views\UserControl1.g.cs" />
+    <Compile Include="C:\JSE_CSharp_Projects\JSE_MEPOPENING_23\obj\Release R24\GeneratedInternalTypeHelper.g.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Analyzer Include="C:\Users\jse2084\.nuget\packages\communitytoolkit.mvvm\8.2.2\analyzers\dotnet\roslyn4.3\cs\CommunityToolkit.Mvvm.CodeFixers.dll" />
+    <Analyzer Include="C:\Users\jse2084\.nuget\packages\communitytoolkit.mvvm\8.2.2\analyzers\dotnet\roslyn4.3\cs\CommunityToolkit.Mvvm.SourceGenerators.dll" />
+    <Analyzer Include="C:\Users\jse2084\.nuget\packages\system.text.json\6.0.11\analyzers\dotnet\roslyn4.0\cs\System.Text.Json.SourceGeneration.dll" />
+  </ItemGroup>
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+</Project>

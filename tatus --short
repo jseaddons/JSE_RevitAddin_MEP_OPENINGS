@@ -1,0 +1,94 @@
+ Application.cs                                     |  209 [32m+++[m
+ CODING_STANDARDS_AND_BEST_PRACTICES.md             |   27 [32m+[m[31m-[m
+ Commands/MarkParameterCommand.cs                   |    2 [32m+[m[31m-[m
+ Commands/UniversalClusterCommand.cs                |    2 [32m+[m[31m-[m
+ Commands/UniversalSleevePlacementCommand.cs        |  139 [32m+[m[31m-[m
+ Create-Installer.ps1                               |    4 [32m+[m[31m-[m
+ DATABASE_CONDITIONS_ISSUE_ANALYSIS.md              |  201 [32m+++[m
+ DATABASE_EMPTY_DESIGN_DISCUSSION.md                |  156 [32m++[m
+ DATABASE_FLAG_MANAGEMENT_IMPROVEMENTS.md           |  254 [32m+++[m
+ DATABASE_GUID_MANAGEMENT_IMPLEMENTATION.md         |  108 [32m++[m
+ DATABASE_INITIALIZATION_FIX.md                     |   84 [32m+[m
+ DEPLOYMENT.md                                      |  164 [32m++[m
+ Data/Entities/SleeveClashZone.cs                   |   67 [32m+[m
+ Data/Entities/SleeveCondition.cs                   |   26 [32m+[m
+ Data/Entities/SleeveEvent.cs                       |   18 [32m+[m
+ Data/Entities/SleeveFileCombo.cs                   |   18 [32m+[m
+ Data/Entities/SleeveFilter.cs                      |   18 [32m+[m
+ Data/Entities/SleeveSnapshot.cs                    |   28 [32m+[m
+ Data/Repositories/ClashZoneRepository.cs           | 1735 [32m++++++++++++++++++++[m
+ Data/Repositories/ConditionRepository.cs           |  364 [32m++++[m
+ Data/Repositories/FilterRepository.cs              |  206 [32m+++[m
+ Data/Repositories/IClashZoneRepository.cs          |   47 [32m+[m
+ Data/Repositories/SleeveSnapshotRepository.cs      |  181 [32m++[m
+ Data/SleeveDbContext.cs                            |  671 [32m++++++++[m
+ Docs/Revit2024_Migration_Checklist.md              |   53 [32m+[m
+ FLAG_RESET_DIAGNOSTIC_REPORT.md                    |  315 [32m++++[m
+ JSE_RevitAddin_MEP_OPENINGS.csproj                 |   63 [32m+[m
+ JSE_RevitAddin_MEP_OPENINGS.iss                    |    4 [32m+[m
+ JSE_RevitAddin_MEP_OPENINGS_huhkbe1c_wpftmp.csproj |  267 [32m+++[m
+ Models/ClashZone.cs                                |    7 [32m+[m
+ Models/MarkPrefixSettings.cs                       |    2 [32m+[m[31m-[m
+ Models/MepCategoryConstants.cs                     |   21 [32m+[m
+ PERSISTENCE_TIMING_FLOW_DIAGRAM.md                 |  622 [32m+++++++[m
+ PLACEMENT_ISSUES_DIAGNOSTIC.md                     |   68 [32m+[m
+ SLEEVE_PLACEMENT_DATABASE_OPTIMIZATION.md          |  159 [32m++[m
+ SLEEVE_PLACEMENT_DATABASE_OPTIMIZATION_SUMMARY.md  |   98 [32m++[m
+ SLEEVE_PLACEMENT_METHODOLOGY.md                    |   35 [32m+[m
+ SQLITE_ALTERNATIVE_SYSTEM_DATA_SQLITE.md           |   88 [32m+[m
+ SQLITE_NATIVE_DLL_FIX.md                           |  259 [32m+++[m
+ Services/ClashZoneDataService.cs                   |  282 [32m++++[m
+ Services/ClashZonePersistenceService.cs            |  276 [32m+++[m[31m-[m
+ Services/ClashZoneService.cs                       |  229 [32m++[m[31m-[m
+ .../CableTrayClearanceProvider.cs                  |    4 [32m+[m[31m-[m
+ .../FireDamperClearanceProvider.cs                 |    2 [32m+[m[31m-[m
+ Services/ClearanceProviders/IClearanceProvider.cs  |    2 [32m+[m[31m-[m
+ .../ClearanceProviders/SleeveClearanceProvider.cs  |    2 [32m+[m[31m-[m
+ Services/ConditionsService.cs                      |  376 [32m++++[m[31m-[m
+ .../ConfigurationResolutionService.cs              |    4 [32m+[m[31m-[m
+ Services/DeploymentConfiguration.cs                |    7 [32m+[m
+ Services/FilterManagementService.cs                |  632 [32m++++++[m[31m-[m
+ Services/FlagManager.cs                            | 1099 [32m++++++++++++[m[31m-[m
+ Services/GlobalIndexService.cs                     |  268 [32m++[m[31m-[m
+ Services/GuidManager.cs                            |   74 [32m+[m
+ Services/IntersectionOptimizationService.cs        |    2 [32m+[m[31m-[m
+ Services/MarkParameterService.cs                   |  306 [32m+++[m[31m-[m
+ Services/MepIntersectionService.cs                 |   44 [32m+[m[31m-[m
+ Services/OpeningCommandOrchestrator.cs             |  154 [32m++[m
+ Services/ParameterSnapshotService.cs               |    7 [32m+[m[31m-[m
+ Services/ParameterTransferService.cs               |  684 [32m++[m[31m------[m
+ Services/RefreshService.cs                         |  290 [32m+++[m[31m-[m
+ Services/RefreshServiceFactory.cs                  |   71 [32m+[m[31m-[m
+ Services/RevitUnitConversionService.cs             |  118 [32m++[m
+ Services/SleevePlacementCoordinator.cs             |   40 [32m+[m[31m-[m
+ Services/SleevePlacementExternalEvent.cs           |  164 [32m+[m[31m-[m
+ Services/SystemTypeCatalogService.cs               |  253 [32m+++[m
+ Services/UniversalClusterService.cs                |  621 [32m++++++[m[31m-[m
+ Services/UniversalSleevePlacerService.cs           |  507 [32m++++[m[31m--[m
+ Views/EmergencyMainDialog.cs                       |  598 [32m++++++[m[31m-[m
+ Views/OpeningParameterConfigurationDialog.cs       |    6 [32m+[m[31m-[m
+ Views/ParameterServiceDialogV2.cs                  |  277 [32m+++[m[31m-[m
+ Views/RefreshProgressDialog.cs                     |  259 [32m+++[m
+ Views/SettingsDialog.cs                            |  165 [32m+[m[31m-[m
+ architecture/SLEEVE_PERSISTENCE_PLAN.md            |    2 [32m+[m[31m-[m
+ architecture/SQLITE_MIGRATION_PHASE1_STATUS.md     |  209 [32m+++[m
+ architecture/SQLITE_NUGET_PACKAGES.md              |   88 [32m+[m
+ architecture/SQLITE_PHASE1_TESTING_GUIDE.md        |  315 [32m++++[m
+ check-sqlite-deployment.ps1                        |   94 [32m++[m
+ deploy-addin.ps1                                   |  115 [32m++[m
+ fix-addin-manager-sqlite.ps1                       |  130 [32m++[m
+ .../JSE_RevitAddin_MEP_OPENINGS.AssemblyInfo.cs    |    2 [32m+[m[31m-[m
+ ...evitAddin_MEP_OPENINGS.AssemblyInfoInputs.cache |    2 [32m+[m[31m-[m
+ .../JSE_RevitAddin_MEP_OPENINGS.assets.cache       |  Bin [31m11259[m -> [32m13722[m bytes
+ ...din_MEP_OPENINGS.csproj.AssemblyReference.cache |  Bin [31m30891[m -> [32m34667[m bytes
+ ...evitAddin_MEP_OPENINGS.csproj.nuget.dgspec.json |    8 [32m+[m
+ ..._RevitAddin_MEP_OPENINGS.csproj.nuget.g.targets |    2 [32m+[m
+ obj/project.assets.json                            |  274 [32m+++[m[31m-[m
+ obj/project.nuget.cache                            |    9 [32m+[m[31m-[m
+ refresh refactor/intersection_processor.cs         |  346 [32m+++[m[31m-[m
+ refresh refactor/parameter_capture_service.cs      |  281 [32m+++[m[31m-[m
+ refresh refactor/refresh_context.cs                |    3 [32m+[m
+ refresh refactor/refresh_path_strategy.cs          |  637 [32m+++++++[m
+ refresh refactor/refresh_service_refactored.cs     |  719 [32m+++++++[m[31m-[m
+ refresh refactor/xml_cache_manager.cs              |  107 [32m+[m[31m-[m
+ 93 files changed, 16151 insertions(+), 1805 deletions(-)

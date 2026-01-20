@@ -1,0 +1,560 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="Database Save Flowchart" id="database-save-flowchart">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="2400" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- Start Node -->
+        <mxCell id="start" value="User Clicks Refresh" style="ellipse;whiteSpace=wrap;html=1;fillColor=#90EE90;strokeColor=#006400;" vertex="1" parent="1">
+          <mxGeometry x="700" y="40" width="200" height="80" as="geometry" />
+        </mxCell>
+        
+        <!-- OnRefreshClick -->
+        <mxCell id="onRefresh" value="OnRefreshClick&#xa;EmergencyMainDialog" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="700" y="160" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- RefreshService -->
+        <mxCell id="refreshService" value="RefreshServiceRefactored&#xa;ExecuteRefresh" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="700" y="260" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- LoadEnabledFilter -->
+        <mxCell id="loadFilter" value="LoadEnabledFilter&#xa;Get or Create Filter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="700" y="360" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Filter Exists Decision -->
+        <mxCell id="filterExists" value="Filter&#xa;Exists?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;" vertex="1" parent="1">
+          <mxGeometry x="720" y="460" width="160" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- Create Filter Path -->
+        <mxCell id="createFilter" value="CreateFilterFromCurrentUIState&#xa;Create New Filter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#87CEEB;strokeColor=#4682B4;" vertex="1" parent="1">
+          <mxGeometry x="480" y="480" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Register Filter -->
+        <mxCell id="registerFilter" value="RegisterFilterInDatabase&#xa;Save to Filters Table" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#87CEEB;strokeColor=#4682B4;" vertex="1" parent="1">
+          <mxGeometry x="480" y="580" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Save UI State -->
+        <mxCell id="saveUIState" value="SaveFilterUIState&#xa;Save SelectedHostElementTypes&#xa;and OpeningSettings" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#87CEEB;strokeColor=#4682B4;" vertex="1" parent="1">
+          <mxGeometry x="480" y="680" width="200" height="80" as="geometry" />
+        </mxCell>
+        
+        <!-- Mark Enabled -->
+        <mxCell id="markEnabled" value="Mark Filter as Enabled" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="700" y="800" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- MergeAndSave -->
+        <mxCell id="mergeAndSave" value="MergeAndSave&#xa;Process Clash Zones" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="700" y="900" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- PersistenceService -->
+        <mxCell id="persistenceService" value="ClashZonePersistenceService&#xa;SaveClashZones" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="700" y="1000" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Check Repository -->
+        <mxCell id="checkRepo" value="SQLite&#xa;Repository&#xa;Exists?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;" vertex="1" parent="1">
+          <mxGeometry x="720" y="1100" width="160" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- Error: Repository NULL -->
+        <mxCell id="error1" value="❌ ERROR: Repository NULL&#xa;Log Error and Skip" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFB6C1;strokeColor=#8B0000;" vertex="1" parent="1">
+          <mxGeometry x="480" y="1120" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Group By Category -->
+        <mxCell id="groupByCategory" value="Group Clash Zones&#xa;by Category" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="920" y="1120" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- For Each Category -->
+        <mxCell id="forEachCategory" value="For Each Category" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="920" y="1220" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Validate Zones -->
+        <mxCell id="validateZones" value="Validate Clash Zones&#xa;IsValidClashZone" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="920" y="1320" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Valid Zones Decision -->
+        <mxCell id="validZones" value="Valid&#xa;Zones?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;" vertex="1" parent="1">
+          <mxGeometry x="940" y="1420" width="160" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- Skip Category -->
+        <mxCell id="skipCategory" value="Skip Category&#xa;Log Warning" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFD700;strokeColor=#DAA520;" vertex="1" parent="1">
+          <mxGeometry x="700" y="1440" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Group By Combo -->
+        <mxCell id="groupByCombo" value="Group by File Combo&#xa;LinkedFile + HostFile" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="1440" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- InsertOrUpdate -->
+        <mxCell id="insertOrUpdate" value="ClashZoneRepository&#xa;InsertOrUpdateClashZones" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="1540" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Begin Transaction -->
+        <mxCell id="beginTransaction" value="Begin Transaction" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="1640" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- STEP 1 -->
+        <mxCell id="step1" value="STEP 1: Get or Create Filter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="1160" y="1740" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Check Filter in DB -->
+        <mxCell id="checkFilter" value="Filter&#xa;Exists in DB?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="1840" width="160" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- Create Filter DB -->
+        <mxCell id="createFilterDB" value="INSERT INTO Filters&#xa;FilterName, Category&#xa;Return FilterId" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#87CEEB;strokeColor=#4682B4;" vertex="1" parent="1">
+          <mxGeometry x="940" y="1860" width="200" height="80" as="geometry" />
+        </mxCell>
+        
+        <!-- Get FilterId -->
+        <mxCell id="getFilterId" value="SELECT FilterId&#xa;FROM Filters" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="1400" y="1860" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- FilterId Check -->
+        <mxCell id="filterIdCheck" value="FilterId&#xa;&gt; 0?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="1980" width="160" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- Rollback 1 -->
+        <mxCell id="rollback1" value="❌ Rollback Transaction&#xa;Return" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFB6C1;strokeColor=#8B0000;" vertex="1" parent="1">
+          <mxGeometry x="940" y="2000" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- STEP 2 -->
+        <mxCell id="step2" value="STEP 2: Process Each Clash Zone" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="1400" y="2000" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- For Each Zone -->
+        <mxCell id="forEachZone" value="For Each Clash Zone" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="1400" y="2100" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Extract Keys -->
+        <mxCell id="extractKeys" value="Extract File Keys&#xa;LinkedFileKey: SourceDocKey/DocumentPath&#xa;HostFileKey: HostDocKey/StructuralElementDocumentTitle" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="1400" y="2200" width="200" height="80" as="geometry" />
+        </mxCell>
+        
+        <!-- Validate Keys -->
+        <mxCell id="validateKeys" value="Keys&#xa;Valid?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;" vertex="1" parent="1">
+          <mxGeometry x="1420" y="2320" width="160" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- Skip Zone 1 -->
+        <mxCell id="skipZone1" value="❌ Skip Zone&#xa;Log Error" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFD700;strokeColor=#DAA520;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="2340" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Check Combo -->
+        <mxCell id="checkCombo" value="File Combo&#xa;Exists?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;" vertex="1" parent="1">
+          <mxGeometry x="1640" y="2340" width="160" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- Create Combo -->
+        <mxCell id="createCombo" value="INSERT INTO FileCombos&#xa;FilterId, LinkedFileKey, HostFileKey&#xa;IsFilterComboNew=1&#xa;Return ComboId" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#87CEEB;strokeColor=#4682B4;" vertex="1" parent="1">
+          <mxGeometry x="1880" y="2320" width="200" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- Get ComboId -->
+        <mxCell id="getComboId" value="SELECT ComboId&#xa;FROM FileCombos" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="1880" y="2460" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- ComboId Check -->
+        <mxCell id="comboIdCheck" value="ComboId&#xa;&gt; 0?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;" vertex="1" parent="1">
+          <mxGeometry x="1640" y="2580" width="160" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- Skip Zone 2 -->
+        <mxCell id="skipZone2" value="❌ Skip Zone&#xa;Log Critical Error" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFD700;strokeColor=#DAA520;" vertex="1" parent="1">
+          <mxGeometry x="1400" y="2600" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Insert Clash Zone -->
+        <mxCell id="insertClashZone" value="Insert or Update Clash Zone" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="1880" y="2600" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Check By GUID -->
+        <mxCell id="checkByGuid" value="Clash Zone&#xa;Exists by GUID?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;" vertex="1" parent="1">
+          <mxGeometry x="1880" y="2700" width="160" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- Update By GUID -->
+        <mxCell id="updateByGuid" value="UPDATE ClashZones&#xa;Set all fields" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="1640" y="2720" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Check By MEP -->
+        <mxCell id="checkByMEP" value="Clash Zone&#xa;Exists by&#xa;MEP+Host+Point?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;" vertex="1" parent="1">
+          <mxGeometry x="2120" y="2720" width="160" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- Update By MEP -->
+        <mxCell id="updateByMEP" value="UPDATE ClashZones&#xa;Set all fields" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="2120" y="2860" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Insert New -->
+        <mxCell id="insertNew" value="INSERT INTO ClashZones&#xa;ComboId, MepElementId, HostElementId&#xa;IntersectionX/Y/Z, SleeveState&#xa;BoundingBox, All Properties" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#87CEEB;strokeColor=#4682B4;" vertex="1" parent="1">
+          <mxGeometry x="2360" y="2720" width="200" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- Next Zone -->
+        <mxCell id="nextZone" value="More&#xa;Zones?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;" vertex="1" parent="1">
+          <mxGeometry x="1880" y="3000" width="160" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- STEP 3 -->
+        <mxCell id="step3" value="STEP 3: Insert/Update&#xa;Sleeve Snapshots" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="2120" y="3000" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- For Each Sleeve -->
+        <mxCell id="forEachSleeve" value="For Each Zone with&#xa;SleeveInstanceId &gt; 0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="2120" y="3100" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Check Snapshot -->
+        <mxCell id="checkSnapshot" value="Snapshot&#xa;Exists?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;" vertex="1" parent="1">
+          <mxGeometry x="2140" y="3200" width="160" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- Update Snapshot -->
+        <mxCell id="updateSnapshot" value="UPDATE SleeveSnapshots" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FF;strokeColor=#01579B;" vertex="1" parent="1">
+          <mxGeometry x="1880" y="3220" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Insert Snapshot -->
+        <mxCell id="insertSnapshot" value="INSERT INTO SleeveSnapshots" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#87CEEB;strokeColor=#4682B4;" vertex="1" parent="1">
+          <mxGeometry x="2360" y="3220" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- STEP 4 -->
+        <mxCell id="step4" value="STEP 4: Commit Transaction" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="2120" y="3340" width="200" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Commit Decision -->
+        <mxCell id="commit" value="Commit&#xa;Success?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;" vertex="1" parent="1">
+          <mxGeometry x="2140" y="3440" width="160" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- Success -->
+        <mxCell id="success" value="✅ SUCCESS&#xa;All Tables Populated&#xa;Filters ✅&#xa;FileCombos ✅&#xa;ClashZones ✅&#xa;SleeveSnapshots ✅" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#90EE90;strokeColor=#006400;" vertex="1" parent="1">
+          <mxGeometry x="1880" y="3460" width="200" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- Rollback 2 -->
+        <mxCell id="rollback2" value="❌ Rollback Transaction&#xa;Log Error&#xa;No Data Saved" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFB6C1;strokeColor=#8B0000;" vertex="1" parent="1">
+          <mxGeometry x="2360" y="3460" width="200" height="80" as="geometry" />
+        </mxCell>
+        
+        <!-- End -->
+        <mxCell id="end" value="End" style="ellipse;whiteSpace=wrap;html=1;fillColor=#90EE90;strokeColor=#006400;" vertex="1" parent="1">
+          <mxGeometry x="2120" y="3600" width="200" height="80" as="geometry" />
+        </mxCell>
+        
+        <!-- Next Category -->
+        <mxCell id="nextCategory" value="More&#xa;Categories?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;" vertex="1" parent="1">
+          <mxGeometry x="700" y="1540" width="160" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- Arrows -->
+        <mxCell id="arrow1" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="start" target="onRefresh">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow2" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="onRefresh" target="refreshService">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow3" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="refreshService" target="loadFilter">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow4" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="loadFilter" target="filterExists">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow5" value="No" style="endArrow=classic;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="filterExists" target="createFilter">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow6" value="Yes" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="filterExists" target="markEnabled">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow7" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="createFilter" target="registerFilter">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow8" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="registerFilter" target="saveUIState">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow9" value="" style="endArrow=classic;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="saveUIState" target="markEnabled">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow10" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="markEnabled" target="mergeAndSave">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow11" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="mergeAndSave" target="persistenceService">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow12" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="persistenceService" target="checkRepo">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow13" value="No" style="endArrow=classic;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="checkRepo" target="error1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow14" value="Yes" style="endArrow=classic;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="checkRepo" target="groupByCategory">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow15" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="groupByCategory" target="forEachCategory">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow16" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="forEachCategory" target="validateZones">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow17" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="validateZones" target="validZones">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow18" value="No" style="endArrow=classic;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="validZones" target="skipCategory">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow19" value="Yes" style="endArrow=classic;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="validZones" target="groupByCombo">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow20" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="groupByCombo" target="insertOrUpdate">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow21" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="insertOrUpdate" target="beginTransaction">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow22" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="beginTransaction" target="step1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow23" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="step1" target="checkFilter">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow24" value="No" style="endArrow=classic;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="checkFilter" target="createFilterDB">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow25" value="Yes" style="endArrow=classic;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="checkFilter" target="getFilterId">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow26" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="createFilterDB" target="getFilterId">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow27" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="getFilterId" target="filterIdCheck">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow28" value="No" style="endArrow=classic;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="filterIdCheck" target="rollback1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow29" value="Yes" style="endArrow=classic;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="filterIdCheck" target="step2">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow30" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="step2" target="forEachZone">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow31" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="forEachZone" target="extractKeys">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow32" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="extractKeys" target="validateKeys">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow33" value="No" style="endArrow=classic;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="validateKeys" target="skipZone1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow34" value="Yes" style="endArrow=classic;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="validateKeys" target="checkCombo">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow35" value="No" style="endArrow=classic;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="checkCombo" target="createCombo">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow36" value="Yes" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="checkCombo" target="getComboId">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow37" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="createCombo" target="getComboId">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow38" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="getComboId" target="comboIdCheck">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow39" value="No" style="endArrow=classic;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="comboIdCheck" target="skipZone2">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow40" value="Yes" style="endArrow=classic;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="comboIdCheck" target="insertClashZone">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow41" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="insertClashZone" target="checkByGuid">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow42" value="Yes" style="endArrow=classic;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="checkByGuid" target="updateByGuid">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow43" value="No" style="endArrow=classic;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="checkByGuid" target="checkByMEP">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow44" value="Yes" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="checkByMEP" target="updateByMEP">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow45" value="No" style="endArrow=classic;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="checkByMEP" target="insertNew">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow46" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="updateByGuid" target="nextZone">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow47" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="updateByMEP" target="nextZone">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow48" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="insertNew" target="nextZone">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow49" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="skipZone1" target="nextZone">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow50" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="skipZone2" target="nextZone">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow51" value="Yes" style="endArrow=classic;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="nextZone" target="forEachZone">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow52" value="No" style="endArrow=classic;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="nextZone" target="step3">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow53" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="step3" target="forEachSleeve">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow54" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="forEachSleeve" target="checkSnapshot">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow55" value="Yes" style="endArrow=classic;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="checkSnapshot" target="updateSnapshot">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow56" value="No" style="endArrow=classic;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="checkSnapshot" target="insertSnapshot">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow57" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="updateSnapshot" target="step4">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow58" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="insertSnapshot" target="step4">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow59" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="step4" target="commit">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow60" value="Yes" style="endArrow=classic;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="commit" target="success">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow61" value="No" style="endArrow=classic;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="commit" target="rollback2">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow62" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="success" target="end">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow63" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="rollback2" target="end">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow64" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="error1" target="end">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow65" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="rollback1" target="end">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow66" value="Yes" style="endArrow=classic;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="nextCategory" target="forEachCategory">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow67" value="No" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="nextCategory" target="end">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow68" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="skipCategory" target="nextCategory">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
+

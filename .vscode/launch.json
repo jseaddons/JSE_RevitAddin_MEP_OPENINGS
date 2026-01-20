@@ -1,0 +1,12 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Attach to Revit",
+      "type": "clr",
+      "request": "attach",
+      "processName": "Revit.exe",
+      "justMyCode": false
+    }
+  ]
+}

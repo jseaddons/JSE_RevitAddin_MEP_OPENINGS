@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<RevitAddIns>
+	<AddIn Type="Application">
+		<Name>JSE_RevitAddin_MEP_OPENINGS</Name>
+		<Assembly>C:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\bin\Debug R24\Debug R24\JSE_RevitAddin_MEP_OPENINGS.dll</Assembly>
+		<AddInId>8084851F-2670-4ED8-80C6-B643B82F032D</AddInId>
+		<FullClassName>JSE_RevitAddin_MEP_OPENINGS.Application</FullClassName>
+		<VendorId>JSE</VendorId>
+		<VendorDescription>JSE Revit MEP Openings Addin</VendorDescription>
+	</AddIn>
+</RevitAddIns>

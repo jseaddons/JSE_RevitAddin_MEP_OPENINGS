@@ -1,0 +1,1207 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.IO;
+using JSE_RevitAddin_MEP_OPENINGS.Models;
+using Autodesk.Revit.DB;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Refresh;
+
+namespace JSE_RevitAddin_MEP_OPENINGS.Services
+{
+    /// <summary>
+    /// ✅ DEDICATED OOP SERVICE: Saves clash zones to SQLite (PRIMARY) and Global XML (for flags)
+    /// ✅ PHASE SQLITE-2: SQLite is now the primary operational store
+    /// - SQLite: Primary data store for clash zones
+    /// - Global XML: Still written for IsResolved flag management (required)
+    /// - Filter XML: Skipped when UseSqliteAsPrimary=true (redundant, SQLite has the data)
+    /// Called after intersection detection completes
+    /// </summary>
+    public class ClashZonePersistenceService : IDisposable
+    {
+        private readonly Document _document;
+        private readonly GuidManager _guidManager;
+        private readonly string? _refreshLogName;
+        private SleeveDbContext? _sqliteContext;
+        private IClashZoneRepository? _sqliteRepository;
+        private readonly PerformanceMonitor? _performanceMonitor;
+
+        public ClashZonePersistenceService(Document document, GuidManager guidManager, string? refreshLogName = null, PerformanceMonitor? performanceMonitor = null)
+        {
+            _document = document ?? throw new ArgumentNullException(nameof(document));
+            _guidManager = guidManager ?? throw new ArgumentNullException(nameof(guidManager));
+            _refreshLogName = refreshLogName ?? "refresh.log";
+            _performanceMonitor = performanceMonitor;
+            
+            // ✅ PHASE SQLITE-2: Initialize SQLite context as PRIMARY data store
+            // SQLite is the operational store; XML is optional/backup (Global XML still used for flags)
+            try
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info("[CLASH-ZONE-PERSISTENCE] 🔄 Initializing SQLite context...");
+                
+                _sqliteContext = new SleeveDbContext(_document, msg => 
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[SQLite] {msg}");
+                    SafeFileLogger.SafeAppendText(_refreshLogName, $"[{DateTime.Now}] [SQLite] {msg}\n");
+                });
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] ✅ SQLite context created: {_sqliteContext.DatabasePath}");
+                
+                _sqliteRepository = new ClashZoneRepository(_sqliteContext, msg =>
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[SQLite] {msg}");
+                    SafeFileLogger.SafeAppendText(_refreshLogName, $"[{DateTime.Now}] [SQLite] {msg}\n");
+                }, _performanceMonitor);
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info("[CLASH-ZONE-PERSISTENCE] ✅ SQLite dual-write enabled");
+                
+                SafeFileLogger.SafeAppendText(_refreshLogName, 
+                    $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] ✅ SQLite dual-write enabled: {_sqliteContext.DatabasePath}\n");
+            }
+            catch (Exception ex)
+            {
+                // ✅ CRITICAL: Don't fail XML writes if SQLite fails
+                // Log error but continue with XML-only mode
+                var errorMsg = $"[CLASH-ZONE-PERSISTENCE] ⚠️ SQLite initialization failed, continuing with XML-only: {ex.Message}";
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning(errorMsg);
+                SafeFileLogger.SafeAppendText(_refreshLogName, $"[{DateTime.Now}] {errorMsg}\n");
+                SafeFileLogger.SafeAppendText(_refreshLogName, $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] Stack trace: {ex.StackTrace}\n");
+                _sqliteContext = null;
+                _sqliteRepository = null;
+            }
+        }
+
+        /// <summary>
+        /// ✅ UNIFIED METHOD: Save clash zones to BOTH Global XML and Filter XML using SAME tree structure
+        /// ONE method handles everything - groups by category, then by file combo, saves to both XML files
+        /// </summary>
+        /// <param name="allClashZones">All clash zones (new + existing merged)</param>
+        /// <param name="baseFilterName">Base filter name (e.g., "Plumbing")</param>
+        /// <param name="targetFilter">Target filter for Filter XML saving</param>
+        /// <param name="existingClashZones">Existing clash zones from Filter XML (for merge logic)</param>
+        public void SaveClashZones(
+            List<ClashZone> allClashZones,
+            string baseFilterName,
+            OpeningFilter targetFilter,
+            bool allowStructuralUpdates)
+        {
+            // ✅ DIAGNOSTIC: Log entry to method
+            if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] SaveClashZones CALLED: Zones={allClashZones?.Count ?? 0}, Filter='{baseFilterName}', TargetFilter={(targetFilter != null ? targetFilter.Name : "NULL")}, SQLiteRepo={(_sqliteRepository != null ? "EXISTS" : "NULL")}");
+            SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", 
+                $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] SaveClashZones CALLED: Zones={allClashZones?.Count ?? 0}, Filter='{baseFilterName}', TargetFilter={(targetFilter != null ? targetFilter.Name : "NULL")}, SQLiteRepo={(_sqliteRepository != null ? "EXISTS" : "NULL")}\n");
+            
+            if (allClashZones == null || allClashZones.Count == 0)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info("[CLASH-ZONE-PERSISTENCE] No clash zones to save");
+                SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", 
+                    $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] No clash zones to save\n");
+                return;
+            }
+
+            var processingSummaries = new List<ProcessingStats>();
+            baseFilterName = NormalizeBaseFilterName(baseFilterName);
+
+            if (targetFilter != null)
+            {
+                using (_performanceMonitor?.TrackOperation("9a1. Deduplicate Storage"))
+                {
+                    EnsureFilterStorageInitialized(targetFilter);
+                    DeduplicateFilterStorage(targetFilter);
+                }
+            }
+            else
+            {
+                // ⚠️ CRITICAL: Target filter is null - this will prevent saving
+                var errorMsg = $"[CLASH-ZONE-PERSISTENCE] ⚠️ WARNING: targetFilter is NULL - clash zones may not be saved properly";
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning(errorMsg);
+                SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", $"[{DateTime.Now}] {errorMsg}\n");
+            }
+
+            try
+            {
+                LogPlacement($"[PERSIST-ENTRY] Zones={allClashZones.Count}, Filter='{baseFilterName}', Sample=[{string.Join(", ", allClashZones.Where(z => z != null).Take(10).Select(z => $"{z.Id}:{z.SleeveInstanceId}"))}]");
+
+                List<IGrouping<string, ClashZone>> clashZonesByCategory;
+                using (_performanceMonitor?.TrackOperation("9a01. Group By Cat"))
+                {
+                    clashZonesByCategory = allClashZones
+                        .Where(z => z != null && !string.IsNullOrWhiteSpace(z.MepElementCategory))
+                        .GroupBy(z => z.MepElementCategory, StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                }
+
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] Saving {allClashZones.Count} clash zones across {clashZonesByCategory.Count} categories");
+                SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", 
+                    $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] Saving {allClashZones.Count} clash zones across {clashZonesByCategory.Count} categories\n");
+
+                // ✅ PHASE SQLITE-2: Write to SQLite in a SINGLE bulk transaction (multi-category)
+                if (_sqliteRepository != null && allClashZones.Count > 0)
+                {
+                    using (var bulkOp = _performanceMonitor?.TrackOperation("9a8. Repo Bulk Save"))
+                    {
+                        var validZones = allClashZones
+                            .Where(z => z != null && !string.IsNullOrWhiteSpace(z.MepElementCategory) && IsValidClashZone(z))
+                            .ToList();
+                        
+                        // ✅ FLOOR ROTATION FIX: Enrich zones with MEP orientation and rotation angle BEFORE saving
+                        // This populates MepOrientationX/Y/Z and MepElementRotationAngle for database storage
+                        using (var enrichOp = _performanceMonitor?.TrackOperation("9a7. Enrich Orientation"))
+                        {
+                            // ClashZoneService constructor ambiguity resolution:
+                            // We call the one with most parameters (6 args) using nulls to avoid ambiguity
+                            // (ClashZoneStorage?, Action<string>?, IFlagManager?, GuidManager?, ISectionBoxService?, DbConnection?)
+                            var clashZoneService = new ClashZoneService(null, null, null, null, null, null);
+                            int enriched = 0;
+                            
+                            foreach (var zone in validZones)
+                            {
+                                try
+                                {
+                                    // Get MEP element from document
+                                    var mepElement = _document.GetElement(zone.MepElementId);
+                                    if (mepElement == null) continue;
+                                    
+                                    // Calculate MEP orientation vector
+                                    var orientation = clashZoneService.GetMepElementOrientation(mepElement);
+                                    zone.MepOrientationX = orientation.X;
+                                    zone.MepOrientationY = orientation.Y;
+                                    zone.MepOrientationZ = orientation.Z;
+                                    
+                                    // Calculate rotation angle (for floors only, 0.0 for walls/framing)
+                                    zone.MepElementRotationAngle = clashZoneService.CalculateMepElementRotationAngle(
+                                        zone.StructuralElementType,
+                                        orientation,
+                                        mepElement
+                                    );
+                                    
+                                    // ✅ POPULATE STRING DIRECTION: Required for legacy compatibility and DB completeness
+                                    // User reported this column was empty, causing rotation issues in some strategies
+                                    zone.MepElementOrientationDirection = clashZoneService.GetMepOrientationDirection(
+                                        zone.StructuralElementType,
+                                        orientation,
+                                        zone.HostOrientation ?? string.Empty
+                                    );
+                                    
+                                    enriched++;
+                                }
+                                catch (Exception ex)
+                                {
+                                    // Non-fatal: Log and continue with default values (0.0)
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Warning($"[CLASH-ZONE-PERSISTENCE] Failed to enrich zone {zone.Id}: {ex.Message}");
+                                }
+                            }
+                            
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] Enriched {enriched}/{validZones.Count} zones with MEP orientation and rotation angle");
+                            SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", 
+                                $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] Enriched {enriched}/{validZones.Count} zones with MEP orientation\\n");
+                        }
+                        
+                        _sqliteRepository.InsertOrUpdateClashZonesBulk(validZones, baseFilterName);
+                        if (bulkOp is PerformanceMonitor.OperationTracker tracker) tracker.SetItemCount(validZones.Count);
+                    }
+                }
+
+                foreach (var categoryGroup in clashZonesByCategory)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] Processing category '{categoryGroup.Key}' (XML/Logging) with {categoryGroup.Count()} zones");
+                    SafeFileLogger.SafeAppendText(_refreshLogName ?? "refresh.log", 
+                        $"[{DateTime.Now}] [CLASH-ZONE-PERSISTENCE] Processing category '{categoryGroup.Key}' (XML/Logging) with {categoryGroup.Count()} zones\n");
+                    
+                    var stats = SaveCategory(
+                        categoryGroup.Key,
+                        categoryGroup.ToList(),
+                        baseFilterName,
+                        targetFilter,
+                        allowStructuralUpdates);
+
+                    processingSummaries.Add(stats);
+                }
+
+                // LogAggregate(processingSummaries, baseFilterName);
+            }
+            catch (Exception ex)
+            {
+                HandleException("[CLASH-ZONE-PERSISTENCE] Error saving clash zones", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// ✅ UNIFIED SAVE METHOD: Saves to BOTH Global XML and Filter XML using SAME tree structure
+        /// ONE method handles everything - groups by file combo, saves flags to Global XML, saves placement data to Filter XML
+        /// </summary>
+        private ProcessingStats SaveCategory(
+            string category,
+            List<ClashZone> categoryClashZones,
+            string baseFilterName,
+            OpeningFilter targetFilter,
+            bool allowStructuralUpdates)
+        {
+            var stats = new ProcessingStats(category);
+
+            try
+            {
+                var totalZones = categoryClashZones?.Count ?? 0;
+                LogPlacement($"[PERSIST-CATEGORY] Category='{category}', Filter='{baseFilterName}', Zones={totalZones}");
+
+                var validZones = new List<ClashZone>();
+                using (_performanceMonitor?.TrackOperation("9a6. Filter Valid Zones"))
+                {
+                    validZones = categoryClashZones?
+                        .Where(IsValidClashZone)
+                        .ToList() ?? new List<ClashZone>();
+                }
+
+                stats.TotalZones = totalZones;
+                stats.ValidZones = validZones.Count;
+
+                var invalidCount = totalZones - stats.ValidZones;
+                if (invalidCount > 0)
+                {
+                    stats.InvalidZones = invalidCount;
+                    LogRefresh($"[PERSIST-WARNING] Category='{category}' ignored {invalidCount} invalid clash zones");
+                }
+
+                if (validZones.Count == 0)
+                {
+                    LogRefresh($"[PERSIST-INFO] Category='{category}' has no valid clash zones to persist");
+                    return stats;
+                }
+
+                // ✅ DEBUG: Log file combo keys before grouping to diagnose missing combos
+                LogRefresh($"[PERSIST-DEBUG] Analyzing {validZones.Count} valid zones for file combo grouping");
+                var comboKeysSample = validZones.Take(10).Select(cz => GetFileComboKey(cz)).ToList();
+                foreach (var key in comboKeysSample)
+                {
+                    LogRefresh($"[PERSIST-DEBUG]   Sample combo key: Linked='{key.LinkedFile}', Host='{key.HostFile}'");
+                }
+
+                List<IGrouping<(string LinkedFile, string HostFile), ClashZone>> combos;
+                using (_performanceMonitor?.TrackOperation("9a7. Group File Combos"))
+                {
+                    combos = validZones
+                        .GroupBy(GetFileComboKey)
+                        .Where(g => !string.IsNullOrWhiteSpace(g.Key.LinkedFile) && !string.IsNullOrWhiteSpace(g.Key.HostFile))
+                        .ToList();
+                }
+
+                stats.FileComboCount = combos.Count;
+                LogRefresh($"[PERSIST-DEBUG] Valid combos to persist for '{category}': {combos.Count}");
+                // Process each combo (batched by LinkedFile+HostFile)
+                using (_performanceMonitor?.TrackOperation("9a7b. Loop Overhead"))
+                {
+                    foreach (var combo in combos)
+                    {
+                        LogRefresh($"[PERSIST-DEBUG]   Combo: Linked='{combo.Key.LinkedFile}', Host='{combo.Key.HostFile}', Zones={combo.Count()}");
+                    }
+                }
+
+
+                var filterName = BuildFilterFileName(baseFilterName, category);
+                // ✅ PHASE SQLITE-2: XML writes disabled (Database Only Mode)
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] ⚡ OPTIMIZATION: XML writes skipped (Database Only Mode). Category='{category}'");
+                }
+
+            }
+            catch (Exception ex)
+            {
+                HandleException($"[PERSIST-ERROR] Category='{category}'", ex);
+                throw;
+            }
+
+            return stats;
+        }
+
+
+        private void SaveToFilterXml(
+            List<ClashZone> comboClashZones,
+            string category,
+            string baseFilterName,
+            OpeningFilter targetFilter,
+            (string LinkedFile, string HostFile) comboKey,
+            ProcessingStats stats,
+            bool allowStructuralUpdates)
+        {
+            // ✅ PHASE 2: Skip XML creation if disabled - database is single source of truth
+            if (DeploymentConfiguration.DisableXmlCreation)
+            {
+                LogPlacement($"[PERSIST-FILTER] ⚠️ XML creation disabled - skipping SaveToFilterXml (database only mode). Category='{category}', Filter='{baseFilterName}', Combo: Linked='{comboKey.LinkedFile}', Host='{comboKey.HostFile}', Zones={comboClashZones?.Count ?? 0}");
+                return;
+            }
+
+            if (comboClashZones == null || comboClashZones.Count == 0)
+            {
+                LogPlacement($"[PERSIST-FILTER] ⚠️ Skipping SaveToFilterXml: comboClashZones is null or empty (Count={comboClashZones?.Count ?? 0})");
+                return;
+            }
+            if (targetFilter == null)
+            {
+                LogPlacement($"[PERSIST-FILTER] ⚠️ Skipping SaveToFilterXml: targetFilter is null for category '{category}', combo Linked='{comboKey.LinkedFile}', Host='{comboKey.HostFile}'");
+                return;
+            }
+            
+            LogPlacement($"[PERSIST-FILTER] ✅ SaveToFilterXml called: Category='{category}', BaseFilter='{baseFilterName}', Combo Linked='{comboKey.LinkedFile}', Host='{comboKey.HostFile}', Zones={comboClashZones.Count}");
+
+            targetFilter.ClashZoneStorage ??= new ClashZoneStorage
+            {
+                CreatedAt = DateTime.Now,
+                LastUpdated = DateTime.Now,
+                DocumentPath = _document.PathName,
+                DocumentHash = _document.PathName ?? "Unknown",
+                AlgorithmVersion = "1.0",
+                Filters = new List<FilterGroupForStorage>(),
+                ClashZones = new List<ClashZone>()
+            };
+
+            targetFilter.ClashZoneStorage.Filters ??= new List<FilterGroupForStorage>();
+
+            var placementLogPath = TryGetPlacementLogPath();
+            var groupName = BuildFilterGroupName(baseFilterName, category);
+            var normalizedKey = $"{comboKey.LinkedFile}_{comboKey.HostFile}";
+            /* ProcessedFileCombo removed - using simple string key
+            var normalizedKey = new ProcessedFileCombo
+            {
+                LinkedFile = comboKey.LinkedFile,
+                HostFile = comboKey.HostFile
+            }.GetNormalizedKey(); 
+            */
+
+            PruneInvalidGroups(targetFilter.ClashZoneStorage);
+
+            var filterGroup = targetFilter.ClashZoneStorage.Filters
+                .FirstOrDefault(f => string.Equals(f?.Name, groupName, StringComparison.OrdinalIgnoreCase));
+
+            if (filterGroup == null)
+            {
+                filterGroup = new FilterGroupForStorage
+                {
+                    Name = groupName,
+                    FileCombos = new List<FilterFileComboGroup>()
+                };
+                targetFilter.ClashZoneStorage.Filters.Add(filterGroup);
+            }
+
+            MergeLegacyGroupsIntoTarget(targetFilter.ClashZoneStorage, filterGroup, normalizedKey, placementLogPath);
+
+            var statsList = new List<ProcessingStats>(); // statsCollection missing, initializing empty
+            /*
+            var statsList = statsCollection?
+                .Where(s => s != null)
+                .ToList() ?? new List<ProcessingStats>();
+            */
+
+            if (statsList.Count == 0)
+            {
+                LogRefresh("[CLASH-ZONE-PERSISTENCE] No categories persisted");
+                return;
+            }
+
+            foreach (var stat in statsList)
+            {
+                LogRefresh($"[CLASH-ZONE-PERSISTENCE]   {stat}");
+            }
+
+            var summary = ProcessingStats.Combine(statsList);
+            LogRefresh($"[CLASH-ZONE-PERSISTENCE] TOTAL → {summary}");
+
+            if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Info($"[CLASH-ZONE-PERSISTENCE] ✅ Successfully saved clash zones for '{baseFilterName}' → {summary}");
+        }
+
+        private void LogPlacement(string message)
+        {
+            try
+            {
+                var logPath = SafeFileLogger.GetLogFilePath("placement_debug.log");
+                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] {message}\n");
+            }
+            catch { }
+        }
+
+        private void LogRefresh(string message)
+        {
+            SafeFileLogger.SafeAppendText(_refreshLogName, $"[{DateTime.Now}] {message}\n");
+        }
+
+        private void HandleException(string context, Exception ex)
+        {
+            LogRefresh($"{context}: {ex.Message}");
+            if (!DeploymentConfiguration.DeploymentMode)
+                DebugLogger.Error($"{context}: {ex}");
+        }
+
+        private static string NormalizeBaseFilterName(string rawName)
+        {
+            if (string.IsNullOrWhiteSpace(rawName))
+                return string.Empty;
+
+            var trimmed = rawName.Trim();
+            return Path.GetFileNameWithoutExtension(trimmed);
+        }
+
+        private static void EnsureFilterStorageInitialized(OpeningFilter filter)
+        {
+            if (filter == null)
+                return;
+
+            filter.ClashZoneStorage ??= new ClashZoneStorage();
+            filter.ClashZoneStorage.Filters ??= new List<FilterGroupForStorage>();
+        }
+
+        private static void DeduplicateFilterStorage(OpeningFilter filter)
+        {
+            if (filter?.ClashZoneStorage?.Filters == null)
+                return;
+
+            var storage = filter.ClashZoneStorage;
+            var dedupedGroups = new List<FilterGroupForStorage>();
+            var seenGroups = new Dictionary<string, FilterGroupForStorage>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var group in storage.Filters)
+            {
+                if (group == null || string.IsNullOrWhiteSpace(group.Name))
+                    continue;
+
+                var name = group.Name.Trim();
+                DeduplicateFilterFileCombos(group);
+
+                if (!seenGroups.TryGetValue(name, out var existing))
+                {
+                    dedupedGroups.Add(group);
+                    seenGroups[name] = group;
+                }
+                else
+                {
+                    MergeFilterGroup(existing, group);
+                }
+            }
+
+            storage.Filters = dedupedGroups;
+            storage.ClashZones = storage.AllZones?.ToList() ?? new List<ClashZone>();
+            storage.LastUpdated = DateTime.Now;
+            filter.LastModified = DateTime.Now;
+        }
+
+        private static void DeduplicateFilterFileCombos(FilterGroupForStorage group)
+        {
+            if (group?.FileCombos == null)
+                return;
+
+            var deduped = new List<FilterFileComboGroup>();
+            var seen = new Dictionary<string, FilterFileComboGroup>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var combo in group.FileCombos)
+            {
+                if (combo == null)
+                    continue;
+
+                var key = combo.GetNormalizedKey();
+                if (string.IsNullOrWhiteSpace(key))
+                    continue;
+
+                DeduplicateClashZones(combo);
+
+                if (!seen.TryGetValue(key, out var existing))
+                {
+                    deduped.Add(combo);
+                    seen[key] = combo;
+                }
+                else
+                {
+                    MergeFilterFileCombo(existing, combo);
+                }
+            }
+
+            group.FileCombos = deduped;
+        }
+
+        private static void MergeFilterGroup(FilterGroupForStorage target, FilterGroupForStorage source)
+        {
+            if (target == null || source?.FileCombos == null)
+                return;
+
+            target.FileCombos ??= new List<FilterFileComboGroup>();
+
+            var map = target.FileCombos
+                .Where(fc => fc != null)
+                .ToDictionary(fc => fc.GetNormalizedKey(), fc => fc, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var combo in source.FileCombos)
+            {
+                if (combo == null)
+                    continue;
+
+                var key = combo.GetNormalizedKey();
+                if (string.IsNullOrWhiteSpace(key))
+                    continue;
+
+                DeduplicateClashZones(combo);
+
+                if (!map.TryGetValue(key, out var existing))
+                {
+                    target.FileCombos.Add(combo);
+                    map[key] = combo;
+                }
+                else
+                {
+                    MergeFilterFileCombo(existing, combo);
+                }
+            }
+        }
+
+        private static void MergeFilterFileCombo(FilterFileComboGroup target, FilterFileComboGroup source)
+        {
+            if (target == null || source?.ClashZones == null)
+                return;
+
+            target.ClashZones ??= new List<ClashZone>();
+
+            var indexMap = new Dictionary<Guid, int>();
+            for (int i = 0; i < target.ClashZones.Count; i++)
+            {
+                var existing = target.ClashZones[i];
+                if (existing == null || existing.Id == Guid.Empty)
+                    continue;
+                indexMap[existing.Id] = i;
+            }
+
+            foreach (var zone in source.ClashZones)
+            {
+                if (zone == null || zone.Id == Guid.Empty)
+                    continue;
+
+                if (indexMap.TryGetValue(zone.Id, out var index))
+                {
+                    target.ClashZones[index] = zone;
+                }
+                else
+                {
+                    indexMap[zone.Id] = target.ClashZones.Count;
+                    target.ClashZones.Add(zone);
+                }
+            }
+
+            DeduplicateClashZones(target);
+            if (source.ProcessedAt > target.ProcessedAt)
+                target.ProcessedAt = source.ProcessedAt;
+        }
+
+        private static void DeduplicateClashZones(FilterFileComboGroup combo)
+        {
+            if (combo?.ClashZones == null)
+                return;
+
+            var seen = new HashSet<Guid>();
+            var deduped = new List<ClashZone>();
+
+            foreach (var zone in combo.ClashZones)
+            {
+                if (zone == null || zone.Id == Guid.Empty)
+                    continue;
+
+                if (seen.Add(zone.Id))
+                {
+                    deduped.Add(zone);
+                }
+            }
+
+            combo.ClashZones = deduped;
+        }
+
+        private static string BuildFilterFileName(string baseFilterName, string category)
+        {
+            // ✅ CRITICAL FIX: Use MepCategoryConstants.GetXmlSuffix() for consistent naming
+            // This ensures "Ducts" → "ducts", "Cable Trays" → "cable_trays", "Duct Accessories" → "duct_accessories"
+            // Matches what Place Sleeve expects (OpeningCommandOrchestrator.GetXmlFilePathForFilter)
+            if (string.IsNullOrWhiteSpace(baseFilterName))
+            {
+                if (string.IsNullOrWhiteSpace(category))
+                    return string.Empty;
+                
+                var suffix = MepCategoryConstants.GetXmlSuffix(category);
+                return $"{suffix}.xml";
+            }
+
+            if (string.IsNullOrWhiteSpace(category))
+                return $"{baseFilterName}.xml";
+
+            var categorySuffix = MepCategoryConstants.GetXmlSuffix(category);
+            return $"{baseFilterName}_{categorySuffix}.xml";
+        }
+
+        private static string BuildFilterGroupName(string baseFilterName, string category)
+        {
+            if (string.IsNullOrWhiteSpace(category))
+                return baseFilterName ?? string.Empty;
+
+            // ✅ CRITICAL FIX: Use MepCategoryConstants.GetXmlSuffix() for consistent naming
+            // This ensures "Ducts" → "ducts", "Cable Trays" → "cable_trays", "Duct Accessories" → "duct_accessories"
+            // Matches what Place Sleeve expects (OpeningCommandOrchestrator.GetXmlFilePathForFilter)
+            var categorySuffix = MepCategoryConstants.GetXmlSuffix(category);
+            var suffix = "_" + categorySuffix;
+            
+            if (string.IsNullOrWhiteSpace(baseFilterName))
+                return suffix.TrimStart('_');
+
+            return baseFilterName.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
+                ? baseFilterName
+                : baseFilterName + suffix;
+        }
+
+        private (string LinkedFile, string HostFile) GetFileComboKey(ClashZone clashZone)
+        {
+            if (clashZone == null)
+                return (string.Empty, string.Empty);
+
+            // ✅ FIX: Try to get RevitLinkInstance.Name first (matches UI display), then fall back to SourceDocKey/DocumentPath
+            // This ensures file names match between UI selections and clash zone persistence
+            var linkedFile = GetLinkInstanceName(clashZone.SourceDocKey) 
+                ?? FirstNonEmptyNormalized(clashZone.SourceDocKey, clashZone.DocumentPath);
+
+            var hostFile = GetLinkInstanceName(clashZone.HostDocKey)
+                ?? FirstNonEmptyNormalized(clashZone.HostDocKey, clashZone.StructuralElementDocumentTitle);
+
+            if (string.IsNullOrWhiteSpace(linkedFile))
+            {
+                linkedFile = "unknown-linked";
+                LogRefresh($"[PERSIST-WARN] Clash zone {clashZone.Id} missing SourceDocKey/DocumentPath. Falling back to '{linkedFile}'.");
+            }
+
+            if (string.IsNullOrWhiteSpace(hostFile))
+            {
+                hostFile = "unknown-host";
+                LogRefresh($"[PERSIST-WARN] Clash zone {clashZone.Id} missing HostDocKey/StructuralElementDocumentTitle. Falling back to '{hostFile}'.");
+            }
+
+            return (linkedFile, hostFile);
+        }
+
+        /// <summary>
+        /// ✅ FIX: Get RevitLinkInstance.Name for a document title or path (matches UI display)
+        /// Looks up the link instance in the main document and returns its Name if available
+        /// Handles both Document.Title and full file paths (extracts filename from path)
+        /// </summary>
+        private string GetLinkInstanceName(string documentTitleOrPath)
+        {
+            if (string.IsNullOrWhiteSpace(documentTitleOrPath) || _document == null)
+                return null;
+
+            try
+            {
+                // Extract file name from path if it's a full path (e.g., "C:\...\PH-00001.rvt" -> "PH-00001")
+                string searchFileName = documentTitleOrPath;
+                if (documentTitleOrPath.Contains("\\") || documentTitleOrPath.Contains("/"))
+                {
+                    // It's a path - extract filename
+                    searchFileName = System.IO.Path.GetFileNameWithoutExtension(documentTitleOrPath);
+                }
+                
+                // Normalize for comparison
+                var normalizedSearch = NormalizeFileName(searchFileName);
+                
+                // Find RevitLinkInstance in main document that links to a document with matching title/path
+                var linkInstance = new FilteredElementCollector(_document)
+                    .OfClass(typeof(RevitLinkInstance))
+                    .Cast<RevitLinkInstance>()
+                    .FirstOrDefault(link =>
+                    {
+                        var linkDoc = link.GetLinkDocument();
+                        if (linkDoc == null) return false;
+                        
+                        // Match by title (normalized) - compare both Document.Title and filename from path
+                        var linkTitle = NormalizeFileName(linkDoc.Title);
+                        var linkPathName = NormalizeFileName(System.IO.Path.GetFileNameWithoutExtension(linkDoc.PathName ?? ""));
+                        
+                        return string.Equals(linkTitle, normalizedSearch, StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(linkPathName, normalizedSearch, StringComparison.OrdinalIgnoreCase);
+                    });
+
+                if (linkInstance != null && !string.IsNullOrWhiteSpace(linkInstance.Name))
+                {
+                    // ✅ Return raw name (matches UI format) - normalization happens in GetNormalizedKey() for matching
+                    return linkInstance.Name;
+                }
+            }
+            catch (Exception ex)
+            {
+                // Silently fail - fall back to document title
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[PERSIST] Error looking up link instance name for '{documentTitleOrPath}': {ex.Message}");
+            }
+
+            return null; // Fall back to document title
+        }
+
+        private string FirstNonEmptyNormalized(params string[] candidates)
+        {
+            foreach (var candidate in candidates)
+            {
+                var normalized = NormalizeFileName(candidate);
+                if (!string.IsNullOrWhiteSpace(normalized))
+                    return normalized;
+            }
+
+            return string.Empty;
+        }
+
+        private static string TryGetPlacementLogPath()
+        {
+            try
+            {
+                return SafeFileLogger.GetLogFilePath("placement_debug.log");
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static void PruneInvalidGroups(ClashZoneStorage storage)
+        {
+            if (storage?.Filters == null)
+                return;
+
+            storage.Filters.RemoveAll(f =>
+                f == null ||
+                string.IsNullOrWhiteSpace(f.Name) ||
+                string.Equals(f.Name, "Unknown", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsValidClashZone(ClashZone zone)
+        {
+            if (zone == null || zone.Id == Guid.Empty)
+                return false;
+
+            var mepId = zone.MepElementId?.IntegerValue ?? zone.MepElementIdValue;
+            var hostId = zone.StructuralElementId?.IntegerValue ?? zone.StructuralElementIdValue;
+            if (mepId <= 0 || hostId <= 0)
+                return false;
+
+            var hasIntersection =
+                Math.Abs(zone.IntersectionPointX) > 1e-9 ||
+                Math.Abs(zone.IntersectionPointY) > 1e-9 ||
+                Math.Abs(zone.IntersectionPointZ) > 1e-9;
+
+            if (!hasIntersection)
+                return false;
+
+            var keys = new[]
+            {
+                zone.SourceDocKey,
+                zone.DocumentPath,
+                zone.HostDocKey,
+                zone.StructuralElementDocumentTitle
+            };
+
+            return keys.Any(k => !string.IsNullOrWhiteSpace(NormalizeKey(k)));
+
+            static string NormalizeKey(string key) => string.IsNullOrWhiteSpace(key) ? string.Empty : key.Trim();
+        }
+
+
+        private sealed class ProcessingStats
+        {
+            public ProcessingStats(string category)
+            {
+                Category = category ?? string.Empty;
+            }
+
+            public string Category { get; }
+            public int TotalZones { get; set; }
+            public int ValidZones { get; set; }
+            public int InvalidZones { get; set; }
+            public int FileComboCount { get; set; }
+            public int GlobalCreated { get; set; }
+            public int GlobalUpdated { get; set; }
+            public int GlobalRemoved { get; set; }
+            public int FilterAdded { get; set; }
+            public int FilterUpdated { get; set; }
+
+            public void Merge(ProcessingStats other)
+            {
+                if (other == null) return;
+
+                TotalZones += other.TotalZones;
+                ValidZones += other.ValidZones;
+                InvalidZones += other.InvalidZones;
+                FileComboCount += other.FileComboCount;
+                GlobalCreated += other.GlobalCreated;
+                GlobalUpdated += other.GlobalUpdated;
+                GlobalRemoved += other.GlobalRemoved;
+                FilterAdded += other.FilterAdded;
+                FilterUpdated += other.FilterUpdated;
+            }
+
+            public override string ToString()
+            {
+                return $"Category='{Category}', Zones={ValidZones}/{TotalZones}, Invalid={InvalidZones}, FileCombos={FileComboCount}, Global({GlobalCreated}/{GlobalUpdated}/{GlobalRemoved}), Filter({FilterAdded}/{FilterUpdated})";
+            }
+
+            public static ProcessingStats Combine(IEnumerable<ProcessingStats> stats)
+            {
+                var aggregate = new ProcessingStats("ALL");
+                foreach (var stat in stats)
+                {
+                    aggregate.Merge(stat);
+                }
+                return aggregate;
+            }
+        }
+
+        /// <summary>
+        /// Helper method to normalize file names (matches ProcessedFileCombo.GetNormalizedKey logic exactly)
+        /// ✅ CRITICAL: Must match GetNormalizedKey() normalization to ensure file combos match correctly
+        /// </summary>
+        private string NormalizeFileName(string fileName)
+        {
+            if (string.IsNullOrWhiteSpace(fileName)) return string.Empty;
+            
+            var trimmed = fileName.Trim();
+            
+            // ✅ FIX: Remove old format ": X : location Shared" pattern (e.g., ": 12 : location Shared")
+            // This handles legacy file combo names from Global XML
+            var locationMatch = System.Text.RegularExpressions.Regex.Match(trimmed, @":\s*\d+\s*:\s*location\s+Shared", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (locationMatch.Success)
+            {
+                trimmed = trimmed.Substring(0, locationMatch.Index).Trim();
+            }
+            
+            var idxParen = trimmed.IndexOf('(');
+            if (idxParen >= 0) trimmed = trimmed.Substring(0, idxParen);
+            trimmed = System.IO.Path.GetFileNameWithoutExtension(trimmed);
+            trimmed = trimmed.ToLowerInvariant().Replace("_detached", "");
+            trimmed = trimmed.Replace('_', ' ').Replace('-', ' ');
+            trimmed = System.Text.RegularExpressions.Regex.Replace(trimmed, "\\s+", " ");
+            return trimmed.Trim();
+        }
+
+        private static bool ShouldSkipAdd(ClashZone zone)
+        {
+            if (zone == null)
+                return true;
+
+            // 🚫 DO NOT tighten this guard back to sleeve-dependent checks.
+            // Refresh runs before placement, so SleeveInstanceId / dimensions / bbox will be zero.
+            // If we require those fields here, the tree stays empty and the placer has nothing to work with.
+            // We intentionally persist any clash that has a valid identity + intersection data.
+            // Prior to placement we expect sleeve data to be zeroed out, so verify only the
+            // core clash zone identity and intersection data. Anything with valid IDs and
+            // intersection point should be persisted so the placer can work later.
+            if (zone.Id == Guid.Empty)
+                return true;
+
+            var mepId = zone.MepElementId?.IntegerValue ?? zone.MepElementIdValue;
+            var hostId = zone.StructuralElementId?.IntegerValue ?? zone.StructuralElementIdValue;
+            if (mepId <= 0 || hostId <= 0)
+                return true;
+
+            // Require at least one non-zero intersection component so we ignore totally empty records
+            var hasIntersection = Math.Abs(zone.IntersectionPointX) > 1e-9 ||
+                                   Math.Abs(zone.IntersectionPointY) > 1e-9 ||
+                                   Math.Abs(zone.IntersectionPointZ) > 1e-9;
+            if (!hasIntersection)
+                return true;
+
+            return false;
+        }
+
+        private static void MergeZone(ClashZone target, ClashZone source, string logPath, bool allowStructuralUpdates)
+        {
+            if (target == null || source == null) return;
+
+            if (allowStructuralUpdates)
+            {
+                if (!string.IsNullOrWhiteSpace(source.SourceDocKey))
+                    target.SourceDocKey = source.SourceDocKey;
+                if (!string.IsNullOrWhiteSpace(source.HostDocKey))
+                    target.HostDocKey = source.HostDocKey;
+
+                if (source.MepParameterValues != null && source.MepParameterValues.Count > 0)
+                    target.MepParameterValues = source.MepParameterValues;
+                if (source.HostParameterValues != null && source.HostParameterValues.Count > 0)
+                    target.HostParameterValues = source.HostParameterValues;
+
+                // ✅ CRITICAL: Update thickness values based on structural element type
+                // StructuralElementThickness: Always update (used for floors, walls, and framing)
+                    target.StructuralElementThickness = source.StructuralElementThickness;
+                
+                // WallThickness: Only update if structural type is Wall
+                if (source.StructuralElementType == "Wall" || source.StructuralElementType == "Walls")
+                {
+                    target.WallThickness = source.WallThickness;
+                }
+                
+                // FramingThickness: Only update if structural type is Structural Framing
+                if (string.Equals(source.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase))
+                {
+                    target.FramingThickness = source.FramingThickness;
+                }
+                
+                if (source.StructuralElementNormal != null)
+                    target.StructuralElementNormal = source.StructuralElementNormal;
+
+                target.IntersectionPointX = source.IntersectionPointX;
+                target.IntersectionPointY = source.IntersectionPointY;
+                target.IntersectionPointZ = source.IntersectionPointZ;
+                
+                // ✅ CRITICAL: Always update MEP orientation properties (needed for sleeve rotation)
+                target.MepElementOrientation = source.MepElementOrientation;
+                target.MepElementOrientationDirection = source.MepElementOrientationDirection;
+                target.MepElementRotationAngle = source.MepElementRotationAngle;
+                target.MepElementOrientationX = source.MepElementOrientationX;
+                target.MepElementOrientationY = source.MepElementOrientationY;
+                target.MepElementOrientationZ = source.MepElementOrientationZ;
+            }
+
+            if (HasPlacementPoint(source))
+            {
+                target.SleevePlacementPointX = source.SleevePlacementPointX;
+                target.SleevePlacementPointY = source.SleevePlacementPointY;
+                target.SleevePlacementPointZ = source.SleevePlacementPointZ;
+                
+                // Keep ActiveDocument properties in sync with World for compatibility, 
+                // but use World as the primary source.
+                target.SleevePlacementPointActiveDocumentX = source.SleevePlacementPointX;
+                target.SleevePlacementPointActiveDocumentY = source.SleevePlacementPointY;
+                target.SleevePlacementPointActiveDocumentZ = source.SleevePlacementPointZ;
+            }
+
+            if (source.SleeveWidth > 0)
+                target.SleeveWidth = source.SleeveWidth;
+            if (source.SleeveHeight > 0)
+                target.SleeveHeight = source.SleeveHeight;
+            if (source.SleeveDiameter > 0)
+                target.SleeveDiameter = source.SleeveDiameter;
+
+            if (HasBoundingBox(source))
+            {
+                target.SleeveBoundingBoxMinX = source.SleeveBoundingBoxMinX;
+                target.SleeveBoundingBoxMinY = source.SleeveBoundingBoxMinY;
+                target.SleeveBoundingBoxMinZ = source.SleeveBoundingBoxMinZ;
+                target.SleeveBoundingBoxMaxX = source.SleeveBoundingBoxMaxX;
+                target.SleeveBoundingBoxMaxY = source.SleeveBoundingBoxMaxY;
+                target.SleeveBoundingBoxMaxZ = source.SleeveBoundingBoxMaxZ;
+            }
+
+            if (source.SleeveInstanceId > 0)
+                target.SleeveInstanceId = source.SleeveInstanceId;
+            if (source.ClusterSleeveInstanceId > 0)
+                target.ClusterSleeveInstanceId = source.ClusterSleeveInstanceId;
+            if (source.AfterClusterSleevePlacedSleeveInstanceId > 0)
+                target.AfterClusterSleevePlacedSleeveInstanceId = source.AfterClusterSleevePlacedSleeveInstanceId;
+
+            target.IsResolved = source.IsResolved || target.IsResolved;
+            target.IsClusterResolved = source.IsClusterResolved || target.IsClusterResolved;
+            target.MarkedForClusterProcess = source.MarkedForClusterProcess ?? target.MarkedForClusterProcess;
+
+            if (!string.IsNullOrWhiteSpace(source.SleeveFamilyName))
+                target.SleeveFamilyName = source.SleeveFamilyName;
+
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(logPath))
+                {
+                    File.AppendAllText(logPath,
+                        $"[{DateTime.Now:HH:mm:ss}] [PERSIST-UPDATE] Zone={source.Id}, SleeveId={source.SleeveInstanceId}, W={source.SleeveWidth:F6}, H={source.SleeveHeight:F6}, D={source.SleeveDiameter:F6}\n");
+                }
+            }
+            catch { }
+        }
+
+        private static bool HasPlacementPoint(ClashZone zone)
+        {
+            if (zone == null) return false;
+            return Math.Abs(zone.SleevePlacementPointX) > 1e-9 || Math.Abs(zone.SleevePlacementPointY) > 1e-9 || Math.Abs(zone.SleevePlacementPointZ) > 1e-9;
+        }
+
+        private static bool HasActivePlacementPoint(ClashZone zone)
+        {
+            if (zone == null) return false;
+            // Check both standard and active document coordinates
+            return (Math.Abs(zone.SleevePlacementPointActiveDocumentX) > 1e-9 || Math.Abs(zone.SleevePlacementPointActiveDocumentY) > 1e-9 || Math.Abs(zone.SleevePlacementPointActiveDocumentZ) > 1e-9) ||
+                   (Math.Abs(zone.SleevePlacementPointX) > 1e-9 || Math.Abs(zone.SleevePlacementPointY) > 1e-9 || Math.Abs(zone.SleevePlacementPointZ) > 1e-9);
+        }
+
+        private static bool HasBoundingBox(ClashZone zone)
+        {
+            if (zone == null) return false;
+            return Math.Abs(zone.SleeveBoundingBoxMinX) > 1e-9 || Math.Abs(zone.SleeveBoundingBoxMinY) > 1e-9 || Math.Abs(zone.SleeveBoundingBoxMinZ) > 1e-9 ||
+                   Math.Abs(zone.SleeveBoundingBoxMaxX) > 1e-9 || Math.Abs(zone.SleeveBoundingBoxMaxY) > 1e-9 || Math.Abs(zone.SleeveBoundingBoxMaxZ) > 1e-9;
+        }
+
+            
+        
+
+        private void ConsolidateFileCombos(FilterGroupForStorage filterGroup, string logPath)
+        {
+            if (filterGroup?.FileCombos == null || filterGroup.FileCombos.Count <= 1)
+                return;
+
+            var combos = filterGroup.FileCombos
+                .Where(fc => fc != null)
+                .GroupBy(fc => fc.GetNormalizedKey())
+                .ToList();
+
+            var duplicatesToRemove = new List<FilterFileComboGroup>();
+
+            foreach (var grouping in combos)
+            {
+                var ordered = grouping
+                    .OrderByDescending(fc => fc.ProcessedAt)
+                    .ToList();
+
+                var keeper = ordered.First();
+                bool mergedAny = false;
+
+                foreach (var duplicate in ordered.Skip(1))
+                {
+                    mergedAny = true;
+
+                    if (duplicate.ClashZones != null && duplicate.ClashZones.Count > 0)
+                    {
+                        if (keeper.ClashZones == null)
+                            keeper.ClashZones = new List<ClashZone>();
+
+                        foreach (var zone in duplicate.ClashZones)
+                        {
+                            if (zone == null) continue;
+                            var existing = keeper.ClashZones.FirstOrDefault(z => z != null && z.Id == zone.Id);
+                            if (existing == null)
+                            {
+                                keeper.ClashZones.Add(zone);
+                            }
+                            else
+                            {
+                                MergeZone(existing, zone, logPath, allowStructuralUpdates: true);
+                            }
+                        }
+                    }
+
+                    duplicatesToRemove.Add(duplicate);
+                }
+
+                if (mergedAny)
+                {
+                    keeper.ProcessedAt = ordered.Max(fc => fc.ProcessedAt);
+                    keeper.ClashZones = keeper.ClashZones?
+                        .Where(z => z != null)
+                        .GroupBy(z => z.Id)
+                        .Select(g => g.First())
+                        .ToList();
+
+                    try
+                    {
+                        if (!string.IsNullOrWhiteSpace(logPath))
+                        {
+                            File.AppendAllText(logPath,
+                                $"[{DateTime.Now:HH:mm:ss}] [PERSIST-CONSOLIDATE] Deduped combo '{grouping.Key}' – kept {keeper.ClashZones?.Count ?? 0} zones, removed {ordered.Count - 1} duplicates\n");
+                        }
+                    }
+                    catch { }
+                }
+            }
+
+            if (duplicatesToRemove.Count > 0)
+            {
+                foreach (var duplicate in duplicatesToRemove)
+                {
+                    filterGroup.FileCombos.Remove(duplicate);
+                }
+            }
+        }
+
+        private void MergeLegacyGroupsIntoTarget(
+            ClashZoneStorage storage,
+            FilterGroupForStorage targetGroup,
+            string normalizedKey,
+            string logPath)
+        {
+            if (storage?.Filters == null || targetGroup == null)
+                return;
+
+            var filtersToProcess = storage.Filters.ToList();
+            foreach (var group in filtersToProcess)
+            {
+                if (group == null || ReferenceEquals(group, targetGroup))
+                    continue;
+
+                if (group.FileCombos == null || group.FileCombos.Count == 0)
+                {
+                    storage.Filters.Remove(group);
+                    continue;
+                }
+
+                var combosToMove = group.FileCombos
+                    .Where(fc => fc != null &&
+                                 (string.IsNullOrWhiteSpace(normalizedKey) ||
+                                  string.Equals(fc.GetNormalizedKey(), normalizedKey, StringComparison.OrdinalIgnoreCase)))
+                    .ToList();
+
+                if (combosToMove.Count == 0 &&
+                    string.Equals(group.Name, targetGroup.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    combosToMove = group.FileCombos.ToList();
+                }
+
+                foreach (var combo in combosToMove)
+                {
+                    group.FileCombos.Remove(combo);
+                    targetGroup.FileCombos.Add(combo);
+
+                    try
+                    {
+                        if (!string.IsNullOrWhiteSpace(logPath))
+                        {
+                            File.AppendAllText(logPath,
+                                $"[{DateTime.Now:HH:mm:ss}] [PERSIST-GROUP-MERGE] Moved combo {combo.LinkedFile}|{combo.HostFile} from '{group.Name}' to '{targetGroup.Name}'\n");
+                        }
+                    }
+                    catch { }
+                }
+
+                if (group.FileCombos == null || group.FileCombos.Count == 0)
+                {
+                    storage.Filters.Remove(group);
+                }
+            }
+
+            ConsolidateFileCombos(targetGroup, logPath);
+
+            storage.Filters.RemoveAll(f =>
+                !ReferenceEquals(f, targetGroup) &&
+                (f == null || f.FileCombos == null || f.FileCombos.Count == 0));
+
+            if (!storage.Filters.Contains(targetGroup))
+            {
+                storage.Filters.Add(targetGroup);
+            }
+        }
+
+        /// <summary>
+        /// ✅ PHASE SQLITE-1: Dispose SQLite context
+        /// </summary>
+        public void Dispose()
+        {
+            _sqliteContext?.Dispose();
+            _sqliteContext = null;
+            _sqliteRepository = null;
+        }
+    }
+}
+

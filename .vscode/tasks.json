@@ -1,0 +1,22 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build add-in",
+      "type": "shell",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "JSE_RevitAddin_MEP_OPENINGS.csproj",
+        "-c",
+        "Debug R24",
+        "/p:Platform=Any CPU"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": ["$msCompile"]
+    }
+  ]
+}

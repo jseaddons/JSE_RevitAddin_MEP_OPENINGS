@@ -1,0 +1,18 @@
+[33med38c20[m FINAL COMMIT: Parameter Service UI Implementation Complete - All Bugs Fixed 100% Working
+[33ma646c7b[m MAJOR MILESTONE: Complete sleeve placement with UI integration
+[33me683a7b[m Fix duct clearance and cable tray clearance issues
+[33mdef7fe8[m Fix duct sleeve placement bugs for walls - all issues resolved
+[33ma92702d[m MAJOR MILESTONES: Fixed MEP Floor Sleeve Placement Logic and Revised CONDITIONS Architecture
+[33m54fdbfc[m Fix duct-floor orientation debugging - UI selected categories only proceed now
+[33mde8c6ff[m MILESTONE: Cluster command automation COMPLETE - tested with Ducts (3 clusters, 7 replaced), user prompts added, service-based architecture, CONVOID-aligned. Next: Mark parameter and parameter mapping
+[33m65994be[m CRITICAL FIX: Standardized category names (MepCategoryConstants) + XML-based clustering filter (no parameter dependency) - solves Duct/Ducts confusion
+[33mbaa0b49[m MILESTONE COMMIT , SLEEVE PLACEMENT FIXED WITH Duplication suppression, CLEARANCE FROM UI, FOR ALL DUCT , DAMPER , CABLETRAYS AND PIPE ,  - clearance values from UI now applied correctly to all categories , YET TO TEST DMAPER TYPE MSFD , CABLETRAYS AND PIPE .. NEXT MILESTONE TO ACHIEVE IS CLUSTER OPENING
+[33mcb11c7b[m WIP: Universal placement adopted - tested duct and damper standard up to sleeve placement working
+[33m3c79f9a[m âœ… DUCT CATEGORY SLEEVE PLACEMENT FULLY FUNCTIONAL
+[33mb1b7224[m Debug and troubleshoot ElementCollectorService and MEP intersection improvements
+[33m431e30c[m Fix: Debug and resolve damper detection in MEP intersection service
+[33m5bb4270[m Set default opening type to Circular for Pipes category
+[33m245f990[m Fix multiple MEP category parameter population - 90% UI issues resolved
+[33m1395cc9[m[33m ([m[1;31morigin/stage-3-development[m[33m, [m[1;32mstage-3-development[m[33m)[m Complete UI and functionality improvements: Remove prompts, fix progress dialog, resolve tuple type mismatches, fix clearance application, and improve logging
+[33m5b9164e[m Fix UI state persistence bugs and add Other Files sections
+[33me4b6c2b[m Fix: bbox-based clustering + section-box fallback for pipe clusters; null-safety fixes in DuctSleevePlacerService

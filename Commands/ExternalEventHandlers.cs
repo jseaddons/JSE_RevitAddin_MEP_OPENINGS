@@ -1,0 +1,247 @@
+using System;
+using System.Windows.Forms;
+using Autodesk.Revit.DB;
+using Autodesk.Revit.UI;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Views;
+
+namespace JSE_RevitAddin_MEP_OPENINGS.Commands
+{
+    /// <summary>
+    /// External Event handler for UI operations to prevent crashes in Revit
+    /// </summary>
+    public class ShowDialogExternalEvent : IExternalEventHandler
+    {
+        private ApplicationProfileService? _appProfileService;
+        private Document? _document;
+        private UIDocument? _uiDocument;
+        private DialogType _dialogType;
+
+        public enum DialogType
+        {
+            MinimalTest,
+            ProfileSetup,
+            ProfileManagement,
+            MainDialog
+        }
+
+        public void SetParameters(ApplicationProfileService appProfileService, Document? document, UIDocument? uiDocument, DialogType dialogType)
+        {
+            _appProfileService = appProfileService;
+            _document = document;
+            _uiDocument = uiDocument;
+            _dialogType = dialogType;
+            
+            // Set logging context for external events debugging
+            DebugLogger.SetServiceContext("ExternalEvents");
+            DebugLogger.Info($"ExternalEventHandlers.SetParameters: UIDocument = {(uiDocument != null ? "NOT NULL" : "NULL")}");
+            DebugLogger.Info($"ExternalEventHandlers.SetParameters: Document = {(document != null ? "NOT NULL" : "NULL")}");
+        }
+
+        public void Execute(UIApplication app)
+        {
+            try
+            {
+                switch (_dialogType)
+                {
+                    case DialogType.MinimalTest:
+                        ShowMinimalTestDialog();
+                        break;
+                    case DialogType.ProfileSetup:
+                        ShowProfileSetupDialog();
+                        break;
+                    case DialogType.ProfileManagement:
+                        ShowProfileManagementDialog();
+                        break;
+                    case DialogType.MainDialog:
+                        ShowMainDialog();
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                TaskDialog.Show("Error", $"Dialog execution failed: {ex.Message}");
+            }
+        }
+
+        private void ShowMinimalTestDialog()
+        {
+            using (var testDialog = new System.Windows.Forms.Form())
+            {
+                testDialog.Text = "Minimal Test Dialog - External Event";
+                testDialog.Size = new System.Drawing.Size(400, 300);
+                testDialog.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
+                
+                var label = new System.Windows.Forms.Label
+                {
+                    Text = "This dialog is shown via External Event.\nThis should NOT crash on second execution.\n\nClose this and run the command again to test.",
+                    Dock = System.Windows.Forms.DockStyle.Fill,
+                    TextAlign = System.Drawing.ContentAlignment.MiddleCenter
+                };
+                
+                testDialog.Controls.Add(label);
+                testDialog.ShowDialog();
+            }
+        }
+
+        private void ShowProfileSetupDialog()
+        {
+            if (_appProfileService == null) return;
+            
+            using (var emergencyDialog = new EmergencyProfileSetup(_appProfileService.ProfileService, _appProfileService.StatusManager))
+            {
+                var result = emergencyDialog.ShowDialog();
+                if (result == DialogResult.OK && emergencyDialog.CreatedProfile != null)
+                {
+                    _appProfileService.SetCurrentProfile(emergencyDialog.CreatedProfile);
+                    TaskDialog.Show("Profile Setup", $"Profile '{emergencyDialog.CreatedProfile.Name}' created successfully!");
+                }
+            }
+        }
+
+        private void ShowProfileManagementDialog()
+        {
+            if (_appProfileService == null) return;
+            
+            using (var emergencyProfileMgmt = new EmergencyProfileManagementDialog(_appProfileService))
+            {
+                var result = emergencyProfileMgmt.ShowDialog();
+                if (result == DialogResult.OK && emergencyProfileMgmt.ShouldOpenMainDialog)
+                {
+                    ShowMainDialog();
+                }
+            }
+        }
+
+        private void ShowMainDialog()
+        {
+            if (_appProfileService == null) return;
+            
+            // ✅ CRITICAL: Check section box BEFORE showing main UI - NO FALLBACK
+            var uiDocument = _uiDocument ?? GetCurrentUIDocument();
+            if (uiDocument?.Document != null)
+            {
+                var activeView = uiDocument.ActiveView;
+                if (!(activeView is View3D view3D) || !view3D.IsSectionBoxActive)
+                {
+                    // ✅ NO FALLBACK: Prompt user to activate section box BEFORE showing main UI
+                    var dialog = new TaskDialog("Section Box Required")
+                    {
+                        MainInstruction = "A 3D view with an active section box is REQUIRED.",
+                        MainContent = "Please:\n" +
+                                     "1. Activate a 3D view\n" +
+                                     "2. Enable section box in the view properties\n" +
+                                     "3. Adjust section box to your desired zone\n" +
+                                     "4. Try again\n\n" +
+                                     "Section box is required to limit clash detection to specific zones.",
+                        CommonButtons = TaskDialogCommonButtons.Ok,
+                        MainIcon = TaskDialogIcon.TaskDialogIconWarning
+                    };
+                    dialog.Show();
+                    return; // Stop - don't show main UI
+                }
+                
+                // ✅ DOUBLE CHECK: Verify section box is not null
+                var sectionBox = view3D.GetSectionBox();
+                if (sectionBox == null || sectionBox.Min == null || sectionBox.Max == null)
+                {
+                    var invalidDialog = new TaskDialog("Section Box Invalid")
+                    {
+                        MainInstruction = "Section box is active but invalid.",
+                        MainContent = "Please:\n" +
+                                     "1. Deactivate section box\n" +
+                                     "2. Reactivate section box\n" +
+                                     "3. Adjust section box bounds\n" +
+                                     "4. Try again",
+                        CommonButtons = TaskDialogCommonButtons.Ok,
+                        MainIcon = TaskDialogIcon.TaskDialogIconWarning
+                    };
+                    invalidDialog.Show();
+                    return; // Stop - don't show main UI
+                }
+            }
+            
+            // 🔍 DIAGNOSTIC: Log BEFORE creating EmergencyMainDialog
+            DebugLogger.Info($"🔍 ShowMainDialog: About to create EmergencyMainDialog");
+            DebugLogger.Info($"🔍 ShowMainDialog: _uiDocument = {(_uiDocument != null ? "NOT NULL" : "NULL")}");
+            DebugLogger.Info($"🔍 ShowMainDialog: _document = {(_document != null ? "NOT NULL" : "NULL")}");
+            
+            // 🔍 DIAGNOSTIC: Count sleeves BEFORE creating dialog
+            if (_document != null)
+            {
+                var sleevesBeforeCount = new FilteredElementCollector(_document)
+                    .OfClass(typeof(FamilyInstance))
+                    .Cast<FamilyInstance>()
+                    .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                    .Count();
+                DebugLogger.Info($"🔍 ShowMainDialog: Sleeves BEFORE creating dialog: {sleevesBeforeCount}");
+            }
+            
+            // CRITICAL FIX: Get UIDocument from current Revit context if not available
+            DebugLogger.Info($"🔍 ShowMainDialog: Final UIDocument = {(uiDocument != null ? "NOT NULL" : "NULL")}");
+            
+            // 🔍 DIAGNOSTIC: Log just before constructor call
+            DebugLogger.Info($"🔍 ShowMainDialog: About to call EmergencyMainDialog constructor");
+            
+            // Allow null document - EmergencyMainDialog can acquire it if needed
+            try
+            {
+                var emergencyMainDlg = new EmergencyMainDialog(_appProfileService, _document, uiDocument);
+                DebugLogger.Info($"🔍 ShowMainDialog: EmergencyMainDialog created successfully");
+                
+                // 🔍 DIAGNOSTIC: Count sleeves AFTER creating dialog (but before showing)
+                if (_document != null)
+                {
+                    var sleevesAfterCount = new FilteredElementCollector(_document)
+                        .OfClass(typeof(FamilyInstance))
+                        .Cast<FamilyInstance>()
+                        .Where(fi => fi.Symbol?.Family?.Name?.Contains("Opening") == true)
+                        .Count();
+                    DebugLogger.Info($"🔍 ShowMainDialog: Sleeves AFTER creating dialog: {sleevesAfterCount}");
+                }
+                
+                // Show modeless to avoid blocking Revit UI and potential freezes
+                DebugLogger.Info($"🔍 ShowMainDialog: About to show dialog");
+                emergencyMainDlg.Show();
+                DebugLogger.Info($"🔍 ShowMainDialog: Dialog shown successfully");
+            }
+            catch (InvalidOperationException ex)
+            {
+                // ✅ NO FALLBACK: Section box check failed - show prompt
+                var errorDialog = new TaskDialog("Section Box Required")
+                {
+                    MainInstruction = "Section Box Required",
+                    MainContent = ex.Message,
+                    CommonButtons = TaskDialogCommonButtons.Ok,
+                    MainIcon = TaskDialogIcon.TaskDialogIconWarning
+                };
+                errorDialog.Show();
+                DebugLogger.Error($"🔍 ShowMainDialog: Section box check failed: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Gets the current UIDocument from Revit context
+        /// </summary>
+        private UIDocument? GetCurrentUIDocument()
+        {
+            try
+            {
+                // In ExternalEventHandlers, we don't have direct access to UIApplication
+                // The UIDocument should be passed through the SetParameters method
+                DebugLogger.Warning("ExternalEventHandlers.GetCurrentUIDocument: Cannot get UIDocument from Revit context in ExternalEventHandlers");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"ExternalEventHandlers.GetCurrentUIDocument: Error getting UIDocument: {ex.Message}");
+                return null;
+            }
+        }
+
+        public string GetName()
+        {
+            return "Show Dialog External Event";
+        }
+    }
+}

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project outputDir="bin\Debug R24\Obfuscated" baseDir="bin\Debug R24">
+  <!-- Add probe directories for Revit API -->
+  <probePath>C:\Program Files\Autodesk\Revit 2024</probePath>
+  <probePath>bin\Debug R24</probePath>
+
+  <!-- Main assembly -->
+  <module path="JSE_RevitAddin_MEP_OPENINGS.dll">
+    <rule pattern="true" preset="normal" inherit="false">
+      <protection id="anti ildasm" />
+      <protection id="constants" />
+      <protection id="ctrl flow" />
+      <protection id="name mangling" />
+      <protection id="ref proxy" />
+      <protection id="resources" />
+    </rule>
+
+    <!-- Don't obfuscate Revit API entry points -->
+    <rule pattern="namespace('JSE_RevitAddin_MEP_OPENINGS').class('Application')" inherit="false">
+      <protection id="name mangling" exclude="true" />
+    </rule>
+
+    <rule pattern="namespace('JSE_RevitAddin_MEP_OPENINGS.Commands')" inherit="false">
+      <protection id="name mangling" exclude="true" />
+    </rule>
+
+    <!-- Exclude IExternalApplication and IExternalCommand interfaces -->
+    <rule pattern="implements('Autodesk.Revit.ApplicationServices.IExternalApplication')" inherit="false">
+      <protection id="name mangling" exclude="true" />
+    </rule>
+
+    <rule pattern="implements('Autodesk.Revit.UI.IExternalCommand')" inherit="false">
+      <protection id="name mangling" exclude="true" />
+    </rule>
+  </module>
+
+  <!-- Exclude Serilog assemblies from merging to prevent method reference conflicts -->
+  <module path="Serilog.dll">
+    <rule pattern="false" /> <!-- Don't merge this assembly -->
+  </module>
+
+  <module path="Serilog.Settings.KeyValuePairs.dll">
+    <rule pattern="false" /> <!-- Don't merge this assembly -->
+  </module>
+
+  <!-- Exclude other third-party assemblies that might cause issues -->
+  <module path="CommunityToolkit.Mvvm.dll">
+    <rule pattern="false" /> <!-- Don't merge this assembly -->
+  </module>
+
+  <module path="Newtonsoft.Json.dll">
+    <rule pattern="false" /> <!-- Don't merge this assembly -->
+  </module>
+</project>

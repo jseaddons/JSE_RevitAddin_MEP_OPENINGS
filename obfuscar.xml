@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project outputDir="bin\Debug R24\Obfuscated" baseDir="bin\Debug R24">
+  <!-- Add probe directories for Revit API -->
+  <probePath>C:\Program Files\Autodesk\Revit 2024</probePath>
+  <probePath>bin\Debug R24</probePath>
+  
+  <module path="JSE_RevitAddin_MEP_OPENINGS.dll">
+    <rule pattern="true" inherit="false">
+      <protection id="anti ildasm" />
+      <protection id="constants" />
+      <protection id="ctrl flow" />
+      <protection id="name mangling" />
+      <protection id="ref proxy" />
+      <protection id="resources" />
+    </rule>
+    
+    <!-- Don't obfuscate Revit API entry points -->
+    <rule pattern="namespace('JSE_RevitAddin_MEP_OPENINGS').class('Application')" inherit="false">
+      <protection id="name mangling" exclude="true" />
+    </rule>
+    
+    <rule pattern="namespace('JSE_RevitAddin_MEP_OPENINGS.Commands')" inherit="false">
+      <protection id="name mangling" exclude="true" />
+    </rule>
+    
+    <!-- Exclude IExternalApplication and IExternalCommand interfaces -->
+    <rule pattern="implements('Autodesk.Revit.ApplicationServices.IExternalApplication')" inherit="false">
+      <protection id="name mangling" exclude="true" />
+    </rule>
+    
+    <rule pattern="implements('Autodesk.Revit.UI.IExternalCommand')" inherit="false">
+      <protection id="name mangling" exclude="true" />
+    </rule>
+  </module>
+</project>

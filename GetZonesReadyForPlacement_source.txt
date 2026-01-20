@@ -1,0 +1,101 @@
+﻿
+                          SET 
+ReadyForPlacementFlag = 1, 
+                              UpdatedAt 
+= CURRENT_TIMESTAMP
+                          WHERE 
+IsCurrentClashFlag = 1 
+                            AND 
+IsResolvedFlag = 0 
+                            AND 
+IsClusterResolvedFlag = 0 
+                            AND 
+IsCombinedResolved = 0";
+                      
+                      updatedCount = 
+cmd.ExecuteNonQuery();
+  
+                      if (!DeploymentCon
+figuration.DeploymentMode && 
+updatedCount > 0)
+                      {
+                           
+_logger($"[SQLite] Γ£à 
+SetReadyForPlacement (SQL): Marked 
+{updatedCount} zones based on 
+IsCurrentClashFlag=1.");
+                      }
+                  }
+              }
+              catch (Exception ex)
+              {
+                   _logger($"[SQLite] 
+Γ¥î Error in SetReadyForPlacementForUnre
+solvedZonesInSectionBox: {ex.Message}");
+              }
+              return updatedCount;
+          }
+  
+  
+          #region Bulk Family Placement 
+Repository Methods
+  
+          /// <summary>
+          /// Γ£à BULK PLACEMENT: Get 
+all zones ready for bulk placement.
+          /// Returns zones where 
+IsCurrentClashFlag=1 AND 
+ReadyForPlacementFlag=1.
+          /// Used by 
+BulkPlacementService with OptimizationFl
+ags.UseBulkIndividualSleevePlacement.
+          /// </summary>
+>         public List<ClashZone> 
+GetZonesReadyForPlacement()
+          {
+              var result = new 
+List<ClashZone>();
+              
+              try
+              {
+                  using (var cmd = 
+_context.Connection.CreateCommand())
+                  {
+                      cmd.CommandText = 
+@"
+                          SELECT * 
+                          FROM 
+ClashZones 
+                          WHERE 
+IsCurrentClashFlag = 1 
+                            AND 
+ReadyForPlacementFlag = 1
+                          ORDER BY 
+MepElementCategory, SleeveFamilyName";
+                      
+                      using (var reader 
+= cmd.ExecuteReader())
+                      {
+                          while 
+(reader.Read())
+                          {
+                              
+result.Add(MapClashZone(reader));
+                          }
+                      }
+                  }
+                  
+                  if (!DeploymentConfigu
+ration.DeploymentMode)
+                  {
+                      
+_logger($"[SQLite] Γ£à 
+GetZonesReadyForPlacement: Retrieved 
+{result.Count} zones for bulk 
+placement");
+                  }
+              }
+              catch (Exception ex)
+              {
+
+

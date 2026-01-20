@@ -1,0 +1,32 @@
+# Quick Reference: File Paths for Comparison
+
+## 🔴 CRITICAL FILES (Compare First)
+
+Services/Clustering/RefactoredClusterService.cs
+Services/Clustering/Cleanup/ClusterCleanupService.cs
+Services/OpeningCommandOrchestrator.cs
+
+## 🟡 IMPORTANT FILES (Compare Second)
+
+Services/FlagManagement/FlagManagerService.cs
+Services/FlagManagement/FlagManagerFactory.cs
+Services/FlagManagement/FlagManagerAdapter.cs
+Services/Interfaces/Refactor/IFlagManager.cs
+
+## 🟢 SUPPORTING FILES (Compare if Needed)
+
+Services/OptimizationFlags.cs
+Services/Clustering/Placement/ClusterPlacementService.cs (already verified - identical)
+
+## Git Commands to Download Working Version
+
+Replace <commit-hash> with the working commit hash:
+
+git show <commit-hash>:Services/Clustering/RefactoredClusterService.cs > RefactoredClusterService_working.cs
+git show <commit-hash>:Services/Clustering/Cleanup/ClusterCleanupService.cs > ClusterCleanupService_working.cs
+git show <commit-hash>:Services/OpeningCommandOrchestrator.cs > OpeningCommandOrchestrator_working.cs
+git show <commit-hash>:Services/FlagManagement/FlagManagerService.cs > FlagManagerService_working.cs
+git show <commit-hash>:Services/FlagManagement/FlagManagerFactory.cs > FlagManagerFactory_working.cs
+git show <commit-hash>:Services/FlagManagement/FlagManagerAdapter.cs > FlagManagerAdapter_working.cs
+git show <commit-hash>:Services/Interfaces/Refactor/IFlagManager.cs > IFlagManager_working.cs
+

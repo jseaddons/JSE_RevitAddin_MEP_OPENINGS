@@ -1,0 +1,141 @@
+using Autodesk.Revit.DB;
+
+namespace JSE_RevitAddin_MEP_OPENINGS.Models
+{
+    /// <summary>
+    /// Centralized MEP category names to avoid confusion (singular vs plural)
+    /// Based on Revit API BuiltInCategory standard names
+    /// </summary>
+    public static class MepCategoryConstants
+    {
+        // ✅ Standard category names (match Revit API BuiltInCategory)
+        public const string DUCTS = "Ducts";                    // OST_DuctCurves
+        public const string PIPES = "Pipes";                    // OST_PipeCurves
+        public const string CABLE_TRAYS = "Cable Trays";        // OST_CableTray
+        public const string DUCT_ACCESSORIES = "Duct Accessories"; // OST_DuctAccessory
+        
+        // XML file suffixes (lowercase with underscores)
+        public const string DUCTS_XML_SUFFIX = "ducts";
+        public const string PIPES_XML_SUFFIX = "pipes";
+        public const string CABLE_TRAYS_XML_SUFFIX = "cable_trays";
+        public const string DUCT_ACCESSORIES_XML_SUFFIX = "duct_accessories";
+        
+        /// <summary>
+        /// Get XML file suffix for a category name
+        /// Handles both enum values (e.g., "DuctAccessories") and display names (e.g., "Duct Accessories")
+        /// </summary>
+        public static string GetXmlSuffix(string category)
+        {
+            if (string.IsNullOrWhiteSpace(category))
+                return "";
+            
+            // ✅ CRITICAL: Normalize first to handle enum values (e.g., "DuctAccessories" → "Duct Accessories")
+            string normalized = Normalize(category);
+            
+            return normalized switch
+            {
+                DUCTS => DUCTS_XML_SUFFIX,
+                PIPES => PIPES_XML_SUFFIX,
+                CABLE_TRAYS => CABLE_TRAYS_XML_SUFFIX,
+                DUCT_ACCESSORIES => DUCT_ACCESSORIES_XML_SUFFIX,
+                _ => normalized.ToLower().Replace(" ", "_")
+            };
+        }
+        
+        /// <summary>
+        /// Get Revit BuiltInCategory for a category name
+        /// </summary>
+        public static BuiltInCategory GetBuiltInCategory(string category)
+        {
+            return category switch
+            {
+                DUCTS => BuiltInCategory.OST_DuctCurves,
+                PIPES => BuiltInCategory.OST_PipeCurves,
+                CABLE_TRAYS => BuiltInCategory.OST_CableTray,
+                DUCT_ACCESSORIES => BuiltInCategory.OST_DuctAccessory,
+                _ => BuiltInCategory.INVALID
+            };
+        }
+        
+        /// <summary>
+        /// Parse string category name to MepCategory enum
+        /// </summary>
+        public static MepCategory Parse(string category)
+        {
+            var normalized = Normalize(category);
+            
+            return normalized switch
+            {
+                DUCTS => MepCategory.Ducts,
+                DUCT_ACCESSORIES => MepCategory.DuctAccessories,
+                PIPES => MepCategory.Pipes,
+                CABLE_TRAYS => MepCategory.CableTrays,
+                _ => MepCategory.Ducts // Default fallback
+            };
+        }
+        
+        /// <summary>
+        /// Normalize category name to standard (handles "Duct" → "Ducts", etc.)
+        /// </summary>
+        public static string Normalize(string category)
+        {
+            if (string.IsNullOrWhiteSpace(category))
+                return DUCTS; // Default
+            
+            var normalized = category.Trim();
+            
+            // Handle common variations
+            if (normalized.Equals("Duct", System.StringComparison.OrdinalIgnoreCase) ||
+                normalized.Equals("Duct Curves", System.StringComparison.OrdinalIgnoreCase))
+                return DUCTS;
+            
+            if (normalized.Equals("Pipe", System.StringComparison.OrdinalIgnoreCase) ||
+                normalized.Equals("Pipe Curves", System.StringComparison.OrdinalIgnoreCase))
+                return PIPES;
+            
+            if (normalized.Equals("Cable Tray", System.StringComparison.OrdinalIgnoreCase) ||
+                normalized.Equals("CableTray", System.StringComparison.OrdinalIgnoreCase) ||
+                normalized.Equals("Cabletray", System.StringComparison.OrdinalIgnoreCase))
+                return CABLE_TRAYS;
+            
+            // ✅ CRITICAL FIX: Handle enum values FIRST (e.g., "DuctAccessories" from MepCategory enum)
+            if (normalized.Equals("DuctAccessories", System.StringComparison.OrdinalIgnoreCase))
+                return DUCT_ACCESSORIES;
+            if (normalized.Equals("CableTrays", System.StringComparison.OrdinalIgnoreCase))
+                return CABLE_TRAYS;
+            
+            // Handle display name variations
+            if (normalized.Equals("Duct Accessory", System.StringComparison.OrdinalIgnoreCase) ||
+                normalized.Equals("DuctAccessory", System.StringComparison.OrdinalIgnoreCase) ||
+                normalized.Equals("Duct Accessories", System.StringComparison.OrdinalIgnoreCase) ||
+                normalized.Equals("Damper", System.StringComparison.OrdinalIgnoreCase) ||
+                normalized.Equals("Dampers", System.StringComparison.OrdinalIgnoreCase))
+                return DUCT_ACCESSORIES;
+            
+            // Return as-is if no match
+            return normalized;
+        }
+
+        /// <summary>
+        /// Convert an XML file suffix back to a normalized display category (e.g. "cable_trays" → "Cable Trays").
+        /// </summary>
+        public static string FromXmlSuffix(string suffix)
+        {
+            if (string.IsNullOrWhiteSpace(suffix))
+                return DUCTS;
+
+            var normalized = suffix.Trim().ToLowerInvariant();
+
+            return normalized switch
+            {
+                DUCTS_XML_SUFFIX => DUCTS,
+                PIPES_XML_SUFFIX => PIPES,
+                CABLE_TRAYS_XML_SUFFIX => CABLE_TRAYS,
+                DUCT_ACCESSORIES_XML_SUFFIX => DUCT_ACCESSORIES,
+                _ => System.Globalization.CultureInfo.CurrentCulture.TextInfo
+                        .ToTitleCase(normalized.Replace("_", " "))
+            };
+        }
+    }
+}
+
