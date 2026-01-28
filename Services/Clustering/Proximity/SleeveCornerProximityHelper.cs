@@ -143,6 +143,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
             var maxZ = Math.Max(Math.Max(cz.SleeveCorner1Z ?? 0, cz.SleeveCorner2Z ?? 0),
                                Math.Max(cz.SleeveCorner3Z ?? 0, cz.SleeveCorner4Z ?? 0));
 
+            // ✅ CRITICAL FIX: Handle "Flat" faces (2D corners) by extruding into 3D
+            // If the 4 corners represent a face (e.g. bottom face or front face), 
+            // one axis will have zero (or near-zero) range.
+            
+            double rangeX = maxX - minX;
+            double rangeY = maxY - minY;
+            double rangeZ = maxZ - minZ;
+            
+            // Tolerance for "flatness" (1mm)
+            double flatTol = 0.003; 
+
+            // Case 1: Flat in Z (Horizontal face, likely bottom face)
+            if (rangeZ < flatTol)
+            {
+                // Extrude upwards by SleeveHeight (or Diameter)
+                double height = cz.SleeveHeight > 0 ? cz.SleeveHeight : cz.SleeveDiameter;
+                if (height > 0)
+                {
+                    maxZ = minZ + height;
+                }
+            }
+            // Case 2: Flat in X or Y (Vertical face, likely front/back face of wall opening)
+            else if (rangeX < flatTol || rangeY < flatTol)
+            {
+                // Extrude in the flat axis by StructuralElementThickness (Depth)
+                double depth = cz.StructuralElementThickness > 0 ? cz.StructuralElementThickness : 0.656; // Fallback 200mm
+                
+                if (rangeX < flatTol)
+                {
+                    maxX = minX + depth;
+                }
+                else
+                {
+                    maxY = minY + depth;
+                }
+            }
+
             return (minX, maxX, minY, maxY, minZ, maxZ);
         }
 

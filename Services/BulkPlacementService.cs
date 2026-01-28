@@ -5,6 +5,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Utils;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -32,10 +33,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     public class BulkPlacementService : IBulkPlacementService
     {
         private readonly Action<string>? _logger;
+        private readonly SleeveParameterService _parameterService;
 
-        public BulkPlacementService(Action<string>? logger = null)
+        public BulkPlacementService(Document doc, Action<string>? logger = null)
         {
             _logger = logger ?? (msg => DebugLogger.Info(msg));
+            _parameterService = new SleeveParameterService(doc);
         }
 
         public BulkPlacementResult ExecuteBulkPlacement(Document doc, List<ClashZone> zones)
@@ -88,8 +91,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (creationDataList.Count > 0)
                 {
                     // Step 3: Bulk Placement
+                    // ⚠️ NO NESTED TRANSACTION HERE: Orchestrator already provides one.
+                    // Starting a nested transaction causes Revit to crash or elements to fail to commit.
                     var createdIds = doc.Create.NewFamilyInstances2(creationDataList);
                     var idList = createdIds.ToList();
+                    _logger?.Invoke($"[BulkPlacement] Created {idList.Count} family instances");
 
                     // Step 4: Finalize (Rotation and Mapping)
                     for (int i = 0; i < idList.Count; i++)
@@ -101,6 +107,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (instance != null)
                         {
                             ApplyRotationIfNecessary(doc, instance, zone);
+                            
+                            // ✅ FIX: Set Width/Height/Depth parameters from database values
+                            SetClusterParameters(instance, zone);
+                            
                             result.PlacedItems.Add((zone, elementId));
                             result.PlacedCount++;
                         }
@@ -150,24 +160,89 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         private void ApplyRotationIfNecessary(Document doc, FamilyInstance instance, ClashZone zone)
         {
-            // Floor sleeves often need rotation based on the MEP element's direction
-            if (zone.StructuralElementType == "Floor")
+            // ✅ ROTATION LOGIC: Handle rotation for different host types
+            // For Floors: Rotates based on MEP element direction (if circular, usually 0)
+            // For Walls/Framing: Rotates to align sleeve "Width" with the host's direction
+            
+            try
             {
-                try
+                double rotation = 0;
+                XYZ axisPoint1 = (instance.Location as LocationPoint)?.Point;
+                if (axisPoint1 == null) return;
+                
+                XYZ axisDirection = XYZ.BasisZ; // Default rotation axis for vertical hosts
+
+                if (zone.StructuralElementType == "Floor")
                 {
-                    double rotation = zone.MepElementRotationAngle;
-                    if (Math.Abs(rotation) > 0.001)
+                    rotation = zone.MepElementRotationAngle;
+                }
+                else if (zone.StructuralElementType == "Wall" || zone.StructuralElementType == "Structural Framing")
+                {
+                    // For walls, we want to align the sleeve with the wall direction
+                    // WallDirection is a normalized vector along the wall length
+                    if (zone.WallDirection != null && zone.WallDirection.GetLength() > 0.001)
                     {
-                        XYZ axisPoint1 = (instance.Location as LocationPoint).Point;
-                        XYZ axisPoint2 = axisPoint1 + XYZ.BasisZ;
-                        Line axis = Line.CreateBound(axisPoint1, axisPoint2);
-                        instance.Location.Rotate(axis, rotation);
+                        // Calculate the angle of the wall relative to the world X-axis
+                        // Formula: Angle = atan2(dy, dx)
+                        rotation = Math.Atan2(zone.WallDirection.Y, zone.WallDirection.X);
+                        
+                        // NOTE: RectangularOpeningOnWall family's default orientation 
+                        // might be perpendicular to the wall or already aligned.
+                        // If it's perpendicular by default, we might need a 90-degree (PI/2) offset.
+                        // Based on ClusterRotationService logic, we might need to adjust this.
                     }
                 }
-                catch (Exception ex)
+
+                if (Math.Abs(rotation) > 0.001)
                 {
-                    _logger?.Invoke($"[BulkPlacement] Rotation failed for zone {zone.Id}: {ex.Message}");
+                    XYZ axisPoint2 = axisPoint1 + axisDirection;
+                    Line axis = Line.CreateBound(axisPoint1, axisPoint2);
+                    instance.Location.Rotate(axis, rotation);
                 }
+            }
+            catch (Exception ex)
+            {
+                _logger?.Invoke($"[BulkPlacement] Rotation failed for zone {zone.Id}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// ✅ FIX: Set Width/Height/Depth parameters on cluster sleeve from database values
+        /// Uses SleeveParameterService.SetSleeveParametersImmediate for robust transaction-safe writes.
+        /// </summary>
+        private void SetClusterParameters(FamilyInstance instance, ClashZone zone)
+        {
+            try
+            {
+                // Determine dimensions - use calculated values if available (for clusters)
+                double width = zone.CalculatedSleeveWidth > 0 ? zone.CalculatedSleeveWidth : zone.SleeveWidth;
+                double height = zone.CalculatedSleeveHeight > 0 ? zone.CalculatedSleeveHeight : zone.SleeveHeight;
+                double diameter = zone.CalculatedSleeveWidth > 0 ? zone.CalculatedSleeveWidth : zone.SleeveWidth;
+                
+                // depth logic matches SleeveParameterService.GetThickness
+                double depth = zone.CalculatedSleeveDepth > 0 ? zone.CalculatedSleeveDepth : 
+                              (zone.WallThickness > 0 ? zone.WallThickness : 
+                               (zone.FramingThickness > 0 ? zone.FramingThickness : zone.StructuralElementThickness));
+
+                bool isCircular = zone.MepElementCategory == "Pipes" || zone.MepElementCategory == "Conduits";
+
+                // ✅ CRITICAL FIX: Use immediate write path for clusters within bulk transaction
+                _parameterService.SetSleeveParametersImmediate(
+                    instance, 
+                    width, 
+                    height, 
+                    diameter, 
+                    isCircular, 
+                    zone, 
+                    depth);
+                
+                _parameterService.SetClusterSleeveInstanceId(instance, instance.Id.IntegerValue);
+                
+                _logger?.Invoke($"[BulkPlacement] Set parameters for cluster {instance.Id}: W={width*304.8:F0}mm, H={height*304.8:F0}mm, D={depth*304.8:F0}mm");
+            }
+            catch (Exception ex)
+            {
+                _logger?.Invoke($"[BulkPlacement] Failed to set parameters for zone {zone.Id}: {ex.Message}");
             }
         }
     }

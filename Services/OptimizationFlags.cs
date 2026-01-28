@@ -30,6 +30,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public static bool UseParameterTransferRefactor { get; set; } = true;
         // Use minimal per-category global index during Refresh to avoid loading full XMLs
         public static bool UseGlobalCategoryIndexForRefresh { get; set; } = true;
+        
         #region Phase 1 Foundation Flags (40% gain)
         
         /// <summary>
@@ -209,7 +210,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Default: true (helps identify specific bottleneck in 817ms Flag Reset time)
         /// Location: Services/FlagManager_Legacy.cs (ResetFlagsForDeletedSleeves)
         /// </summary>
-        public static bool LogFlagResetDiagnostics { get; set; } = false;
+        public static bool LogFlagResetDiagnostics { get; set; } = true;
 
         /// <summary>
         /// Use streamlined clash zone creation path when intersections come from optimized MepIntersectionService
@@ -326,7 +327,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Use in production/deployment mode for maximum performance.
         /// Location: DebugLogger.cs (all Log calls check this flag)
         /// </summary>
-        public static bool DisableVerboseLogging { get; set; } = false; // ✅ Full logging enabled for debugging
+        public static bool DisableVerboseLogging { get; set; } = false; // ✅ ENABLED for performance - reduces overhead
 
         /// <summary>
         /// Skip synchronous parameter capture for existing zones in ClashZoneService.
@@ -444,7 +445,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Enable diagnostic mode for performance monitoring
         /// Default: false (disabled - causes 2.6x slowdown due to logging overhead)
         /// </summary>
-        public static bool UseDiagnosticMode { get; set; } = true; // 🚫 OFF - disabled for deployment
+        public static bool UseDiagnosticMode { get; set; } = false; // ✅ DISABLED for performance - was causing 2.6x slowdown
         
         /// <summary>
         /// Enable batch clash zone creation (pre-calculate common data once)
@@ -660,6 +661,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Location: Services/Clustering/Placement/ClusterPlacementService.cs
         /// </summary>
         public static bool UseClusterFamilyPreLoading { get; set; } = true;
+
+        /// <summary>
+        /// Enable high-performance Bulk Placement for Cluster Sleeves using NewFamilyInstances2.
+        /// When true: Uses doc.Create.NewFamilyInstances2 for clusters (similar to individual sleeves)
+        /// When false: Places cluster sleeves one by one (current behavior)
+        /// Default: true (high impact for cluster-heavy projects)
+        /// Location: Services/Clustering/BatchClusterPlacementService.cs
+        /// </summary>
+        public static bool UseBulkClusterSleevePlacement { get; set; } = true;
 
         #endregion
 

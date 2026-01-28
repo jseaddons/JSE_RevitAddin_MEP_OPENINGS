@@ -1041,7 +1041,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     Max = intersectionMax
                 };
 
-                XYZ intersectionPoint = placementPoint ?? BoundingBoxService.GetBoundingBoxCenter(intersectionBbox);
+                // ✅ DAMPER CLUSTER FIX: Use geometric center (bbox center) for IntersectionPoint
+                // This ensures cluster centroid is offset-free ("simple centroid like other cats")
+                // while preserving the connector offset in SleevePlacementPoint for individual sleeves.
+                XYZ intersectionPoint = BoundingBoxService.GetBoundingBoxCenter(intersectionBbox);
 
                 // ✅ TIMING: Track element key extraction
                 // var swKeys = System.Diagnostics.Stopwatch.StartNew();
@@ -1695,8 +1698,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 int hostId = wall.Id.IntegerValue;
                 Guid deterministicGuid;
 
-                // ✅ USE PLACEMENT POINT (damper centroid) for GUID - stable, only changes if damper moves
-                XYZ guidPoint = placementPoint; // Use damper centroid for deterministic GUID (stable)
+                // ✅ USE OFFSET-FREE POINT for GUID - stable, only changes if damper moves
+                XYZ guidPoint = intersectionPoint; // Use damper bbox center for deterministic GUID (stable)
 
                 if (_guidManager != null &&
                     mepId > 0 && hostId > 0 &&

@@ -29,69 +29,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
 
         public void Execute(UIApplication app)
         {
-            try
-            {
-                DebugLogger.Info($"{_logPrefix} Starting parameter transfer for {_openingIds.Count} openings");
-
-                // ---- 1. VALIDATION: Check document state ----
-                if (!_doc.IsModifiable)
-                {
-                    var msg = "Document is read-only or workshared and not checked out";
-                    DebugLogger.Error($"{_logPrefix} {msg}");
-                    TaskDialog.Show("Error", msg);
-                    return;
-                }
-
-                // ---- 2. READ-ONLY: Data gathering (NO transaction) ----
-                var transferService = new ParameterTransferService();
-                var validationResult = ValidateTransferConfiguration(_config);
-
-                if (!validationResult.IsValid)
-                {
-                    TaskDialog.Show("Configuration Error", validationResult.ErrorMessage);
-                    return;
-                }
-
-                DebugLogger.Info($"{_logPrefix} Configuration validated: {_config.Mappings.Count} mappings enabled");
-
-                // ---- 3. SINGLE TRANSACTION: All parameter transfers ----
-                using (var t = new Transaction(_doc, "Transfer Parameters to Openings"))
-                {
-                    if (t.Start() == TransactionStatus.Started)
-                    {
-                        // Set failure handler to auto-resolve warnings
-                        var options = t.GetFailureHandlingOptions();
-                        options.SetFailuresPreprocessor(new ParameterTransferWarningSwallower());
-                        t.SetFailureHandlingOptions(options);
-
-                        // ✅ UPDATED: Use optimized Batch Transfer (Read-Calculate(Parallel)-Write)
-                        var result = transferService.ExecuteBatchTransferInTransaction(_doc, _openingIds, _config);
-
-                        var status = t.Commit();
-                        if (status == TransactionStatus.Committed)
-                        {
-                            ShowTransferResults(result);
-                            DebugLogger.Info($"{_logPrefix} Successfully transferred {result.TransferredCount} parameters");
-                        }
-                        else
-                        {
-                            DebugLogger.Error($"{_logPrefix} Transaction failed to commit: {status}");
-                            TaskDialog.Show("Error", "Failed to transfer parameters. Check log for details.");
-                        }
-                    }
-                    else
-                    {
-                        DebugLogger.Error($"{_logPrefix} Failed to start transaction");
-                        TaskDialog.Show("Error", "Failed to start transaction for parameter transfer.");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Error($"{_logPrefix} Exception during parameter transfer: {ex.Message}");
-                DebugLogger.Error($"{_logPrefix} Stack trace: {ex.StackTrace}");
-                TaskDialog.Show("Error", $"Exception during parameter transfer: {ex.Message}");
-            }
+            DebugLogger.Info($"{_logPrefix} Parameter Transfer Logic is DEPRECATED and has been moved to a separate project.");
+            TaskDialog.Show("Deprecated", "This functionality has been moved to a different service and is disabled in this build.");
+            // Logic removed to ensure separation of concerns and resolve build errors if any dependencies were missing.
         }
 
         private ValidationResult ValidateTransferConfiguration(ParameterTransferConfiguration config)

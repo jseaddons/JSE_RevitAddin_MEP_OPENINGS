@@ -225,6 +225,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 double BoundingBoxMaxX, double BoundingBoxMaxY, double BoundingBoxMaxZ,
                 string SleeveFamilyName)> updates);
 
+        /// <summary>
+        /// ✅ PLACEMENT OPTIMIZATION: Batch update SleeveInstanceId for multiple zones in a single transaction.
+        /// </summary>
+        void BatchUpdateSleeveInstanceIds(IEnumerable<(System.Guid ClashZoneId, int SleeveInstanceId)> updates);
+
 
 
         /// <summary>
@@ -266,5 +271,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Update a single clash zone.
         /// </summary>
         void Update(ClashZone zone);
+        
+        /// <summary>
+        /// Retrieves all clash zones that have been placed (SleeveInstanceId > 0).
+        /// </summary>
+        List<ClashZone> GetPlacedClashZones();
     }
 }

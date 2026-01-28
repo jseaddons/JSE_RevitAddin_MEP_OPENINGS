@@ -339,5 +339,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Repositories
              if (familyName.Contains("Slab") || familyName.Contains("Floor")) return "Floor";
              return "Unknown";
         }
+
+        /// <summary>
+        /// Stub implementation for ISleeveRepository compatibility.
+        /// Feature implemented in ClashZoneRepository (SQLite).
+        /// </summary>
+        public void UpdateSleeveCalculatedData(ClashZone zone)
+        {
+            // No-op: SleeveRepository handles XML, not database updates.
+            // This method is required by the interface but should only be called when using ClashZoneRepository.
+        }
     }
 }

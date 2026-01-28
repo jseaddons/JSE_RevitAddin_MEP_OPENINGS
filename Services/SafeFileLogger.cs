@@ -329,22 +329,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ DEPLOYMENT MODE: Disable ALL logging in deployment mode
             if (DeploymentConfiguration.DeploymentMode)
             {
-                // ✅ FIX: Even in deployment mode, write to diagnostic log to track that logging was skipped
-                string logPath = "unknown";
-                try
-                {
-                    if (_logDirectoryInitialized && !string.IsNullOrEmpty(_logDirectory))
-                    {
-                        logPath = Path.Combine(_logDirectory, fileName);
-                    }
-                    else
-                    {
-                        string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                        logPath = Path.Combine(appData, "JSE_MEP_Openings", "Logs", fileName);
-                    }
-                }
-                catch { }
-                WriteDiagnosticLog(fileName, message, logPath, false); // Log skipped attempt
                 return; // Skip all file writes in deployment mode
             }
             
@@ -371,8 +355,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 string logDir = GetLogDirectory();
                 logPathFinal = Path.Combine(logDir, fileName);
-                
-                WriteDiagnosticLog(fileName, message, logPathFinal, true); // Log attempt
 
                 // Ensure directory exists (should already exist, but double-check)
                 // Directory.CreateDirectory will create all parent directories if they don't exist
@@ -398,7 +380,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     File.AppendAllText(logPathFinal, logEntry);
                     writeSuccess = true;
-                    WriteDiagnosticLog(fileName, $"SUCCESS: Written to {logPathFinal}", logPathFinal, true); // Log success
                 }
             }
             catch (UnauthorizedAccessException)

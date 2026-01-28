@@ -76,8 +76,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
         /// <returns>True if value is valid (within reasonable bounds and not zero), false otherwise.</returns>
         public static bool IsValidScheduleOfLevel(double scheduleOfLevel)
         {
-            // Valid if within reasonable bounds and not exactly zero (zero might indicate unset parameter)
-            return Math.Abs(scheduleOfLevel) > 0.001 && Math.Abs(scheduleOfLevel) <= 10000.0;
+            // Valid if within reasonable bounds. 
+            // NOTE: Removed > 0.001 check because Revit's "Elevation from Level" is 0 when at level elevation.
+            return Math.Abs(scheduleOfLevel) <= 10000.0;
         }
 
         /// <summary>

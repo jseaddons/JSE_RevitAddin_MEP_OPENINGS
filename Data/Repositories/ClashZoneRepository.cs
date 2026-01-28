@@ -20,7 +20,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
     /// SQLite repository implementation for ClashZone persistence.
     /// Database is the sole source of truth for all clash zone data and flags.
     /// </summary>
-    public class ClashZoneRepository : IClashZoneRepository
+    public class ClashZoneRepository : IClashZoneRepository, Services.Interfaces.ISleeveRepository
     {
         private readonly SleeveDbContext _context;
         private readonly Action<string> _logger;
@@ -937,7 +937,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         pMepSysType.Value = zone.MepSystemType ?? (object)DBNull.Value;
                         pMepServType.Value = zone.MepServiceType ?? (object)DBNull.Value;
                         pElevLevel.Value = zone.ElevationFromLevel;
-                        pMarked.Value = (zone.MarkedForClusterProcess ?? true) ? 1 : 0; // Default to TRUE for population
+                        pMarked.Value = (object)zone.MarkedForClusterProcess ?? DBNull.Value; // ✅ FIX: Use actual value or NULL (don't default to TRUE)
                         cmd.ExecuteNonQuery();
                     }
 
@@ -1997,8 +1997,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         cmd.Parameters.AddWithValue($"@MSVT{j}", zone.MepServiceType ?? string.Empty);
                         cmd.Parameters.AddWithValue($"@EFL{j}", zone.ElevationFromLevel);
 
-                        // ✅ CRITICAL FIX: Populate MarkedForClusterProcess for new zones (Default to TRUE)
-                        cmd.Parameters.AddWithValue($"@MFCP{j}", (zone.MarkedForClusterProcess ?? true) ? 1 : 0);
+                        // ✅ CRITICAL FIX: Populate MarkedForClusterProcess for new zones (Default to NULL for discovery)
+                        cmd.Parameters.AddWithValue($"@MFCP{j}", (object)zone.MarkedForClusterProcess ?? DBNull.Value);
 
                         cmd.Parameters.AddWithValue($"@T{j}", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
                     }
@@ -5849,6 +5849,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     {
                         _logger($"[SQLite] ✅ Bulk reset ReadyForPlacementFlag=0 for {totalReset} zones in {filterNames.Count} filters, {categories.Count} categories");
                     }
+
                 }
             }
             catch (Exception ex)
@@ -5862,6 +5863,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
             return totalReset;
         }
+
+
 
         /// <summary>
         /// ⚠️⚠️⚠️ CRITICAL PROTECTED METHOD - DO NOT MODIFY WITHOUT TESTING ⚠️⚠️⚠️
@@ -6577,7 +6580,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             if (string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
             {
                 _logger($"[DB-LOAD-DEBUG] Zone {clashZone.Id}: Loaded MepWidth={clashZone.MepElementWidth:F6}ft ({clashZone.MepElementWidth * 304.8:F1}mm), MepHeight={clashZone.MepElementHeight:F6}ft ({clashZone.MepElementHeight * 304.8:F1}mm)");
-                SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [DB-LOAD-MEP] Zone {clashZone.Id}: MepWidth={clashZone.MepElementWidth:F6}ft ({clashZone.MepElementWidth * 304.8:F1}mm), MepHeight={clashZone.MepElementHeight:F6}ft ({clashZone.MepElementHeight * 304.8:F1}mm)\n");
+                // Reduced logging noise
+                // SafeFileLogger.SafeAppendText("damper_placement_trace.log", $"[{DateTime.Now:HH:mm:ss.fff}] [DB-LOAD-MEP] Zone {clashZone.Id}: MepWidth={clashZone.MepElementWidth:F6}ft ({clashZone.MepElementWidth * 304.8:F1}mm), MepHeight={clashZone.MepElementHeight:F6}ft ({clashZone.MepElementHeight * 304.8:F1}mm)\n");
             }
 
             clashZone.SleeveFamilyName = GetNullableString(reader, "SleeveFamilyName") ?? string.Empty;
@@ -8764,7 +8768,201 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         }
 
         /// <summary>
-        /// Updates resolution flags for zones that are part of a combined sleeve.
+        /// ✅ PLACEMENT OPTIMIZATION: Batch update SleeveInstanceId for multiple zones in a single transaction.
+        /// Consolidates individual Updates into a single transaction (50x faster).
+        /// </summary>
+        public void BatchUpdateSleeveInstanceIds(IEnumerable<(Guid ClashZoneId, int SleeveInstanceId)> updates)
+        {
+            if (updates == null || !updates.Any()) return;
+            var updatesList = updates.ToList();
+
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Info($"[ClashZoneRepository] [BATCH-UPDATE] Updating SleeveInstanceId for {updatesList.Count} zones...");
+            }
+
+            try
+            {
+                using (var transaction = _context.Connection.BeginTransaction())
+                {
+                    // 1. Update ClashZones (Optimized Reusable Command)
+                    using (var cmd = _context.Connection.CreateCommand())
+                    {
+                        cmd.Transaction = transaction;
+                        cmd.CommandText = "UPDATE ClashZones SET SleeveInstanceId = @SleeveInstanceId, UpdatedAt = datetime('now', '+5 hours', '+30 minutes') WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)";
+                        var pGuid = cmd.Parameters.AddWithValue("@ClashZoneGuid", "");
+                        var pId = cmd.Parameters.AddWithValue("@SleeveInstanceId", DBNull.Value);
+                        
+                        int totalRowsAffected = 0;
+                        foreach (var update in updatesList)
+                        {
+                            pGuid.Value = update.ClashZoneId.ToString();
+                            pId.Value = update.SleeveInstanceId > 0 ? (object)update.SleeveInstanceId : DBNull.Value;
+                            int rowsAffected = cmd.ExecuteNonQuery();
+                            totalRowsAffected += rowsAffected;
+                            
+                            // Log if no rows were affected (GUID mismatch)
+                            if (rowsAffected == 0)
+                            {
+                                SafeFileLogger.SafeAppendText("db_update_debug.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ UPDATE 0 ROWS: ClashZoneGuid={update.ClashZoneId}, SleeveInstanceId={update.SleeveInstanceId}\n");
+                            }
+                        }
+                        
+                        SafeFileLogger.SafeAppendText("db_update_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] ✅ BatchUpdateSleeveInstanceIds: {totalRowsAffected}/{updatesList.Count} rows updated in ClashZones\n");
+                    }
+
+                    // 2. Update SleeveSnapshots (Mirrors logic in UpdateSleeveInstanceId)
+                    using (var snapshotCmd = _context.Connection.CreateCommand())
+                    {
+                        snapshotCmd.Transaction = transaction;
+                        snapshotCmd.CommandText = @"
+                            UPDATE SleeveSnapshots SET
+                                SleeveInstanceId = @SleeveInstanceId
+                            WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)
+                                AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL
+                                AND (ClusterInstanceId IS NULL OR ClusterInstanceId <= 0)";
+
+                        var pGuid = snapshotCmd.Parameters.AddWithValue("@ClashZoneGuid", "");
+                        var pId = snapshotCmd.Parameters.AddWithValue("@SleeveInstanceId", DBNull.Value);
+
+                        foreach (var update in updatesList)
+                        {
+                            pGuid.Value = update.ClashZoneId.ToString();
+                            pId.Value = update.SleeveInstanceId > 0 ? (object)update.SleeveInstanceId : DBNull.Value;
+                            snapshotCmd.ExecuteNonQuery();
+                        }
+                    }
+
+                    transaction.Commit();
+                }
+
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[ClashZoneRepository] [BATCH-UPDATE] Successfully updated {updatesList.Count} items.");
+                }
+            }
+            catch (Exception ex)
+            {
+                 if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Error($"[ClashZoneRepository] [BATCH-UPDATE] FAILED: {ex.Message}");
+                }
+                throw;
+            }
+        }
+
+/// <summary>
+/// ✅ PLACEMENT FIX: Update sleeve placement data (dimensions, coordinates, and InstanceId).
+/// Persists the calculated geometry used for placement and the resulting instance ID.
+/// </summary>
+public void BatchUpdateSleevePlacementData(IEnumerable<ClashZone> placedZones)
+{
+    if (placedZones == null || !placedZones.Any()) return;
+    var zonesList = placedZones.Where(z => z.SleeveInstanceId > 0).ToList();
+    
+    if (!zonesList.Any()) return;
+
+    if (!DeploymentConfiguration.DeploymentMode)
+    {
+        DebugLogger.Info($"[ClashZoneRepository] [BATCH-UPDATE-DATA] Updating placement data for {zonesList.Count} zones...");
+    }
+
+    try
+    {
+        using (var transaction = _context.Connection.BeginTransaction())
+        {
+            // 1. Update ClashZones with FULL data
+            using (var cmd = _context.Connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = @"
+                    UPDATE ClashZones SET 
+                        SleeveInstanceId = @SleeveInstanceId,
+                        SleeveWidth = @SleeveWidth,
+                        SleeveHeight = @SleeveHeight,
+                        SleeveDiameter = @SleeveDiameter,
+                        SleevePlacementX = @SleevePlacementX,
+                        SleevePlacementY = @SleevePlacementY,
+                        SleevePlacementZ = @SleevePlacementZ,
+                        SleevePlacementActiveX = @SleevePlacementActiveX,
+                        SleevePlacementActiveY = @SleevePlacementActiveY,
+                        SleevePlacementActiveZ = @SleevePlacementActiveZ,
+                        UpdatedAt = datetime('now', '+5 hours', '+30 minutes') 
+                    WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)";
+
+                var pGuid = cmd.Parameters.AddWithValue("@ClashZoneGuid", "");
+                var pId = cmd.Parameters.AddWithValue("@SleeveInstanceId", DBNull.Value);
+                var pWidth = cmd.Parameters.AddWithValue("@SleeveWidth", DBNull.Value);
+                var pHeight = cmd.Parameters.AddWithValue("@SleeveHeight", DBNull.Value);
+                var pDiameter = cmd.Parameters.AddWithValue("@SleeveDiameter", DBNull.Value);
+                var pX = cmd.Parameters.AddWithValue("@SleevePlacementX", DBNull.Value);
+                var pY = cmd.Parameters.AddWithValue("@SleevePlacementY", DBNull.Value);
+                var pZ = cmd.Parameters.AddWithValue("@SleevePlacementZ", DBNull.Value);
+                var pActiveX = cmd.Parameters.AddWithValue("@SleevePlacementActiveX", DBNull.Value);
+                var pActiveY = cmd.Parameters.AddWithValue("@SleevePlacementActiveY", DBNull.Value);
+                var pActiveZ = cmd.Parameters.AddWithValue("@SleevePlacementActiveZ", DBNull.Value);
+                
+                int totalRowsAffected = 0;
+                foreach (var zone in zonesList)
+                {
+                    pGuid.Value = zone.ClashZoneGuid.ToString();
+                    pId.Value = zone.SleeveInstanceId;
+                    pWidth.Value = zone.SleeveWidth;
+                    pHeight.Value = zone.SleeveHeight;
+                    pDiameter.Value = zone.SleeveDiameter;
+                    pX.Value = zone.SleevePlacementPointX;
+                    pY.Value = zone.SleevePlacementPointY;
+                    pZ.Value = zone.SleevePlacementPointZ;
+                    pActiveX.Value = zone.SleevePlacementPointActiveDocumentX;
+                    pActiveY.Value = zone.SleevePlacementPointActiveDocumentY;
+                    pActiveZ.Value = zone.SleevePlacementPointActiveDocumentZ;
+
+                    totalRowsAffected += cmd.ExecuteNonQuery();
+                }
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[ClashZoneRepository] [BATCH-UPDATE-FULL] Updated {totalRowsAffected}/{zonesList.Count} rows in ClashZones.");
+                }
+            }
+
+            // 2. Update SleeveSnapshots (InstanceId only is sufficient here)
+            using (var snapshotCmd = _context.Connection.CreateCommand())
+            {
+                snapshotCmd.Transaction = transaction;
+                snapshotCmd.CommandText = @"
+                    UPDATE SleeveSnapshots SET
+                        SleeveInstanceId = @SleeveInstanceId
+                    WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)
+                        AND ClashZoneGuid != '' AND ClashZoneGuid IS NOT NULL
+                        AND (ClusterInstanceId IS NULL OR ClusterInstanceId <= 0)";
+
+                var pGuid = snapshotCmd.Parameters.AddWithValue("@ClashZoneGuid", "");
+                var pId = snapshotCmd.Parameters.AddWithValue("@SleeveInstanceId", DBNull.Value);
+
+                foreach (var zone in zonesList)
+                {
+                    pGuid.Value = zone.ClashZoneGuid.ToString();
+                    pId.Value = zone.SleeveInstanceId;
+                    snapshotCmd.ExecuteNonQuery();
+                }
+            }
+
+            transaction.Commit();
+        }
+    }
+    catch (Exception ex)
+    {
+         if (!DeploymentConfiguration.DeploymentMode)
+        {
+            DebugLogger.Error($"[ClashZoneRepository] [BATCH-UPDATE-FULL] FAILED: {ex.Message}");
+        }
+        throw;
+    }
+}
+
         /// Sets IsCombinedResolved=true, IsResolved=false, IsClusterResolved=false, 
         /// and links to the combined sleeve ID.
         /// </summary>
@@ -9092,5 +9290,152 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
 
 
+        public List<ClashZone> GetPlacedClashZones()
+        {
+            var list = new List<ClashZone>();
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT * FROM ClashZones WHERE SleeveInstanceId > 0 AND SleeveInstanceId IS NOT NULL";
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            list.Add(MapClashZone(reader));
+                        }
+                    }
+                }
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[ClashZoneRepository] [DB-LOAD] Loaded {list.Count} PLACED clash zones (SleeveInstanceId > 0)");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    _logger($"[SQLite] Error Get Placed Clash Zones: {ex.Message}");
+            }
+            return list;
+        }
+        /// <summary>
+        /// ✅ PRE-PLACEMENT PERSISTENCE: Save calculated sleeve data (dimensions, coordinates) to database BEFORE placement.
+        /// This ensures data is saved even if placement fails or crashes. Uses ClashZoneGuid for lookup.
+        /// </summary>
+        public void UpdateSleeveCalculatedData(ClashZone zone)
+        {
+            if (zone == null || string.IsNullOrEmpty(zone.ClashZoneGuid)) return;
+
+            // Log that we are attempting to save
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                SafeFileLogger.SafeAppendText("db_update_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [ClashZoneRepository] ? PRE-SAVE: Saving calculated data for Zone {zone.Id} (GUID: {zone.ClashZoneGuid})\n");
+            }
+
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand()) // Changed _connection to _context.Connection
+                {
+                    cmd.CommandText = @"
+                        UPDATE ClashZones 
+                        SET 
+                            SleeveWidth = @Width,
+                            SleeveHeight = @Height,
+                            SleeveDiameter = @Diameter,
+                            SleevePlacementX = @X,
+                            SleevePlacementY = @Y,
+                            SleevePlacementZ = @Z,
+                            SleevePlacementActiveX = @ActiveX,
+                            SleevePlacementActiveY = @ActiveY,
+                            SleevePlacementActiveZ = @ActiveZ,
+                            
+                            -- ? CRITICAL FIX: Persist Calculated properties
+                            CalculatedSleeveWidth = @CalcWidth,
+                            CalculatedSleeveHeight = @CalcHeight,
+                            CalculatedSleeveDiameter = @CalcDiameter,
+                            CalculatedSleeveDepth = @CalcDepth,
+                            CalculatedRotation = @CalcRotation,
+                            CalculatedPlacementX = @CalcX,
+                            CalculatedPlacementY = @CalcY,
+                            CalculatedPlacementZ = @CalcZ,
+                            CalculatedFamilyName = @CalcFam
+                        WHERE ClashZoneGuid = @Guid";
+
+                    cmd.Parameters.AddWithValue("@Width", zone.SleeveWidth);
+                    cmd.Parameters.AddWithValue("@Height", zone.SleeveHeight);
+                    cmd.Parameters.AddWithValue("@Diameter", zone.SleeveDiameter);
+                    cmd.Parameters.AddWithValue("@X", zone.SleevePlacementPointX);
+                    cmd.Parameters.AddWithValue("@Y", zone.SleevePlacementPointY);
+                    cmd.Parameters.AddWithValue("@Z", zone.SleevePlacementPointZ);
+                    cmd.Parameters.AddWithValue("@ActiveX", zone.SleevePlacementPointActiveDocumentX);
+                    cmd.Parameters.AddWithValue("@ActiveY", zone.SleevePlacementPointActiveDocumentY);
+                    cmd.Parameters.AddWithValue("@ActiveZ", zone.SleevePlacementPointActiveDocumentZ);
+                    
+                    // Calculated Parameters
+                    cmd.Parameters.AddWithValue("@CalcWidth", zone.CalculatedSleeveWidth);
+                    cmd.Parameters.AddWithValue("@CalcHeight", zone.CalculatedSleeveHeight);
+                    cmd.Parameters.AddWithValue("@CalcDiameter", zone.CalculatedSleeveDiameter);
+                    cmd.Parameters.AddWithValue("@CalcDepth", zone.CalculatedSleeveDepth);
+                    cmd.Parameters.AddWithValue("@CalcRotation", zone.CalculatedRotation);
+                    cmd.Parameters.AddWithValue("@CalcX", zone.CalculatedPlacementX);
+                    cmd.Parameters.AddWithValue("@CalcY", zone.CalculatedPlacementY);
+                    cmd.Parameters.AddWithValue("@CalcZ", zone.CalculatedPlacementZ);
+                    cmd.Parameters.AddWithValue("@CalcFam", zone.CalculatedFamilyName ?? string.Empty);
+                    
+                    cmd.Parameters.AddWithValue("@Guid", zone.ClashZoneGuid);
+
+                    int rows = cmd.ExecuteNonQuery();
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                         SafeFileLogger.SafeAppendText("db_update_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [ClashZoneRepository] ✅ UPDATE COMPLETE: Zone {zone.Id}, GUID={zone.ClashZoneGuid}, Rows Affected: {rows}\n");
+                             
+                         if (rows == 0)
+                         {
+                             SafeFileLogger.SafeAppendText("db_update_debug.log", 
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [ClashZoneRepository] ❌ PERSISTENCE FAILURE: No row found for GUID {zone.ClashZoneGuid}. Check for casing or whitespace issues.\n");
+                         }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[ClashZoneRepository] Error updating sleeve calculated data: {ex.Message}");
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("db_update_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [ClashZoneRepository] ?? ERROR: Failed to save calculated data for Zone {zone.Id}: {ex.Message}\n");
+                }
+            }
+        }
+        /// <summary>
+        /// Stub implementation for ISleeveRepository compatibility.
+        /// Feature deprecated in favor of SQLite database.
+        /// </summary>
+        public void SaveSleeveDataToClusterXml(string xmlFilePath, List<ClashZone> clashZones, Document doc)
+        {
+            // No-op: XML storage deprecated
+        }
+
+        /// <summary>
+        /// Stub implementation for ISleeveRepository compatibility.
+        /// Feature deprecated in favor of SQLite database.
+        /// </summary>
+        public void RegenerateClusterXmlFiles(Document doc, List<ClashZone> placedZones)
+        {
+            // No-op: XML storage deprecated
+        }
+
+        /// <summary>
+        /// Stub implementation for ISleeveRepository compatibility.
+        /// Feature deprecated in favor of SQLite database.
+        /// </summary>
+        public List<ClashZone> LoadDuctAccessoriesClashZones(string xmlFilePath)
+        {
+            return new List<ClashZone>(); // Return empty list as we rely on DB
+        }
     }
 }

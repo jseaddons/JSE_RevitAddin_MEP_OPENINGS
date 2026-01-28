@@ -149,6 +149,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
                     zone.CalculatedSleeveDepth = finalDepth;
                     zone.CalculatedRotation = rotationRad;
                     zone.CalculatedFamilyName = familyName;
+                    
+                    // Γ£à CRITICAL FIX: Set Placement Point coordinates (Missing in previous version)
+                    // These are required by the placement service to know WHERE to put the sleeve
+                    zone.SleevePlacementPointX = zone.IntersectionPointX;
+                    zone.SleevePlacementPointY = zone.IntersectionPointY;
+                    zone.SleevePlacementPointZ = zone.IntersectionPointZ;
+                    
+                    // Also set Calculated fields for redundancy
+                    zone.CalculatedPlacementX = zone.IntersectionPointX;
+                    zone.CalculatedPlacementY = zone.IntersectionPointY;
+                    zone.CalculatedPlacementZ = zone.IntersectionPointZ;
+
                     zone.PlacementStatus = "Pending";
                     zone.CalculationBatchId = batchId;
                     zone.ValidationStatus = "Valid";

@@ -384,6 +384,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                         // Z direction (vertical) is always valid for offset
                         // Perpendicular directions (through wall depth) should NOT cause offset
                         
+                        // ✅ DIAGNOSTIC LOG: Trace variables before switch
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("damper_placement_trace.log", 
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [STRATEGY-OFFSET-PRE-SWITCH] Zone {clashZone.Id}: " +
+                                $"ConnectorDir='{connectorDir}', HostOrientation='{hostOrientation}', " +
+                                $"IsXWall={isXWall}, IsYWall={isYWall}, OffsetAmount={offsetAmount * 304.8:F1}mm\n");
+                        }
+                        
                         switch (connectorDir)
                         {
                             case "+X":

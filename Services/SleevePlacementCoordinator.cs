@@ -35,7 +35,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             ISleevePlacementStrategy strategy,
             IDictionary<string, double> clearanceSettings,
             SleevePlacementPath requestedPath,
-            FlagManager flagManager = null,
+            Services.Interfaces.Refactor.IFlagManager flagManager = null,
             string uiOverridesFingerprint = null,
             string globalConfigurationFingerprint = null,
             bool isForceDetectionMode = false)
@@ -64,7 +64,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public ISleevePlacementStrategy Strategy { get; }
         public IReadOnlyDictionary<string, double> ClearanceSettings { get; }
         public SleevePlacementPath RequestedPath { get; }
-        public FlagManager FlagManager { get; }
+        public Services.Interfaces.Refactor.IFlagManager FlagManager { get; }
         public string UiOverridesFingerprint { get; }
         public string GlobalConfigurationFingerprint { get; }
         public bool IsForceDetectionMode { get; }
@@ -201,6 +201,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public SleevePlacementPath Path => SleevePlacementPath.Replay;
 
         public SleevePlacementResult Execute(SleevePlacementRequest request)
+        {
+            // TODO: Implement replay logic
+            throw new NotImplementedException("SleevePlacementReplayService.Execute is not yet implemented");
+        }
+    }
 
     /// <summary>
     /// ✅ PATH 2 (Sizing): Performs full detection/sizing for fresh filter+category combos.

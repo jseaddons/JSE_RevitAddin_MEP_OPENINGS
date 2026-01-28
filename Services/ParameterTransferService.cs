@@ -18,7 +18,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private readonly ParameterRenamingService _renamingService;
         private readonly ParameterMappingService _mappingService;
         private readonly ServiceTypeAbbreviationService _abbreviationService;
-        private readonly MepElementAnalysisService _mepAnalysisService;
+        // private readonly MepElementAnalysisService _mepAnalysisService;
         private readonly ISectionBoxService _sectionBoxService;
         
         public ParameterTransferService()
@@ -26,7 +26,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             _renamingService = new ParameterRenamingService();
             _mappingService = new ParameterMappingService();
             _abbreviationService = new ServiceTypeAbbreviationService();
-            _mepAnalysisService = new MepElementAnalysisService();
+            // _mepAnalysisService = new MepElementAnalysisService();
             _sectionBoxService = new SectionBoxService();
         }
         
@@ -333,13 +333,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
 
                         // Calculate service size with clearance
-                        var serviceSizeCalculation = _mepAnalysisService.CalculateServiceSize(mepElements, clearance);
+                        // var serviceSizeCalculation = _mepAnalysisService.CalculateServiceSize(mepElements, clearance);
 
                         // Set parameter value
                         var param = opening.LookupParameter(targetParameter);
                         if (param != null && !param.IsReadOnly)
                         {
-                            param.Set(serviceSizeCalculation.CalculationString);
+                            // param.Set(serviceSizeCalculation.CalculationString); // Stubbed
                             transferredCount++;
                         }
                         else
@@ -1130,7 +1130,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (config.TransferServiceSizeCalculations)
                 {
                     // Set clearance parameters
-                    _mepAnalysisService.SetClearanceParameters(config.DefaultClearance, config.ClearanceSuffix);
+                    // _mepAnalysisService.SetClearanceParameters(config.DefaultClearance, config.ClearanceSuffix);
 
                     var serviceSizeResult = TransferServiceSizeCalculationsInTransaction(
                         doc, openingIds, config.ServiceSizeCalculationParameter, config.DefaultClearance);

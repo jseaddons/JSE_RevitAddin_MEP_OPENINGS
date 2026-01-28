@@ -218,7 +218,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
                 // Phase 2: Placement (Sequential / Bulk Transaction)
                 // This MUST be run on the main thread (which we are on).
-                var result = _batchPlacementService.PlaceFromDatabase(doc, batchId, useSingleTransaction);
+                (int placedCount, int failedCount) result = _batchPlacementService.PlaceFromDatabase(doc, batchId, useSingleTransaction:true);
 
                 return result;
             }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
@@ -15,17 +15,19 @@ using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+// using JSE_RevitAddin_MEP_OPENINGS.Services.Parameters.Configuration;
+// using JSE_RevitAddin_MEP_OPENINGS.Services.Parameters.Processing;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Views
 {
     /// <summary>
-    /// ✅ NEW UI V2: Two-panel layout (Left: Prefixes, Right: Parameter Mapping)
+    /// Γ£à NEW UI V2: Two-panel layout (Left: Prefixes, Right: Parameter Mapping)
     /// Skeleton version - functionality to be added later
     /// </summary>
     public partial class ParameterServiceDialogV2 : WinForms.Form
     {
-        // ✅ Public property to expose Active View Only state
-        public bool IsActiveViewOnly => _activeViewOnlyCheckBox != null && _activeViewOnlyCheckBox.Checked;
+        // Γ£à Public property to expose Active View Only state
+        public bool IsActiveViewOnly => true; // Always true (Session Context enforced)
 
         private readonly Document? _document;
         private readonly UIDocument? _uiDocument;
@@ -44,18 +46,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.Panel _systemTypeOverridesPanel = null!;
         private List<WinForms.Panel> _systemTypeRows = new List<WinForms.Panel>();
         private List<string> _systemTypeOptions = new List<string>();
-        
-        // ✅ NEW: Track last focused category for system type dropdown population
+
+        // Γ£à NEW: Track last focused category for system type dropdown population
         private string _lastFocusedCategory = null;
-        
-        // Number format and remark checkboxes
+
+        // Number format
         private WinForms.ComboBox _numberFormatCombo = null!;
         private WinForms.Button _numberFormatLockButton = null!;
-        private WinForms.CheckBox _remarkProjectCheckBox = null!;
-        private WinForms.CheckBox _remarkDuctCheckBox = null!;
-        private WinForms.CheckBox _remarkPipeCheckBox = null!;
-        private WinForms.CheckBox _remarkCableTrayCheckBox = null!;
-        private WinForms.CheckBox _remarkDamperCheckBox = null!;
 
         // Right Panel: Parameter Mapping
         private WinForms.TabControl _masterParameterTabs = null!;
@@ -64,11 +61,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.Button _addParameterButton = null!;
 
         // Top bar
-        private WinForms.Button _applyMarksButton = null!;
-        private WinForms.Button _remarkSelectedButton = null!;
+        // REMOVED: private WinForms.Button _applyMarksButton = null!;
+        private WinForms.Button _addPrefixButton = null!;
+        private WinForms.Button _addNumberButton = null!;
+        private WinForms.CheckBox _enableNumberingCheckBox = null!; // Γ£à New Safety Checkbox
+        private WinForms.Button _resetPrefixButton = null!;
         private WinForms.Button _transferParametersButton = null!;
         private WinForms.Button _closeButton = null!;
-        private WinForms.CheckBox _activeViewOnlyCheckBox = null!;
+        // private WinForms.CheckBox _activeViewOnlyCheckBox = null!; // REMOVED
+        private WinForms.TextBox _startNumberTextBox = null!;
+        private WinForms.Panel _numberingSequencePanel = null!;
+        private WinForms.RadioButton _modeNewSheetRadio = null!;
+        private WinForms.RadioButton _modeContinueRadio = null!;
+        private WinForms.ComboBox _sourceViewCombo = null!;
+
+        // Reset Buttons (Safety Locked)
+        private WinForms.Button _resetLockButton = null!;
+        private WinForms.Button _resetNumberingButton = null!;
+        private WinForms.Button _resetParametersButton = null!;
+        private bool _isResetUnlocked = false;
 
         public ParameterServiceDialogV2(Document document, UIDocument uiDocument)
         {
@@ -76,13 +87,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _uiDocument = uiDocument;
 
             InitializeComponent();
+            
+            // Γ£à PERSISTENCE: Load saved settings on startup
+            LoadSavedSettings();
         }
 
         private void InitializeComponent()
         {
             this.Text = "Parameter Service V2";
-            this.Size = new Size(1000, 700);
-            this.MinimumSize = new Size(900, 600);
+            this.Size = new Size(1100, 700);
+            this.MinimumSize = new Size(1000, 600);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
@@ -93,47 +107,251 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             CreateTwoPanelLayout();
             CreatePrefixConfigurationPanel();
             CreateParameterMappingPanel();
+
+            // Γ£à PERSISTENCE: Load saved user inputs
+            LoadSavedSettings();
         }
 
         /// <summary>
-        /// Top Bar: Transfer Parameters button
+        /// Top Bar: Action Buttons
         /// </summary>
         private void CreateTopBar()
         {
             var topBar = new WinForms.Panel
             {
                 Dock = DockStyle.Top,
-                Height = 50,
+                Height = 95,
                 BackColor = Color.FromArgb(240, 248, 255)
             };
             this.Controls.Add(topBar);
 
-            // Position 4 buttons aligned to the right with 5px spacing
+            // Γ£à LEFT-ALIGNED LAYOUT (User Request)
             int buttonWidth = 140;
-            int buttonSpacing = 5;
-            int buttonsStartX = topBar.Width - (4 * buttonWidth + 3 * buttonSpacing); // 4 buttons + 3 gaps
-            
-            // Button 1: Apply Marks
-            _applyMarksButton = new WinForms.Button
+            int buttonSpacing = 10;
+            int buttonsStartX = 20; // Fixed Left Margin
+
+            // --- LAYOUT CONSTANTS ---
+            int row1Y = 9;
+            int row2Y = 50;
+
+            // --- ROW 1: Main Action Buttons (Y=9) ---
+
+            // Button 1: Add Prefix Only (Slot 1 - Vertically above Reset Prefix)
+            _addPrefixButton = new WinForms.Button
             {
-                Text = "Apply Marks",
+                Text = "Add Prefix",
                 Size = new Size(buttonWidth, 32),
-                Location = new Point(buttonsStartX, 9),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                BackColor = Color.FromArgb(100, 150, 100),
+                Location = new Point(buttonsStartX + 1 * (buttonWidth + buttonSpacing), row1Y), // Moved to Slot 1
+                Anchor = AnchorStyles.Top | AnchorStyles.Left,
+                BackColor = Color.FromArgb(70, 130, 180), // SteelBlue
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Microsoft Sans Serif", 9F, FontStyle.Bold)
             };
-            _applyMarksButton.Click += OnApplyMarksClick;
-            topBar.Controls.Add(_applyMarksButton);
+            _addPrefixButton.Click += OnAddPrefixClick;
+            topBar.Controls.Add(_addPrefixButton);
+
+            // Button 2: Reset Prefix (Slot 1 Row 2 - See Row 2 Setup)
+            _resetPrefixButton = new WinForms.Button
+            {
+                Text = "Reset Prefix",
+                Size = new Size(buttonWidth, 32),
+                Location = new Point(buttonsStartX + 1 * (buttonWidth + buttonSpacing), row2Y), // Moved to Row 2, Slot 1
+                Anchor = AnchorStyles.Top | AnchorStyles.Left,
+                BackColor = Color.LightGray, // Initially Grey (Locked)
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Microsoft Sans Serif", 8F, FontStyle.Bold), // Smaller font like other reset buttons
+                Enabled = false // Initially Disabled
+            };
+            _resetPrefixButton.Click += OnResetPrefixClick;
+            topBar.Controls.Add(_resetPrefixButton);
+
+            // Button 3: Add Number (Slot 2)
+            _addNumberButton = new WinForms.Button
+            {
+                Text = "Add Number",
+                Size = new Size(buttonWidth, 32),
+                Location = new Point(buttonsStartX + 2 * (buttonWidth + buttonSpacing), row1Y),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left,
+                BackColor = Color.FromArgb(60, 179, 113), // MediumSeaGreen
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Microsoft Sans Serif", 9F, FontStyle.Bold)
+            };
+            _addNumberButton.Click += OnAddNumberClick;
+            _addNumberButton.Enabled = false; // Disabled by default
+            _addNumberButton.BackColor = Color.Gray; 
+            topBar.Controls.Add(_addNumberButton);
+
+            // Button 4: Transfer Parameters (Slot 3)
+            _transferParametersButton = new WinForms.Button
+            {
+                Text = "Transfer Parameters",
+                Size = new Size(buttonWidth, 32),
+                Location = new Point(buttonsStartX + 3 * (buttonWidth + buttonSpacing), row1Y),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left,
+                BackColor = Color.FromArgb(100, 150, 200),
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Microsoft Sans Serif", 9F, FontStyle.Bold)
+            };
+            _transferParametersButton.Click += OnTransferParametersClick;
+            topBar.Controls.Add(_transferParametersButton);
+
+            // Button 5: Close (Slot 4 - Now Visible!)
+            _closeButton = new WinForms.Button
+            {
+                Text = "Γ£ò Close",
+                Size = new Size(buttonWidth, 32),
+                // Fix: Slot 4
+                Location = new Point(buttonsStartX + 4 * (buttonWidth + buttonSpacing), row1Y),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left,
+                BackColor = Color.FromArgb(200, 100, 100),
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Microsoft Sans Serif", 9F, FontStyle.Bold)
+            };
+            _closeButton.Click += (s, e) => this.Close();
+            topBar.Controls.Add(_closeButton);
+
+
+            // --- ROW 2: Reset Buttons & Checkboxes (Y=50) ---
+
+            // Reset Lock (Left of buttons)
+            _resetLockButton = new WinForms.Button
+            {
+                Text = "≡ƒöÆ",
+                Size = new Size(25, 22),
+                Location = new Point(buttonsStartX, row2Y + 5), // Aligned with start
+                Anchor = AnchorStyles.Top | AnchorStyles.Left,
+                BackColor = Color.LightGreen,
+                ForeColor = Color.Black,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI Emoji", 12F)
+            };
+            _resetLockButton.Click += (s, e) => {
+                _isResetUnlocked = !_isResetUnlocked;
+                bool unlocked = _isResetUnlocked;
+
+                _resetLockButton.Text = unlocked ? "≡ƒöô" : "≡ƒöÆ";
+                _resetLockButton.BackColor = unlocked ? Color.IndianRed : Color.LightGreen;
+
+                // Toggle reset buttons
+                if (_resetPrefixButton != null) {
+                   _resetPrefixButton.Enabled = unlocked;
+                   _resetPrefixButton.BackColor = unlocked ? Color.IndianRed : Color.LightGray;
+                }
+                if (_resetNumberingButton != null) {
+                   _resetNumberingButton.Enabled = unlocked;
+                   _resetNumberingButton.BackColor = unlocked ? Color.IndianRed : Color.LightGray;
+                }
+                if (_resetParametersButton != null) {
+                   _resetParametersButton.Enabled = unlocked;
+                   _resetParametersButton.BackColor = unlocked ? Color.IndianRed : Color.LightGray;
+                }
+            };
+            topBar.Controls.Add(_resetLockButton);
+
+            // Active View Only Checkbox Removed - Session Context is enforced automatically
+            // _activeViewOnlyCheckBox = ...
+
+
+
+
+            // Reset Numbering (Below Slot 2 - Add Number)
+            _resetNumberingButton = new WinForms.Button
+            {
+                Text = "Reset Numbering",
+                Size = new Size(buttonWidth, 32),
+                Location = new Point(buttonsStartX + 2 * (buttonWidth + buttonSpacing), row2Y),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left,
+                BackColor = Color.LightGray,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Microsoft Sans Serif", 8F, FontStyle.Bold),
+                Enabled = false
+            };
+            _resetNumberingButton.Click += OnResetNumberingClick;
+            topBar.Controls.Add(_resetNumberingButton);
+
+            // Activate Numbering Checkbox (Moved to Slot 4 - Below Close Button)
+            _enableNumberingCheckBox = new WinForms.CheckBox
+            {
+                Text = "Activate Numbering",
+                Location = new Point(buttonsStartX + 4 * (buttonWidth + buttonSpacing), row2Y + 7), // Slot 4 (Below Close)
+                Size = new Size(140, 20),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left,
+                Checked = false,
+                Font = new Font("Microsoft Sans Serif", 8F, FontStyle.Bold),
+                ForeColor = Color.DarkSlateGray
+            };
+             // Add Tooltip for explanation
+            System.Windows.Forms.ToolTip toolTip = new System.Windows.Forms.ToolTip();
+            toolTip.SetToolTip(_enableNumberingCheckBox, "Enable numbering only after prefixes have been applied.");
             
-            // Button 2: Remark Selected
+            _enableNumberingCheckBox.CheckedChanged += (s, e) => 
+            {
+                bool enabled = _enableNumberingCheckBox.Checked;
+
+                // Γ£à VALIDATION: Numbering activation allowed only in Session Context (Floor Plan)
+                if (enabled && !(_document.ActiveView is ViewPlan))
+                {
+                     WinForms.MessageBox.Show(
+                        "Activate Numbering is only allowed in Floor Plan Views.\n\nPlease switch to a valid view to define the numbering session context.", 
+                        "Invalid View Context", 
+                        WinForms.MessageBoxButtons.OK, 
+                        WinForms.MessageBoxIcon.Warning);
+                     _enableNumberingCheckBox.Checked = false;
+                     return;
+                }
+
+                _addNumberButton.Enabled = enabled;
+                _addNumberButton.BackColor = enabled ? Color.FromArgb(60, 179, 113) : Color.Gray;
+            };
+            topBar.Controls.Add(_enableNumberingCheckBox);
+
+
+            // Reset Parameters (Below Slot 3 - Transfer)
+            _resetParametersButton = new WinForms.Button
+            {
+                Text = "Reset Parameters",
+                Size = new Size(buttonWidth, 32),
+                Location = new Point(buttonsStartX + 3 * (buttonWidth + buttonSpacing), row2Y),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left,
+                BackColor = Color.LightGray,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Microsoft Sans Serif", 8F, FontStyle.Bold),
+                Enabled = false 
+            };
+            _resetParametersButton.Click += OnResetParametersClick;
+            topBar.Controls.Add(_resetParametersButton);
+        }
+            /* DUPLICATE REMOVAL
+            // --- ROW 1: Main Action Buttons ---
+
+            // Button 1: Add Prefix Only (First Slot)
+            _addPrefixButton = new WinForms.Button
+            {
+                Text = "Add Prefix",
+                Size = new Size(buttonWidth, 32),
+                Location = new Point(buttonsStartX, 9),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                BackColor = Color.FromArgb(70, 130, 180), // SteelBlue
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Microsoft Sans Serif", 9F, FontStyle.Bold)
+            };
+            _addPrefixButton.Click += OnAddPrefixClick;
+            topBar.Controls.Add(_addPrefixButton);
+
+            // Button 2: Remark Selected (Moved to Second Slot)
             _remarkSelectedButton = new WinForms.Button
             {
                 Text = "Remark Selected",
                 Size = new Size(buttonWidth, 32),
-                Location = new Point(buttonsStartX + 1 * (buttonWidth + buttonSpacing), 9),
+                Location = new Point(buttonsStartX + 1 * (buttonWidth + buttonSpacing), 9), // Slot 1
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 BackColor = Color.FromArgb(150, 100, 200),
                 ForeColor = Color.White,
@@ -142,13 +360,56 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             _remarkSelectedButton.Click += OnRemarkSelectedClick;
             topBar.Controls.Add(_remarkSelectedButton);
+
+            // Button 3: Add Number Only (Moved to Third Slot)
+            _addNumberButton = new WinForms.Button
+            {
+                Text = "Add Number",
+                Size = new Size(buttonWidth, 32),
+                Location = new Point(buttonsStartX + 2 * (buttonWidth + buttonSpacing), 9), // Slot 2
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                BackColor = Color.FromArgb(60, 179, 113), // MediumSeaGreen
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Microsoft Sans Serif", 9F, FontStyle.Bold)
+            };
+            _addNumberButton.Click += OnAddNumberClick;
+            _addNumberButton.Enabled = false; // Γ£à Disabled by default
+            _addNumberButton.BackColor = Color.Gray; 
+            topBar.Controls.Add(_addNumberButton);
+
+            // Γ£à Activate Numbering Checkbox (Safety) - Moved to Slot 2
+            _enableNumberingCheckBox = new WinForms.CheckBox
+            {
+                Text = "Activate Numbering",
+                Location = new Point(buttonsStartX + 2 * (buttonWidth + buttonSpacing), 45), // Below Button 3
+                Size = new Size(buttonWidth, 20),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Checked = false,
+                Font = new Font("Microsoft Sans Serif", 8F, FontStyle.Regular),
+                ForeColor = Color.DarkSlateGray
+            };
+            // Add Tooltip for explanation
+            System.Windows.Forms.ToolTip toolTip = new System.Windows.Forms.ToolTip();
+            toolTip.SetToolTip(_enableNumberingCheckBox, "Enable numbering only after prefixes have been applied.");
             
-            // Button 3: Transfer Parameters
+            _enableNumberingCheckBox.CheckedChanged += (s, e) => 
+            {
+                bool enabled = _enableNumberingCheckBox.Checked;
+                _addNumberButton.Enabled = enabled;
+                _addNumberButton.BackColor = enabled ? Color.FromArgb(60, 179, 113) : Color.Gray;
+            };
+            // Γ£à REMOVED: Moved Activate Numbering checkbox to replace Reset Remarks button below
+            // topBar.Controls.Add(_enableNumberingCheckBox);
+
+
+
+            // Button 4: Transfer Parameters (Fourth Slot)
             _transferParametersButton = new WinForms.Button
             {
                 Text = "Transfer Parameters",
                 Size = new Size(buttonWidth, 32),
-                Location = new Point(buttonsStartX + 2 * (buttonWidth + buttonSpacing), 9),
+                Location = new Point(buttonsStartX + 3 * (buttonWidth + buttonSpacing), 9),
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 BackColor = Color.FromArgb(100, 150, 200),
                 ForeColor = Color.White,
@@ -157,11 +418,109 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             _transferParametersButton.Click += OnTransferParametersClick;
             topBar.Controls.Add(_transferParametersButton);
+
+
+            // --- ROW 2: Reset Buttons (Below corresponding actions) ---
+            int row2Y = 50;
+
+            // --- SAFETY LOCK ICON (Small, next to Reset row) ---
+            _resetLockButton = new WinForms.Button
+            {
+                Text = "≡ƒöÆ",
+                Size = new Size(25, 22),
+                Location = new Point(buttonsStartX - 30, row2Y + 5), // Left of buttons
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                BackColor = Color.LightGreen,
+                ForeColor = Color.Black,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI Emoji", 12F)
+            };
+            _resetLockButton.Click += (s, e) => {
+                _isResetUnlocked = !_isResetUnlocked;
+                bool unlocked = _isResetUnlocked;
+
+                _resetLockButton.Text = unlocked ? "≡ƒöô" : "≡ƒöÆ";
+                _resetLockButton.BackColor = unlocked ? Color.IndianRed : Color.LightGreen;
+
+                _resetNumberingButton.Enabled = unlocked;
+                _resetNumberingButton.BackColor = unlocked ? Color.IndianRed : Color.LightGray;
+
+                _resetSelectionButton.Enabled = unlocked;
+                _resetSelectionButton.BackColor = unlocked ? Color.IndianRed : Color.LightGray;
+
+                _resetParametersButton.Enabled = unlocked;
+                _resetParametersButton.BackColor = unlocked ? Color.IndianRed : Color.LightGray;
+            };
+            topBar.Controls.Add(_resetLockButton);
+
+
+            // Reset Numbering (Below Add Number? Or Add Prefix?)
+            // Align Reset Numbering below Add Number (Slot 1) makes sense?
+            // Or Add Prefix (Slot 0)?
+            // Reset Numbering clears numbers. So maybe below Add Number.
+            // But let's keep it below Slot 0/1 area.
+
+            // Γ£à MOVED: Activate Numbering checkbox (replaces Reset Remarks button)
+            _enableNumberingCheckBox = new WinForms.CheckBox
+            {
+                Text = "Activate Numbering",
+                Location = new Point(buttonsStartX + 1 * (buttonWidth + buttonSpacing), row2Y + 5), // Slot 1 (where Reset Remarks was)
+                Size = new Size(buttonWidth, 20),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Checked = false,
+                Font = new Font("Microsoft Sans Serif", 8F, FontStyle.Bold),
+                ForeColor = Color.DarkSlateGray
+            };
+            System.Windows.Forms.ToolTip toolTip2 = new System.Windows.Forms.ToolTip();
+            toolTip2.SetToolTip(_enableNumberingCheckBox, "Enable numbering only after prefixes have been applied.");
             
+            _enableNumberingCheckBox.CheckedChanged += (s, e) => 
+            {
+                bool enabled = _enableNumberingCheckBox.Checked;
+                _addNumberButton.Enabled = enabled;
+                _addNumberButton.BackColor = enabled ? Color.FromArgb(60, 179, 113) : Color.Gray;
+            };
+            topBar.Controls.Add(_enableNumberingCheckBox);
+            
+            // Reset Numbering (Below Add Number - Slot 2)
+            _resetNumberingButton = new WinForms.Button
+            {
+                Text = "Reset Numbering",
+                Size = new Size(buttonWidth, 32),
+                Location = new Point(buttonsStartX + 2 * (buttonWidth + buttonSpacing), row2Y), // Slot 2
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                BackColor = Color.LightGray,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Microsoft Sans Serif", 8F, FontStyle.Bold),
+                Enabled = false // Default Locked
+            };
+            _resetNumberingButton.Click += OnResetNumberingClick;
+            topBar.Controls.Add(_resetNumberingButton);
+
+            // Reset Parameters (Below Transfer Parameters - Slot 3)
+            _resetParametersButton = new WinForms.Button
+            {
+                Text = "Reset Parameters",
+                Size = new Size(buttonWidth, 32),
+                Location = new Point(buttonsStartX + 3 * (buttonWidth + buttonSpacing), row2Y), // Slot 3
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                BackColor = Color.LightGray,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Microsoft Sans Serif", 8F, FontStyle.Bold),
+                Enabled = false // Default Locked
+            };
+            _resetParametersButton.Click += OnResetParametersClick;
+            topBar.Controls.Add(_resetParametersButton);
+
+
+
+
             // Button 4: Close
             _closeButton = new WinForms.Button
             {
-                Text = "✕ Close",
+                Text = "Γ£ò Close",
                 Size = new Size(buttonWidth, 32),
                 Location = new Point(buttonsStartX + 3 * (buttonWidth + buttonSpacing), 9),
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
@@ -173,7 +532,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _closeButton.Click += (s, e) => this.Close();
             topBar.Controls.Add(_closeButton);
 
-            // ✅ RESTORED: Active View Only Checkbox
+            // Γ£à RESTORED: Active View Only Checkbox
             _activeViewOnlyCheckBox = new WinForms.CheckBox
             {
                 Text = "Active View Only",
@@ -184,7 +543,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Checked = true // Default to true for safety/performance
             };
             topBar.Controls.Add(_activeViewOnlyCheckBox);
-        }
+       */
 
         /// <summary>
         /// Two-panel layout: Left (35% - Prefixes) + Right (65% - Mapping)
@@ -246,7 +605,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Location = new Point(120, yPos - 2),
                 Size = new Size(120, 22),
-                Text = "", // ✅ FIX: Default project prefix is blank (no default needed)
+                Text = "", // Γ£à FIX: Default project prefix is blank (no default needed)
                 Enabled = false,
                 BackColor = Color.LightGray
             };
@@ -256,22 +615,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Location = new Point(245, yPos - 2),
                 Size = new Size(25, 22),
-                Text = "🔒",
+                Text = "≡ƒöÆ",
                 Font = new Font("Segoe UI Emoji", 8F),
                 BackColor = Color.LightGreen
             };
             _projectPrefixLockButton.Click += (s, e) => ToggleLock(_projectPrefixLockButton, _projectPrefixTextBox);
             _leftPrefixPanel.Controls.Add(_projectPrefixLockButton);
-            
-            // Remark checkbox for Project Prefix
-            _remarkProjectCheckBox = new WinForms.CheckBox
-            {
-                Text = "Remark",
-                Location = new Point(280, yPos - 2),
-                AutoSize = true,
-                Checked = false
-            };
-            _leftPrefixPanel.Controls.Add(_remarkProjectCheckBox);
             yPos += 35;
 
             // Number Format selector
@@ -282,7 +631,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Size = new Size(100, 20)
             };
             _leftPrefixPanel.Controls.Add(numberFormatLabel);
-            
+
             _numberFormatCombo = new WinForms.ComboBox
             {
                 Location = new Point(120, yPos - 2),
@@ -299,7 +648,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 Location = new Point(245, yPos - 2),
                 Size = new Size(25, 22),
-                Text = "🔒",
+                Text = "≡ƒöÆ",
                 Font = new Font("Segoe UI Emoji", 8F),
                 BackColor = Color.LightGreen
             };
@@ -307,55 +656,125 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             _leftPrefixPanel.Controls.Add(_numberFormatLockButton);
             yPos += 35;
 
-            // Section Title
+            // Start Number - MOVED TO Numbering Sequence Section below
+            // ...
+
+            // Section Title: Discipline Prefixes
             var disciplineLabel = new WinForms.Label
             {
-                Text = "Discipline Prefixes:",
+                Text = "Discipline Prefixes (2x2 Grid):",
                 Font = new Font("Microsoft Sans Serif", 9F, FontStyle.Bold),
                 Location = new Point(10, yPos),
-                Size = new Size(150, 20)
+                Size = new Size(180, 20),
+                ForeColor = Color.FromArgb(51, 51, 51)
             };
             _leftPrefixPanel.Controls.Add(disciplineLabel);
             yPos += 25;
 
-            // Row 1: Duct
-            var ductLabel = new WinForms.Label { Text = "Duct:", Location = new Point(10, yPos), Size = new Size(80, 20) };
+            // Row 1: Duct & Pipe
+            var ductLabel = new WinForms.Label { Text = "Duct:", Location = new Point(10, yPos), Size = new Size(40, 20) };
             _leftPrefixPanel.Controls.Add(ductLabel);
-            _ductPrefixTextBox = new WinForms.TextBox { Location = new Point(90, yPos - 2), Size = new Size(50, 22), Text = "M" };
+            _ductPrefixTextBox = new WinForms.TextBox { Location = new Point(55, yPos - 2), Size = new Size(50, 22), Text = "M" };
             _ductPrefixTextBox.GotFocus += (s, e) => { _lastFocusedCategory = "Ducts"; };
             _leftPrefixPanel.Controls.Add(_ductPrefixTextBox);
-            _remarkDuctCheckBox = new WinForms.CheckBox { Text = "Remark", Location = new Point(150, yPos - 2), Size = new Size(70, 22), Checked = false };
-            _leftPrefixPanel.Controls.Add(_remarkDuctCheckBox);
-            yPos += 30;
 
-            // Row 2: Pipe
-            var pipeLabel = new WinForms.Label { Text = "Pipe:", Location = new Point(10, yPos), Size = new Size(80, 20) };
+            var pipeLabel = new WinForms.Label { Text = "Pipe:", Location = new Point(135, yPos), Size = new Size(40, 20) };
             _leftPrefixPanel.Controls.Add(pipeLabel);
-            _pipePrefixTextBox = new WinForms.TextBox { Location = new Point(90, yPos - 2), Size = new Size(50, 22), Text = "P" };
+            _pipePrefixTextBox = new WinForms.TextBox { Location = new Point(180, yPos - 2), Size = new Size(50, 22), Text = "P" };
+            _pipePrefixTextBox.GotFocus += (s, e) => { _lastFocusedCategory = "Pipes"; };
             _leftPrefixPanel.Controls.Add(_pipePrefixTextBox);
-            _remarkPipeCheckBox = new WinForms.CheckBox { Text = "Remark", Location = new Point(150, yPos - 2), Size = new Size(70, 22), Checked = false };
-            _leftPrefixPanel.Controls.Add(_remarkPipeCheckBox);
             yPos += 30;
 
-            // Row 3: Cable Tray
-            var cableTrayLabel = new WinForms.Label { Text = "Cable Tray:", Location = new Point(10, yPos), Size = new Size(70, 20) };
+            // Row 2: Cable Tray & Damper
+            var cableTrayLabel = new WinForms.Label { Text = "Tray:", Location = new Point(10, yPos), Size = new Size(40, 20) };
             _leftPrefixPanel.Controls.Add(cableTrayLabel);
-            _cableTrayPrefixTextBox = new WinForms.TextBox { Location = new Point(90, yPos - 2), Size = new Size(50, 22), Text = "E" };
+            _cableTrayPrefixTextBox = new WinForms.TextBox { Location = new Point(55, yPos - 2), Size = new Size(50, 22), Text = "E" };
+            _cableTrayPrefixTextBox.GotFocus += (s, e) => { _lastFocusedCategory = "Cable Trays"; };
             _leftPrefixPanel.Controls.Add(_cableTrayPrefixTextBox);
-            _remarkCableTrayCheckBox = new WinForms.CheckBox { Text = "Remark", Location = new Point(150, yPos - 2), Size = new Size(70, 22), Checked = false };
-            _leftPrefixPanel.Controls.Add(_remarkCableTrayCheckBox);
-            yPos += 30;
 
-            // Row 4: Damper
-            var damperLabel = new WinForms.Label { Text = "Damper:", Location = new Point(10, yPos), Size = new Size(80, 20) };
+            var damperLabel = new WinForms.Label { Text = "Damp:", Location = new Point(135, yPos), Size = new Size(40, 20) };
             _leftPrefixPanel.Controls.Add(damperLabel);
-            _damperPrefixTextBox = new WinForms.TextBox { Location = new Point(90, yPos - 2), Size = new Size(50, 22), Text = "DMP" };
+            _damperPrefixTextBox = new WinForms.TextBox { Location = new Point(180, yPos - 2), Size = new Size(50, 22), Text = "DMP" };
+            _damperPrefixTextBox.GotFocus += (s, e) => { _lastFocusedCategory = "Duct Accessories"; };
             _leftPrefixPanel.Controls.Add(_damperPrefixTextBox);
-            _remarkDamperCheckBox = new WinForms.CheckBox { Text = "Remark", Location = new Point(150, yPos - 2), Size = new Size(70, 22), Checked = false };
-            _leftPrefixPanel.Controls.Add(_remarkDamperCheckBox);
             yPos += 40;
 
-            // ✅ NEW: System Type Overrides section (always visible, not collapsible)
+            // Γ£à NEW: Numbering Sequence Management
+            var numberingTitle = new WinForms.Label
+            {
+                Text = "Numbering Sequence Logic:",
+                Font = new Font("Microsoft Sans Serif", 9F, FontStyle.Bold),
+                Location = new Point(10, yPos),
+                Size = new Size(200, 20),
+                ForeColor = Color.FromArgb(51, 51, 51)
+            };
+            _leftPrefixPanel.Controls.Add(numberingTitle);
+            yPos += 25;
+
+            // Container for Numbering Modes
+            _numberingSequencePanel = new WinForms.Panel
+            {
+                Location = new Point(10, yPos),
+                Size = new Size(_leftPrefixPanel.Width - 25, 80),
+                BackColor = Color.FromArgb(245, 245, 245),
+                BorderStyle = BorderStyle.FixedSingle
+            };
+            _leftPrefixPanel.Controls.Add(_numberingSequencePanel);
+            
+            // Mode 1: New Sheet (Start Number)
+            _modeNewSheetRadio = new WinForms.RadioButton
+            {
+                Text = "Start Number New Sheet:",
+                Location = new Point(5, 5),
+                Size = new Size(160, 20),
+                Checked = true,
+                Font = new Font("Microsoft Sans Serif", 8.25F, FontStyle.Regular)
+            };
+            _numberingSequencePanel.Controls.Add(_modeNewSheetRadio);
+
+            _startNumberTextBox = new WinForms.TextBox
+            {
+                Location = new Point(170, 4),
+                Size = new Size(60, 20),
+                Text = "" 
+            };
+            _numberingSequencePanel.Controls.Add(_startNumberTextBox);
+
+            // Mode 2: Continue from Floor Plan
+            _modeContinueRadio = new WinForms.RadioButton
+            {
+                Text = "Continue from Floor Plan:",
+                Location = new Point(5, 30),
+                Size = new Size(160, 20),
+                Font = new Font("Microsoft Sans Serif", 8.25F, FontStyle.Regular)
+            };
+            _numberingSequencePanel.Controls.Add(_modeContinueRadio);
+
+            _sourceViewCombo = new WinForms.ComboBox
+            {
+                Location = new Point(5, 52),
+                Size = new Size(_numberingSequencePanel.Width - 10, 21),
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Enabled = false // Only enabled if _modeContinueRadio is checked
+            };
+            _numberingSequencePanel.Controls.Add(_sourceViewCombo);
+
+            // Wire up toggle logic
+            _modeNewSheetRadio.CheckedChanged += (s, e) => {
+                _startNumberTextBox.Enabled = _modeNewSheetRadio.Checked;
+                _sourceViewCombo.Enabled = _modeContinueRadio.Checked;
+            };
+            _modeContinueRadio.CheckedChanged += (s, e) => {
+                _startNumberTextBox.Enabled = _modeNewSheetRadio.Checked;
+                _sourceViewCombo.Enabled = _modeContinueRadio.Checked;
+            };
+
+            // Populate Floor Plans
+            PopulateFloorPlans();
+
+            yPos += 90;
+
+            // Γ£à NEW: System Type Overrides section (always visible, not collapsible)
             var systemTypeLabel = new WinForms.Label
             {
                 Text = "System Type Overrides:",
@@ -377,7 +796,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             };
             _leftPrefixPanel.Controls.Add(_systemTypeOverridesPanel);
 
-            // ✅ CRITICAL FIX: Load system types from ALL placed sleeves initially (no category filter)
+            // Γ£à CRITICAL FIX: Load system types from ALL placed sleeves initially (no category filter)
             // This ensures we get system types from all categories that have placed sleeves
             LoadSystemTypeOverrideOptions(null); // Explicitly pass null to load all
 
@@ -443,7 +862,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             CreateCategorySubTab("Walls", _hostParameterTabs);
             CreateCategorySubTab("Structural Framing", _hostParameterTabs);
 
-            // ✅ REMOVED: Big "+ Add Parameter" button
+            // Γ£à REMOVED: Big "+ Add Parameter" button
             // Note: Small "+" buttons for adding rows will be added per-tab later
         }
 
@@ -461,7 +880,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 AutoScroll = true
             };
 
-            // ✅ Add header with "+" button aligned with close buttons
+            // Γ£à Add header with "+" button aligned with close buttons
             var headerPanel = new WinForms.Panel
             {
                 Location = new Point(0, 0),
@@ -497,19 +916,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         /// </summary>
         private void AddDefaultParameterRows(WinForms.Panel panel, string category)
         {
-            // ✅ PERFORMANCE FIX: Only 4 essential parameters from linked MEP files on startup
+            // Γ£à PERFORMANCE FIX: Only 4 essential parameters from linked MEP files on startup
             // Rest load when user clicks "+" button
             var systemTypeParam = category == "Cable Trays" ? "Service Type" : "System Type";
-            
+
             var mappings = new List<(string Mep, string Opening)>
             {
-                ("Size", "MEP Size"),  // ✅ FIX: Use "Size" as default (more commonly used parameter name)
+                ("Size", "MEP Size"),  // Γ£à FIX: Use "Size" as default (more commonly used parameter name)
                 (systemTypeParam, "MEP System Type"),
                 ("System Abbreviation", "MEP System Abbreviation"),
                 ("Reference Level", "Level")
             };
-            
-            // ✅ NOTE: Dropdown will include both "Size" and "System Size" if both exist in linked files
+
+            // Γ£à NOTE: Dropdown will include both "Size" and "System Size" if both exist in linked files
             // Default selection uses "Size" as it's more commonly used
 
             if (!DeploymentConfiguration.DeploymentMode && _document != null)
@@ -530,7 +949,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         /// <summary>
         /// Get MEP/Host parameters for a specific category - ONLY ESSENTIAL PARAMETERS on startup
-        /// ✅ PERFORMANCE FIX: Returns only 4 essential parameters for MEP categories on startup
+        /// Γ£à PERFORMANCE FIX: Returns only 4 essential parameters for MEP categories on startup
         /// Rest load when user clicks "+" button
         /// </summary>
         private string[] GetMepParametersForCategory(string category)
@@ -540,25 +959,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 return GetHostParametersForCategory(category);
             }
-            
-            // ✅ PERFORMANCE FIX: Only return 4 essential parameters for MEP categories on startup
+
+            // Γ£à PERFORMANCE FIX: Only return 4 essential parameters for MEP categories on startup
             // 1. Size (or "System Size" - include both as some files use different names)
             // 2. System Type (or "Service Type" for Cable Trays)
             // 3. System Abbreviation
             // 4. Reference Level
             var systemTypeParam = category == "Cable Trays" ? "Service Type" : "System Type";
-            // ✅ FIX: Include both "Size" and "System Size" as different linked files might use different parameter names
+            // Γ£à FIX: Include both "Size" and "System Size" as different linked files might use different parameter names
             var essentialParams = new List<string> { "Size", "System Size", systemTypeParam, "System Abbreviation", "Reference Level" };
             // Remove duplicates while preserving order
             essentialParams = essentialParams.Distinct().ToList();
-            
+
             if (_document == null)
             {
                 // Fallback to essentials if no document available
                 return essentialParams.ToArray();
             }
-            
-            // ✅ PERFORMANCE FIX: Just return the 4 essential parameters on startup
+
+            // Γ£à PERFORMANCE FIX: Just return the 4 essential parameters on startup
             // Don't scan all parameters - they'll load when user clicks "+"
             DebugLogger.Info($"[ParameterServiceDialogV2] Returning {essentialParams.Count} essential MEP parameters for category '{category}' (startup mode)");
             if (!DeploymentConfiguration.DeploymentMode)
@@ -566,30 +985,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 string paramLogPath = SafeFileLogger.GetLogFilePath("parameter_service_debug.log");
                 System.IO.File.AppendAllText(paramLogPath, $"[{DateTime.Now}] [ParameterServiceDialogV2] Returning essential MEP parameters for '{category}': {string.Join(", ", essentialParams)}\n");
             }
-            
+
             return essentialParams.ToArray();
         }
-        
+
         /// <summary>
         /// Get Host parameters for a specific category - loads from architectural/structural linked files
-        /// ✅ PERFORMANCE FIX: Only loads "Fire Rating" on startup, rest load when user clicks "+"
+        /// Γ£à PERFORMANCE FIX: Only loads "Fire Rating" on startup, rest load when user clicks "+"
         /// </summary>
         private string[] GetHostParametersForCategory(string category)
         {
-            // ✅ PERFORMANCE FIX: Only return "Fire Rating" parameter on startup
+            // Γ£à PERFORMANCE FIX: Only return "Fire Rating" parameter on startup
             // Rest load when user clicks "+" button
             var essentialParams = new[] { "Fire Rating" };
-            
+
             if (_document == null)
             {
                 // Fallback to essentials if no document available
                 return essentialParams;
             }
-            
+
             try
             {
                 var hostParameters = new HashSet<string>();
-                
+
                 // Map category to BuiltInCategory
                 BuiltInCategory? targetCategory = category switch
                 {
@@ -598,44 +1017,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     "Structural Framing" => BuiltInCategory.OST_StructuralFraming,
                     _ => null
                 };
-                
+
                 if (targetCategory == null)
                 {
                     DebugLogger.Warning($"[ParameterServiceDialogV2] Unknown host category: {category}");
                     return essentialParams; // Return essentials instead of wrong defaults
                 }
-                
+
                 // Get linked files from document
                 var linkedFileService = new Services.LinkedFileService();
                 var allLinkedFiles = linkedFileService.GetLinkedFiles(_document);
-                
+
                 // Get architectural and structural linked files (host element files)
                 var hostLinkedFiles = linkedFileService.GetHostElementFiles(allLinkedFiles);
-                
+
                 DebugLogger.Info($"[ParameterServiceDialogV2] Found {hostLinkedFiles.Count} host-linked files for category '{category}'");
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     string paramLogPath = SafeFileLogger.GetLogFilePath("parameter_service_debug.log");
                     System.IO.File.AppendAllText(paramLogPath, $"[{DateTime.Now}] [ParameterServiceDialogV2] Found {hostLinkedFiles.Count} host-linked files for category '{category}'\n");
                 }
-                
+
                 // If no linked files, fall back to current document
                 if (hostLinkedFiles.Count == 0)
                 {
                     DebugLogger.Info($"[ParameterServiceDialogV2] No host-linked files found, using current document for host parameters");
-                    hostLinkedFiles.Add(new Services.LinkedFileInfo 
-                    { 
+                    hostLinkedFiles.Add(new Services.LinkedFileInfo
+                    {
                         FileName = "Current Document",
-                        LinkInstance = null 
+                        LinkInstance = null
                     });
                 }
-                
-                // ✅ PERFORMANCE FIX: Only load "Fire Rating" parameter on startup (rest load when user clicks "+")
+
+                // Γ£à PERFORMANCE FIX: Only load "Fire Rating" parameter on startup (rest load when user clicks "+")
                 // Check if Fire Rating parameter exists in any of the host categories
                 foreach (var linkedFile in hostLinkedFiles)
                 {
                     Document targetDocument = _document;
-                    
+
                     // If it's a linked file, get the linked document
                     if (linkedFile.FileName != "Current Document" && linkedFile.LinkInstance != null)
                     {
@@ -654,13 +1073,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             continue;
                         }
                     }
-                    
+
                     // Check if Fire Rating parameter exists in the target category
                     var collector = new FilteredElementCollector(targetDocument)
                         .OfCategory(targetCategory.Value)
                         .WhereElementIsNotElementType()
                         .Take(1);
-                    
+
                     foreach (Element element in collector)
                     {
                         foreach (Parameter param in element.Parameters)
@@ -678,16 +1097,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     }
                     if (hostParameters.Contains("Fire Rating")) break; // Found it, no need to check more files
                 }
-                
+
                 DebugLogger.Info($"[ParameterServiceDialogV2] Found {hostParameters.Count} host parameters for category '{category}' (startup: only Fire Rating)");
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     string paramLogPath = SafeFileLogger.GetLogFilePath("parameter_service_debug.log");
                     System.IO.File.AppendAllText(paramLogPath, $"[{DateTime.Now}] [ParameterServiceDialogV2] Found {hostParameters.Count} host parameters for category '{category}' (startup: only Fire Rating)\n");
                 }
-                
+
                 // Return Fire Rating if found, otherwise return empty array (user can add via "+" button)
-                return hostParameters.Count > 0 
+                return hostParameters.Count > 0
                     ? hostParameters.OrderBy(p => p).ToArray()
                     : essentialParams; // Return essentials even if not found (user can add it manually)
             }
@@ -703,57 +1122,57 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 return essentialParams;
             }
         }
-        
+
         /// <summary>
         /// Get Opening parameters for a specific category - loads from active document FamilySymbol objects
-        /// ✅ PERFORMANCE FIX: Only loads 4 essential parameters on startup: MEP System Type, MEP Size, MEP System Abbreviation, Level
+        /// Γ£à PERFORMANCE FIX: Only loads 4 essential parameters on startup: MEP System Type, MEP Size, MEP System Abbreviation, Level
         /// Rest load when user clicks "+"
         /// </summary>
         private string[] GetOpeningParametersForCategory(string category)
         {
-            // ✅ PERFORMANCE FIX: Only return 4 essential parameters on startup
+            // Γ£à PERFORMANCE FIX: Only return 4 essential parameters on startup
             // 1. MEP System Type
             // 2. MEP Size  
             // 3. MEP System Abbreviation
             // 4. Level
             var essentialParams = new[] { "MEP System Type", "MEP Size", "MEP System Abbreviation", "Level" };
-            
+
             if (_document == null)
             {
                 // Fallback to essentials if no document available
                 return essentialParams;
             }
-            
+
             try
             {
                 // Get opening FamilySymbol objects from active document (not instances, not linked files)
                 var openingFamilies = GetOpeningFamilies(_document);
-                
+
                 if (openingFamilies.Count == 0)
                 {
                     DebugLogger.Warning($"[ParameterServiceDialogV2] No opening families found in active document");
                     // Return essentials even if no families found
                     return essentialParams;
                 }
-                
+
                 DebugLogger.Info($"[ParameterServiceDialogV2] Found {openingFamilies.Count} opening families in active document (startup: returning only 4 essential parameters)");
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     string paramLogPath = SafeFileLogger.GetLogFilePath("parameter_service_debug.log");
                     System.IO.File.AppendAllText(paramLogPath, $"[{DateTime.Now}] [ParameterServiceDialogV2] Found {openingFamilies.Count} opening families in active document (startup: returning only 4 essential parameters)\n");
                 }
-                
-                // ✅ PERFORMANCE FIX: Only check if the 4 essential parameters exist, then return them
+
+                // Γ£à PERFORMANCE FIX: Only check if the 4 essential parameters exist, then return them
                 // Don't scan all parameters - they'll load when user clicks "+"
                 // Just verify the essential params exist in at least one family symbol
                 var foundParams = new HashSet<string>();
-                
+
                 foreach (var familySymbol in openingFamilies.Take(1)) // Only check first family
                 {
                     foreach (Parameter param in familySymbol.Parameters)
                     {
                         var paramName = param.Definition?.Name;
-                        if (!string.IsNullOrEmpty(paramName) && 
+                        if (!string.IsNullOrEmpty(paramName) &&
                             essentialParams.Any(req => string.Equals(paramName, req, StringComparison.OrdinalIgnoreCase)))
                         {
                             foundParams.Add(paramName);
@@ -761,7 +1180,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     }
                     break; // Only check first family
                 }
-                
+
                 // Return the essential params (even if not all found - user can add them later)
                 DebugLogger.Info($"[ParameterServiceDialogV2] Returning {essentialParams.Length} essential opening parameters (startup mode)");
                 if (!DeploymentConfiguration.DeploymentMode)
@@ -783,7 +1202,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 return essentialParams;
             }
         }
-        
+
         /// <summary>
         /// Get opening FamilySymbol objects from active document (matching EmergencyMainDialog pattern)
         /// </summary>
@@ -882,10 +1301,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 mepCombo.SelectedItem = mepParam;
             row.Controls.Add(mepCombo);
 
-            // 🔍 MEP Search button (Greenish)
+            // ≡ƒöì MEP Search button (Greenish)
             var mepSearchBtn = new WinForms.Button
             {
-                Text = "🔍",
+                Text = "≡ƒöì",
                 Location = new Point(mepCombo.Right + 2, 2),
                 Size = new Size(24, 22),
                 BackColor = Color.LightGreen,
@@ -899,7 +1318,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // Arrow
             var arrow = new WinForms.Label
             {
-                Text = "→",
+                Text = "ΓåÆ",
                 Location = new Point(mepSearchBtn.Right + 5, 4),
                 Size = new Size(20, 20),
                 Font = new Font("Arial", 10, FontStyle.Bold)
@@ -920,10 +1339,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 openingCombo.SelectedItem = openingParam;
             row.Controls.Add(openingCombo);
 
-            // 🔍 Opening Search button (Yellowish)
+            // ≡ƒöì Opening Search button (Yellowish)
             var openingSearchBtn = new WinForms.Button
             {
-                Text = "🔍",
+                Text = "≡ƒöì",
                 Location = new Point(openingCombo.Right + 2, 2),
                 Size = new Size(24, 22),
                 BackColor = Color.Khaki,
@@ -948,7 +1367,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             // Remove button
             var removeBtn = new WinForms.Button
             {
-                Text = "⨉",
+                Text = "Γ¿ë",
                 Location = new Point(row.Width - 30, 2),
                 Size = new Size(24, 22),
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
@@ -960,14 +1379,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 RepositionRows(panel);
             };
             row.Controls.Add(removeBtn);
-            
+
             panel.Controls.Add(row);
             RepositionRows(panel);
         }
 
         private void ShowMepParameterSearchDialog(WinForms.ComboBox comboBox, string category)
         {
-            // ✅ FIX: Get ALL parameters for search, scanning linked files/host elements
+            // Γ£à FIX: Get ALL parameters for search, scanning linked files/host elements
             var allParams = GetAllMepParametersForCategory(category);
             ShowSearchDialog(comboBox, allParams, "Search MEP/Host Parameters");
         }
@@ -979,9 +1398,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private string[] GetAllMepParametersForCategory(string category)
         {
             if (_document == null) return new string[0];
-            
+
             var allParams = new HashSet<string>();
-            
+
             try
             {
                 // Map category to BuiltInCategory
@@ -1002,14 +1421,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 // Determine if we should look in linked files or current document
                 // MEP elements usually in linked files (Reference Elements tab) or current doc
                 // Host elements usually in linked files (Host Elements tab)
-                
+
                 var linkedFileService = new Services.LinkedFileService();
                 var allLinkedFiles = linkedFileService.GetLinkedFiles(_document);
-                
+
                 // For search, we look in BOTH current document AND all linked files to be comprehensive
                 // 1. Scan Current Document
                 ScanDocumentForParameters(_document, targetCategory.Value, allParams);
-                
+
                 // 2. Scan Linked Files
                 foreach (var link in allLinkedFiles)
                 {
@@ -1022,7 +1441,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         }
                     }
                 }
-                
+
                 return allParams.OrderBy(p => p).ToArray();
             }
             catch (Exception ex)
@@ -1030,8 +1449,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 DebugLogger.Error($"[ParameterServiceDialogV2] Error getting all MEP parameters: {ex.Message}");
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                     string paramLogPath = SafeFileLogger.GetLogFilePath("parameter_service_debug.log");
-                     System.IO.File.AppendAllText(paramLogPath, $"[{DateTime.Now}] ERROR getting all MEP params: {ex.Message}\n");
+                    string paramLogPath = SafeFileLogger.GetLogFilePath("parameter_service_debug.log");
+                    System.IO.File.AppendAllText(paramLogPath, $"[{DateTime.Now}] ERROR getting all MEP params: {ex.Message}\n");
                 }
                 // Fallback to startup essentials if search fails
                 return GetMepParametersForCategory(category);
@@ -1047,7 +1466,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     .OfCategory(category)
                     .WhereElementIsNotElementType()
                     .Take(5); // Sample 5 elements to get a good mix of instance parameters
-                
+
                 foreach (Element elem in collector)
                 {
                     foreach (Parameter param in elem.Parameters)
@@ -1057,7 +1476,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                             paramsSet.Add(param.Definition.Name);
                         }
                     }
-                    
+
                     // Also check Type parameters
                     ElementId typeId = elem.GetTypeId();
                     if (typeId != ElementId.InvalidElementId)
@@ -1081,7 +1500,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         private void ShowOpeningParameterSearchDialog(WinForms.ComboBox comboBox, string category)
         {
-            // ✅ FIX: Get ALL parameters for search, not just the essential ones
+            // Γ£à FIX: Get ALL parameters for search, not just the essential ones
             var allParams = GetAllOpeningParametersForCategory(category);
             ShowSearchDialog(comboBox, allParams, "Search Opening Parameters");
         }
@@ -1094,7 +1513,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         {
             if (_document == null) return new string[0];
 
-            try 
+            try
             {
                 var openingFamilies = GetOpeningFamilies(_document);
                 var allParams = new HashSet<string>();
@@ -1112,7 +1531,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
                     // 2. Get Instance Parameters (try to find one instance)
                     // We need to check if there are any instances of this symbol placed in the model
-                    try 
+                    try
                     {
                         var filter = new FamilyInstanceFilter(_document, familySymbol.Id);
                         var instance = new FilteredElementCollector(_document)
@@ -1135,7 +1554,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         DebugLogger.Warning($"[ParameterServiceDialogV2] Error getting instance params for {familySymbol.Name}: {instEx.Message}");
                     }
                 }
-                
+
                 return allParams.OrderBy(p => p).ToArray();
             }
             catch (Exception ex)
@@ -1159,7 +1578,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
             var searchBox = new WinForms.TextBox { Location = new Point(10, 10), Width = 365 };
             var listBox = new WinForms.ListBox { Location = new Point(10, 40), Width = 365, Height = 380 };
-            
+
             listBox.Items.AddRange(allParams);
 
             searchBox.TextChanged += (s, e) => {
@@ -1238,16 +1657,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Font = new Font("Microsoft Sans Serif", 8.5F, FontStyle.Bold)
             };
             header.Controls.Add(renameLabel);
-            
-            // Remark column header
-            var remarkLabel = new WinForms.Label
-            {
-                Text = "Remark",
-                Location = new Point(215, 5),
-                Size = new Size(70, 16),
-                Font = new Font("Microsoft Sans Serif", 8.5F, FontStyle.Bold)
-            };
-            header.Controls.Add(remarkLabel);
 
             // "+" button aligned with close buttons (same X position)
             var addBtn = new WinForms.Button
@@ -1291,18 +1700,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 AutoCompleteSource = AutoCompleteSource.ListItems
             };
 
-            // ✅ CRITICAL FIX: Populate dropdown ONCE when row is created - don't reload on DropDown event
+            // Γ£à CRITICAL FIX: Populate dropdown ONCE when row is created - don't reload on DropDown event
             // This prevents memory access violations from database/Revit API calls during dropdown opening
             // The dropdown will use the cached _systemTypeOptions that were loaded when dialog opened
             PopulateSystemTypeDropdown(systemTypeCombo, systemType);
-            
-            // ✅ REMOVED: DropDown event handler that was causing memory access violations
+
+            // Γ£à REMOVED: DropDown event handler that was causing memory access violations
             // Instead, system types are loaded once when dialog opens and cached in _systemTypeOptions
             // If user needs fresh data, they can close and reopen the dialog
             row.Controls.Add(systemTypeCombo);
 
             // Arrow
-            var arrow = new WinForms.Label { Text = "→", Location = new Point(138, 6), Size = new Size(15, 16) };
+            var arrow = new WinForms.Label { Text = "ΓåÆ", Location = new Point(138, 6), Size = new Size(15, 16) };
             row.Controls.Add(arrow);
 
             // Prefix textbox
@@ -1313,21 +1722,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 Text = prefix
             };
             row.Controls.Add(prefixTextBox);
-            
-            // Remark checkbox
-            var remarkCheckBox = new WinForms.CheckBox
-            {
-                Text = "",
-                Location = new Point(218, 5),
-                Size = new Size(20, 20),
-                Checked = false
-            };
-            row.Controls.Add(remarkCheckBox);
 
             // Close button (aligned with parameter mapping close buttons)
             var closeBtn = new WinForms.Button
             {
-                Text = "×",
+                Text = "├ù",
                 Location = new Point(row.Width - 30, 2), // Same position as parameter rows
                 Size = new Size(22, 22),
                 BackColor = Color.FromArgb(255, 200, 200),
@@ -1350,7 +1749,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         /// <summary>
         /// Load available System Type / Service Type values from persisted XML (and future data sources).
         /// Populates <see cref="_systemTypeOptions"/> for use by override rows.
-        /// ✅ TESTING MODE: Always loads ALL system types and service types from ALL categories (ignores category filter)
+        /// Γ£à TESTING MODE: Always loads ALL system types and service types from ALL categories (ignores category filter)
         /// </summary>
         private void LoadSystemTypeOverrideOptions(string category = null)
         {
@@ -1369,10 +1768,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         SafeFileLogger.SafeAppendText("parameter_service_debug.log", $"[{DateTime.Now}] {msg}\n");
                     });
 
-                    // ✅ TESTING MODE: Always load ALL types from ALL categories (ignore category parameter)
+                    // Γ£à TESTING MODE: Always load ALL types from ALL categories (ignore category parameter)
                     var catalog = catalogService.Load(_document, category: null);
 
-                    // ✅ LOAD ALL: Include both SystemTypes and ServiceTypes from all categories
+                    // Γ£à LOAD ALL: Include both SystemTypes and ServiceTypes from all categories
                     foreach (var value in catalog.SystemTypes ?? Enumerable.Empty<string>())
                     {
                         if (!string.IsNullOrWhiteSpace(value))
@@ -1391,17 +1790,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     .OrderBy(v => v, StringComparer.OrdinalIgnoreCase)
                     .ToList();
 
-                // ✅ ENHANCED LOGGING: Log what will be populated in the dropdown
+                // Γ£à ENHANCED LOGGING: Log what will be populated in the dropdown
                 var categoryInfo = string.IsNullOrWhiteSpace(category) ? "all categories" : $"category '{category}'";
                 if (_systemTypeOptions.Count > 0)
                 {
                     SafeFileLogger.SafeAppendText("parameter_service_debug.log",
-                        $"[{DateTime.Now}] [ParameterServiceDialogV2] ✅ System Type dropdown will be populated with {_systemTypeOptions.Count} options for {categoryInfo}: {string.Join(", ", _systemTypeOptions)}\n");
+                        $"[{DateTime.Now}] [ParameterServiceDialogV2] Γ£à System Type dropdown will be populated with {_systemTypeOptions.Count} options for {categoryInfo}: {string.Join(", ", _systemTypeOptions)}\n");
                 }
                 else
                 {
                     SafeFileLogger.SafeAppendText("parameter_service_debug.log",
-                        $"[{DateTime.Now}] [ParameterServiceDialogV2] ⚠️ System Type dropdown will be EMPTY for {categoryInfo} - no system/service types found in placed sleeves\n");
+                        $"[{DateTime.Now}] [ParameterServiceDialogV2] ΓÜá∩╕Å System Type dropdown will be EMPTY for {categoryInfo} - no system/service types found in placed sleeves\n");
                 }
 
                 if (_systemTypeOptions.Count == 0)
@@ -1432,16 +1831,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 _systemTypeRows[i].Location = new Point(2, 30 + (i * rowHeight));
             }
         }
-        
+
         /// <summary>
-        /// ✅ NEW: Populate system type dropdown with available options
+        /// Γ£à NEW: Populate system type dropdown with available options
         /// </summary>
         private void PopulateSystemTypeDropdown(WinForms.ComboBox comboBox, string selectedValue = null)
         {
             comboBox.Items.Clear();
             comboBox.Items.Add("<Select>");
 
-            // ✅ CRITICAL FIX: Only show system types from placed sleeves - NO hardcoded fallback
+            // Γ£à CRITICAL FIX: Only show system types from placed sleeves - NO hardcoded fallback
             // If no system types found, dropdown will only show "<Select>"
             var options = _systemTypeOptions ?? new List<string>();
 
@@ -1452,7 +1851,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     comboBox.Items.Add(option);
                 }
             }
-            
+
             if (!string.IsNullOrWhiteSpace(selectedValue) && comboBox.Items.Contains(selectedValue))
             {
                 comboBox.SelectedItem = selectedValue;
@@ -1462,14 +1861,54 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 comboBox.Text = string.IsNullOrWhiteSpace(selectedValue) ? "<Select>" : selectedValue;
             }
         }
-        
+
         /// <summary>
-        /// ✅ NEW: Detect current category based on which discipline prefix textbox was last focused/edited
+        /// Γ£à NEW: Populate Floor Plan dropdown for numbering continuation
+        /// </summary>
+        private void PopulateFloorPlans()
+        {
+            if (_document == null || _sourceViewCombo == null) return;
+
+            try 
+            {
+                var floorPlans = new FilteredElementCollector(_document)
+                    .OfClass(typeof(ViewPlan))
+                    .Cast<ViewPlan>()
+                    .Where(vp => !vp.IsTemplate)
+                    .OrderBy(vp => vp.Name)
+                    .ToList();
+
+                _sourceViewCombo.Items.Clear();
+                _sourceViewCombo.Items.Add("<Select Floor Plan>");
+
+                foreach (var vp in floorPlans)
+                {
+                    // Γ£à FIX: Use View Name as requested by user ("view name not levels")
+                    // This aligns with MarkParameterService logic which scopes by View Name
+                    string displayName = vp.Name;
+                    
+                    // Optional: Append Level Name for clarity if needed, but sticking to requested "View Name"
+                    // string displayName = $"{vp.Name} ({vp.GenLevel?.Name ?? "No Level"})";
+                    
+                    _sourceViewCombo.Items.Add(displayName);
+                }
+
+                if (_sourceViewCombo.Items.Count > 0)
+                    _sourceViewCombo.SelectedIndex = 0;
+            }
+            catch (Exception ex)
+            {
+                RemarkDebugLogger.LogError($"Error populating floor plans: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Γ£à NEW: Detect current category based on which discipline prefix textbox was last focused/edited
         /// Returns "Ducts", "Pipes", "Cable Trays", or null if cannot determine
         /// </summary>
         private string DetectCurrentCategory()
         {
-            // ✅ CRITICAL FIX: First check which textbox currently has focus
+            // Γ£à CRITICAL FIX: First check which textbox currently has focus
             if (_ductPrefixTextBox != null && _ductPrefixTextBox.Focused)
                 return "Ducts";
             if (_pipePrefixTextBox != null && _pipePrefixTextBox.Focused)
@@ -1478,8 +1917,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 return "Cable Trays";
             if (_damperPrefixTextBox != null && _damperPrefixTextBox.Focused)
                 return "Duct Accessories";
-            
-            // ✅ ENHANCEMENT: If no textbox has focus, use the last focused category
+
+            // Γ£à ENHANCEMENT: If no textbox has focus, use the last focused category
             // This handles the case when user clicks dropdown after focusing a textbox
             if (!string.IsNullOrWhiteSpace(_lastFocusedCategory))
             {
@@ -1487,25 +1926,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     $"[{DateTime.Now}] [ParameterServiceDialogV2] Using last focused category: '{_lastFocusedCategory}'\n");
                 return _lastFocusedCategory;
             }
-            
+
             // If we can't determine, return null to load all types
             SafeFileLogger.SafeAppendText("parameter_service_debug.log",
-                $"[{DateTime.Now}] [ParameterServiceDialogV2] ⚠️ Cannot determine category - loading all system/service types\n");
+                $"[{DateTime.Now}] [ParameterServiceDialogV2] ΓÜá∩╕Å Cannot determine category - loading all system/service types\n");
             return null;
         }
 
         private void ToggleLock(WinForms.Button lockBtn, WinForms.TextBox textBox)
         {
-            if (lockBtn.Text == "🔒")
+            if (lockBtn.Text == "≡ƒöÆ")
             {
-                lockBtn.Text = "🔓";
+                lockBtn.Text = "≡ƒöô";
                 lockBtn.BackColor = Color.LightCoral;
                 textBox.Enabled = true;
                 textBox.BackColor = Color.White;
             }
             else
             {
-                lockBtn.Text = "🔒";
+                lockBtn.Text = "≡ƒöÆ";
                 lockBtn.BackColor = Color.LightGreen;
                 textBox.Enabled = false;
                 textBox.BackColor = Color.LightGray;
@@ -1514,22 +1953,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
         private void ToggleLock(WinForms.Button lockBtn, WinForms.ComboBox comboBox)
         {
-            if (lockBtn.Text == "🔒")
+            if (lockBtn.Text == "≡ƒöÆ")
             {
-                lockBtn.Text = "🔓";
+                lockBtn.Text = "≡ƒöô";
                 lockBtn.BackColor = Color.LightCoral;
                 comboBox.Enabled = true;
                 comboBox.BackColor = Color.White;
             }
             else
             {
-                lockBtn.Text = "🔒";
+                lockBtn.Text = "≡ƒöÆ";
                 lockBtn.BackColor = Color.LightGreen;
                 comboBox.Enabled = false;
                 comboBox.BackColor = Color.LightGray;
             }
         }
-        
+
         /// <summary>
         /// Handle Transfer Parameters button click
         /// Transfers parameters to ALL sleeves (individual and cluster) based on configured mappings
@@ -1543,7 +1982,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     WinForms.MessageBox.Show("Document not available.", "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
                     return;
                 }
-                
+
                 // Show progress dialog
                 using (var progressForm = new WinForms.Form())
                 {
@@ -1553,7 +1992,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     progressForm.FormBorderStyle = FormBorderStyle.FixedDialog;
                     progressForm.MaximizeBox = false;
                     progressForm.MinimizeBox = false;
-                    
+
                     var progressLabel = new WinForms.Label
                     {
                         Text = "Transferring parameters to all sleeves...",
@@ -1562,175 +2001,165 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         TextAlign = System.Drawing.ContentAlignment.MiddleCenter
                     };
                     progressForm.Controls.Add(progressLabel);
-                    
+
                     progressForm.Show();
                     progressForm.Refresh();
-                    
-                    // ✅ PERFORMANCE MONITORING: Track parameter transfer performance
+
+                    // Γ£à PERFORMANCE MONITORING: Track parameter transfer performance
                     using (var perfMonitor = new ParameterOperationPerformanceMonitor("Parameter Transfer"))
                     {
-                    // Create parameter transfer service
-                    var transferService = new ParameterTransferService();
-                    
-                // ✅ OPTIMIZATION: Filter by Active View OR Section Box
-                // Filter sleeves at collection time to reduce processing set
-                FilteredElementCollector collector;
-                ElementFilter sectionBoxFilter = null;
-                
-                // 1. ACTIVE VIEW FILTER (User Checkbox) - Highest Priority
-                if (_activeViewOnlyCheckBox.Checked && _document.ActiveView != null)
-                {
-                    // Filter by current view only - extremely fast
-                    collector = new FilteredElementCollector(_document, _document.ActiveView.Id)
-                        .OfClass(typeof(FamilyInstance));
-                        
-                    DebugLogger.Info($"[ParameterServiceDialogV2] ⚠️ Filtering by Active View: {_document.ActiveView.Name} (ID: {_document.ActiveView.Id})");
-                }
-                else
-                {
-                    // 2. GLOBAL COLLECTION (with optional Section Box filter)
-                    collector = new FilteredElementCollector(_document)
-                        .OfClass(typeof(FamilyInstance));
-                        
-                    // Section Box Filter (only applied if not using Active View filter)
-                    if (Services.OptimizationFlags.UseSectionBoxFilterForParameterTransfer && _uiDocument != null)
-                    {
-                        try
-                        {
-                            if (_uiDocument.ActiveView is View3D view3D && view3D.IsSectionBoxActive)
+                        // Create parameter transfer service
+                        var transferService = new ParameterTransferService();
+
+                        // Γ£à OPTIMIZATION: Filter by Active View OR Section Box
+                        // Filter sleeves at collection time to reduce processing set
+                        FilteredElementCollector collector;
+                        ElementFilter sectionBoxFilter = null;
+
+                        // 2. GLOBAL COLLECTION (with optional Section Box filter)
+                        // Active View Only mode removed from Transfer logic (defaults to Global/Section Box)
+                        collector = new FilteredElementCollector(_document)
+                                .OfClass(typeof(FamilyInstance));
+
+                            // Section Box Filter (only applied if not using Active View filter)
+                            if (Services.OptimizationFlags.UseSectionBoxFilterForParameterTransfer && _uiDocument != null)
                             {
-                                var sectionBoxBounds = Helpers.SectionBoxHelper.GetSectionBoxBounds(view3D);
-                                if (sectionBoxBounds != null)
+                                try
                                 {
-                                    var sectionBoxOutline = new Outline(sectionBoxBounds.Min, sectionBoxBounds.Max);
-                                    sectionBoxFilter = new BoundingBoxIntersectsFilter(sectionBoxOutline);
-                                    collector = (FilteredElementCollector)collector.WherePasses(sectionBoxFilter);
-                                    DebugLogger.Info($"[ParameterServiceDialogV2] ✅ Section box filtering applied during collection");
+                                    if (_uiDocument.ActiveView is View3D view3D && view3D.IsSectionBoxActive)
+                                    {
+                                        var sectionBoxBounds = Helpers.SectionBoxHelper.GetSectionBoxBounds(view3D);
+                                        if (sectionBoxBounds != null)
+                                        {
+                                            var sectionBoxOutline = new Outline(sectionBoxBounds.Min, sectionBoxBounds.Max);
+                                            sectionBoxFilter = new BoundingBoxIntersectsFilter(sectionBoxOutline);
+                                            collector = (FilteredElementCollector)collector.WherePasses(sectionBoxFilter);
+                                            DebugLogger.Info($"[ParameterServiceDialogV2] Γ£à Section box filtering applied during collection");
+                                        }
+                                    }
+                                }
+                                catch (Exception sectionBoxEx)
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Warning($"[ParameterServiceDialogV2] ΓÜá∩╕Å Section box filter setup failed: {sectionBoxEx.Message}");
                                 }
                             }
-                        }
-                        catch (Exception sectionBoxEx)
-                        {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Warning($"[ParameterServiceDialogV2] ⚠️ Section box filter setup failed: {sectionBoxEx.Message}");
-                        }
-                    }
-                }
-                
-                // Now get all openings (individual + cluster) in the document, pre-filtered
-                // Only match the 4 specific opening families: RectangularOpeningOnWall, RectangularOpeningOnSlab, CircularOpeningOnWall, CircularOpeningOnSlab
-                var sleevesToProcess = collector
-                    .Cast<FamilyInstance>()
-                    .Where(fi => {
-                        var famName = fi.Symbol?.Family?.Name ?? string.Empty;
-                        // Match only the 4 specific opening families
-                        return famName.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0
-                            || famName.IndexOf("OpeningOnSlab", StringComparison.OrdinalIgnoreCase) >= 0;
-                    })
-                    .ToList();
-                
-                // Log family names for debugging
-                var familyNames = sleevesToProcess
-                    .Select(fi => fi.Symbol?.Family?.Name ?? "Unknown")
-                    .Distinct()
-                    .ToList();
-                DebugLogger.Info($"[ParameterServiceDialogV2] Found opening families: {string.Join(", ", familyNames)}");
-                    
-                    if (sectionBoxFilter != null && !DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"[ParameterServiceDialogV2] ✅ Section box filtering applied during collection: {sleevesToProcess.Count} sleeves within section box");
-                    }
-                    
-                    var openings = sleevesToProcess.Select(fi => fi.Id).ToList();
-                    
-                    DebugLogger.Info($"[ParameterServiceDialogV2] Found {openings.Count} opening sleeves in document for parameter transfer");
-                    string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
-                    System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [ParameterServiceDialogV2] Found {openings.Count} opening sleeves: {string.Join(", ", familyNames)}\n");
-                    
-                    if (openings.Count == 0)
-                    {
-                        progressForm.Close();
-                        WinForms.MessageBox.Show("No openings found in the document. Please place sleeves first.", 
-                            "No Openings", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
-                        return;
-                    }
-                    
-                    // Collect parameter mappings from all category tabs (Reference Elements + Host Elements)
-                    var allMappings = GetAllParameterMappingsFromUI();
-                    
-                    if (allMappings.Count == 0)
-                    {
-                        progressForm.Close();
-                        WinForms.MessageBox.Show("No parameter mappings found. Please add parameter mappings first.",
-                            "No Mappings", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
-                        return;
-                    }
-                    
-                    DebugLogger.Info($"[ParameterServiceDialogV2] Collected {allMappings.Count} parameter mappings from UI");
-                    
-                    // ✅ CRITICAL FIX: Add source parameter names to learned keys whitelist
-                    // This ensures these parameters are captured during the next refresh
-                    foreach (var mapping in allMappings)
-                    {
-                        if (!string.IsNullOrWhiteSpace(mapping.SourceParameter))
-                        {
-                            Services.ParameterSnapshotService.AddLearnedKey(mapping.SourceParameter);
-                            DebugLogger.Info($"[ParameterServiceDialogV2] Added '{mapping.SourceParameter}' to learned parameter keys whitelist");
-                        }
-                    }
-                    
-                    // Create configuration with all mappings
-                    var config = new Models.ParameterTransferConfiguration
-                    {
-                        SourceCategoryName = "All", // Transfer from all categories
-                        Mappings = allMappings
-                    };
 
-                    // ✅ FIX: Use ExecuteTransferConfigurationInTransaction directly to ensure snapshots are loaded
-                    // This method loads snapshots from database (saved during placement) and uses them for transfer
-                    // The 3-arg ExecuteTransferConfiguration also calls this internally, but calling directly ensures
-                    // we're using the snapshot-based transfer path
-                    ParameterTransferResult result;
-                    using (var transaction = new Transaction(_document, "Transfer Parameters to Sleeves"))
-                    {
-                        transaction.Start();
-                        result = transferService.ExecuteTransferConfigurationInTransaction(_document, openings, config, _uiDocument);
-                        transaction.Commit();
-                    }
-                    
-                    progressForm.Close();
-                    
-                    // Set item count for performance monitoring
-                    perfMonitor.SetItemCount(result.TransferredCount);
-                    
-                    if (result.Success)
-                    {
-                        WinForms.MessageBox.Show(
-                            $"Parameters transferred successfully!\nProcessed: {result.TransferredCount} sleeves\nErrors: {result.FailedCount}",
-                            "Transfer Complete", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
-                    }
-                    else
-                    {
-                        WinForms.MessageBox.Show($"Transfer failed: {result.Message}", 
-                            "Transfer Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
-                    }
+
+                        // Now get all openings (individual + cluster) in the document, pre-filtered
+                        // Only match the 4 specific opening families: RectangularOpeningOnWall, RectangularOpeningOnSlab, CircularOpeningOnWall, CircularOpeningOnSlab
+                        var sleevesToProcess = collector
+                            .Cast<FamilyInstance>()
+                            .Where(fi => {
+                                var famName = fi.Symbol?.Family?.Name ?? string.Empty;
+                                // Match only the 4 specific opening families
+                                return famName.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0
+                                    || famName.IndexOf("OpeningOnSlab", StringComparison.OrdinalIgnoreCase) >= 0;
+                            })
+                            .ToList();
+
+                        // Log family names for debugging
+                        var familyNames = sleevesToProcess
+                            .Select(fi => fi.Symbol?.Family?.Name ?? "Unknown")
+                            .Distinct()
+                            .ToList();
+                        DebugLogger.Info($"[ParameterServiceDialogV2] Found opening families: {string.Join(", ", familyNames)}");
+
+                        if (sectionBoxFilter != null && !DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[ParameterServiceDialogV2] Γ£à Section box filtering applied during collection: {sleevesToProcess.Count} sleeves within section box");
+                        }
+
+                        var openings = sleevesToProcess.Select(fi => fi.Id).ToList();
+
+                        DebugLogger.Info($"[ParameterServiceDialogV2] Found {openings.Count} opening sleeves in document for parameter transfer");
+                        string transferDebugLogPath = SafeFileLogger.GetLogFilePath("transfer_debug.log");
+                        System.IO.File.AppendAllText(transferDebugLogPath, $"[{DateTime.Now}] [ParameterServiceDialogV2] Found {openings.Count} opening sleeves: {string.Join(", ", familyNames)}\n");
+
+                        if (openings.Count == 0)
+                        {
+                            progressForm.Close();
+                            WinForms.MessageBox.Show("No openings found in the document. Please place sleeves first.",
+                                "No Openings", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                            return;
+                        }
+
+                        // Collect parameter mappings from all category tabs (Reference Elements + Host Elements)
+                        var allMappings = GetAllParameterMappingsFromUI();
+
+                        if (allMappings.Count == 0)
+                        {
+                            progressForm.Close();
+                            WinForms.MessageBox.Show("No parameter mappings found. Please add parameter mappings first.",
+                                "No Mappings", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
+                            return;
+                        }
+
+                        DebugLogger.Info($"[ParameterServiceDialogV2] Collected {allMappings.Count} parameter mappings from UI");
+
+                        // Γ£à CRITICAL FIX: Add source parameter names to learned keys whitelist
+                        // This ensures these parameters are captured during the next refresh
+                        foreach (var mapping in allMappings)
+                        {
+                            if (!string.IsNullOrWhiteSpace(mapping.SourceParameter))
+                            {
+                                Services.ParameterSnapshotService.AddLearnedKey(mapping.SourceParameter);
+                                DebugLogger.Info($"[ParameterServiceDialogV2] Added '{mapping.SourceParameter}' to learned parameter keys whitelist");
+                            }
+                        }
+
+                        // Create configuration with all mappings
+                        var config = new Models.ParameterTransferConfiguration
+                        {
+                            SourceCategoryName = "All", // Transfer from all categories
+                            Mappings = allMappings
+                        };
+
+                        // Γ£à FIX: Use ExecuteTransferConfigurationInTransaction directly to ensure snapshots are loaded
+                        // This method loads snapshots from database (saved during placement) and uses them for transfer
+                        // The 3-arg ExecuteTransferConfiguration also calls this internally, but calling directly ensures
+                        // we're using the snapshot-based transfer path
+                        ParameterTransferResult result;
+                        using (var transaction = new Transaction(_document, "Transfer Parameters to Sleeves"))
+                        {
+                            transaction.Start();
+                            result = transferService.ExecuteTransferConfigurationInTransaction(_document, openings, config, _uiDocument);
+                            transaction.Commit();
+                        }
+
+                        progressForm.Close();
+
+                        // Set item count for performance monitoring
+                        perfMonitor.SetItemCount(result.TransferredCount);
+
+                        if (result.Success)
+                        {
+                            WinForms.MessageBox.Show(
+                                $"Parameters transferred successfully!\nProcessed: {result.TransferredCount} sleeves\nErrors: {result.FailedCount}",
+                                "Transfer Complete", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                        }
+                        else
+                        {
+                            WinForms.MessageBox.Show($"Transfer failed: {result.Message}",
+                                "Transfer Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
+                        }
                     } // End of performance monitor using block
                 }
             }
             catch (Exception ex)
             {
-                WinForms.MessageBox.Show($"Error during transfer: {ex.Message}", 
+                WinForms.MessageBox.Show($"Error during transfer: {ex.Message}",
                     "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
             }
         }
-        
+
         /// <summary>
         /// Collect all parameter mappings from all category tabs (Reference Elements + Host Elements)
         /// </summary>
         private List<Models.ParameterMapping> GetAllParameterMappingsFromUI()
         {
             var allMappings = new List<Models.ParameterMapping>();
-            
+
             try
             {
                 // Get mappings from Reference Elements tabs
@@ -1747,7 +2176,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         }
                     }
                 }
-                
+
                 // Get mappings from Host Elements tabs
                 if (_hostParameterTabs != null)
                 {
@@ -1767,36 +2196,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 DebugLogger.Error($"[ParameterServiceDialogV2] Error collecting parameter mappings: {ex.Message}");
             }
-            
+
             return allMappings;
         }
-        
+
         /// <summary>
         /// Get parameter mappings from a service panel (same logic as old UI)
         /// </summary>
         private List<Models.ParameterMapping> GetParameterMappingsFromPanel(WinForms.Panel servicePanel)
         {
             var mappings = new List<Models.ParameterMapping>();
-            
+
             try
             {
                 // Skip header panel - get only parameter row panels
                 var rows = servicePanel.Controls.OfType<WinForms.Panel>()
                     .Where(p => p.Controls.Count > 0) // Has controls (skip header or empty panels)
                     .ToList();
-                
+
                 foreach (var row in rows)
                 {
                     var mepCombo = row.Controls.OfType<WinForms.ComboBox>().FirstOrDefault(c => c.Tag?.ToString() == "mep");
                     var openingCombo = row.Controls.OfType<WinForms.ComboBox>().FirstOrDefault(c => c.Tag?.ToString() == "opening");
-                    
+
                     if (mepCombo?.SelectedItem != null && openingCombo?.SelectedItem != null)
                     {
                         // Skip if either dropdown is empty or shows placeholder
                         string sourceParam = mepCombo.SelectedItem.ToString();
                         string targetParam = openingCombo.SelectedItem.ToString();
-                        
-                        if (!string.IsNullOrEmpty(sourceParam) && 
+
+                        if (!string.IsNullOrEmpty(sourceParam) &&
                             !string.IsNullOrEmpty(targetParam) &&
                             !sourceParam.Equals("<Select>", StringComparison.OrdinalIgnoreCase) &&
                             !targetParam.Equals("<Select>", StringComparison.OrdinalIgnoreCase))
@@ -1816,556 +2245,63 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 DebugLogger.Error($"[ParameterServiceDialogV2] Error getting mappings from panel: {ex.Message}");
             }
-            
+
             return mappings;
         }
-        
+
         /// <summary>
-        /// Handle Apply Marks button click
-        /// Applies marks to sleeves based on selected remark checkboxes
-        /// NOTE: This needs XML files to determine which category each sleeve belongs to (Ducts/Pipes/etc.)
+        /// Handle Reset Prefix button click
+        /// Re-marks only the categories where prefixes have changed
         /// </summary>
-        private void OnApplyMarksClick(object sender, EventArgs e)
+        private void OnResetPrefixClick(object sender, EventArgs e)
         {
-            try
-            {
-                if (_document == null || _uiDocument == null)
-                {
-                    WinForms.MessageBox.Show("Document not available.", "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
-                    return;
-                }
-                
-                // ✅ DATABASE-BASED: Check if categories have clash zone data in the database
-                // Apply Marks needs clash zone data to determine which category each sleeve belongs to
-                var missingCategories = GetCategoriesWithoutData();
-                if (missingCategories.Count > 0)
-                {
-                    var categoryList = string.Join("\n• ", missingCategories);
-                    var result = WinForms.MessageBox.Show(
-                        $"⚠️ CLASH DATA NOT FOUND\n\n" +
-                        $"The following categories cannot be processed because no clash zone data is found in the database:\n\n" +
-                        $"• {categoryList}\n\n" +
-                        $"Apply Marks requires clash zone data in the database to determine sleeve categories.\n\n" +
-                        $"Please run Refresh to detect clash zones before applying marks.\n\n" +
-                        $"Would you like to continue with available categories only?",
-                        "Missing Clash Data",
-                        WinForms.MessageBoxButtons.YesNo,
-                        WinForms.MessageBoxIcon.Warning);
-                    
-                    if (result != WinForms.DialogResult.Yes)
-                    {
-                        return; // User cancelled
-                    }
-                }
-                
-                // Collect settings from UI
-                var projectPrefix = _projectPrefixTextBox.Text.Trim();
-                var numberFormat = _numberFormatCombo.SelectedIndex switch
-                {
-                    0 => "00",
-                    1 => "000",
-                    2 => "0000",
-                    _ => "000"
-                };
-                
-                var remarkProject = _remarkProjectCheckBox.Checked;
-                var remarkDuct = _remarkDuctCheckBox.Checked;
-                var remarkPipe = _remarkPipeCheckBox.Checked;
-                var remarkCableTray = _remarkCableTrayCheckBox.Checked;
-                var remarkDamper = _remarkDamperCheckBox.Checked;
-                
-                // Show progress dialog
-                using (var progressForm = new WinForms.Form())
-                {
-                    progressForm.Text = "Applying Marks...";
-                    progressForm.Size = new Size(400, 100);
-                    progressForm.StartPosition = FormStartPosition.CenterScreen;
-                    progressForm.FormBorderStyle = FormBorderStyle.FixedDialog;
-                    progressForm.MaximizeBox = false;
-                    progressForm.MinimizeBox = false;
-                    
-                    var progressLabel = new WinForms.Label
-                    {
-                        Text = "Applying marks to sleeves with remark checkboxes enabled...",
-                        Location = new Point(10, 30),
-                        Size = new Size(380, 20),
-                        TextAlign = System.Drawing.ContentAlignment.MiddleCenter
-                    };
-                    progressForm.Controls.Add(progressLabel);
-                    
-                    progressForm.Show();
-                    progressForm.Refresh();
-                    
-                    // Prepare mark prefixes settings
-                    var ductPrefix = _ductPrefixTextBox.Text.Trim();
-                    var pipePrefix = _pipePrefixTextBox.Text.Trim();
-                    var cableTrayPrefix = _cableTrayPrefixTextBox.Text.Trim();
-                    var damperPrefix = _damperPrefixTextBox.Text.Trim();
-                    
-                    var markPrefixes = new Models.MarkPrefixSettings
-                    {
-                        ProjectPrefix = projectPrefix,
-                        DuctPrefix = ductPrefix,
-                        PipePrefix = pipePrefix,
-                        CableTrayPrefix = cableTrayPrefix,
-                        DamperPrefix = damperPrefix,
-                        NumberFormat = numberFormat,
-                        // ✅ OPTIMIZATION: Pass Active View Only flag to service
-                        ActiveViewOnly = _activeViewOnlyCheckBox.Checked
-                    };
-
-                    // Sync remark checkboxes so MarkParameterCommand honours the user's selection
-                    markPrefixes.RemarkAll = remarkProject;
-                    markPrefixes.RemarkProjectPrefix = remarkProject;
-                    markPrefixes.RemarkDuctPrefix = remarkDuct;
-                    markPrefixes.RemarkPipePrefix = remarkPipe;
-                    markPrefixes.RemarkCableTrayPrefix = remarkCableTray;
-                    markPrefixes.RemarkDamperPrefix = remarkDamper;
-
-                    // Collect checked System Type Overrides
-                    var systemTypeOverrides = new List<(string systemType, string prefix)>();
-                    foreach (var row in _systemTypeRows)
-                    {
-                        // Find checkbox in row
-                        var checkbox = row.Controls.OfType<WinForms.CheckBox>().FirstOrDefault();
-                        if (checkbox != null && checkbox.Checked)
-                        {
-                            var comboBox = row.Controls.OfType<WinForms.ComboBox>().FirstOrDefault();
-                            var textBox = row.Controls.OfType<WinForms.TextBox>().FirstOrDefault();
-                            
-                            if (comboBox != null && textBox != null)
-                            {
-                                systemTypeOverrides.Add((comboBox.Text, textBox.Text));
-                            }
-                        }
-                    }
-
-                    // Persist any per-system overrides that were checked
-                    foreach (var (systemType, prefix) in systemTypeOverrides)
-                    {
-                        if (!string.IsNullOrWhiteSpace(systemType))
-                        {
-                            markPrefixes.DuctSystemTypeOverrides[systemType] = prefix ?? string.Empty;
-                        }
-                    }
-                    
-                    // Debug: Log the prefix values being used
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Apply Marks - Project: '{projectPrefix}', Duct: '{ductPrefix}', Pipe: '{pipePrefix}', CableTray: '{cableTrayPrefix}', Damper: '{damperPrefix}', Format: '{numberFormat}'\n");
-                    
-                    // ✅ PERFORMANCE MONITORING: Track Apply Marks performance
-                    int totalProcessed = 0;
-                    using (var perfMonitor = new ParameterOperationPerformanceMonitor("Apply Marks"))
-                    {
-                    // Apply Marks: Mark ALL sleeves regardless of checkbox state
-                    // remarkAll=false means skip sleeves that already have marks
-                    var cmd = new MarkParameterCommand("ALL", projectPrefix, "", false, markPrefixes);
-                    cmd.Execute(_uiDocument.Application);
-                        
-                        // Get total sleeves count for performance monitoring
-                        var allSleeves = new FilteredElementCollector(_document)
-                            .OfClass(typeof(FamilyInstance))
-                            .Cast<FamilyInstance>()
-                            .Where(fi => {
-                                var famName = fi.Symbol?.Family?.Name ?? string.Empty;
-                                return famName.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0
-                                    || famName.IndexOf("OpeningOnSlab", StringComparison.OrdinalIgnoreCase) >= 0;
-                            })
-                            .Count();
-                        totalProcessed = allSleeves;
-                        perfMonitor.SetItemCount(totalProcessed);
-                    }
-                    
-                    progressForm.Close();
-                    
-                    var prefixSummary = string.IsNullOrWhiteSpace(projectPrefix) 
-                        ? $"Duct:{ductPrefix}, Pipe:{pipePrefix}, CableTray:{cableTrayPrefix}, Damper:{damperPrefix}"
-                        : $"Project:{projectPrefix}, Duct:{ductPrefix}, Pipe:{pipePrefix}, CableTray:{cableTrayPrefix}, Damper:{damperPrefix}";
-                    
-                    WinForms.MessageBox.Show($"Marks applied to all categories using:\n{prefixSummary}", 
-                        "Apply Marks Complete", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
-                }
-            }
-            catch (Exception ex)
-            {
-                WinForms.MessageBox.Show($"Error during mark application: {ex.Message}", 
-                    "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
-            }
+            WinForms.MessageBox.Show("This functionality is deprecated.", "Deprecated", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
         }
-        
+
         /// <summary>
-        /// Handle Remark Selected button click
-        /// Re-marks only the categories with remark checkboxes checked
-        /// NOTE: This DOES need XML files to determine which sleeves belong to each category
+        /// Handle Add Prefix button click
+        /// Applies ONLY prefixes (DB-based) to items where prefix has changed
         /// </summary>
-        private void OnRemarkSelectedClick(object sender, EventArgs e)
+        private void OnAddPrefixClick(object sender, EventArgs e)
         {
-            try
-            {
-                if (_document == null || _uiDocument == null)
-                {
-                    WinForms.MessageBox.Show("Document not available.", "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
-                    return;
-                }
-                
-                // Collect remark checkbox states
-                var remarkProject = _remarkProjectCheckBox.Checked;
-                var remarkDuct = _remarkDuctCheckBox.Checked;
-                var remarkPipe = _remarkPipeCheckBox.Checked;
-                var remarkCableTray = _remarkCableTrayCheckBox.Checked;
-                var remarkDamper = _remarkDamperCheckBox.Checked;
-                
-                // Collect prefix values
-                var projectPrefix = _projectPrefixTextBox.Text.Trim();
-                var ductPrefix = _ductPrefixTextBox.Text.Trim();
-                var pipePrefix = _pipePrefixTextBox.Text.Trim();
-                var cableTrayPrefix = _cableTrayPrefixTextBox.Text.Trim();
-                var damperPrefix = _damperPrefixTextBox.Text.Trim();
-                
-                var numberFormat = _numberFormatCombo.SelectedIndex switch
-                {
-                    0 => "00",
-                    1 => "000",
-                    2 => "0000",
-                    _ => "000"
-                };
-                
-                // ✅ CRITICAL FIX: Collect System/Service Type Overrides and detect which category they belong to
-                var ductSystemTypeOverrides = new List<(string systemType, string prefix)>();
-                var pipeSystemTypeOverrides = new List<(string systemType, string prefix)>();
-                var ductAccessoriesSystemTypeOverrides = new List<(string systemType, string prefix)>();
-                var cableTrayServiceTypeOverrides = new List<(string serviceType, string prefix)>();
-                bool hasDuctSystemOverrideRemark = false;
-                bool hasPipeSystemOverrideRemark = false;
-                bool hasDuctAccessoriesSystemOverrideRemark = false;
-                bool hasCableTrayServiceOverrideRemark = false;
-                
-                // ✅ STEP 1: Get available system/service types for each category to detect which category they belong to
-                var cableTrayServiceTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                var ductSystemTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                var pipeSystemTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                var ductAccessoriesSystemTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                
-                try
-                {
-                    if (_document != null)
-                    {
-                        var catalogService = new SystemTypeCatalogService(msg => { });
-                        
-                        // Get Cable Tray Service Types
-                        var cableTrayCatalog = catalogService.Load(_document, "Cable Trays");
-                        foreach (var st in cableTrayCatalog.ServiceTypes ?? Enumerable.Empty<string>())
-                        {
-                            if (!string.IsNullOrWhiteSpace(st))
-                                cableTrayServiceTypes.Add(st.Trim());
-                        }
-                        
-                        // Get Duct System Types
-                        var ductCatalog = catalogService.Load(_document, "Ducts");
-                        foreach (var st in ductCatalog.SystemTypes ?? Enumerable.Empty<string>())
-                        {
-                            if (!string.IsNullOrWhiteSpace(st))
-                                ductSystemTypes.Add(st.Trim());
-                        }
-                        
-                        // Get Pipe System Types
-                        var pipeCatalog = catalogService.Load(_document, "Pipes");
-                        foreach (var st in pipeCatalog.SystemTypes ?? Enumerable.Empty<string>())
-                        {
-                            if (!string.IsNullOrWhiteSpace(st))
-                                pipeSystemTypes.Add(st.Trim());
-                        }
-                        
-                        // Get Duct Accessories System Types
-                        var ductAccessoriesCatalog = catalogService.Load(_document, "Duct Accessories");
-                        foreach (var st in ductAccessoriesCatalog.SystemTypes ?? Enumerable.Empty<string>())
-                        {
-                            if (!string.IsNullOrWhiteSpace(st))
-                                ductAccessoriesSystemTypes.Add(st.Trim());
-                        }
-                    }
-                }
-                catch { /* Ignore errors */ }
-                
-                foreach (var row in _systemTypeRows)
-                {
-                    // Find checkbox in row
-                    var checkbox = row.Controls.OfType<WinForms.CheckBox>().FirstOrDefault();
-                    if (checkbox != null && checkbox.Checked)
-                    {
-                        var comboBox = row.Controls.OfType<WinForms.ComboBox>().FirstOrDefault();
-                        var textBox = row.Controls.OfType<WinForms.TextBox>().FirstOrDefault();
-                        
-                        if (comboBox != null && textBox != null)
-                        {
-                            var systemOrServiceType = comboBox.Text;
-                            var prefix = textBox.Text;
-                            
-                            // ✅ CRITICAL: Detect which category this system/service type belongs to
-                            // Priority: Cable Tray Service Types > Duct System Types > Pipe System Types > Duct Accessories System Types
-                            if (cableTrayServiceTypes.Contains(systemOrServiceType))
-                            {
-                                // This is a Cable Tray Service Type
-                                cableTrayServiceTypeOverrides.Add((systemOrServiceType, prefix));
-                                hasCableTrayServiceOverrideRemark = true;
-                            }
-                            else if (ductSystemTypes.Contains(systemOrServiceType))
-                            {
-                                // This is a Duct System Type
-                                ductSystemTypeOverrides.Add((systemOrServiceType, prefix));
-                                hasDuctSystemOverrideRemark = true;
-                            }
-                            else if (pipeSystemTypes.Contains(systemOrServiceType))
-                            {
-                                // This is a Pipe System Type
-                                pipeSystemTypeOverrides.Add((systemOrServiceType, prefix));
-                                hasPipeSystemOverrideRemark = true;
-                            }
-                            else if (ductAccessoriesSystemTypes.Contains(systemOrServiceType))
-                            {
-                                // This is a Duct Accessories System Type
-                                ductAccessoriesSystemTypeOverrides.Add((systemOrServiceType, prefix));
-                                hasDuctAccessoriesSystemOverrideRemark = true;
-                            }
-                            else
-                            {
-                                // Unknown - default to Duct System Type (backward compatibility)
-                                ductSystemTypeOverrides.Add((systemOrServiceType, prefix));
-                                hasDuctSystemOverrideRemark = true;
-                            }
-                        }
-                    }
-                }
-
-                // ✅ NEW: Check if filter XML files exist for any category we plan to remark
-                var categoriesNeedingFilters = new List<string>();
-                if (remarkProject || remarkDuct || hasDuctSystemOverrideRemark) categoriesNeedingFilters.Add("Ducts");
-                if (remarkProject || remarkPipe || hasPipeSystemOverrideRemark) categoriesNeedingFilters.Add("Pipes");
-                if (remarkProject || remarkCableTray || hasCableTrayServiceOverrideRemark) categoriesNeedingFilters.Add("Cable Trays");
-                if (remarkProject || remarkDamper || hasDuctAccessoriesSystemOverrideRemark) categoriesNeedingFilters.Add("Duct Accessories");
-
-                if (categoriesNeedingFilters.Count > 0)
-                {
-                    var missingCategories = GetCategoriesWithoutData()
-                        .Where(cat => categoriesNeedingFilters.Contains(cat))
-                        .ToList();
-
-                    if (missingCategories.Count > 0)
-                    {
-                        var categoryList = string.Join("\n• ", missingCategories);
-                        var result = WinForms.MessageBox.Show(
-                            $"⚠️ CLASH DATA NOT FOUND\n\n" +
-                            $"The following selected categories cannot be processed because no clash zone data is found in the database:\n\n" +
-                            $"• {categoryList}\n\n" +
-                            $"Remark Selected requires clash zone data in the database to determine sleeve categories.\n\n" +
-                            $"Please run Refresh to detect clash zones before remarking.\n\n" +
-                            $"Would you like to continue with available categories only?",
-                            "Missing Clash Data",
-                            WinForms.MessageBoxButtons.YesNo,
-                            WinForms.MessageBoxIcon.Warning);
-
-                        if (result != WinForms.DialogResult.Yes)
-                        {
-                            return; // User cancelled
-                        }
-                    }
-                }
-                
-                // Show progress dialog
-                using (var progressForm = new WinForms.Form())
-                {
-                    progressForm.Text = "Remarking Selected Categories...";
-                    progressForm.Size = new Size(400, 100);
-                    progressForm.StartPosition = FormStartPosition.CenterScreen;
-                    progressForm.FormBorderStyle = FormBorderStyle.FixedDialog;
-                    progressForm.MaximizeBox = false;
-                    progressForm.MinimizeBox = false;
-                    
-                    var progressLabel = new WinForms.Label
-                    {
-                        Text = "Remarking selected categories...",
-                        Location = new Point(10, 30),
-                        Size = new Size(380, 20),
-                        TextAlign = System.Drawing.ContentAlignment.MiddleCenter
-                    };
-                    progressForm.Controls.Add(progressLabel);
-                    
-                    progressForm.Show();
-                    progressForm.Refresh();
-                    
-                    // Prepare mark prefixes settings
-                    var markPrefixes = new Models.MarkPrefixSettings
-                    {
-                        ProjectPrefix = projectPrefix,
-                        DuctPrefix = ductPrefix,
-                        PipePrefix = pipePrefix,
-                        CableTrayPrefix = cableTrayPrefix,
-                        DamperPrefix = damperPrefix,
-                        NumberFormat = numberFormat
-                    };
-                    
-                    // Sync remark checkboxes so MarkParameterCommand honours the user's selection
-                    markPrefixes.RemarkAll = remarkProject;
-                    markPrefixes.RemarkProjectPrefix = remarkProject;
-                    markPrefixes.RemarkDuctPrefix = remarkDuct || hasDuctSystemOverrideRemark;
-                    markPrefixes.RemarkPipePrefix = remarkPipe || hasPipeSystemOverrideRemark;
-                    markPrefixes.RemarkCableTrayPrefix = remarkCableTray || hasCableTrayServiceOverrideRemark;
-                    markPrefixes.RemarkDamperPrefix = remarkDamper || hasDuctAccessoriesSystemOverrideRemark;
-                    
-                    // ✅ CRITICAL FIX: Add system/service type overrides to correct dictionaries based on category
-                    // Duct System Type Overrides
-                    foreach (var (systemType, prefix) in ductSystemTypeOverrides)
-                    {
-                        if (!string.IsNullOrWhiteSpace(systemType))
-                        {
-                            markPrefixes.DuctSystemTypeOverrides[systemType] = prefix ?? string.Empty;
-                        }
-                    }
-                    
-                    // Pipe System Type Overrides
-                    foreach (var (systemType, prefix) in pipeSystemTypeOverrides)
-                    {
-                        if (!string.IsNullOrWhiteSpace(systemType))
-                        {
-                            markPrefixes.PipeSystemTypeOverrides[systemType] = prefix ?? string.Empty;
-                        }
-                    }
-                    
-                    // Duct Accessories System Type Overrides
-                    foreach (var (systemType, prefix) in ductAccessoriesSystemTypeOverrides)
-                    {
-                        if (!string.IsNullOrWhiteSpace(systemType))
-                        {
-                            markPrefixes.DuctAccessoriesSystemTypeOverrides[systemType] = prefix ?? string.Empty;
-                        }
-                    }
-                    
-                    // Cable Tray Service Type Overrides
-                    foreach (var (serviceType, prefix) in cableTrayServiceTypeOverrides)
-                    {
-                        if (!string.IsNullOrWhiteSpace(serviceType))
-                        {
-                            markPrefixes.CableTrayServiceTypeOverrides[serviceType] = prefix ?? string.Empty;
-                        }
-                    }
-                    
-                    // ✅ PERFORMANCE MONITORING: Track Remark Selected performance
-                    int totalProcessed = 0;
-                    var categoriesProcessed = new List<string>();
-                    
-                    using (var perfMonitor = new ParameterOperationPerformanceMonitor("Remark Selected"))
-                    {
-                    // ✅ CRITICAL FIX: Use markPrefixes.GetRemarkFlag() instead of hardcoded true
-                    // This ensures that each category's checkbox state is respected
-                    
-                    // If Project Prefix remark is checked, re-mark ALL categories with new project prefix
-                    if (remarkProject)
-                    {
-                        // When Project Prefix is checked, process ALL categories
-                        // GetRemarkFlag() will return true for all categories when RemarkProjectPrefix is true
-                        var cmd = new MarkParameterCommand("ALL", projectPrefix, "", false, markPrefixes);
-                        cmd.Execute(_uiDocument.Application);
-                        categoriesProcessed.Add("All Categories (Project Prefix)");
-                        totalProcessed++;
-                    }
-                    else
-                    {
-                        // Process individual discipline categories if their checkboxes are checked
-                        // Only process if Project Prefix is NOT checked (to avoid double-processing)
-                        // Project prefix is managed independently; pass the current value and let MarkParameterService decide
-                        // whether to preserve or override based on RemarkProjectPrefix setting.
-                        string effectiveProjectPrefix = projectPrefix;
-                        
-                        if (markPrefixes.RemarkDuctPrefix)
-                        {
-                            // remarkAll=false because GetRemarkFlag() will return true for Ducts if RemarkDuctPrefix is true
-                            var cmd = new MarkParameterCommand("Ducts", effectiveProjectPrefix, ductPrefix, false, markPrefixes);
-                            cmd.Execute(_uiDocument.Application);
-                            totalProcessed++;
-                            categoriesProcessed.Add(hasDuctSystemOverrideRemark && !remarkDuct ? "Ducts (System Type Overrides)" : "Ducts");
-                        }
-                        if (markPrefixes.RemarkPipePrefix)
-                        {
-                            var cmd = new MarkParameterCommand("Pipes", effectiveProjectPrefix, pipePrefix, false, markPrefixes);
-                            cmd.Execute(_uiDocument.Application);
-                            totalProcessed++;
-                            categoriesProcessed.Add(hasPipeSystemOverrideRemark && !remarkPipe ? "Pipes (System Type Overrides)" : "Pipes");
-                        }
-                        if (markPrefixes.RemarkCableTrayPrefix)
-                        {
-                            // ✅ CRITICAL FIX: Process Cable Trays if remark checkbox is checked OR if there are Service Type overrides
-                            var cmd = new MarkParameterCommand("Cable Trays", effectiveProjectPrefix, cableTrayPrefix, false, markPrefixes);
-                            cmd.Execute(_uiDocument.Application);
-                            totalProcessed++;
-                            categoriesProcessed.Add(hasCableTrayServiceOverrideRemark && !remarkCableTray ? "Cable Trays (Service Type Overrides)" : "Cable Trays");
-                        }
-                        if (markPrefixes.RemarkDamperPrefix)
-                        {
-                            var cmd = new MarkParameterCommand("Duct Accessories", effectiveProjectPrefix, damperPrefix, false, markPrefixes);
-                            cmd.Execute(_uiDocument.Application);
-                            totalProcessed++;
-                            categoriesProcessed.Add(hasDuctAccessoriesSystemOverrideRemark && !remarkDamper ? "Duct Accessories (System Type Overrides)" : "Duct Accessories");
-                        }
-                    }
-                    
-                        // Get total sleeves count for performance monitoring
-                        var allSleeves = new FilteredElementCollector(_document)
-                            .OfClass(typeof(FamilyInstance))
-                            .Cast<FamilyInstance>()
-                            .Where(fi => {
-                                var famName = fi.Symbol?.Family?.Name ?? string.Empty;
-                                return famName.IndexOf("OpeningOnWall", StringComparison.OrdinalIgnoreCase) >= 0
-                                    || famName.IndexOf("OpeningOnSlab", StringComparison.OrdinalIgnoreCase) >= 0;
-                            })
-                            .Count();
-                        perfMonitor.SetItemCount(allSleeves);
-                    }
-                    
-                    progressForm.Close();
-                    
-                    if (totalProcessed > 0)
-                    {
-                        WinForms.MessageBox.Show($"Re-marked {totalProcessed} categories:\n{string.Join(", ", categoriesProcessed)}", 
-                            "Remark Selected Complete", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
-                    }
-                    else
-                    {
-                        WinForms.MessageBox.Show("No categories selected for re-marking. Please check remark checkboxes.", 
-                            "No Selection", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                WinForms.MessageBox.Show($"Error during remark: {ex.Message}", 
-                    "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
-            }
+            WinForms.MessageBox.Show("This functionality is deprecated.", "Deprecated", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
         }
-        
+
         /// <summary>
-        /// ✅ DATABASE-BASED: Check if categories have clash zone data in the database
+        /// Handle Add Number button click
+        /// Applies ONLY numbers (Revit scan) to marked items
+        /// </summary>
+        private void OnAddNumberClick(object sender, EventArgs e)
+        {
+            WinForms.MessageBox.Show("This functionality is deprecated.", "Deprecated", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+        }
+
+
+        /// <summary>
+        /// Γ£à DATABASE-BASED: Check if categories have clash zone data in the database
         /// Returns list of categories that don't have clash data in the database
         /// Replaces the old XML file-based check
         /// </summary>
         private List<string> GetCategoriesWithoutData()
         {
             var missingCategories = new List<string>();
-            
+
             try
             {
                 if (_document == null) return missingCategories;
-                
-                // ✅ DATABASE MIGRATION: Check database instead of XML files
+
+                // Γ£à DATABASE MIGRATION: Check database instead of XML files
                 var dbContext = new Data.SleeveDbContext(_document);
                 var clashZoneRepo = new Data.Repositories.ClashZoneRepository(dbContext, null);
-                
+
                 // Check each MEP category in the database
                 var categoriesToCheck = new[] { "Ducts", "Pipes", "Cable Trays", "Duct Accessories" };
-                
+
                 foreach (var category in categoriesToCheck)
                 {
                     // Query database to check if category has clash zones
                     var clashZones = clashZoneRepo.GetClashZonesByCategory(category);
-                    
+
                     if (clashZones == null || clashZones.Count == 0)
                     {
                         // Also check SleeveSnapshots table as fallback
@@ -2381,9 +2317,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                                     WHERE MepParametersJson LIKE @categoryPattern
                                     LIMIT 1";
                                 cmd.Parameters.AddWithValue("@categoryPattern", $"%{category}%");
-                                
+
                                 var snapshotCount = Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
-                                
+
                                 // Also check ClashZones table one more time with direct SQL
                                 cmd.Parameters.Clear();
                                 cmd.CommandText = @"
@@ -2391,9 +2327,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                                     WHERE MepCategory = @category
                                     LIMIT 1";
                                 cmd.Parameters.AddWithValue("@category", category);
-                                
+
                                 var clashZoneCount = Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
-                                
+
                                 if (snapshotCount == 0 && clashZoneCount == 0)
                                 {
                                     missingCategories.Add(category);
@@ -2408,7 +2344,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                         }
                     }
                 }
-                
+
                 DebugLogger.Info($"[ParameterServiceDialogV2] Database check: {missingCategories.Count} categories missing clash data");
                 if (missingCategories.Count > 0)
                 {
@@ -2420,18 +2356,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 DebugLogger.Error($"[ParameterServiceDialogV2] Error checking database for categories: {ex.Message}");
                 // On error, don't block processing - return empty list (allow processing to continue)
             }
-            
+
             return missingCategories;
         }
-        
+
         /// <summary>
-        /// ✅ DEPRECATED: Old XML-based check (kept for fallback only)
+        /// Γ£à DEPRECATED: Old XML-based check (kept for fallback only)
         /// Use GetCategoriesWithoutData() instead
         /// </summary>
         [Obsolete("Use GetCategoriesWithoutData() instead - checks database instead of XML files")]
         private List<string> CheckFilterFilesForCategories()
         {
-            // ✅ FALLBACK: Try database first, then XML if database check fails
+            // Γ£à FALLBACK: Try database first, then XML if database check fails
             try
             {
                 var dbMissing = GetCategoriesWithoutData();
@@ -2444,24 +2380,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             {
                 // If database check fails, fall back to XML check below
             }
-            
+
             // Fallback to XML file check (for backward compatibility)
             var missingCategories = new List<string>();
-            
+
             try
             {
                 if (_document == null) return missingCategories;
-                
+
                 // Get filters directory
                 ProjectPathService.EnsureFiltersDirectory(_document);
                 string filtersDirectory = ProjectPathService.GetFiltersDirectory(_document);
-                
+
                 if (!Directory.Exists(filtersDirectory))
                 {
                     // No filters directory - all categories missing
                     return new List<string> { "Ducts", "Pipes", "Cable Trays", "Duct Accessories" };
                 }
-                
+
                 // Check each MEP category (only Reference Elements categories need filter files)
                 var categoriesToCheck = new Dictionary<string, string[]>
                 {
@@ -2470,12 +2406,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     { "Cable Trays", new[] { "*_cable_trays.xml", "*cable_trays*.xml", "*cable_tray*.xml", "*cabletray*.xml" } },
                     { "Duct Accessories", new[] { "*_duct_accessories.xml", "*duct_accessories*.xml", "*damper*.xml" } }
                 };
-                
+
                 foreach (var categoryPair in categoriesToCheck)
                 {
                     string category = categoryPair.Key;
                     string[] patterns = categoryPair.Value;
-                    
+
                     bool found = false;
                     foreach (var pattern in patterns)
                     {
@@ -2506,16 +2442,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                                 }
                             }
                         }
-                        
+
                         if (found) break;
                     }
-                    
+
                     if (!found)
                     {
                         missingCategories.Add(category);
                     }
                 }
-                
+
                 DebugLogger.Info($"[ParameterServiceDialogV2] Filter file check (fallback): {missingCategories.Count} categories missing filter data");
                 if (missingCategories.Count > 0)
                 {
@@ -2527,9 +2463,59 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 DebugLogger.Error($"[ParameterServiceDialogV2] Error checking filter files: {ex.Message}");
                 // On error, don't block processing - return empty list
             }
-            
+
             return missingCategories;
         }
-    }
-}
+        /// <summary>
+        /// Γ£à RESET NUMBERING: Clears Marks and Resets Counters
+        /// </summary>
+        private void OnResetNumberingClick(object sender, EventArgs e)
+        {
+            WinForms.MessageBox.Show("This functionality is deprecated.", "Deprecated", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+        }
+
+
+        /// <summary>
+        /// Γ£à RESET PARAMETERS: Clears Transferred Parameters
+        /// Strictly Session Sensitive (Active View Only) if checked
+        /// </summary>
+        private void OnResetParametersClick(object sender, EventArgs e)
+        {
+            WinForms.MessageBox.Show("This functionality is deprecated.", "Deprecated", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+        }
+
+        /// <summary>
+        /// Helper to gather UI settings and validate state
+        /// </summary>
+        private (object Settings, bool IsValid) GetMarkPrefixSettingsFromUI(bool requireDbData = true)
+        {
+            return (new object(), true);
+        }
+
+        /// <summary>
+        /// Γ£à PERSISTENCE: Load saved user inputs from JSON file
+        /// </summary>
+        private void LoadSavedSettings()
+        {
+            RemarkDebugLogger.LogInfo("=== LoadSavedSettings CALLED (UI) - DEPRECATED ===");
+            // DEPRECATED: Logic stubbed out.
+        }
+
+        /// <summary>
+        /// Γ£à PERSISTENCE: Save current user inputs to JSON file
+        /// </summary>
+        private void SaveCurrentSettings()
+        {
+             // DEPRECATED: Logic stubbed out.
+             RemarkDebugLogger.LogInfo("=== SaveCurrentSettings CALLED (UI) - DEPRECATED ===");
+        }
+
+        private string GetNumberFormatFromCombo()
+        {
+            if (_numberFormatCombo == null) return "000";
+            int index = _numberFormatCombo.SelectedIndex;
+            return index == 0 ? "00" : (index == 1 ? "000" : "0000");
+        }
+    } }
+
 

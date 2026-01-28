@@ -8,6 +8,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Commands;
 using static JSE_RevitAddin_MEP_OPENINGS.Models.MepCategoryConstants;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+// using JSE_RevitAddin_MEP_OPENINGS.Services.Parameters.Configuration;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -36,26 +37,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private List<string> _selectedCategories;
         private Document _document;
         private UIDocument _uiDocument;
-        private MarkPrefixSettings _markPrefixes;
+        private object _markPrefixes;
         private string _selectedFilterName; // ✅ NEW: Store the selected filter name // ✅ NEW: Instance variable for mark prefixes
 
         /// <summary>
         /// ✅ NEW: Set context for sleeve placement operation
         /// Pass categories, mark prefixes, AND filter name from UI
         /// </summary>
-        public void SetContext(List<string> categories, MarkPrefixSettings markPrefixes, string filterName)
+        public void SetContext(List<string> categories, object markPrefixes, string filterName)
         {
                         if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info("[SleevePlacementExternalEvent] ===== SETCONTEXT METHOD CALLED =====");
                         if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[SleevePlacementExternalEvent] Categories: {string.Join(", ", categories)}");
                         if (!DeploymentConfiguration.DeploymentMode)
-                DebugLogger.Info($"[SleevePlacementExternalEvent] MarkPrefixes: {markPrefixes?.ProjectPrefix ?? "NULL"}");
+                DebugLogger.Info($"[SleevePlacementExternalEvent] MarkPrefixes: {markPrefixes != null}");
                         if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[SleevePlacementExternalEvent] FilterName: {filterName ?? "NULL"}");
             
             _selectedCategories = categories ?? throw new ArgumentNullException(nameof(categories));
-            _markPrefixes = markPrefixes ?? new MarkPrefixSettings(); // Use defaults if null
+            // _markPrefixes = markPrefixes ?? new MarkPrefixSettings(); // Use defaults if null
+            _markPrefixes = markPrefixes;
             _selectedFilterName = filterName ?? throw new ArgumentNullException(nameof(filterName));
                         if (!DeploymentConfiguration.DeploymentMode)
                 DebugLogger.Info($"[SleevePlacementExternalEvent] SetContext called - Categories: {string.Join(", ", categories)}, Filter: {filterName}");
@@ -128,14 +130,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 catch { }
                 
                 // ✅ CORRECTED: Defensive null check with fallback
-                if (_markPrefixes == null)
-                {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 4: Mark prefixes null, using defaults\n");
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Warning("[SleevePlacementExternalEvent] Mark prefixes not set, using defaults");
-                    _markPrefixes = new MarkPrefixSettings();
-                }
+                 // Deprecated
                 
                                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 5: Starting sleeve placement process\n");
@@ -748,10 +743,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[SleevePlacementExternalEvent] Category '{category}' normalized to '{normalizedCategory}'");
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[SleevePlacementExternalEvent] Creating UniversalSleevePlacementCommand for {normalizedCategory} with {clashZones.Count} clash zones");
-                
-                // ✅ NEW: Get clearance settings from UI for this category
+                                // ✅ NEW: Get clearance settings from UI for this category
                 var clearanceSettings = GetClearanceSettingsForCategory(normalizedCategory);
                 
                 return new UniversalSleevePlacementCommand(_document, clashZones, normalizedCategory, _selectedFilterName, clearanceSettings);

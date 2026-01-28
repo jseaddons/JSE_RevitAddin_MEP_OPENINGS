@@ -86,6 +86,53 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
 
         /// <summary>
+        /// ✅ CLUSTER FIX: Force immediate parameter write (bypasses batching).
+        /// Use for cluster sleeves where batching causes parameters to never be written.
+        /// This ensures parameters are set before transaction commits.
+        /// </summary>
+        public void SetSleeveParametersImmediate(
+            FamilyInstance instance, 
+            double width, 
+            double height, 
+            double diameter, 
+            bool isCircular, 
+            ClashZone zone,
+            double? depthOverride = null)
+        {
+            // ✅ DIAGNOSTIC: Log entry
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                SafeFileLogger.SafeAppendText("cluster_params.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🚀 IMMEDIATE WRITE CALLED: Instance={instance.Id.IntegerValue}, " +
+                    $"W={width*304.8:F1}mm, H={height*304.8:F1}mm\n");
+            }
+            
+            // Save current batching state
+            bool originalBatchingState = OptimizationFlags.UseBatchedParameterWrites;
+            
+            try
+            {
+                // Temporarily disable batching to force immediate write
+                OptimizationFlags.UseBatchedParameterWrites = false;
+                
+                // Call normal method (will use immediate write path)
+                SetSleeveParameters(instance, width, height, diameter, isCircular, zone, depthOverride);
+            }
+            finally
+            {
+                // Restore original batching state
+                OptimizationFlags.UseBatchedParameterWrites = originalBatchingState;
+                
+                // ✅ DIAGNOSTIC: Log exit
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    SafeFileLogger.SafeAppendText("cluster_params.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] ✅ IMMEDIATE WRITE COMPLETE: Instance={instance.Id.IntegerValue}\n");
+                }
+            }
+        }
+
+        /// <summary>
         /// ✅ MAIN METHOD: Set all parameters on a sleeve instance.
         /// Handles dimensions, metadata, clearances, and depth parameters.
         /// CRITICAL PERFORMANCE OPTIMIZATION: Batch parameter setting for 8x faster performance.
@@ -464,161 +511,63 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             
             try
             {
-                foreach (var kvp in targetDict)
+                // ✅ PERFORMANCE OPTIMIZATION: Track total flush time once, not per-nested-op
+                using (_performanceMonitor?.TrackOperation("Flush All Parameters"))
                 {
-                    var sleeveId = kvp.Key;
-                    var paramValues = kvp.Value;
-                    
-                    // ✅ DIAGNOSTIC LOGGING: Log all deferred parameters for this sleeve
-                    SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BATCH-PARAMS] 🔍 FLUSHING: Sleeve={sleeveId.IntegerValue}, Parameters={paramValues.Count}\n");
-                    foreach (var paramKvp in paramValues)
+                    foreach (var kvp in targetDict)
                     {
-                        string valueStr = paramKvp.Value is double d ? $"{d * 304.8:F1}mm" : paramKvp.Value.ToString();
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BATCH-PARAMS]   - {paramKvp.Key}: {paramKvp.Value} ({valueStr})\n");
-                    }
-                    
-                    var sleeve = _doc.GetElement(sleeveId) as FamilyInstance;
-                    if (sleeve == null)
-                    {
-                        SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BATCH-PARAMS] ⚠️ Sleeve={sleeveId.IntegerValue}: Element not found - skipping\n");
-                        continue;
-                    }
-
-                    // ✅ VERIFY THIS IS THE CORRECT SLEEVE (User Request)
-                    SafeFileLogger.SafeAppendText("flush_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss}] Verifying Sleeve {sleeveId.IntegerValue}:\n" +
-                        $"  - Element exists: {sleeve != null}\n" +
-                        $"  - Is FamilyInstance: {sleeve is FamilyInstance}\n" +
-                        $"  - Family: {sleeve?.Symbol?.Family?.Name ?? "NULL"}\n" +
-                        $"  - Type: {sleeve?.Symbol?.Name ?? "NULL"}\n");
-                    
-                    foreach (var paramKvp in paramValues)
-                    {
-                        // ✅ CRITICAL FIX: Check Symbol (Type) parameters too, not just Instance
-                        // This fixes "Bottom Of Opening" and other Type parameters that were failing to flush
-                        var param = sleeve.LookupParameter(paramKvp.Key) 
-                                 ?? sleeve.Symbol?.LookupParameter(paramKvp.Key);
+                        var sleeveId = kvp.Key;
+                        var paramValues = kvp.Value;
                         
-                        // ✅ DIAGNOSTIC: Detailed parameter state logging (User Request)
-                        if (paramKvp.Value is double debugVal)
+                        // ✅ GET ELEMENT: Still needed as we work with IDs
+                        FamilyInstance sleeve = _doc.GetElement(sleeveId) as FamilyInstance;
+                        if (sleeve == null)
                         {
-                            SafeFileLogger.SafeAppendText("flush_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] Sleeve {sleeveId.IntegerValue}: Param '{paramKvp.Key}'\n" +
-                                $"  - Found: {param != null}\n" +
-                                $"  - ReadOnly: {param?.IsReadOnly}\n" +
-                                $"  - StorageType: {param?.StorageType}\n" +
-                                $"  - ValueToSet: {debugVal * 304.8:F1}mm ({debugVal:F4}ft)\n");
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                SafeFileLogger.SafeAppendText("placement_errors.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ Sleeve Element {sleeveId} not found during flush.\n");
+                            continue;
                         }
 
-                        if (param != null && !param.IsReadOnly)
-                        {
-                            try
-                            {
-                                // ... existing Bottom of Opening logic ...
-                                bool isBottomOfOpening = paramKvp.Key.Contains("Bottom", StringComparison.OrdinalIgnoreCase) && 
-                                                         paramKvp.Key.Contains("Opening", StringComparison.OrdinalIgnoreCase);
-                                
-                                if (paramKvp.Value is double dVal)
-                                {
-                                    bool setSuccess = param.Set(dVal);
-                                    
-                                    // VERIFY IT WAS SET
-                                    double actualValue = param.AsDouble();
-                                    bool match = Math.Abs(actualValue - dVal) < 0.001;
-                                    
-                                    SafeFileLogger.SafeAppendText("flush_debug.log",
-                                        $"  - SetResult: {setSuccess}\n" +
-                                        $"  - AfterSet: {actualValue * 304.8:F1}mm\n" +
-                                        $"  - Success: {match}\n");
-                                }
-                                
-                                // ✅ FORENSIC LOGGING: Verify value was actually set (User Request)
-                                // This proves if the transaction successfully committed the change
-                                if (paramKvp.Value is double expectedVal)
-                                {
-                                    double actualValue = param.AsDouble();
-                                    bool match = Math.Abs(actualValue - expectedVal) < 0.001;
-                                    
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        SafeFileLogger.SafeAppendText("batch_flush.log",
-                                            $"[{DateTime.Now:HH:mm:ss.fff}] [FLUSH-VERIFY] Sleeve {sleeveId}: Param '{paramKvp.Key}'\n" +
-                                            $"  - Expected: {expectedVal * 304.8:F1}mm\n" +
-                                            $"  - Actual:   {actualValue * 304.8:F1}mm\n" +
-                                            $"  - Match:    {match}\n");
-                                    }
-                                }
+                        // Cache symbol for type parameter fallback
+                        var symbol = sleeve.Symbol;
 
-                                // ✅ DIAGNOSTIC LOGGING: Verify "Bottom of Opening" was set correctly after flush
-                                if (isBottomOfOpening && paramKvp.Value is double bottomVal2)
+                        foreach (var paramKvp in paramValues)
+                        {
+                            // ✅ LOOKUP: Native string lookup
+                            Parameter param = sleeve.LookupParameter(paramKvp.Key) 
+                                             ?? symbol?.LookupParameter(paramKvp.Key);
+
+                            if (param != null && !param.IsReadOnly)
+                            {
+                                try
                                 {
-                                    double actualValue = param.AsDouble();
-                                    SafeFileLogger.SafeAppendText("placement_debug.log",
-                                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BATCH-PARAMS] [BOTTOM-OF-OPENING] ✅ AFTER FLUSH: Sleeve={sleeveId.IntegerValue}\n" +
-                                        $"  - Expected value: {bottomVal2} ({bottomVal2 * 304.8:F1}mm)\n" +
-                                        $"  - Actual value: {actualValue} ({actualValue * 304.8:F1}mm)\n" +
-                                        $"  - Match: {Math.Abs(actualValue - bottomVal2) < 1e-6}\n");
-                                }
-                                else if (paramKvp.Value is string sVal)
-                                    param.Set(sVal);
-                                else if (paramKvp.Value is int iVal)
-                                    param.Set(iVal);
-                                else if (paramKvp.Value is ElementId elementIdVal)
-                                {
-                                    // ✅ CRITICAL FIX: Handle ElementId values (e.g., Schedule Level parameter)
-                                    if (param.StorageType == StorageType.ElementId)
+                                    if (paramKvp.Value is double dVal)
+                                        param.Set(dVal);
+                                    else if (paramKvp.Value is string sVal)
+                                        param.Set(sVal);
+                                    else if (paramKvp.Value is int iVal)
+                                        param.Set(iVal);
+                                    else if (paramKvp.Value is ElementId elementIdVal)
                                     {
-                                        param.Set(elementIdVal);
-                                        
-                                        // ✅ DIAGNOSTIC: Log Schedule Level setting for debugging
-                                        if (!DeploymentConfiguration.DeploymentMode && paramKvp.Key.Contains("Schedule", StringComparison.OrdinalIgnoreCase))
+                                        if (param.StorageType == StorageType.ElementId)
+                                            param.Set(elementIdVal);
+                                        else if (param.StorageType == StorageType.Integer)
+                                            param.Set(elementIdVal.IntegerValue);
+                                        else if (param.StorageType == StorageType.String)
                                         {
                                             var level = _doc.GetElement(elementIdVal) as Level;
-                                            SafeFileLogger.SafeAppendText("placement_debug.log",
-                                                $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BATCH-PARAMS] [SCHEDULE-LEVEL] ✅ Set '{paramKvp.Key}' to ElementId {elementIdVal.IntegerValue} (Level: {level?.Name ?? "Unknown"}) on sleeve {sleeveId.IntegerValue}\n");
+                                            if (level != null) param.Set(level.Name);
+                                            else param.Set(elementIdVal.IntegerValue.ToString());
                                         }
                                     }
-                                    else if (param.StorageType == StorageType.Integer)
-                                    {
-                                        param.Set(elementIdVal.IntegerValue);
-                                    }
-                                    else if (param.StorageType == StorageType.String)
-                                    {
-                                        // ✅ CRITICAL FIX: Try to get level name from ElementId
-                                        var level = _doc.GetElement(elementIdVal) as Level;
-                                        if (level != null)
-                                        {
-                                            param.Set(level.Name);
-                                            
-                                            // ✅ DIAGNOSTIC: Log Schedule Level setting for debugging
-                                            if (!DeploymentConfiguration.DeploymentMode && paramKvp.Key.Contains("Schedule", StringComparison.OrdinalIgnoreCase))
-                                            {
-                                                SafeFileLogger.SafeAppendText("placement_debug.log",
-                                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BATCH-PARAMS] [SCHEDULE-LEVEL] ✅ Set '{paramKvp.Key}' to '{level.Name}' (from ElementId {elementIdVal.IntegerValue}) on sleeve {sleeveId.IntegerValue}\n");
-                                            }
-                                        }
-                                        else
-                                        {
-                                            // Fallback: use ElementId integer value as string (shouldn't happen, but safe fallback)
-                                            param.Set(elementIdVal.IntegerValue.ToString());
-                                            if (!DeploymentConfiguration.DeploymentMode)
-                                            {
-                                                SafeFileLogger.SafeAppendText("parameter_batching_errors.log",
-                                                    $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BATCH-PARAMS] ⚠️ Could not resolve ElementId {elementIdVal.IntegerValue} to Level for parameter '{paramKvp.Key}' on sleeve {sleeveId.IntegerValue} - using ID as string fallback\n");
-                                            }
-                                        }
-                                    }
+                                    successCount++;
                                 }
-                                
-                                successCount++;
-                            }
-                            catch (Exception ex)
-                            {
-                                failCount++;
-                                errorLog.AppendLine($"[SleeveParameterService] Failed to set parameter '{paramKvp.Key}' on sleeve {sleeveId.IntegerValue}: {ex.Message}");
+                                catch (Exception ex)
+                                {
+                                    failCount++;
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        errorLog.AppendLine($"Failed to set '{paramKvp.Key}' on {sleeveId.IntegerValue}: {ex.Message}");
+                                }
                             }
                         }
                     }

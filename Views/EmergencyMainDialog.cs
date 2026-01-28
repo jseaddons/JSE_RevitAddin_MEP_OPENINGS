@@ -10,6 +10,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Parameters.Configuration;
 using WinForms = System.Windows.Forms;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Views
@@ -4597,48 +4598,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         /// Read mark prefix settings from UI textboxes
         /// ⚠️ UI STATE METHOD - Reads Project Prefix and Discipline Prefix from UI for mark parameter command
         /// </summary>
-        private MarkPrefixSettings ReadMarkPrefixesFromUI()
+        private object ReadMarkPrefixesFromUI()
         {
-            var markPrefixes = new MarkPrefixSettings();
-            
-            try
-            {
-                // Read Project Prefix from UI
-                if (_projectPrefixTextBox != null && !string.IsNullOrWhiteSpace(_projectPrefixTextBox.Text))
-                {
-                    markPrefixes.ProjectPrefix = _projectPrefixTextBox.Text.Trim();
-                }
-                else
-                {
-                    markPrefixes.ProjectPrefix = "SLEEVE_"; // Default fallback
-                }
-
-                // ✅ FIX: Use MarkPrefixService to get type-specific prefixes from ParameterServiceDialog
-                // This ensures we get the current values the user has entered in the ParameterServiceDialog
-                var currentPrefixes = MarkPrefixService.GetCurrentPrefixes();
-                markPrefixes.DuctPrefix = currentPrefixes.DuctPrefix;
-                markPrefixes.PipePrefix = currentPrefixes.PipePrefix;
-                markPrefixes.CableTrayPrefix = currentPrefixes.CableTrayPrefix;
-                markPrefixes.DamperPrefix = currentPrefixes.DamperPrefix;
-                
-                // ✅ NEW: Read "Re-mark all" checkbox state
-                markPrefixes.RemarkAll = _remarkAllCheckBox?.Checked ?? false;
-
-                DebugLogger.Info($"[ReadMarkPrefixesFromUI] Project Prefix: '{markPrefixes.ProjectPrefix}', Discipline Prefix: '{_disciplinePrefixTextBox?.Text ?? "null"}', Re-mark all: {markPrefixes.RemarkAll}");
-                DebugLogger.Info($"[ReadMarkPrefixesFromUI] Final prefixes - Duct: '{markPrefixes.DuctPrefix}', Pipe: '{markPrefixes.PipePrefix}', CableTray: '{markPrefixes.CableTrayPrefix}', Damper: '{markPrefixes.DamperPrefix}'");
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Error($"[ReadMarkPrefixesFromUI] Error: {ex.Message}");
-                // Return defaults on error
-                markPrefixes.ProjectPrefix = "SLEEVE_";
-                markPrefixes.DuctPrefix = "DCT";
-                markPrefixes.PipePrefix = "PLU";
-                markPrefixes.CableTrayPrefix = "ELE";
-                markPrefixes.DamperPrefix = "DAM";
-            }
-            
-            return markPrefixes;
+            // DEPRECATED: MarkPrefixSettings usage removed.
+            return new object();
         }
         
         private void OnOkClick(object? sender, EventArgs e)
@@ -4685,8 +4648,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 }
 
                 // Pass categories and mark prefixes to external event handler
-                // Get mark prefixes from ParameterServiceDialog via MarkPrefixService
-                var markPrefixes = MarkPrefixService.GetCurrentPrefixes();
+                // DEPRECATED: Mark prefixes are no longer used. Passing null/object.
+                var markPrefixes = new object(); 
                 var selectedFilterNames = GetSelectedFilterItems();
                 var selectedFilterName = selectedFilterNames.Count > 0 ? selectedFilterNames[0] : "Default";
                 _sleevePlacementHandler.SetContext(selectedCategories, markPrefixes, selectedFilterName);

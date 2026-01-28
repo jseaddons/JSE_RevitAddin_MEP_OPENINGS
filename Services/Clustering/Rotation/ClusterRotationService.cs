@@ -273,6 +273,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
             // ✅ CRITICAL FIX: Calculate placement point from intersection points (centroid), not bounding box midpoint
             // Individual sleeves are placed at intersection points, so cluster should be at average of intersection points
             XYZ placementPoint = null;
+
+            // ✅ HOST INFO: Get host type and orientation for hybrid placement logic
+            ClashZone? firstCz = null;
+            if (cluster.Count > 0)
+            {
+                firstCz = GetCachedClashZone(cluster[0].SleeveInstanceId, xmlFilePath);
+            }
+            string hostType = firstCz?.StructuralElementType ?? "";
+            bool isWall = hostType.StartsWith("Wall", StringComparison.OrdinalIgnoreCase) || 
+                          hostType.Equals("Structural Framing", StringComparison.OrdinalIgnoreCase);
+            bool isFloor = hostType.StartsWith("Floor", StringComparison.OrdinalIgnoreCase) || 
+                           hostType.Equals("Floors", StringComparison.OrdinalIgnoreCase);
+            string hostOrientation = (firstCz?.HostOrientation ?? "").Trim().ToUpper();
             
             // ✅ BATCH MODE FIX: Try to get existing placement from DB first (Single Source of Truth)
             // If the cluster already exists in DB (has ClusterInstanceId), we MUST use the stored placement
@@ -469,6 +482,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 double circularMinY = double.MaxValue, circularMaxY = double.MinValue;
                 double circularMinZ = double.MaxValue, circularMaxZ = double.MinValue;
 
+                SafeFileLogger.SafeAppendText("cluster_placement_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🚀 START CIRCULAR CLUSTER CALCULATION ({cluster.Count} sleeves)\n");
+                SafeFileLogger.SafeAppendText("cluster_placement_debug.log", $"    Initial PlacementPoint (Centroid): ({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6})\n");
+
                 foreach (var sleeveData in cluster)
                 {
                     if (sleeveData == null) continue;
@@ -542,6 +558,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
 
                             SafeFileLogger.SafeAppendText("cluster_sizing.log",
                                 $"[{DateTime.Now:HH:mm:ss}]   Sleeve {sleeveId}: BBox Min=({cz.SleeveBoundingBoxMinX:F6},{cz.SleeveBoundingBoxMinY:F6},{cz.SleeveBoundingBoxMinZ:F6}), Max=({cz.SleeveBoundingBoxMaxX:F6},{cz.SleeveBoundingBoxMaxY:F6},{cz.SleeveBoundingBoxMaxZ:F6}), CornerZ=({cz.SleeveCorner1Z ?? 0:F3},{cz.SleeveCorner3Z ?? 0:F3})\n");
+
+                            SafeFileLogger.SafeAppendText("cluster_placement_debug.log", 
+                                $"    Sleeve {sleeveId} ({cz.MepElementCategory}):\n" +
+                                $"      - IntersectionPoint: ({cz.IntersectionPointX:F6}, {cz.IntersectionPointY:F6}, {cz.IntersectionPointZ:F6})\n" +
+                                $"      - PlacementPoint: ({cz.SleevePlacementPointX:F6}, {cz.SleevePlacementPointY:F6}, {cz.SleevePlacementPointZ:F6})\n" +
+                                $"      - BBox Min: ({cz.SleeveBoundingBoxMinX:F6}, {cz.SleeveBoundingBoxMinY:F6}, {cz.SleeveBoundingBoxMinZ:F6})\n" +
+                                $"      - BBox Max: ({cz.SleeveBoundingBoxMaxX:F6}, {cz.SleeveBoundingBoxMaxY:F6}, {cz.SleeveBoundingBoxMaxZ:F6})\n");
                         }
                     }
                     catch (Exception ex)
@@ -592,15 +615,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 // If pipes have different sizes (e.g. 100mm & 500mm), the Geometric Center of the box != Average of Centers.
                 // WE MUST RECALCULATE 'placementPoint' to be the GEOMETRIC CENTER of the calculated bounds.
                 // Otherwise, the correctly sized box is placed at the wrong location (lopsided).
-                placementPoint = new XYZ(
+                XYZ geometricCenter = new XYZ(
                     (circularMinX + circularMaxX) / 2.0,
                     (circularMinY + circularMaxY) / 2.0,
                     (circularMinZ + circularMaxZ) / 2.0
                 );
 
+                // ✅ HYBRID LOGIC: Use Geometric Center for Width/Height, but keep Wall/Floor Center for Depth
+                if (isWall)
+                {
+                    if (hostOrientation.Contains("X"))
+                        placementPoint = new XYZ(geometricCenter.X, placementPoint.Y, geometricCenter.Z);
+                    else if (hostOrientation.Contains("Y"))
+                        placementPoint = new XYZ(placementPoint.X, geometricCenter.Y, geometricCenter.Z);
+                    else
+                        placementPoint = new XYZ(placementPoint.X, placementPoint.Y, geometricCenter.Z);
+                }
+                else if (isFloor)
+                {
+                    placementPoint = new XYZ(geometricCenter.X, geometricCenter.Y, placementPoint.Z);
+                }
+                else
+                {
+                    placementPoint = geometricCenter;
+                }
+
                 if (!DeploymentConfiguration.DeploymentMode)
                     SafeFileLogger.SafeAppendText("cluster_sizing.log",
                         $"[{DateTime.Now:HH:mm:ss}] 🎯 RE-CENTERING: Shifted placement point from Centroid to Geometric Center: ({placementPoint.X:F2}, {placementPoint.Y:F2}, {placementPoint.Z:F2})\n");
+
+                SafeFileLogger.SafeAppendText("cluster_placement_debug.log", 
+                    $"    --- CALCULATION RESULTS ---\n" +
+                    $"    Bounds: X[{circularMinX:F6} to {circularMaxX:F6}], Y[{circularMinY:F6} to {circularMaxY:F6}], Z[{circularMinZ:F6} to {circularMaxZ:F6}]\n" +
+                    $"    Geometric Center: ({geometricCenter.X:F6}, {geometricCenter.Y:F6}, {geometricCenter.Z:F6})\n" +
+                    $"    Final PlacementPoint: ({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6})\n" +
+                    $"    Host: {hostType}, Orientation: {hostOrientation}, isWall: {isWall}, isFloor: {isFloor}\n" +
+                    $"    ---------------------------\n");
 
                 // ✅ ROBUST SIZING: Determine wall direction explicitly from database properties
                 // Do NOT guess based on aspect ratio (Math.Abs(dY) > Math.Abs(dX)) because for square grids or combined clusters it fails.
@@ -986,9 +1036,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 {
                     // ✅ DIAGNOSTIC: Log before attempting corner-based calculation
                     double rotationDeg = rotationAngle * 180.0 / Math.PI;
-                    string hostType = isWallOrFraming ? "Wall/Framing" : "Floor/Other";
+                    string diagnosticHostType = isWallOrFraming ? "Wall/Framing" : "Floor/Other";
                     SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                        $"[{DateTime.Now:HH:mm:ss}] 🔍 ATTEMPTING corner-based calculation: rotation={rotationDeg:F1}°, hostType={hostType}, clusterSize={cluster.Count}, rotatedBboxesCount={rotatedBboxes.Count}\n");
+                        $"[{DateTime.Now:HH:mm:ss}] 🔍 ATTEMPTING corner-based calculation: rotation={rotationDeg:F1}°, hostType={diagnosticHostType}, clusterSize={cluster.Count}, rotatedBboxesCount={rotatedBboxes.Count}\n");
                     
                     // ✅ PRE-CHECK: Verify at least one sleeve has corners before attempting calculation
                     // Corners are ALWAYS saved for all sleeves during individual placement
@@ -1619,7 +1669,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             // For walls/framing: depth = wall/framing thickness (overridden later in SetSizeParameters)
                             // For floors/other: depth = StructuralElementThickness (same as individual sleeves)
                             // ✅ DEPTH: Authoritative Source StructuralElementThickness fullstop
-                            var firstCz = clashZonesInCluster.FirstOrDefault();
+                            firstCz = clashZonesInCluster.FirstOrDefault();
                             if (firstCz != null)
                             {
                                 cornerDepth = firstCz.StructuralElementThickness;
@@ -1791,7 +1841,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                         int firstSleeveInstanceId = fallbackFirstSleeveData.SleeveInstanceId;
                         if (firstSleeveInstanceId > 0)
                         {
-                            var firstCz = _getClashZoneFunc(firstSleeveInstanceId, xmlFilePath) as ClashZone;
+                            firstCz = _getClashZoneFunc(firstSleeveInstanceId, xmlFilePath) as ClashZone;
                             if (firstCz != null)
                             {
                                 bool isWallHost = string.Equals(firstCz.StructuralElementType, "Wall", StringComparison.OrdinalIgnoreCase) ||
@@ -1887,7 +1937,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             int firstSleeveInstanceId = floorFirstSleeveData.SleeveInstanceId;
                             if (firstSleeveInstanceId > 0)
                             {
-                                var firstCz = GetCachedClashZone(firstSleeveInstanceId, xmlFilePath);
+                                firstCz = GetCachedClashZone(firstSleeveInstanceId, xmlFilePath);
                                 if (firstCz != null)
                                 {
                                     bool isFloorHost = string.Equals(firstCz.StructuralElementType, "Floor", StringComparison.OrdinalIgnoreCase) ||
@@ -2055,7 +2105,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 var firstSleeve = cluster.FirstOrDefault();
                 if (firstSleeve != null)
                 {
-                    var firstCz = GetCachedClashZone(firstSleeve.SleeveInstanceId, xmlFilePath);
+                    firstCz = GetCachedClashZone(firstSleeve.SleeveInstanceId, xmlFilePath);
                     if (firstCz != null)
                     {
                         isFloorClusterProcessing = string.Equals(firstCz.StructuralElementType, "Floor", StringComparison.OrdinalIgnoreCase) ||
@@ -2269,8 +2319,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     SafeFileLogger.SafeAppendText("cluster_sizing.log",
                         $"[{DateTime.Now:HH:mm:ss}] ✅ ROTATED-AXIS (reconstructed from WCS): W={reconWidthMm:F1}mm, H={reconHeightMm:F1}mm, D={reconDepthMm:F1}mm, Rotation={rotationAngle * 180 / Math.PI:F1}°\n");
                     
-                    // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
-                    var reconResult = (reconWidth, reconHeight, reconDepth, placementPoint, reconMinX, reconMinY, reconMinZ, reconMaxX, reconMaxY, reconMaxZ);
+                    // ✅ HYBRID PLACEMENT FIX: Use Geometric Center for Width/Height, but keep Wall/Floor Center for Depth
+                    XYZ geometricCenter = new XYZ((reconMinX + reconMaxX) / 2.0, (reconMinY + reconMaxY) / 2.0, (reconMinZ + reconMaxZ) / 2.0);
+                    XYZ finalPlacement = placementPoint;
+
+                    if (isWall)
+                    {
+                        if (hostOrientation.Contains("X"))
+                            finalPlacement = new XYZ(geometricCenter.X, placementPoint.Y, geometricCenter.Z);
+                        else if (hostOrientation.Contains("Y"))
+                            finalPlacement = new XYZ(placementPoint.X, geometricCenter.Y, geometricCenter.Z);
+                        else
+                            finalPlacement = new XYZ(placementPoint.X, placementPoint.Y, geometricCenter.Z);
+                    }
+                    else if (isFloor)
+                    {
+                        finalPlacement = new XYZ(geometricCenter.X, geometricCenter.Y, placementPoint.Z);
+                    }
+                    else
+                    {
+                        finalPlacement = geometricCenter;
+                    }
+
+                    var reconResult = (reconWidth, reconHeight, reconDepth, finalPlacement, reconMinX, reconMinY, reconMinZ, reconMaxX, reconMaxY, reconMaxZ);
                     
                     // Store in cache and return
                     StoreInCache(cluster, rotationAngle, reconResult, calcStopwatch);
@@ -2300,8 +2371,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 SafeFileLogger.SafeAppendText("cluster_sizing.log",
                     $"[{DateTime.Now:HH:mm:ss}] ⚠️ UNION (fallback - rotated bboxes): W={unionWidthMm:F1}mm, H={unionHeightMm:F1}mm, D={unionDepthMm:F1}mm, Rotation={rotationAngle * 180 / Math.PI:F1}°\n");
             
-            // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
-            var result = (width,height,depth,placementPoint,minX,minY,minZ,maxX,maxY,maxZ);
+            // ✅ HYBRID PLACEMENT FIX: Use Geometric Center for Width/Height, but keep Wall/Floor Center for Depth
+            XYZ finalGeometricCenter = new XYZ((minX + maxX) / 2.0, (minY + maxY) / 2.0, (minZ + maxZ) / 2.0);
+            XYZ finalPointResult = placementPoint;
+
+            if (isWall)
+            {
+                if (hostOrientation.Contains("X"))
+                    finalPointResult = new XYZ(finalGeometricCenter.X, placementPoint.Y, finalGeometricCenter.Z);
+                else if (hostOrientation.Contains("Y"))
+                    finalPointResult = new XYZ(placementPoint.X, finalGeometricCenter.Y, finalGeometricCenter.Z);
+                else
+                    finalPointResult = new XYZ(placementPoint.X, placementPoint.Y, finalGeometricCenter.Z);
+            }
+            else if (isFloor)
+            {
+                finalPointResult = new XYZ(finalGeometricCenter.X, finalGeometricCenter.Y, placementPoint.Z);
+            }
+            else
+            {
+                finalPointResult = finalGeometricCenter;
+            }
+
+            var result = (width, height, depth, finalPointResult, minX, minY, minZ, maxX, maxY, maxZ);
             
             // ✅ PERFORMANCE: Store result in cache for future use
             try
@@ -2579,7 +2671,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     // X-WALL: Wall runs along X-axis.
                     // - Parallel (Width): X (Keep Centroid)
                     // - Perpendicular (Thickness): Y (Override with First Sleeve)
-                    finalY = firstValidCz.IntersectionPointY;
+                    // ✅ DAMPER FIX: Use WallCenterlinePoint if available to ensure wall center alignment
+                    finalY = (firstValidCz.WallCenterlinePointY != 0) ? firstValidCz.WallCenterlinePointY : firstValidCz.IntersectionPointY;
                     
                     if (!DeploymentConfiguration.DeploymentMode)
                         SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] 📐 HYBRID X-WALL: Override Y (Thk)={finalY:F6}, Keep X (Len)={finalX:F6}\n");
@@ -2589,7 +2682,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     // Y-WALL: Wall runs along Y-axis.
                     // - Parallel (Width): Y (Keep Centroid)
                     // - Perpendicular (Thickness): X (Override with First Sleeve)
-                    finalX = firstValidCz.IntersectionPointX;
+                    // ✅ DAMPER FIX: Use WallCenterlinePoint if available to ensure wall center alignment
+                    finalX = (firstValidCz.WallCenterlinePointX != 0) ? firstValidCz.WallCenterlinePointX : firstValidCz.IntersectionPointX;
 
                     if (!DeploymentConfiguration.DeploymentMode)
                         SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] 📐 HYBRID Y-WALL: Override X (Thk)={finalX:F6}, Keep Y (Len)={finalY:F6}\n");
@@ -2597,8 +2691,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 else
                 {
                     // Fallback (Unknown Orientation): Stick to First Sleeve complete override for safety
-                    finalX = firstValidCz.IntersectionPointX;
-                    finalY = firstValidCz.IntersectionPointY;
+                    // Fallback (Unknown Orientation): Use WallCenterline if available
+                    finalX = (firstValidCz.WallCenterlinePointX != 0) ? firstValidCz.WallCenterlinePointX : firstValidCz.IntersectionPointX;
+                    finalY = (firstValidCz.WallCenterlinePointY != 0) ? firstValidCz.WallCenterlinePointY : firstValidCz.IntersectionPointY;
                     // Keep Centroid Z for height centering
                 }
 

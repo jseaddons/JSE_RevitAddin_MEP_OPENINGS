@@ -24,5 +24,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces
         /// Load Duct Accessories clash zones from XML file for proximity checking.
         /// </summary>
         List<ClashZone> LoadDuctAccessoriesClashZones(string xmlFilePath);
+
+        /// <summary>
+        /// ✅ PRE-PLACEMENT PERSISTENCE: Save calculated sleeve data (dimensions, coordinates) to database BEFORE placement.
+        /// This ensures data is saved even if placement fails or crashes. Uses ClashZoneGuid for lookup.
+        /// </summary>
+        void UpdateSleeveCalculatedData(ClashZone zone);
     }
 }

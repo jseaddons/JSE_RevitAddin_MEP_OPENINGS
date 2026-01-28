@@ -110,7 +110,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
         
         /// <summary>
         /// Updates flags after sleeve placement (batch update).
-        /// Loads ClashZone objects from database and calls BatchUpdateFlagsForPlacement.
+        /// Loads ClashZone objects from database efficiently using GetClashZonesByGuids.
         /// </summary>
         public void UpdateFlagsAfterPlacement(
             List<(Guid clashZoneId, int sleeveInstanceId, bool isCluster)> placedSleeves)
@@ -120,27 +120,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
             
             try
             {
-                // ✅ TESTABILITY: Use injected IClashZoneRepository (can be mocked)
-                // Load ClashZone objects from database by querying all categories
-                var guidSet = new HashSet<Guid>(placedSleeves.Select(p => p.clashZoneId));
-                var clashZonesWithSleeves = new List<(ClashZone clashZone, int sleeveId, bool isCluster)>();
+                // ✅ OPTIMIZATION: Use GetClashZonesByGuids to fetch ONLY the required zones
+                // This replaces the inefficient "load all zones by category" approach which caused [DB-LOAD] redundancy
                 
-                // Query all known categories to find matching clash zones
-                var allDbZones = new List<ClashZone>();
-                foreach (var category in new[] { "Ducts", "Pipes", "Cable Trays", "Conduits" })
-                {
-                    try
-                    {
-                        var zones = _repository.GetClashZonesByCategory(category);
-                        if (zones != null)
-                        {
-                            // Filter to only zones we're looking for
-                            var matchingZones = zones.Where(z => guidSet.Contains(z.Id)).ToList();
-                            allDbZones.AddRange(matchingZones);
-                        }
-                    }
-                    catch { }
-                }
+                var guidList = placedSleeves.Select(p => p.clashZoneId).Distinct().ToList();
+                var allDbZones = _repository.GetClashZonesByGuids(guidList) ?? new List<ClashZone>();
+                
+                var clashZonesWithSleeves = new List<(ClashZone clashZone, int sleeveId, bool isCluster)>();
                 
                 // Match placed sleeves with loaded clash zones
                 foreach (var (clashZoneId, sleeveInstanceId, isCluster) in placedSleeves)

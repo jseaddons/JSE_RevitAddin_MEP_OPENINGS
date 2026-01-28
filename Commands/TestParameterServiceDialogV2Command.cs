@@ -19,6 +19,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 var document = commandData.Application.ActiveUIDocument.Document;
                 var uiDocument = commandData.Application.ActiveUIDocument;
 
+                // DEPRECATED: Parameter Service UI is disabled.
+                TaskDialog.Show("Deprecated", "The Parameter Service V2 is currently deprecated and disabled.");
+                return Result.Succeeded;
+                /*
                 // Open the new UI
                 using (var dialog = new ParameterServiceDialogV2(document, uiDocument))
                 {
@@ -26,6 +30,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 }
 
                 return Result.Succeeded;
+                */
             }
             catch (System.Exception ex)
             {

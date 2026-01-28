@@ -216,10 +216,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS
         buttonCombined.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
         buttonCombined.ToolTip = "Manage combined sleeves (Manual Join).";
 
+        // DEPRECATED: Parameter Service button removed.
+        /*
         // 3. V2: Parameter Service Command V2 - standalone parameter transfer functionality (NEW VERSION)
         var button6 = panel.AddPushButton<TestParameterServiceDialogV2Command>("Parameter Service");
         button6.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
         button6.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
+        */
 
         // 4. Update DB Command - updates DB after manual sleeve adjustments
         var buttonUpdateDb = panel.AddPushButton<Commands.UpdateDbCommand>("Update DB");

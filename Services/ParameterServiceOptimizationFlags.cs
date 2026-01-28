@@ -42,7 +42,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Enable batch processing optimizations
         /// If false, uses original processing logic
         /// </summary>
-        public static bool UseBatchProcessing { get; set; } = false; // ⚠️ DISABLED BY USER REQUEST (Safe Fallback)
+        public static bool UseBatchProcessing { get; set; } = true; // ✅ ENABLED (User requested new version)
         
         /// <summary>
         /// Enable detailed performance diagnostics
