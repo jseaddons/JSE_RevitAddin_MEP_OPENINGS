@@ -3289,6 +3289,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var param4 = mepElement.LookupParameter("Middle Elevation");
                 if (param4 != null && param4.StorageType == StorageType.Double) return param4.AsDouble();
 
+                // ✅ FALLBACK: Try Lookup "Elevation from Level" (for Dampers/Accessories)
+                var param5 = mepElement.LookupParameter("Elevation from Level");
+                if (param5 != null && param5.StorageType == StorageType.Double) return param5.AsDouble();
+
                 return 0.0;
             }
             catch

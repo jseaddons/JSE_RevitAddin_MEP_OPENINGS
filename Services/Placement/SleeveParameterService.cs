@@ -1227,23 +1227,46 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     level = GetCachedLevel(zone.MepElementLevelName);
                 }
 
-                double? elevationFromLevel = null;
-                Parameter elevationFromLevelParam = instance.LookupParameter("Elevation from Level");
-                if (elevationFromLevelParam != null && elevationFromLevelParam.StorageType == StorageType.Double)
+                // ✅ ELEVATION CALCULATION HIERARCHY:
+                // 1. Primary: Use DB saved value (pre-calculated during refresh)
+                // 2. Fallback: Geometric calculation (Zone.Z - Level.Elevation)
+                
+                double? scheduleOfLevel = null;
+                string elevationSource = "Not Found";
+
+                // PRIORITY 1: DB Saved Value
+                if (zone != null && Math.Abs(zone.ElevationFromLevel) > 0.0001)
                 {
-                    elevationFromLevel = elevationFromLevelParam.AsDouble();
+                    scheduleOfLevel = zone.ElevationFromLevel;
+                    elevationSource = "Database (zone.ElevationFromLevel)";
+                }
+                
+                // PRIORITY 2: Geometric Fallback (Skip Revit Parameter entirely per user request)
+                bool usedFallback = false;
+                if (!scheduleOfLevel.HasValue || Math.Abs(scheduleOfLevel.Value) < 0.0001)
+                {
+                    if (level != null && zone != null)
+                    {
+                        scheduleOfLevel = zone.SleevePlacementPointZ - level.Elevation;
+                        elevationSource = "Geometric Fallback (Zone.Z - Level.Elev)";
+                        usedFallback = true;
+
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("placement_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] 💡 FALLBACK TRIGGERED: Zone={zone?.Id}, Sleeve={instance.Id}\n" +
+                                $"  - Reason: DB and Parameter values were zero or missing\n" +
+                                $"  - Calculation: Zone.Z ({zone.SleevePlacementPointZ:F4}) - Level.Elev ({level.Elevation:F4}) = {scheduleOfLevel:F4} ({scheduleOfLevel * 304.8:F1}mm)\n");
+                        }
+                    }
                 }
 
-                // ✅ Use elevationFromLevel for calculation (renamed from scheduleOfLevel)
-                double? scheduleOfLevel = elevationFromLevel;
-
                 // ✅ DIAGNOSTIC LOGGING: Log all values before validation and calculation
-                string elevationStr = elevationFromLevel.HasValue ? $"{elevationFromLevel.Value * 304.8:F1}mm" : string.Empty;
                 string scheduleStr = scheduleOfLevel.HasValue ? $"{scheduleOfLevel.Value * 304.8:F1}mm" : string.Empty;
                 SafeFileLogger.SafeAppendText("placement_debug.log",
                     $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BOTTOM-OF-OPENING] 🔍 DIAGNOSTIC: Zone={zone?.Id}, Sleeve={instance.Id}\n" +
-                    $"  - elevationFromLevel (read from param): {elevationFromLevel?.ToString() ?? "null"} ({elevationStr})\n" +
-                    $"  - scheduleOfLevel (for calculation): {scheduleOfLevel?.ToString() ?? "null"} ({scheduleStr})\n" +
+                    $"  - Elevation Source: {elevationSource}\n" +
+                    $"  - scheduleOfLevel (Effective): {scheduleOfLevel?.ToString() ?? "null"} ({scheduleStr})\n" +
                     $"  - height: {height} ({height * 304.8:F1}mm)\n");
 
                 // ✅ VALIDATION: Check if Schedule of Level is valid
@@ -1547,6 +1570,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     SafeFileLogger.SafeAppendText("placement_errors.log",
                         $"[{DateTime.Now:HH:mm:ss}] ⚠️ Parameter '{paramName}' not found or read-only on instance {instance.Id} (Family: {instance.Symbol.Family.Name})\n");
                 }
+            }
+        }
+
+        /// <summary>
+        /// ✅ CLUSTER SUPPORT: Set Schedule Level for a cluster instance based on a reference ClashZone.
+        /// </summary>
+        public void SetScheduleLevelAndElevationForCluster(FamilyInstance instance, ClashZone zone, ElementId currentSleeveId)
+        {
+            // For now, we delegate to the existing Schedule Level mapper.
+            // This ensures clusters have valid level references for scheduling.
+            SetScheduleLevelFromMepReferenceLevel(instance, zone, currentSleeveId, forceImmediate: true);
+            
+            // Note: Elevation is handled by Revit's placement point usually, 
+            // but we ensure the Schedule Level is correct so Elevation from Level reads correctly.
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                SafeFileLogger.SafeAppendText("cluster_params.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 📊 CLUSTER LEVEL SET: Instance={instance.Id.IntegerValue}, Level={zone.MepElementLevelName}\n");
             }
         }
     }
