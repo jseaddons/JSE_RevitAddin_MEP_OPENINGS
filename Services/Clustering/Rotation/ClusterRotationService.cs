@@ -273,19 +273,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
             // ✅ CRITICAL FIX: Calculate placement point from intersection points (centroid), not bounding box midpoint
             // Individual sleeves are placed at intersection points, so cluster should be at average of intersection points
             XYZ placementPoint = null;
-
-            // ✅ HOST INFO: Get host type and orientation for hybrid placement logic
-            ClashZone? firstCz = null;
-            if (cluster.Count > 0)
-            {
-                firstCz = GetCachedClashZone(cluster[0].SleeveInstanceId, xmlFilePath);
-            }
-            string hostType = firstCz?.StructuralElementType ?? "";
-            bool isWall = hostType.StartsWith("Wall", StringComparison.OrdinalIgnoreCase) || 
-                          hostType.Equals("Structural Framing", StringComparison.OrdinalIgnoreCase);
-            bool isFloor = hostType.StartsWith("Floor", StringComparison.OrdinalIgnoreCase) || 
-                           hostType.Equals("Floors", StringComparison.OrdinalIgnoreCase);
-            string hostOrientation = (firstCz?.HostOrientation ?? "").Trim().ToUpper();
             
             // ✅ BATCH MODE FIX: Try to get existing placement from DB first (Single Source of Truth)
             // If the cluster already exists in DB (has ClusterInstanceId), we MUST use the stored placement
@@ -471,369 +458,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 catch { continue; }
             }
 
-            if (isRoundPipeCluster)
-            {
-                // ✅ ROUND PIPE/DUCT CLUSTER: Use bounding box extents instead of corners
-                // For round pipes/ducts, the cluster width should be calculated from the min/max extents of all sleeve bounding boxes
-                SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                    $"[{DateTime.Now:HH:mm:ss}] 🔵 CIRCULAR CLUSTER DETECTED: Using bounding box extents instead of corners (applies to round pipes and round ducts)\n");
-
-                double circularMinX = double.MaxValue, circularMaxX = double.MinValue;
-                double circularMinY = double.MaxValue, circularMaxY = double.MinValue;
-                double circularMinZ = double.MaxValue, circularMaxZ = double.MinValue;
-
-                SafeFileLogger.SafeAppendText("cluster_placement_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🚀 START CIRCULAR CLUSTER CALCULATION ({cluster.Count} sleeves)\n");
-                SafeFileLogger.SafeAppendText("cluster_placement_debug.log", $"    Initial PlacementPoint (Centroid): ({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6})\n");
-
-                foreach (var sleeveData in cluster)
+                // ❌ OLD ROUND PIPE LOGIC REMOVED - Logic moved inside strictly separated Wall/Floor blocks below
+                // This ensures we don't mix Wall vs Floor logic for round pipes
+                // Previous logic was Lines 461-786 - now deleted/deferred
+                bool deferRoundPipeCalculation = isRoundPipeCluster; 
+                
+                if (deferRoundPipeCalculation && !DeploymentConfiguration.DeploymentMode)
                 {
-                    if (sleeveData == null) continue;
-                    try
-                    {
-                        int sleeveId = sleeveData.SleeveInstanceId;
-                        var cz = GetCachedClashZone(sleeveId, xmlFilePath);
-                        if (cz != null)
-                        {
-                            // Use sleeve bounding box (which includes clearance)
-                            circularMinX = Math.Min(circularMinX, cz.SleeveBoundingBoxMinX);
-                            circularMaxX = Math.Max(circularMaxX, cz.SleeveBoundingBoxMaxX);
-                            circularMinY = Math.Min(circularMinY, cz.SleeveBoundingBoxMinY);
-                            circularMaxY = Math.Max(circularMaxY, cz.SleeveBoundingBoxMaxY);
-                            circularMinZ = Math.Min(circularMinZ, cz.SleeveBoundingBoxMinZ);
-                            circularMaxZ = Math.Max(circularMaxZ, cz.SleeveBoundingBoxMaxZ);
-                            
-                            // ✅ CRITICAL FIX: Also track corner X/Y/Z values for tracking (horizontal AND vertical)
-                            // SleeveBoundingBox* only gives individual sleeve size
-                            // SleeveCorner* gives actual position in document coordinates
-                            // This captures tracking where pipes are at different X/Y/Z levels
-                            if (cz.SleeveCorner1X.HasValue && cz.SleeveCorner1Y.HasValue)
-                            {
-                                circularMinX = Math.Min(circularMinX, cz.SleeveCorner1X.Value);
-                                circularMaxX = Math.Max(circularMaxX, cz.SleeveCorner1X.Value);
-                                circularMinY = Math.Min(circularMinY, cz.SleeveCorner1Y.Value);
-                                circularMaxY = Math.Max(circularMaxY, cz.SleeveCorner1Y.Value);
-                            }
-                            if (cz.SleeveCorner2X.HasValue && cz.SleeveCorner2Y.HasValue)
-                            {
-                                circularMinX = Math.Min(circularMinX, cz.SleeveCorner2X.Value);
-                                circularMaxX = Math.Max(circularMaxX, cz.SleeveCorner2X.Value);
-                                circularMinY = Math.Min(circularMinY, cz.SleeveCorner2Y.Value);
-                                circularMaxY = Math.Max(circularMaxY, cz.SleeveCorner2Y.Value);
-                            }
-                            if (cz.SleeveCorner3X.HasValue && cz.SleeveCorner3Y.HasValue)
-                            {
-                                circularMinX = Math.Min(circularMinX, cz.SleeveCorner3X.Value);
-                                circularMaxX = Math.Max(circularMaxX, cz.SleeveCorner3X.Value);
-                                circularMinY = Math.Min(circularMinY, cz.SleeveCorner3Y.Value);
-                                circularMaxY = Math.Max(circularMaxY, cz.SleeveCorner3Y.Value);
-                            }
-                            if (cz.SleeveCorner4X.HasValue && cz.SleeveCorner4Y.HasValue)
-                            {
-                                circularMinX = Math.Min(circularMinX, cz.SleeveCorner4X.Value);
-                                circularMaxX = Math.Max(circularMaxX, cz.SleeveCorner4X.Value);
-                                circularMinY = Math.Min(circularMinY, cz.SleeveCorner4Y.Value);
-                                circularMaxY = Math.Max(circularMaxY, cz.SleeveCorner4Y.Value);
-                            }
-                            // Z tracking for vertical pipes
-                            if (cz.SleeveCorner1Z.HasValue)
-                            {
-                                circularMinZ = Math.Min(circularMinZ, cz.SleeveCorner1Z.Value);
-                                circularMaxZ = Math.Max(circularMaxZ, cz.SleeveCorner1Z.Value);
-                            }
-                            if (cz.SleeveCorner2Z.HasValue)
-                            {
-                                circularMinZ = Math.Min(circularMinZ, cz.SleeveCorner2Z.Value);
-                                circularMaxZ = Math.Max(circularMaxZ, cz.SleeveCorner2Z.Value);
-                            }
-                            if (cz.SleeveCorner3Z.HasValue)
-                            {
-                                circularMinZ = Math.Min(circularMinZ, cz.SleeveCorner3Z.Value);
-                                circularMaxZ = Math.Max(circularMaxZ, cz.SleeveCorner3Z.Value);
-                            }
-                            if (cz.SleeveCorner4Z.HasValue)
-                            {
-                                circularMinZ = Math.Min(circularMinZ, cz.SleeveCorner4Z.Value);
-                                circularMaxZ = Math.Max(circularMaxZ, cz.SleeveCorner4Z.Value);
-                            }
-
-                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                $"[{DateTime.Now:HH:mm:ss}]   Sleeve {sleeveId}: BBox Min=({cz.SleeveBoundingBoxMinX:F6},{cz.SleeveBoundingBoxMinY:F6},{cz.SleeveBoundingBoxMinZ:F6}), Max=({cz.SleeveBoundingBoxMaxX:F6},{cz.SleeveBoundingBoxMaxY:F6},{cz.SleeveBoundingBoxMaxZ:F6}), CornerZ=({cz.SleeveCorner1Z ?? 0:F3},{cz.SleeveCorner3Z ?? 0:F3})\n");
-
-                            SafeFileLogger.SafeAppendText("cluster_placement_debug.log", 
-                                $"    Sleeve {sleeveId} ({cz.MepElementCategory}):\n" +
-                                $"      - IntersectionPoint: ({cz.IntersectionPointX:F6}, {cz.IntersectionPointY:F6}, {cz.IntersectionPointZ:F6})\n" +
-                                $"      - PlacementPoint: ({cz.SleevePlacementPointX:F6}, {cz.SleevePlacementPointY:F6}, {cz.SleevePlacementPointZ:F6})\n" +
-                                $"      - BBox Min: ({cz.SleeveBoundingBoxMinX:F6}, {cz.SleeveBoundingBoxMinY:F6}, {cz.SleeveBoundingBoxMinZ:F6})\n" +
-                                $"      - BBox Max: ({cz.SleeveBoundingBoxMaxX:F6}, {cz.SleeveBoundingBoxMaxY:F6}, {cz.SleeveBoundingBoxMaxZ:F6})\n");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                            $"[{DateTime.Now:HH:mm:ss}]   ⚠️ Error processing sleeve: {ex.Message}\n");
-                        continue;
-                    }
-                }
-
-                // ✅ CRITICAL FIX: For pipes, use actual sleeve diameter for Height, not bounding box Z-range
-                // Get the maximum sleeve diameter and structural thickness from all sleeves in the cluster
-                double maxSleeveDiameter = 0.0;
-                double maxStructuralThickness = 0.0;
-                foreach (var sleeveData in cluster)
-                {
-                    if (sleeveData == null) continue;
-                    try
-                    {
-                        int sleeveId = sleeveData.SleeveInstanceId;
-                        var cz = GetCachedClashZone(sleeveId, xmlFilePath);
-                        if (cz != null)
-                        {
-                            // Use SleeveDiameter if available (this is the actual calculated diameter)
-                            if (cz.SleeveDiameter > maxSleeveDiameter)
-                                maxSleeveDiameter = cz.SleeveDiameter;
-                            
-                            // Get structural thickness for depth - single source of truth
-                            double currentThickness = cz.StructuralElementThickness;
-
-                            if (currentThickness > maxStructuralThickness)
-                                maxStructuralThickness = currentThickness;
-                            
-                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                $"[{DateTime.Now:HH:mm:ss}]   Sleeve {sleeveId}: W={cz.SleeveWidth * 304.8:F1}mm, H={cz.SleeveHeight * 304.8:F1}mm, Depth={cz.StructuralElementThickness * 304.8:F1}mm, Diameter={cz.SleeveDiameter * 304.8:F1}mm\n");
-                        }
-                    }
-                    catch { continue; }
-                }
-
-                double circularWidth = circularMaxX - circularMinX;
-                double circularHeight = circularMaxY - circularMinY;
-                double circularDepth = maxStructuralThickness; // Authoritative Depth from Structural Thickness fullstop
-
-                // ✅ CRITICAL PLACEMENT FIX: 
-                // Previous logic used 'placementPoint' derived from AVERAGE OF INTERSECTIONS (Centerlines).
-                // But the Bounding Box is calculated from EXTREMES (Edges).
-                // If pipes have different sizes (e.g. 100mm & 500mm), the Geometric Center of the box != Average of Centers.
-                // WE MUST RECALCULATE 'placementPoint' to be the GEOMETRIC CENTER of the calculated bounds.
-                // Otherwise, the correctly sized box is placed at the wrong location (lopsided).
-                XYZ geometricCenter = new XYZ(
-                    (circularMinX + circularMaxX) / 2.0,
-                    (circularMinY + circularMaxY) / 2.0,
-                    (circularMinZ + circularMaxZ) / 2.0
-                );
-
-                // ✅ HYBRID LOGIC: Use Geometric Center for Width/Height, but keep Wall/Floor Center for Depth
-                if (isWall)
-                {
-                    if (hostOrientation.Contains("X"))
-                        placementPoint = new XYZ(geometricCenter.X, placementPoint.Y, geometricCenter.Z);
-                    else if (hostOrientation.Contains("Y"))
-                        placementPoint = new XYZ(placementPoint.X, geometricCenter.Y, geometricCenter.Z);
-                    else
-                        placementPoint = new XYZ(placementPoint.X, placementPoint.Y, geometricCenter.Z);
-                }
-                else if (isFloor)
-                {
-                    placementPoint = new XYZ(geometricCenter.X, geometricCenter.Y, placementPoint.Z);
-                }
-                else
-                {
-                    placementPoint = geometricCenter;
-                }
-
-                if (!DeploymentConfiguration.DeploymentMode)
                     SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                        $"[{DateTime.Now:HH:mm:ss}] 🎯 RE-CENTERING: Shifted placement point from Centroid to Geometric Center: ({placementPoint.X:F2}, {placementPoint.Y:F2}, {placementPoint.Z:F2})\n");
-
-                SafeFileLogger.SafeAppendText("cluster_placement_debug.log", 
-                    $"    --- CALCULATION RESULTS ---\n" +
-                    $"    Bounds: X[{circularMinX:F6} to {circularMaxX:F6}], Y[{circularMinY:F6} to {circularMaxY:F6}], Z[{circularMinZ:F6} to {circularMaxZ:F6}]\n" +
-                    $"    Geometric Center: ({geometricCenter.X:F6}, {geometricCenter.Y:F6}, {geometricCenter.Z:F6})\n" +
-                    $"    Final PlacementPoint: ({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6})\n" +
-                    $"    Host: {hostType}, Orientation: {hostOrientation}, isWall: {isWall}, isFloor: {isFloor}\n" +
-                    $"    ---------------------------\n");
-
-                // ✅ ROBUST SIZING: Determine wall direction explicitly from database properties
-                // Do NOT guess based on aspect ratio (Math.Abs(dY) > Math.Abs(dX)) because for square grids or combined clusters it fails.
-                bool isYWall = false;
-                bool isXWall = false;
-                bool isFloorHost = false;
-                
-                // Inspect first few elements to find authoritative host type and direction from DATABASE
-                foreach (var sleeveData in cluster)
-                {
-                    if (sleeveData == null) continue;
-                    try
-                    {
-                        int sleeveId = sleeveData.SleeveInstanceId;
-                        var cz = GetCachedClashZone(sleeveId, xmlFilePath);
-                        if (cz != null)
-                        {
-                            // ✅ AUTHORITATIVE CHECK 1: Is it a floor?
-                            string hType = cz.StructuralElementType ?? "";
-                            if (hType.Contains("Floor", StringComparison.OrdinalIgnoreCase))
-                            {
-                                isFloorHost = true;
-                                break; // Floor host found
-                            }
-
-                            // ✅ AUTHORITATIVE CHECK 2: Wall direction
-                            string wDir = cz.WallDirectionType ?? "";
-                            string hOri = cz.HostOrientation ?? "";
-                            
-                            isXWall = wDir.Contains("X-WALL", StringComparison.OrdinalIgnoreCase) || hOri.Equals("X", StringComparison.OrdinalIgnoreCase);
-                            isYWall = wDir.Contains("Y-WALL", StringComparison.OrdinalIgnoreCase) || hOri.Equals("Y", StringComparison.OrdinalIgnoreCase);
-                            
-                            if (isXWall || isYWall) break; // Authoritative wall direction found
-                        }
-                    }
-                    catch { }
+                         $"[{DateTime.Now:HH:mm:ss}] ➡️ DEFERRING Round Pipe Logic: Will be handled inside specific Host Type blocks (Wall vs Floor) to ensure correct orientation.\n");
                 }
 
-                // ❌ REMOVED: Aspect-ratio guessing logic. 
-                // We now strictly trust the database host type or fall back to generic logic.
-                
-                // Calculate raw bounding box dimensions
-                double rawWidthX = circularMaxX - circularMinX;
-                double rawWidthY = circularMaxY - circularMinY;
-                double rawHeightZ = circularMaxZ - circularMinZ;
-                
-                // ✅ Z-HEIGHT LOGIC (COMMON):
-                // If Z-range is larger than max diameter (vertical stack), use Z-range.
-                // Otherwise use MaxDiameter (for precision on horizontal runs).
-                // Factor 1.05 provides a 5% tolerance.
-                circularHeight = rawHeightZ > (maxSleeveDiameter * 1.05) ? rawHeightZ : maxSleeveDiameter;
-                // Safety clamp
-                if (circularHeight < maxSleeveDiameter) circularHeight = maxSleeveDiameter;
 
-                // ✅ UNIFIED DIMENSION MAPPING: Derive orientation directly from Rotation Angle (Source of Truth)
-                // If Rotation is ~90° (local X aligns with World Y), map Y-range to Width.
-                // If Rotation is ~0° (local X aligns with World X), map X-range to Width.
-                double rotDeg = rotationAngle * 180.0 / Math.PI;
-                // Normalize to 0-360
-                while (rotDeg < 0) rotDeg += 360;
-                while (rotDeg >= 360) rotDeg -= 360;
-                
-                // Allow tolerance (e.g. 5 degrees)
-                bool isRotatedLengthwise = (Math.Abs(rotDeg - 90) < 5.0) || (Math.Abs(rotDeg - 270) < 5.0);
-                
-                // ✅ CRITICAL FIX for WALL/FRAMING: Always align Width with the Wall Length
-                // The PlacementService expects 'Width' to be the RCS X (along wall) dimension.
-                // However, PlacementService ADDS 90 degrees to the rotation for walls (X-Wall 90->180, Y-Wall 0->90).
-                // The generic logic below uses the raw angle (90 for X-Wall) which maps Width to Y (Thickness).
-                // But since it's placed at 180 (X-Aligned), we place Thickness along Length. This causes the "Too Small" bug.
-                // FIX: For Walls, ignoring rotation and strictly mapping Along-Wall dimension to Width.
-                
-                bool handledByWallLogic = false;
-                if (isFloorHost)
-                {
-                    handledByWallLogic = true;
-                    // ✅ FLOOR SIZING: Map horizontal spans (X/Y) to Revit Width/Height
-                    // For floors, Width and Height must be in the World XY plane.
-                    // If rotated lengthwise (rotation angle around 90/270), swap X and Y spans.
-                    circularWidth = isRotatedLengthwise ? rawWidthY : rawWidthX;
-                    circularHeight = isRotatedLengthwise ? rawWidthX : rawWidthY;
-                    circularDepth = maxStructuralThickness;
-                    
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] 🎯 FLOOR SIZING: Width={circularWidth * 304.8:F1}mm, Height={circularHeight * 304.8:F1}mm (X={rawWidthX * 304.8:F1}mm, Y={rawWidthY * 304.8:F1}mm)\n");
-                }
-                else if (isXWall || isYWall)
-                {
-                    handledByWallLogic = true;
-                    if (isXWall)
-                    {
-                        // X-Wall: Length is along X. Width parameter must be Length.
-                        // (Placement at 180 deg puts Width along X).
-                        // ✅ CRITICAL FIX: For circular pipes, use rawWidthX (extent along wall), NOT maxSleeveDiameter
-                        // The cluster width is the SPAN of pipes along the wall, not individual diameter
-                        circularWidth = rawWidthX;
-                        circularDepth = maxStructuralThickness;
-                        if (!DeploymentConfiguration.DeploymentMode)
-                            SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] 🔧 WALL FIX (X-Wall): Forced Width=RawX (Length={rawWidthX*304.8:F1}mm), Depth=StructuralThickness\n");
-                    }
-                    else // isYWall
-                    {
-                        // Y-Wall: Length is along Y. Width parameter must be Length.
-                        // (Placement at 90 deg puts Width along Y).
-                        // ✅ CRITICAL FIX: For circular pipes, use rawWidthY (extent along wall), NOT maxSleeveDiameter
-                        circularWidth = rawWidthY;
-                        circularDepth = maxStructuralThickness;
-                        if (!DeploymentConfiguration.DeploymentMode)
-                            SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] 🔧 WALL FIX (Y-Wall): Forced Width=RawY (Length={rawWidthY*304.8:F1}mm), Depth=StructuralThickness\n");
-                    }
-                }
-                
-                if (!handledByWallLogic)
-                {
-                    // Generic logic for Floors / Unknown hosts
-                    if (isRotatedLengthwise)
-                    {
-                        // ROTATED (e.g. Width runs along Y in world)
-                        circularWidth = rawWidthY;
-                        circularDepth = maxStructuralThickness;
-                        
-                        if (!DeploymentConfiguration.DeploymentMode)
-                            SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] 🔄 ORIENTATION: Angle {rotDeg:F1}° -> Mapped Width=RawY, Depth=StructuralThickness\n");
-                    }
-                    else
-                    {
-                        // ALIGNED (e.g. Width runs along X in world)
-                        circularWidth = rawWidthX;
-                        circularDepth = maxStructuralThickness;
-                        
-                        if (!DeploymentConfiguration.DeploymentMode)
-                            SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] 🔄 ORIENTATION: Angle {rotDeg:F1}° -> Mapped Width=RawX, Depth=StructuralThickness\n");
-                    }
-                }
+                // (Block Removed)
+                // Logic already handled in previous code that detects HostType/WallDirection
 
-                // ✅ FAILSAFE: Swap Width and Depth if Depth is unrealistically large compared to Width
-                // This catches cases where wall direction is misidentified (e.g. Y-Wall identified as X-Wall)
-                // A sleeve is typically Wider (along wall) than it is Deep (wall thickness).
-                // If Depth > 1.5 * Width AND Depth > 300mm (1ft), it's likely the dimensions are swapped.
-                // Exception: If structural thickness is explicitly large (e.g. > 500mm), don't swap.
-                // ✅ EXCEPTION 2: If we explicitly handled wall logic above, TRUST IT. Don't swap.
-                bool explicitLargeThickness = maxStructuralThickness > 0.5; // > 500mm
-                if (!handledByWallLogic && !explicitLargeThickness && circularDepth > (circularWidth * 1.5) && circularDepth > 0.3)
-                {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                         SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ SUSPICIOUS DIMENSIONS: Depth ({circularDepth*304.8:F0}mm) > Width ({circularWidth*304.8:F0}mm). Swapping Width/Depth (assuming misidentified wall direction).\n");
-                    
-                    double temp = circularWidth;
-                    circularWidth = circularDepth;
-                    // For the new depth, strictly use structural thickness
-                    circularDepth = maxStructuralThickness;
-                }
 
-                SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                    $"[{DateTime.Now:HH:mm:ss}] 🔵 CIRCULAR CLUSTER RESULT (Pipes/Round Ducts): Width={circularWidth * 304.8:F1}mm, Height={circularHeight * 304.8:F1}mm, Depth={circularDepth * 304.8:F1}mm\n");
-                SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                    $"[{DateTime.Now:HH:mm:ss}]   IsXWall={isXWall}, IsYWall={isYWall}, RawBBox=({rawWidthX*304.8:F0}x{rawWidthY*304.8:F0}x{rawHeightZ*304.8:F0})\n");
-                SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                    $"[{DateTime.Now:HH:mm:ss}]   MaxSleeveDiameter={maxSleeveDiameter * 304.8:F1}mm, MaxStructuralThickness={maxStructuralThickness * 304.8:F1}mm\n");
+                // (Block Removed)
 
-                // Cache the result
-                try
-                {
-                    var sleeveIds = cluster.Select(s => s?.SleeveInstanceId ?? 0).Where(id => id > 0).OrderBy(id => id).ToList();
-                    if (sleeveIds.Count == cluster.Count)
-                    {
-                        string cacheKey = $"RBB_FIXED_{string.Join("_", sleeveIds)}_{rotationAngle:F6}";
-                        var circularResult = (circularWidth, circularHeight, circularDepth, placementPoint, (double?)circularMinX, (double?)circularMinY, (double?)circularMinZ, (double?)circularMaxX, (double?)circularMaxY, (double?)circularMaxZ);
-                        
-                        if (_rotatedBboxCache.Count < MAX_ROTATED_BBOX_CACHE_SIZE)
-                        {
-                            _rotatedBboxCache[cacheKey] = circularResult;
-                        }
-                        
-                        calcStopwatch.Stop();
-                        return circularResult;
-                    }
-                }
-                catch { }
+                // (Block Removed)
 
-                calcStopwatch.Stop();
-                return (circularWidth, circularHeight, circularDepth, placementPoint, circularMinX, circularMinY, circularMinZ, circularMaxX, circularMaxY, circularMaxZ);
-            }
+                // (Block Removed) cache logic moved later
 
             // ✅ CRITICAL FIX: Use corner-based calculation for ALL clusters (not just rotated ones)
             // Corners are always saved and are the authoritative source for accurate sizing
@@ -1036,9 +681,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 {
                     // ✅ DIAGNOSTIC: Log before attempting corner-based calculation
                     double rotationDeg = rotationAngle * 180.0 / Math.PI;
-                    string diagnosticHostType = isWallOrFraming ? "Wall/Framing" : "Floor/Other";
+                    string hostType = isWallOrFraming ? "Wall/Framing" : "Floor/Other";
                     SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                        $"[{DateTime.Now:HH:mm:ss}] 🔍 ATTEMPTING corner-based calculation: rotation={rotationDeg:F1}°, hostType={diagnosticHostType}, clusterSize={cluster.Count}, rotatedBboxesCount={rotatedBboxes.Count}\n");
+                        $"[{DateTime.Now:HH:mm:ss}] 🔍 ATTEMPTING corner-based calculation: rotation={rotationDeg:F1}°, hostType={hostType}, clusterSize={cluster.Count}, rotatedBboxesCount={rotatedBboxes.Count}\n");
                     
                     // ✅ PRE-CHECK: Verify at least one sleeve has corners before attempting calculation
                     // Corners are ALWAYS saved for all sleeves during individual placement
@@ -1190,7 +835,66 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                 // For straight axis (rotationAngle ≈ 0°): Use world-space corners directly
                                 // For rotated axis: Transform corners to cluster's rotated coordinate system
                                 
-                                // Check if rotation angle is near zero (straight axis)
+                                // ✅ 1. ROUND PIPES/DUCTS IN WALLS
+                                // Strictly use Edge-to-Edge logic along wall length
+                                if (deferRoundPipeCalculation)
+                                {
+                                     // Get authoritative thickness first
+                                     double maxThickness = clashZonesInCluster.Any() 
+                                         ? clashZonesInCluster.Max(c => c.StructuralElementThickness) 
+                                         : 0.2; // Default 200mm
+                                     
+                                     // Determine Wall Axis
+                                     bool isYWall = Math.Abs(wallDirection.Y) > Math.Abs(wallDirection.X);
+                                     
+                                     // Gather extents
+                                     double mnX = allCorners.Min(c => c.X);
+                                     double mxX = allCorners.Max(c => c.X);
+                                     double mnY = allCorners.Min(c => c.Y);
+                                     double mxY = allCorners.Max(c => c.Y);
+                                     
+                                     if (isYWall)
+                                     {
+                                         // Wall along Y -> Width is Y-range
+                                         cornerWidth = mxY - mnY;
+                                         rotatedMinX = mnX; rotatedMaxX = mxX;
+                                         rotatedMinY = mnY; rotatedMaxY = mxY;
+                                     }
+                                     else
+                                     {
+                                         // Wall along X -> Width is X-range
+                                         cornerWidth = mxX - mnX;
+                                         rotatedMinX = mnX; rotatedMaxX = mxX;
+                                         rotatedMinY = mnY; rotatedMaxY = mxY;
+                                     }
+                                     
+                                     // Depth = Thickness (Authoritative)
+                                     cornerDepth = maxThickness;
+                                     
+                                     // Height = Z-range (or MaxDiameter logic if needed, but Z-range is safer for stacks)
+                                     double mnZ = allCorners.Min(c => c.Z);
+                                     double mxZ = allCorners.Max(c => c.Z);
+                                     
+                                     // If single pipe, height might just be diameter, but let's stick to extents for safety
+                                     // unless it's way too small?
+                                     // For now, Z-extent is standard.
+                                     cornerHeight = mxZ - mnZ;
+                                     
+                                     // Placement Point: Geometric Center
+                                     double midX = (mnX + mxX) / 2.0;
+                                     double midY = (mnY + mxY) / 2.0;
+                                     double midZ = (mnZ + mxZ) / 2.0;
+                                     
+                                     placementPoint = new XYZ(midX, midY, midZ);
+                                     
+                                     if (!DeploymentConfiguration.DeploymentMode)
+                                         SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                             $"[{DateTime.Now:HH:mm:ss}] 🔵 ROUND WALL CLUSTER: W={cornerWidth*304.8:F1}, D={cornerDepth*304.8:F1}, Center=({midX:F2},{midY:F2},{midZ:F2})\n");
+                                }
+                                else
+                                {
+                                    // ✅ 2. RECTANGULAR ELEMENTS IN WALLS (Existing Logic)
+                                    // Check if rotation angle is near zero (straight axis)
                                 bool isStraightAxis = Math.Abs(rotationAngle) < 1e-6;
                                 
                                 if (isStraightAxis)
@@ -1234,14 +938,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                          $"Width={cornerWidth:F6}\n");
 
                                      // ✅ OPTIONAL FIX: Update placement point to be the geometric center of the bounds
-                                     if (OptimizationFlags.UseGeometricCenterForClustering)
+                                     if (OptimizationFlags.UseGeometricCenterForWalls)
                                      {
                                          double midX = (wcsMinX + wcsMaxX) / 2.0;
                                          double midY = (wcsMinY + wcsMaxY) / 2.0;
-                                         placementPoint = new XYZ(midX, midY, placementPoint.Z);
+                                         
+                                         // ✅ SEPARATED LOGIC: Calculate Z geometric center for Walls too
+                                         double wcsMinZ = allCorners.Min(c => c.Z);
+                                         double wcsMaxZ = allCorners.Max(c => c.Z);
+                                         double midZ = (wcsMinZ + wcsMaxZ) / 2.0;
+                                         
+                                         placementPoint = new XYZ(midX, midY, midZ);
 
                                          SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                             $"[{DateTime.Now:HH:mm:ss}]   ✅ STRAIGHT WALL CENTER: [FLAG ENABLED] Shifted from Centroid to Geometric Center: ({placementPoint.X:F4}, {placementPoint.Y:F4})\n");
+                                             $"[{DateTime.Now:HH:mm:ss}]   ✅ STRAIGHT WALL CENTER: [FLAG ENABLED] Shifted from Centroid to Geometric Center: ({placementPoint.X:F4}, {placementPoint.Y:F4}, {placementPoint.Z:F4})\n");
                                      }
                                 }
                                 else
@@ -1299,7 +1009,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
 
                                      // ✅ CRITICAL FIX: Update placementPoint to be the GEOMETRIC CENTER for Rotated Walls
                                      // Gated by safety flag per user request.
-                                     if (OptimizationFlags.UseGeometricCenterForClustering)
+                                     if (OptimizationFlags.UseGeometricCenterForWalls)
                                      {
                                          double midRotX = (minRotX + maxRotX) / 2.0;
                                          double midRotY = (minRotY + maxRotY) / 2.0;
@@ -1315,11 +1025,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                          double worldMidX = originX + relMidX;
                                          double worldMidY = originY + relMidY;
 
-                                         // Update placementPoint (Z comes from first sleeve logic above)
-                                         placementPoint = new XYZ(worldMidX, worldMidY, placementPoint.Z);
+                                         // ✅ SEPARATED LOGIC: Calculate Z geometric center for Walls too
+                                         double worldMinZ = allCorners.Min(c => c.Z);
+                                         double worldMaxZ = allCorners.Max(c => c.Z);
+                                         double worldMidZ = (worldMinZ + worldMaxZ) / 2.0;
+
+                                         // Update placementPoint
+                                         placementPoint = new XYZ(worldMidX, worldMidY, worldMidZ);
 
                                          SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                             $"[{DateTime.Now:HH:mm:ss}]   ✅ ROTATED WALL CENTER: [FLAG ENABLED] Shifted from Centroid to Geometric Center: ({placementPoint.X:F4}, {placementPoint.Y:F4}). MidRot=({midRotX:F4},{midRotY:F4})\n");
+                                             $"[{DateTime.Now:HH:mm:ss}]   ✅ ROTATED WALL CENTER: [FLAG ENABLED] Shifted from Centroid to Geometric Center: ({placementPoint.X:F4}, {placementPoint.Y:F4}, {placementPoint.Z:F4}). MidRot=({midRotX:F4},{midRotY:F4})\n");
                                      }
                                      else
                                      {
@@ -1333,12 +1048,60 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                         $"minRotX={minRotX:F6}, maxRotX={maxRotX:F6}, minRotY={minRotY:F6}, maxRotY={maxRotY:F6}, " +
                                         $"Width={cornerWidth:F6} (from {(isYWall ? "X" : "Y")} range in rotated space)\n");
                                 }
+                                } // End of injected 'else' (Rectangular Wall)
                             }
                             
                             if (!isWallOrFraming)
                             {
                                 // ✅ FLOOR/OTHER: Calculate in WCS with rotation if needed
                                 // Calculate cluster bounding box by rotating corners back to aligned axis
+                                
+                                if (deferRoundPipeCalculation)
+                                {
+                                     // ✅ 1. ROUND PIPES/DUCTS IN FLOORS
+                                     // Width/Height = World X/Y extents (aligned)
+                                     // Depth = Structural Thickness
+                                     
+                                      double maxThickness = clashZonesInCluster.Any() 
+                                         ? clashZonesInCluster.Max(c => c.StructuralElementThickness) 
+                                         : 0.2; // Default 200mm
+                                     
+                                     double mnX = allCorners.Min(c => c.X);
+                                     double mxX = allCorners.Max(c => c.X);
+                                     double mnY = allCorners.Min(c => c.Y);
+                                     double mxY = allCorners.Max(c => c.Y);
+                                     double mnZ = allCorners.Min(c => c.Z);
+                                     double mxZ = allCorners.Max(c => c.Z);
+                                     
+                                     // Check for rotation (e.g. if the "World Alignment" is actually rotated due to MEP Rotation)
+                                     // But for "Round Floor", usually X/Y is sufficient unless strictly rotated?
+                                     // If rotationAngle is significant, we should probably follow rotated logic.
+                                     // Let's reuse the ROTATED logic from below but adapt it for Round.
+                                     
+                                     // Actually, simple bounding box is often enough for round floor clusters unless they are diagonal runs.
+                                     // Let's trust the extents.
+                                     
+                                     cornerWidth = mxX - mnX;
+                                     cornerHeight = mxY - mnY;
+                                     cornerDepth = maxThickness;
+                                     
+                                     // Geometric Center
+                                     placementPoint = new XYZ(
+                                         (mnX + mxX) / 2.0,
+                                         (mnY + mxY) / 2.0,
+                                         (mnZ + mxZ) / 2.0
+                                     );
+                                     
+                                     rotatedMinX = mnX; rotatedMaxX = mxX;
+                                     rotatedMinY = mnY; rotatedMaxY = mxY;
+                                     
+                                      if (!DeploymentConfiguration.DeploymentMode)
+                                         SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                             $"[{DateTime.Now:HH:mm:ss}] 🔵 ROUND FLOOR CLUSTER: W={cornerWidth*304.8:F1}, H={cornerHeight*304.8:F1}, Center=({placementPoint.X:F2},{placementPoint.Y:F2},{placementPoint.Z:F2})\n");
+                                }
+                                else
+                                { 
+                                    // ✅ 2. RECTANGULAR ELEMENTS IN FLOORS (Existing Logic)
                                 
                                 // ✅ CRITICAL: Check for mixed X/Y orientations BEFORE rotation transformation
                                 // When MEP elements have different orientations (X and Y), corner-based calculation may not work correctly
@@ -1403,8 +1166,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                         // Z: Get from first sleeve (not from corner extents)
                                         double midX = (floorMinX + floorMaxX) / 2.0;
                                         double midY = (floorMinY + floorMaxY) / 2.0;
-                                        double placementZ = 0.0;
+                                        double mixedFloorZ = 0.0;
                                         
+                                         // ✅ FIXED: Use Geometric Center Z (Midpoint of Z-extents)
+                                         // PREVIOUSLY: Used Z from first sleeve, causing "Moving Up" issue if first sleeve was offset
+                                         mixedFloorZ = (floorMinZ + floorMaxZ) / 2.0;
+
+                                         /* PREVIOUS LOGIC REMOVED
                                          // Z from first sleeve in cluster
                                          if (clashZonesInCluster.Count > 0)
                                          {
@@ -1418,8 +1186,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                                      placementZ = mixedCz.SleeveCorner1Z.Value;
                                              }
                                          }
+                                         */
                                         
-                                        placementPoint = new XYZ(midX, midY, placementZ);
+                                        placementPoint = new XYZ(midX, midY, mixedFloorZ);
+                                        
+                                        // ✅ Z-AXIS DIAGNOSTIC: Log actual Z-coordinates to identify shift source
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            double theoreticalMidZ = (floorMinZ + floorMaxZ) / 2.0;
+                                            SafeFileLogger.SafeAppendText("cluster_placement_debug.log", 
+                                                $"[{DateTime.Now:HH:mm:ss}] 🎯 Z-AXIS DIAGNOSTIC (MIXED FLOOR): " +
+                                                $"LowerCornerZ={floorMinZ:F6}, UpperCornerZ={floorMaxZ:F6}, " +
+                                                $"TheoreticalMidZ={theoreticalMidZ:F6}, PlacedZ={mixedFloorZ:F6}, " +
+                                                $"Shift={mixedFloorZ - theoreticalMidZ:F6}\n");
+                                        }
                                         
                                         // Store bounds for extents
                                         rotatedMinX = floorMinX;
@@ -1483,18 +1263,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                          SafeFileLogger.SafeAppendText("cluster_sizing.log", 
                                              $"    🧮 MATH (STRAIGHT FLOOR): X=[{wcsMinX:F4} to {wcsMaxX:F4}] -> MidX={midX:F4}, Y=[{wcsMinY:F4} to {wcsMaxY:F4}] -> MidY={midY:F4}\n");
                                         
-                                         // Z from first sleeve in cluster
-                                         double placementZ = 0.0;
-                                         if (clashZonesInCluster.Count > 0)
-                                         {
+                                         // ✅ FIXED: Use Geometric Center Z (Midpoint of Z-extents) instead of First Sleeve Z
+                                        // This ensures the placement point is exactly in the middle of the vertical stack
+                                        double minAZ = allCorners.Min(c => c.Z);
+                                        double maxAZ = allCorners.Max(c => c.Z);
+                                        double placementZ = (minAZ + maxAZ) / 2.0;
+
+                                        /* PREVIOUS LOGIC REMOVED
+                                        // Z: From first sleeve in cluster (to maintain elevation? No, we want center)
+                                        double placementZ = 0.0;
+                                        if (clashZonesInCluster.Count > 0)
+                                        {
                                              var straightCz = clashZonesInCluster[0];
                                              if (straightCz != null)
                                              {
-                                                 int firstSleeveId = straightCz.SleeveInstanceId > 0 ? straightCz.SleeveInstanceId : -1;
+                                                 int firstSleeveId = straightCz.SleeveInstanceId;
                                                  placementZ = straightCz.SleevePlacementPointZ;
-                                                 if (placementZ == 0.0)
-                                                     placementZ = straightCz.IntersectionPointZ;
                                                  
+                                                 if (placementZ == 0.0) placementZ = straightCz.IntersectionPointZ;
+                                                 if (placementZ == 0.0 && straightCz.SleeveCorner1Z.HasValue) placementZ = straightCz.SleeveCorner1Z.Value;
+
                                                  SafeFileLogger.SafeAppendText("cluster_sizing.log",
                                                      $"[{DateTime.Now:HH:mm:ss}]   ✅ STRAIGHT AXIS FLOOR: Got Z from first sleeve (ID={firstSleeveId}, GUID={straightCz.ClashZoneGuid}): " +
                                                      $"SleevePlacementPointZ={straightCz.SleevePlacementPointZ:F6}, " +
@@ -1512,9 +1300,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                              SafeFileLogger.SafeAppendText("cluster_sizing.log",
                                                  $"[{DateTime.Now:HH:mm:ss}]   ⚠️ STRAIGHT AXIS FLOOR: clashZonesInCluster is EMPTY! Count={clashZonesInCluster.Count}\n");
                                          }
+                                        */
                                         
                                         // ✅ CRITICAL: Override placement point with X/Y midpoints and Z from first sleeve
                                         placementPoint = new XYZ(midX, midY, placementZ);
+                                        
+                                        // ✅ Z-AXIS DIAGNOSTIC: Log actual Z-coordinates to identify shift source
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            double lowerZ = allCorners.Min(c => c.Z);
+                                            double upperZ = allCorners.Max(c => c.Z);
+                                            double theoreticalMidZ = (lowerZ + upperZ) / 2.0;
+                                            SafeFileLogger.SafeAppendText("cluster_placement_debug.log", 
+                                                $"[{DateTime.Now:HH:mm:ss}] 🎯 Z-AXIS DIAGNOSTIC (STRAIGHT FLOOR): " +
+                                                $"LowerCornerZ={lowerZ:F6}, UpperCornerZ={upperZ:F6}, " +
+                                                $"TheoreticalMidZ={theoreticalMidZ:F6}, PlacedZ={placementZ:F6}, " +
+                                                $"Shift={placementZ - theoreticalMidZ:F6}\n");
+                                        }
                                         
                                         originX = midX;
                                         originY = midY;
@@ -1543,7 +1345,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                          double sinA = Math.Sin(-rotationAngle);
                                          
                                          // ✅ Use corner centroid as rotation origin OR geometric center via flag
-                                         if (OptimizationFlags.UseGeometricCenterForClustering)
+                                         if (OptimizationFlags.UseGeometricCenterForFloors)
                                          {
                                              // 1. First pass: Use centroid as temporary origin to find bounds in rotated space
                                              double tempOriginX = allCorners.Average(c => c.X);
@@ -1596,11 +1398,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                              {
                                                  double z = rotatedCz.SleevePlacementPointZ;
                                                  if (z == 0.0) z = rotatedCz.IntersectionPointZ;
-                                                 if (z != 0.0) placementZ = z;
-                                             }
+                                             if (z != 0.0) placementZ = z;
                                          }
+                                     }
+                                    
+                                    // ✅ CRITICAL RE-VERIFICATION: If we are in "Geometric Center" Mode, enforce it!
+                                    // The above "Legacy" block restores dependency on first-sleeve Z.
+                                    // If flag is true, override it back to geometric midZ.
+                                    if (OptimizationFlags.UseGeometricCenterForFloors)
+                                    {
+                                        double lowerZ = allCorners.Min(c => c.Z);
+                                        double upperZ = allCorners.Max(c => c.Z);
+                                        placementZ = (lowerZ + upperZ) / 2.0;
+                                    }
+
+                                    placementPoint = new XYZ(originX, originY, placementZ);
                                         
-                                        placementPoint = new XYZ(originX, originY, placementZ);
+                                        // ✅ Z-AXIS DIAGNOSTIC: Log actual Z-coordinates to identify shift source
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            // For rotated floors, we need to find Min/Max Z from allCorners
+                                            double lowerZ = allCorners.Min(c => c.Z);
+                                            double upperZ = allCorners.Max(c => c.Z);
+                                            double theoreticalMidZ = (lowerZ + upperZ) / 2.0;
+                                            SafeFileLogger.SafeAppendText("cluster_placement_debug.log", 
+                                                $"[{DateTime.Now:HH:mm:ss}] 🎯 Z-AXIS DIAGNOSTIC (ROTATED FLOOR): " +
+                                                $"LowerCornerZ={lowerZ:F6}, UpperCornerZ={upperZ:F6}, " +
+                                                $"TheoreticalMidZ={theoreticalMidZ:F6}, PlacedZ={placementZ:F6}, " +
+                                                $"Shift={placementZ - theoreticalMidZ:F6}\n");
+                                        }
                                         
                                         SafeFileLogger.SafeAppendText("cluster_sizing.log",
                                             $"[{DateTime.Now:HH:mm:ss}]   Origin (corner centroid): ({originX:F6}, {originY:F6}), PlacementPoint=({placementPoint.X:F6}, {placementPoint.Y:F6}), cosA={cosA:F6}, sinA={sinA:F6}\n");
@@ -1638,8 +1464,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                          SafeFileLogger.SafeAppendText("cluster_sizing.log",
                                              $"[{DateTime.Now:HH:mm:ss}]   Rotated bounds: minX={minRotX:F6}, maxX={maxRotX:F6}, minY={minRotY:F6}, maxY={maxRotY:F6}\n");
                                     }
-                                }
-                            }
+                                } // End of if (!hasMixedOrientations)
+                                } // End of injected 'else' (Rectangular Floor)
+                            } // End of if (!isWallOrFraming)
                             
                             // ✅ HEIGHT: Calculate from Z range of bounding boxes (vertical dimension)
                             // For walls/framing: Height = Z range (vertical), NOT from corner Z (all corners have same Z for 2D opening)
@@ -1669,7 +1496,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             // For walls/framing: depth = wall/framing thickness (overridden later in SetSizeParameters)
                             // For floors/other: depth = StructuralElementThickness (same as individual sleeves)
                             // ✅ DEPTH: Authoritative Source StructuralElementThickness fullstop
-                            firstCz = clashZonesInCluster.FirstOrDefault();
+                            var firstCz = clashZonesInCluster.FirstOrDefault();
                             if (firstCz != null)
                             {
                                 cornerDepth = firstCz.StructuralElementThickness;
@@ -1841,7 +1668,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                         int firstSleeveInstanceId = fallbackFirstSleeveData.SleeveInstanceId;
                         if (firstSleeveInstanceId > 0)
                         {
-                            firstCz = _getClashZoneFunc(firstSleeveInstanceId, xmlFilePath) as ClashZone;
+                            var firstCz = _getClashZoneFunc(firstSleeveInstanceId, xmlFilePath) as ClashZone;
                             if (firstCz != null)
                             {
                                 bool isWallHost = string.Equals(firstCz.StructuralElementType, "Wall", StringComparison.OrdinalIgnoreCase) ||
@@ -1937,7 +1764,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             int firstSleeveInstanceId = floorFirstSleeveData.SleeveInstanceId;
                             if (firstSleeveInstanceId > 0)
                             {
-                                firstCz = GetCachedClashZone(firstSleeveInstanceId, xmlFilePath);
+                                var firstCz = GetCachedClashZone(firstSleeveInstanceId, xmlFilePath);
                                 if (firstCz != null)
                                 {
                                     bool isFloorHost = string.Equals(firstCz.StructuralElementType, "Floor", StringComparison.OrdinalIgnoreCase) ||
@@ -2105,7 +1932,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 var firstSleeve = cluster.FirstOrDefault();
                 if (firstSleeve != null)
                 {
-                    firstCz = GetCachedClashZone(firstSleeve.SleeveInstanceId, xmlFilePath);
+                    var firstCz = GetCachedClashZone(firstSleeve.SleeveInstanceId, xmlFilePath);
                     if (firstCz != null)
                     {
                         isFloorClusterProcessing = string.Equals(firstCz.StructuralElementType, "Floor", StringComparison.OrdinalIgnoreCase) ||
@@ -2319,29 +2146,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     SafeFileLogger.SafeAppendText("cluster_sizing.log",
                         $"[{DateTime.Now:HH:mm:ss}] ✅ ROTATED-AXIS (reconstructed from WCS): W={reconWidthMm:F1}mm, H={reconHeightMm:F1}mm, D={reconDepthMm:F1}mm, Rotation={rotationAngle * 180 / Math.PI:F1}°\n");
                     
-                    // ✅ HYBRID PLACEMENT FIX: Use Geometric Center for Width/Height, but keep Wall/Floor Center for Depth
-                    XYZ geometricCenter = new XYZ((reconMinX + reconMaxX) / 2.0, (reconMinY + reconMaxY) / 2.0, (reconMinZ + reconMaxZ) / 2.0);
-                    XYZ finalPlacement = placementPoint;
-
-                    if (isWall)
-                    {
-                        if (hostOrientation.Contains("X"))
-                            finalPlacement = new XYZ(geometricCenter.X, placementPoint.Y, geometricCenter.Z);
-                        else if (hostOrientation.Contains("Y"))
-                            finalPlacement = new XYZ(placementPoint.X, geometricCenter.Y, geometricCenter.Z);
-                        else
-                            finalPlacement = new XYZ(placementPoint.X, placementPoint.Y, geometricCenter.Z);
-                    }
-                    else if (isFloor)
-                    {
-                        finalPlacement = new XYZ(geometricCenter.X, geometricCenter.Y, placementPoint.Z);
-                    }
-                    else
-                    {
-                        finalPlacement = geometricCenter;
-                    }
-
-                    var reconResult = (reconWidth, reconHeight, reconDepth, finalPlacement, reconMinX, reconMinY, reconMinZ, reconMaxX, reconMaxY, reconMaxZ);
+                    // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
+                    var reconResult = (reconWidth, reconHeight, reconDepth, placementPoint, reconMinX, reconMinY, reconMinZ, reconMaxX, reconMaxY, reconMaxZ);
                     
                     // Store in cache and return
                     StoreInCache(cluster, rotationAngle, reconResult, calcStopwatch);
@@ -2371,29 +2177,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 SafeFileLogger.SafeAppendText("cluster_sizing.log",
                     $"[{DateTime.Now:HH:mm:ss}] ⚠️ UNION (fallback - rotated bboxes): W={unionWidthMm:F1}mm, H={unionHeightMm:F1}mm, D={unionDepthMm:F1}mm, Rotation={rotationAngle * 180 / Math.PI:F1}°\n");
             
-            // ✅ HYBRID PLACEMENT FIX: Use Geometric Center for Width/Height, but keep Wall/Floor Center for Depth
-            XYZ finalGeometricCenter = new XYZ((minX + maxX) / 2.0, (minY + maxY) / 2.0, (minZ + maxZ) / 2.0);
-            XYZ finalPointResult = placementPoint;
-
-            if (isWall)
-            {
-                if (hostOrientation.Contains("X"))
-                    finalPointResult = new XYZ(finalGeometricCenter.X, placementPoint.Y, finalGeometricCenter.Z);
-                else if (hostOrientation.Contains("Y"))
-                    finalPointResult = new XYZ(placementPoint.X, finalGeometricCenter.Y, finalGeometricCenter.Z);
-                else
-                    finalPointResult = new XYZ(placementPoint.X, placementPoint.Y, finalGeometricCenter.Z);
-            }
-            else if (isFloor)
-            {
-                finalPointResult = new XYZ(finalGeometricCenter.X, finalGeometricCenter.Y, placementPoint.Z);
-            }
-            else
-            {
-                finalPointResult = finalGeometricCenter;
-            }
-
-            var result = (width, height, depth, finalPointResult, minX, minY, minZ, maxX, maxY, maxZ);
+            // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
+            var result = (width,height,depth,placementPoint,minX,minY,minZ,maxX,maxY,maxZ);
             
             // ✅ PERFORMANCE: Store result in cache for future use
             try
@@ -2671,8 +2456,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     // X-WALL: Wall runs along X-axis.
                     // - Parallel (Width): X (Keep Centroid)
                     // - Perpendicular (Thickness): Y (Override with First Sleeve)
-                    // ✅ DAMPER FIX: Use WallCenterlinePoint if available to ensure wall center alignment
-                    finalY = (firstValidCz.WallCenterlinePointY != 0) ? firstValidCz.WallCenterlinePointY : firstValidCz.IntersectionPointY;
+                    finalY = firstValidCz.IntersectionPointY;
                     
                     if (!DeploymentConfiguration.DeploymentMode)
                         SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] 📐 HYBRID X-WALL: Override Y (Thk)={finalY:F6}, Keep X (Len)={finalX:F6}\n");
@@ -2682,8 +2466,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     // Y-WALL: Wall runs along Y-axis.
                     // - Parallel (Width): Y (Keep Centroid)
                     // - Perpendicular (Thickness): X (Override with First Sleeve)
-                    // ✅ DAMPER FIX: Use WallCenterlinePoint if available to ensure wall center alignment
-                    finalX = (firstValidCz.WallCenterlinePointX != 0) ? firstValidCz.WallCenterlinePointX : firstValidCz.IntersectionPointX;
+                    finalX = firstValidCz.IntersectionPointX;
 
                     if (!DeploymentConfiguration.DeploymentMode)
                         SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] 📐 HYBRID Y-WALL: Override X (Thk)={finalX:F6}, Keep Y (Len)={finalY:F6}\n");
@@ -2691,9 +2474,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 else
                 {
                     // Fallback (Unknown Orientation): Stick to First Sleeve complete override for safety
-                    // Fallback (Unknown Orientation): Use WallCenterline if available
-                    finalX = (firstValidCz.WallCenterlinePointX != 0) ? firstValidCz.WallCenterlinePointX : firstValidCz.IntersectionPointX;
-                    finalY = (firstValidCz.WallCenterlinePointY != 0) ? firstValidCz.WallCenterlinePointY : firstValidCz.IntersectionPointY;
+                    finalX = firstValidCz.IntersectionPointX;
+                    finalY = firstValidCz.IntersectionPointY;
                     // Keep Centroid Z for height centering
                 }
 
