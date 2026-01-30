@@ -94,7 +94,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Se
                     // ✅ FALLBACK: If no cached section box, try live Revit API
                     if (sectionBoxBounds == null && uiDoc.ActiveView is Autodesk.Revit.DB.View3D view3D && view3D.IsSectionBoxActive)
                     {
-                        sectionBoxBounds = JSE_RevitAddin_MEP_OPENINGS.Helpers.SectionBoxHelper.GetSectionBoxBounds(view3D);
+                        sectionBoxBounds = JSE_RevitAddin_MEP_OPENINGS.Services.Helpers.SectionBoxHelper.GetSectionBoxBounds(view3D);
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             DebugLogger.Info($"[CombinedDiscovery] Using live Revit section box bounds (cache not available)");

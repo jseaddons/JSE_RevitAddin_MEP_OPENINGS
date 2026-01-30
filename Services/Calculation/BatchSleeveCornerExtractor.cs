@@ -38,18 +38,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
                 return;
             }
 
-            ExtractAndSaveCornersInternal(doc, placedZones.Select(z => (z.Id, z.SleeveInstanceId)).ToList());
+            ExtractAndSaveCornersInternal(doc, placedZones.ToList());
         }
 
         /// <summary>
         /// ✅ NEW: Extracts corners for specific zones by GUID and ElementId.
         /// This avoids SQLite WAL visibility issues where GetPlacedClashZones() returns 0 items.
         /// </summary>
-        public int ExtractAndSaveCornersForZones(Document doc, IEnumerable<(Guid ZoneGuid, int ElementId)> placedZones)
+        public int ExtractAndSaveCornersForZones(Document doc, IEnumerable<ClashZone> placedZones)
         {
-            var zonesList = placedZones?.ToList() ?? new List<(Guid, int)>();
+            var zonesList = placedZones?.ToList() ?? new List<ClashZone>();
             SafeFileLogger.SafeAppendTextAlways("geometry_extraction.log", 
-                $"Starting Batch Corner Extraction for {zonesList.Count} specific zones...\n");
+                $"Starting Batch Corner Extraction for {zonesList.Count} specific zones (using saved orientation)...\n");
 
             if (!zonesList.Any())
             {
@@ -60,10 +60,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
             return ExtractAndSaveCornersInternal(doc, zonesList);
         }
 
+
+
         /// <summary>
         /// Internal method that does the actual extraction work
         /// </summary>
-        private int ExtractAndSaveCornersInternal(Document doc, List<(Guid ZoneGuid, int ElementId)> zones)
+        private int ExtractAndSaveCornersInternal(Document doc, List<ClashZone> zones)
         {
             var updates = new List<(Guid Guid, double c1x, double c1y, double c1z, double c2x, double c2y, double c2z, double c3x, double c3y, double c3z, double c4x, double c4y, double c4z)>();
 
@@ -71,19 +73,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
             {
                 try
                 {
-                    Element elem = doc.GetElement(new ElementId(zone.ElementId));
+                    Element elem = doc.GetElement(new ElementId(zone.SleeveInstanceId));
                     if (elem == null || !(elem is FamilyInstance)) continue;
 
-                    // Get Host Orientation (X or Y for walls)
-                    string hostOrientation = "";
-                    if (elem is FamilyInstance fi && fi.Host is Wall wall)
-                    {
-                        XYZ wallDir = (wall.Location as LocationCurve)?.Curve.GetEndPoint(1) - (wall.Location as LocationCurve)?.Curve.GetEndPoint(0);
-                        if (wallDir != null)
-                        {
-                            hostOrientation = Math.Abs(wallDir.X) > Math.Abs(wallDir.Y) ? "X" : "Y";
-                        }
-                    }
+                    string hostOrientation = zone.HostOrientation;
 
                     // Extract Corners
                     var corners = ExtractCornersFromSolid(elem, doc, hostOrientation);
@@ -94,15 +87,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
                         var bbox = elem.get_BoundingBox(null);
                         if (bbox != null)
                         {
-                            double z = bbox.Min.Z;
-                            corners = new List<XYZ>
+                            if (!string.IsNullOrEmpty(hostOrientation))
                             {
-                                new XYZ(bbox.Min.X, bbox.Min.Y, z),
-                                new XYZ(bbox.Max.X, bbox.Min.Y, z),
-                                new XYZ(bbox.Max.X, bbox.Max.Y, z),
-                                new XYZ(bbox.Min.X, bbox.Max.Y, z)
-                            };
-                            SafeFileLogger.SafeAppendTextAlways("geometry_extraction.log", $"[FALLBACK] Using BoundingBox corners for sleeve {zone.ElementId} (Solid extraction failed)\n");
+                                if (hostOrientation.Equals("X", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    // X-Wall (Face is XZ plane) - Preserve Z-height
+                                    double yMid = (bbox.Min.Y + bbox.Max.Y) / 2.0;
+                                    corners = new List<XYZ>
+                                    {
+                                        new XYZ(bbox.Min.X, yMid, bbox.Min.Z),
+                                        new XYZ(bbox.Max.X, yMid, bbox.Min.Z),
+                                        new XYZ(bbox.Max.X, yMid, bbox.Max.Z),
+                                        new XYZ(bbox.Min.X, yMid, bbox.Max.Z)
+                                    };
+                                }
+                                else if (hostOrientation.Equals("Y", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    // Y-Wall (Face is YZ plane) - Preserve Z-height
+                                    double xMid = (bbox.Min.X + bbox.Max.X) / 2.0;
+                                    corners = new List<XYZ>
+                                    {
+                                        new XYZ(xMid, bbox.Min.Y, bbox.Min.Z),
+                                        new XYZ(xMid, bbox.Max.Y, bbox.Min.Z),
+                                        new XYZ(xMid, bbox.Max.Y, bbox.Max.Z),
+                                        new XYZ(xMid, bbox.Min.Y, bbox.Max.Z)
+                                    };
+                                }
+                            }
+                            
+                            // Default Fallback (Floor or unknown) - Preserve Area
+                            if (corners == null)
+                            {
+                                double z = bbox.Min.Z;
+                                corners = new List<XYZ>
+                                {
+                                    new XYZ(bbox.Min.X, bbox.Min.Y, z),
+                                    new XYZ(bbox.Max.X, bbox.Min.Y, z),
+                                    new XYZ(bbox.Max.X, bbox.Max.Y, z),
+                                    new XYZ(bbox.Min.X, bbox.Max.Y, z)
+                                };
+                            }
+                            SafeFileLogger.SafeAppendTextAlways("geometry_extraction.log", $"[FALLBACK] Using BoundingBox corners (Orientation: {hostOrientation ?? "Floor"}) for sleeve {zone.SleeveInstanceId} (Solid extraction failed)\n");
                         }
                     }
 
@@ -110,7 +135,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
                     {
                         // Flatten for DB
                         updates.Add((
-                            zone.ZoneGuid,
+                            zone.Id,
                             corners[0].X, corners[0].Y, corners[0].Z,
                             corners[1].X, corners[1].Y, corners[1].Z,
                             corners[2].X, corners[2].Y, corners[2].Z,
@@ -120,7 +145,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
                 }
                 catch (Exception ex)
                 {
-                    SafeFileLogger.SafeAppendTextAlways("geometry_extraction_errors.log", $"Error extracting {zone.ElementId}: {ex.Message}\n");
+                    SafeFileLogger.SafeAppendTextAlways("geometry_extraction_errors.log", $"Error extracting {zone.SleeveInstanceId}: {ex.Message}\n");
                 }
             }
 
@@ -140,8 +165,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
 
         private List<XYZ> ExtractCornersFromSolid(Element elem, Document doc, string hostOrientation)
         {
-            // Get geometry
-            Options opt = new Options { DetailLevel = ViewDetailLevel.Fine, ComputeReferences = true };
+            // Get geometry - IncludeNonVisibleGeometry for VOIDS
+            Options opt = new Options { 
+                DetailLevel = ViewDetailLevel.Fine, 
+                ComputeReferences = true, 
+                IncludeNonVisibleObjects = true 
+            };
             GeometryElement geo = elem.get_Geometry(opt);
             
             Solid solid = null;
@@ -150,21 +179,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
             {
                 foreach (GeometryObject obj in geo)
                 {
-                    if (obj is Solid s && s.Volume > 0)
+                    // REMOVED 's.Volume > 0' check to support Void-based families
+                    if (obj is Solid s && s.Faces.Size > 0)
                     {
                         solid = s;
                         break;
                     }
                     else if (obj is GeometryInstance gi)
                     {
+                        // Check symbol geometry (standard for family instances)
                         foreach (GeometryObject obj2 in gi.GetSymbolGeometry())
                         {
-                             if (obj2 is Solid s2 && s2.Volume > 0)
+                             if (obj2 is Solid s2 && s2.Faces.Size > 0)
                              {
-                                 // Transform to instance location
                                  solid = SolidUtils.CreateTransformed(s2, gi.Transform);
                                  break;
                              }
+                        }
+                        
+                        // Fallback to instance geometry if symbol geometry lacks solids
+                        if (solid == null)
+                        {
+                            foreach (GeometryObject obj2 in gi.GetInstanceGeometry())
+                            {
+                                if (obj2 is Solid s2 && s2.Faces.Size > 0)
+                                {
+                                    solid = s2;
+                                    break;
+                                }
+                            }
                         }
                     }
                     if (solid != null) break;
@@ -265,6 +308,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
                 }
             }
             
+            // ✅ FIX: If we have exactly 4 vertices (Standard Rectangle), return them directly!
+            // This preserves the ORIENTATION (OBB) instead of falling back to AABB.
+            if (vertices.Count == 4)
+            {
+                double cx = vertices.Average(v => v.X);
+                double cy = vertices.Average(v => v.Y);
+                double cz = vertices.Average(v => v.Z);
+
+                if (Math.Abs(vertices.Max(v => v.Z) - vertices.Min(v => v.Z)) < 0.01) // Horizontal face
+                    return vertices.OrderBy(v => Math.Atan2(v.Y - cy, v.X - cx)).ToList();
+                
+                if (Math.Abs(vertices.Max(v => v.X) - vertices.Min(v => v.X)) < 0.01) // YZ plane (Vertical)
+                    return vertices.OrderBy(v => Math.Atan2(v.Z - cz, v.Y - cy)).ToList();
+
+                // XZ plane or slanted
+                return vertices.OrderBy(v => Math.Atan2(v.Z - cz, v.X - cx)).ToList();
+            }
+
             // If not exactly 4 vertices, calculate the bounding box of the face's vertices
             // This handles circular sleeves (1-2 vertices) and complex shapes
             double minX = vertices.Min(v => v.X);

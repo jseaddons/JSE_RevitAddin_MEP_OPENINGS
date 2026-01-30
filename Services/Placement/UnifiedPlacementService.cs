@@ -89,12 +89,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     t.SetFailureHandlingOptions(failureOptions);
 
                     int successCount = 0;
+                    var placedZones = new List<ClashZone>();
                     foreach (var zone in allPending)
                     {
                         try
                         {
-                            PlaceSingleSleeve(doc, zone);
-                            successCount++;
+                            if (PlaceSingleSleeve(doc, zone))
+                            {
+                                successCount++;
+                                placedZones.Add(zone);
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -102,6 +106,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                         }
                     }
                     t.Commit();
+                    
+                    if (placedZones.Any())
+                    {
+                        _repository.SaveSleeveSnapshotsForPlacedSleeves(-1, placedZones);
+                    }
                     SafeFileLogger.SafeAppendText("placement.log", $"Phase 1b: Placed {successCount} individual sleeves.");
                 }
             }
@@ -140,38 +149,67 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     failureOptions.SetFailuresPreprocessor(new WarningSwallower());
                     t.SetFailureHandlingOptions(failureOptions);
 
+                    var placedZones = new List<ClashZone>();
                     foreach (var zone in allPending)
                     {
-                        PlaceSingleSleeve(doc, zone);
+                        if (PlaceSingleSleeve(doc, zone))
+                        {
+                            placedZones.Add(zone);
+                        }
                     }
                     t.Commit();
+                    
+                    // ✅ CRITICAL FIX: Save snapshots for all placed individual sleeves
+                    // This ensures "Self-Healing Retrieval" works when these are later clustered.
+                    if (placedZones.Any())
+                    {
+                        _repository.SaveSleeveSnapshotsForPlacedSleeves(-1, placedZones);
+                        SafeFileLogger.SafeAppendText("placement.log", $"[{DateTime.Now:HH:mm:ss}] 📸 Snapshot saved for {placedZones.Count} individual sleeves.\n");
+                    }
                 }
             }
             else
             {
+                var placedZones = new List<ClashZone>();
                 foreach (var zone in allPending)
                 {
                     using (Transaction t = new Transaction(doc, $"Place Sleeve {zone.Id}"))
                     {
                         t.Start();
-                         // Disable warnings
+                        // Disable warnings
                         var failureOptions = t.GetFailureHandlingOptions();
                         failureOptions.SetFailuresPreprocessor(new WarningSwallower());
                         t.SetFailureHandlingOptions(failureOptions);
 
-                        PlaceSingleSleeve(doc, zone);
-                        t.Commit();
+                        if (PlaceSingleSleeve(doc, zone))
+                        {
+                            placedZones.Add(zone);
+                            t.Commit();
+                        }
+                        else
+                        {
+                            t.RollBack();
+                        }
                     }
+                }
+                
+                // ✅ CRITICAL FIX: Save snapshots for all placed individual sleeves (even in sequential mode)
+                if (placedZones.Any())
+                {
+                    _repository.SaveSleeveSnapshotsForPlacedSleeves(-1, placedZones);
+                    SafeFileLogger.SafeAppendText("placement.log", $"[{DateTime.Now:HH:mm:ss}] 📸 Snapshot saved for {placedZones.Count} individual sleeves (Sequential).\n");
                 }
             }
         }
 
-        private void PlaceSingleSleeve(Document doc, ClashZone zone)
+
+
+        private bool PlaceSingleSleeve(Document doc, ClashZone zone)
         {
             try
             {
                 // 1. Validation
-                if (string.IsNullOrEmpty(zone.CalculatedFamilyName)) return;
+                if (string.IsNullOrEmpty(zone.CalculatedFamilyName)) return false;
 
                 // 2. Load Family
                 FamilySymbol symbol = new FilteredElementCollector(doc)
@@ -182,7 +220,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 if (symbol == null)
                 {
                     // Log error: family not found
-                    return;
+                    return false;
                 }
                 if (!symbol.IsActive) symbol.Activate();
 
@@ -196,54 +234,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                      try { host = doc.GetElement(new ElementId((int)zone.StructuralElementIdValue)); } catch {}
                 }
 
-                XYZ placementPoint = new XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ); // Use stored intersection
-                // Or use `SleevePlacementPoint` if calculated?
-                // In Phase 1 we calculated and saved... wait, Phase 1 only saved dimensions/rotation. 
-                // Position is usually Intersection + Centering?
-                // If pure intersection is used, fine.
-                // NewSleevePlacer calculates adjustment.
-                // If adjustments were needed (like for Dampers), they should have been in Phase 1?
-                // Phase 1 `SleeveCalculationService` didn't seem to save Adjusted Point.
-                // It saved dimensions.
-                // Re-calculating adjustment here is okay if it doesn't use transactions.
-                // But generally, intersection is main point.
-                
-                Level level = doc.GetElement(new ElementId(doc.ActiveView.LevelId.IntegerValue)) as Level; // Fallback? 
-                // Ideally get level from zone.MepElementLevelName or similar.
+                XYZ placementPoint = new XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ); 
                 
                 FamilyInstance instance = null;
-                if (host != null && host is Wall) // Wall hosting usually requires face or efficient standard placement
+                Autodesk.Revit.DB.Structure.StructuralType st = Autodesk.Revit.DB.Structure.StructuralType.NonStructural;
+                
+                if (host != null && (host is Wall || host is Floor || host is Ceiling))
                 {
-                    // Standard Create.NewFamilyInstance(point, symbol, host, StructuralType)
-                    instance = doc.Create.NewFamilyInstance(placementPoint, symbol, host, Autodesk.Revit.DB.Structure.StructuralType.NonStructural);
-                }
-                else if (host != null && (host is Floor || host is Ceiling))
-                {
-                     instance = doc.Create.NewFamilyInstance(placementPoint, symbol, host, Autodesk.Revit.DB.Structure.StructuralType.NonStructural);
+                     instance = doc.Create.NewFamilyInstance(placementPoint, symbol, host, st);
                 }
                 else
                 {
-                    // Unhosted / Face based?
-                     instance = doc.Create.NewFamilyInstance(placementPoint, symbol, Autodesk.Revit.DB.Structure.StructuralType.NonStructural);
+                     instance = doc.Create.NewFamilyInstance(placementPoint, symbol, st);
                 }
 
-                if (instance == null) return;
+                if (instance == null) return false;
 
                 // 4. Set Parameters (Width, Height, Depth taken from Calculated fields)
-                // 🔍 LOGGING: Log calculated values from DB before setting
-                SafeFileLogger.SafeAppendText("placement_sizing_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 📏 PLACING SLEEVE {zone.Id} (InstId: {instance.Id.IntegerValue}):\n" +
-                    $"    - CalculatedWidth: {zone.CalculatedSleeveWidth * 304.8:F1}mm ({zone.CalculatedSleeveWidth:F4}ft)\n" +
-                    $"    - CalculatedHeight: {zone.CalculatedSleeveHeight * 304.8:F1}mm ({zone.CalculatedSleeveHeight:F4}ft)\n" +
-                    $"    - CalculatedDepth: {zone.CalculatedSleeveDepth * 304.8:F1}mm ({zone.CalculatedSleeveDepth:F4}ft)\n" +
-                    $"    - CalculatedFamily: {zone.CalculatedFamilyName}\n");
-
-                SetParam(instance, "V", zone.CalculatedSleeveHeight); // Height
-                SetParam(instance, "H", zone.CalculatedSleeveWidth);  // Width
-                SetParam(instance, "D", zone.CalculatedSleeveDepth);  // Depth (Length)
-                
-                // Diameter? If circular family.
-                SetParam(instance, "Nominal Diameter", zone.CalculatedSleeveWidth); // Often Width or D
+                SetParam(instance, "V", zone.CalculatedSleeveHeight); 
+                SetParam(instance, "H", zone.CalculatedSleeveWidth);
+                SetParam(instance, "D", zone.CalculatedSleeveDepth);
+                SetParam(instance, "Nominal Diameter", zone.CalculatedSleeveWidth);
 
                 // Rotation
                 if (Math.Abs(zone.CalculatedRotation) > 0.001)
@@ -251,33 +262,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     ElementTransformUtils.RotateElement(doc, instance.Id, Line.CreateBound(placementPoint, placementPoint + XYZ.BasisZ), zone.CalculatedRotation);
                 }
 
-                // 5. Update DB Status (After commit it's real, but inside transaction we can't update DB easily? DB is outside transaction usually)
-                // We should collect IDs and update DB *after* transaction commits if bulk.
-                // But inside 'PlaceAllPending', we are managing transaction.
-                // Wait, if transaction rolls back, DB should not be updated.
-                // So updating DB *should* happen after commit.
-                // I need to return success/failure list.
-                
-                // For now, I will update DB immediately (risk of drift if commit fails).
-                // Better pattern: List of (ZoneId, InstanceId) to update after loop.
-                
+                // 5. Update DB Status
                 _repository.UpdateSleevePlacement(zone.Id, instance.Id.IntegerValue, 
                     zone.CalculatedSleeveWidth, zone.CalculatedSleeveHeight, 0,
                     placementPoint.X, placementPoint.Y, placementPoint.Z,
                     placementPoint.X, placementPoint.Y, placementPoint.Z,
                     zone.CalculatedRotation, zone.CalculatedFamilyName, 
-                    markedForClusterProcess: false); // ✅ FIX: Reset this flag for individual placement
+                    markedForClusterProcess: false); 
                     
-                // Update 'PlacementStatus' to Placed
                 _repository.UpdateCalculatedSleeveData(zone.Id, 
                     zone.CalculatedSleeveWidth, zone.CalculatedSleeveHeight, zone.CalculatedSleeveDepth,
                     zone.CalculatedRotation, zone.CalculatedFamilyName,
                     "Placed", zone.CalculationBatchId);
+                    
+                // ✅ UPDATE LOCAL OBJECT: Crucial for snapshot saving later
+                zone.SleeveInstanceId = instance.Id.IntegerValue;
+                
+                return true;
             }
             catch (Exception ex)
             {
-               // Log
                SafeFileLogger.SafeAppendText("placement_errors.log", $"Failed to place zone {zone.Id}: {ex.Message}\n");
+               return false;
             }
         }
 

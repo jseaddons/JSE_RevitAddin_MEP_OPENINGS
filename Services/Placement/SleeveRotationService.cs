@@ -123,6 +123,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             if (clashZone.StructuralElementType?.Contains("Floor") == true)
             {
                 // ✅ CRITICAL: Check if MEP element is circular (pipe or round duct)
+                // User Req: "for circular element it should not rotate always even if it is rectangula sleeve"
                 bool isPipe = clashZone.MepElementCategory?.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0;
                 bool isRoundDuct = clashZone.MepElementCategory?.IndexOf("Duct", StringComparison.OrdinalIgnoreCase) >= 0 &&
                                   (string.Equals(clashZone.DuctShape, "Round", StringComparison.OrdinalIgnoreCase) ||

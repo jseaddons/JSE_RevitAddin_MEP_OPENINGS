@@ -21,6 +21,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Entities
         public double? SleeveWidth { get; set; }
         public double? SleeveHeight { get; set; }
         public double? SleeveDiameter { get; set; }
+        public double? SleeveDepth { get; set; }
         public double? SleevePlacementX { get; set; }
         public double? SleevePlacementY { get; set; }
         public double? SleevePlacementZ { get; set; }

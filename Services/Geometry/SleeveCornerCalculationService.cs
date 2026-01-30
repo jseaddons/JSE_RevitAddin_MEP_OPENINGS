@@ -346,62 +346,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Geometry
                     (hostOrientation.Equals("X", StringComparison.OrdinalIgnoreCase) || 
                      hostOrientation.Equals("Y", StringComparison.OrdinalIgnoreCase)));
 
-                if (useWallLogic && !string.IsNullOrEmpty(hostOrientation))
-                {
-                    // ⚠️ CRITICAL: element.get_BoundingBox(null) returns SWAPPED X/Y for wall elements!
-                    // For X-wall, it shows X=200mm (thickness) and Y=1250mm (width) - WRONG!
-                    // Solution: Use LocationPoint + Width/Height parameters instead of bbox
-                    
-                    if (!(sleeve.Location is LocationPoint loc)) 
-                        return CalculateCornersFromParameters(sleeve);
-                    
-                    XYZ center = loc.Point;
-                    
-                    // Get dimensions from parameters
-                    string[] widthParams = { "Element Width", "Width", "MW", "Sleeve Width", "Opening Width" };
-                    string[] heightParams = { "Element Height", "Height", "MH", "Sleeve Height", "Opening Height" };
-                    
-                    double width = -1, height = -1;
-                    foreach (var name in widthParams) {
-                        Parameter p = sleeve.LookupParameter(name);
-                        if (p == null && sleeve.Symbol != null) p = sleeve.Symbol.LookupParameter(name);
-                        if (p != null) { width = p.AsDouble(); break; }
-                    }
-                    foreach (var name in heightParams) {
-                        Parameter p = sleeve.LookupParameter(name);
-                        if (p == null && sleeve.Symbol != null) p = sleeve.Symbol.LookupParameter(name);
-                        if (p != null) { height = p.AsDouble(); break; }
-                    }
-                    
-                    if (width <= 0 || height <= 0)
-                        return CalculateCornersFromParameters(sleeve);
-                    
-                    double halfW = width / 2.0;
-                    double halfH = height / 2.0;
-                    
-                    if (hostOrientation.Equals("X", StringComparison.OrdinalIgnoreCase))
-                    {
-                        // X-wall: Wall runs along X-axis
-                        // Width is along X, height is along Z, Y is wall position
-                        return (
-                            new XYZ(center.X - halfW, center.Y, center.Z - halfH),  // Bottom-Left
-                            new XYZ(center.X + halfW, center.Y, center.Z - halfH),  // Bottom-Right
-                            new XYZ(center.X - halfW, center.Y, center.Z + halfH),  // Top-Left
-                            new XYZ(center.X + halfW, center.Y, center.Z + halfH)   // Top-Right
-                        );
-                    }
-                    else if (hostOrientation.Equals("Y", StringComparison.OrdinalIgnoreCase))
-                    {
-                        // Y-wall: Wall runs along Y-axis
-                        // Width is along Y, height is along Z, X is wall position
-                        return (
-                            new XYZ(center.X, center.Y - halfW, center.Z - halfH),  // Bottom-Left
-                            new XYZ(center.X, center.Y + halfW, center.Z - halfH),  // Bottom-Right
-                            new XYZ(center.X, center.Y - halfW, center.Z + halfH),  // Top-Left
-                            new XYZ(center.X, center.Y + halfW, center.Z + halfH)   // Top-Right
-                        );
-                    }
-                }
+                // ✅ REFACTORED: Always use parameter-based calculation with Strategy pattern.
+                // The previous specialized wall logic (lines 350-404) was limited to straight axes.
+                // CalculateCornersFromParameters correctly handles rotation for all orientations.
+                return CalculateCornersFromParameters(sleeve, structuralType);
 
                 // ✅ FLOOR SLEEVES: Use parameter-based calculation with rotation handling
                 // AABB bbox cannot handle rotated sleeves - we need OBB from parameters + rotation

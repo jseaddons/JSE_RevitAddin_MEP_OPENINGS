@@ -1,69 +1,81 @@
 using System;
-using JSE_RevitAddin_MEP_OPENINGS.Models;
+using Autodesk.Revit.DB;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 {
     /// <summary>
-    /// Immutable data transfer object carrying pre-computed sleeve planning values
-    /// for a single clash zone. Generated prior to Revit API element placement.
+    /// DTO containing pre-calculated placement data for a sleeve.
+    /// Used to decouple the planning phase from the execution phase.
     /// </summary>
     public class SleevePlacementPlanningDto
     {
         public Guid ClashZoneId { get; }
         public string HostType { get; }
-        public double RawMepSizeFt { get; }            // Unrounded base size (feet)
-        public double InsulationThicknessFt { get; }   // Insulation thickness if present (feet)
-        public double TargetWidthFt { get; }           // Planned sleeve width (feet)
-        public double TargetHeightFt { get; }          // Planned sleeve height (feet)
-        public double ClearanceFt { get; }             // Calculated clearance (feet)
-        public double RequiredDepthFt { get; }         // Host thickness + clearance (feet)
-        public double RotationAngleDeg { get; }        // Suggested rotation angle (degrees)
-        public ClearanceRiskClassification ClearanceRisk { get; } // Risk category for visual diagnostics
-        public bool ShouldSkip { get; }                // Indicates this zone should be skipped during placement
-        public string SkipReason { get; }              // Reason for skip
-        public string LogSummary { get; }              // Pre-built log line to batch-write later
+        public double TargetWidthFt { get; }
+        public double TargetHeightFt { get; }
+        public double TargetDiameterFt { get; }
+        public double TargetDepthFt { get; } // ✅ Added to match usage in Orchestrator
+        public double RequiredDepthFt { get; } // Keeping both for compatibility if needed
+        public double RotationRadians { get; }
+        public XYZ PlacementPoint { get; }
+        public bool IsCircular { get; }
+        public string SleeveFamilyName { get; }
+        
+        // Metadata for logging and risk assessment
+        public double RawSleeveSizeFt { get; }
+        public double InsulationThicknessFt { get; }
+        public double ClearanceFt { get; }
+        public ClearanceRiskClassification Risk { get; }
+        public bool ShouldSkip { get; }
+        public string SkipReason { get; }
+        public string LogTrace { get; }
 
         public SleevePlacementPlanningDto(
             Guid clashZoneId,
             string hostType,
-            double rawMepSizeFt,
+            double rawSleeveSizeFt,
             double insulationThicknessFt,
             double targetWidthFt,
             double targetHeightFt,
             double clearanceFt,
             double requiredDepthFt,
-            double rotationAngleDeg,
-            ClearanceRiskClassification clearanceRisk,
+            double rotationRadians,
+            ClearanceRiskClassification risk,
             bool shouldSkip,
             string skipReason,
-            string logSummary)
+            string logTrace,
+            string familyName,
+            XYZ placementPoint = null,
+            bool isCircular = false)
         {
             ClashZoneId = clashZoneId;
             HostType = hostType;
-            RawMepSizeFt = rawMepSizeFt;
+            RawSleeveSizeFt = rawSleeveSizeFt;
             InsulationThicknessFt = insulationThicknessFt;
             TargetWidthFt = targetWidthFt;
             TargetHeightFt = targetHeightFt;
+            TargetDiameterFt = isCircular ? Math.Max(targetWidthFt, targetHeightFt) : 0;
             ClearanceFt = clearanceFt;
             RequiredDepthFt = requiredDepthFt;
-            RotationAngleDeg = rotationAngleDeg;
-            ClearanceRisk = clearanceRisk;
+            TargetDepthFt = requiredDepthFt; // ✅ Initialize with same value
+            RotationRadians = rotationRadians;
+            Risk = risk;
             ShouldSkip = shouldSkip;
             SkipReason = skipReason;
-            LogSummary = logSummary;
+            LogTrace = logTrace;
+            SleeveFamilyName = familyName;
+            PlacementPoint = placementPoint;
+            IsCircular = isCircular;
         }
     }
 
-    /// <summary>
-    /// Classification of clearance risk level for a planned sleeve.
-    /// Purely diagnostic – does not affect placement logic directly.
-    /// </summary>
     public enum ClearanceRiskClassification
     {
-        Unknown = 0,
-        Low = 1,
-        Medium = 2,
-        High = 3,
-        Critical = 4
+        Unknown,
+        None,
+        Low,
+        Medium,
+        High,
+        Critical
     }
 }

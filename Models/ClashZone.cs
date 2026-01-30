@@ -591,6 +591,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// Used for circular sleeves proximity calculation
         /// </summary>
         public double SleeveDiameter { get; set; } = 0.0;
+
+        /// <summary>
+        /// Depth of the placed sleeve (in Revit internal units)
+        /// Used for proximity calculation and clustering
+        /// </summary>
+        public double SleeveDepth { get; set; } = 0.0;
         
         // ✅ FIX 3: Backing fields for sleeve placement point (24 bytes total, not 48)
         private double _sleevePlacementPointX = 0.0;

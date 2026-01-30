@@ -8,7 +8,7 @@ using Autodesk.Revit.DB.Structure;
 using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
-using JSE_RevitAddin_MEP_OPENINGS.Helpers;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm;
@@ -210,21 +210,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         {
             try
             {
-                SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🚀 ORCHESTRATOR V2 START: Category={targetCategory}, Zones={clashZones.Count}, Mode={(useSingleTransaction ? "Bulk" : "Sequential")}\n");
+                SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🚀 ORCHESTRATOR V2 START: Category={targetCategory}, Zones={clashZones.Count}, Mode={(useSingleTransaction ? "Bulk" : "Sequential")}, doc.IsModifiable={doc.IsModifiable}\n");
 
                 // Phase 1: Calculation (Parallel Safe, No Revit Transaction needed usually, or ReadOnly)
                 // Ensure we are not in a transaction here if possible, or it's fine.
+                SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🟡 BEFORE CalculateAndSave...\n");
                 string batchId = _batchCalculationService.CalculateAndSave(clashZones, targetCategory, comboId, filterId, doc);
+                SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🟢 AFTER CalculateAndSave, batchId={batchId}\n");
 
                 // Phase 2: Placement (Sequential / Bulk Transaction)
                 // This MUST be run on the main thread (which we are on).
-                (int placedCount, int failedCount) result = _batchPlacementService.PlaceFromDatabase(doc, batchId, useSingleTransaction:true);
+                SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🟡 BEFORE PlaceFromDatabase, doc.IsModifiable={doc.IsModifiable}...\n");
+                var result = _batchPlacementService.PlaceFromDatabase(doc, batchId, useSingleTransaction);
+                SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🟢 AFTER PlaceFromDatabase, placed={result.placed}, failed={result.failed}\n");
 
                 return result;
             }
             catch (Exception ex)
             {
                 SafeFileLogger.SafeAppendText("batch_v2_errors.log", $"[{DateTime.Now:HH:mm:ss}] ❌ ORCHESTRATOR ERROR: {ex.Message}\n{ex.StackTrace}\n");
+                SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ❌ EXCEPTION in ClusterSleevesV2: {ex.Message}\n");
                 return (0, 0);
             }
         }
@@ -255,13 +260,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
             // ✅ LOGGING: Log Build Timestamp to verify correct DLL is running (PATH 2/3)
             SafeFileLogger.SafeAppendText("cluster_debug.log",
-                $"[{DateTime.Now:HH:mm:ss}] 🚀 STARTING CLUSTERING (PATH 2/3) - Build: {Helpers.VersionInfo.GetBuildTimestamp()} - Version: {Helpers.VersionInfo.VersionTag}\n");
+                $"[{DateTime.Now:HH:mm:ss}] 🚀 STARTING CLUSTERING (PATH 2/3) - Build: {Services.Helpers.VersionInfo.GetBuildTimestamp()} - Version: {Services.Helpers.VersionInfo.VersionTag}\n");
 
             // 🔥 CRITICAL: Direct System.IO logging to ensure we always see entry (bypasses SafeFileLogger completely)
             // This MUST work in both R2023 and R2024
             try
             {
-                var versionTag = Helpers.VersionInfo.VersionTag; // "R2023" or "R2024"
+                var versionTag = Services.Helpers.VersionInfo.VersionTag; // "R2023" or "R2024"
                 var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                 var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
 
@@ -4121,27 +4126,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         {
             try
             {
-                // ✅ Use SleeveBoundingBox (same as first run)
-                if (cz.SleeveBoundingBoxMinX == 0 && cz.SleeveBoundingBoxMaxX == 0 &&
-                    cz.SleeveBoundingBoxMinY == 0 && cz.SleeveBoundingBoxMaxY == 0 &&
-                    cz.SleeveBoundingBoxMinZ == 0 && cz.SleeveBoundingBoxMaxZ == 0)
+                // ✅ Check if we have primary bounding box data (legacy/Revit source)
+                bool hasPrimaryBBox = !(cz.SleeveBoundingBoxMinX == 0 && cz.SleeveBoundingBoxMaxX == 0 &&
+                                       cz.SleeveBoundingBoxMinY == 0 && cz.SleeveBoundingBoxMaxY == 0 &&
+                                       cz.SleeveBoundingBoxMinZ == 0 && cz.SleeveBoundingBoxMaxZ == 0);
+
+                if (hasPrimaryBBox)
                 {
-                    return null;
+                    // ✅ DIAGNOSTIC: Log for dampers/ducts
+                    if (cz.MepElementCategory != null && (cz.MepElementCategory.IndexOf("Accessories", StringComparison.OrdinalIgnoreCase) >= 0 || cz.MepElementCategory.IndexOf("Duct", StringComparison.OrdinalIgnoreCase) >= 0))
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}] 📦 [GetBBox] Zone={cz.ClashZoneId}, SleeveId={cz.SleeveInstanceId}: Using primary Sidebar BBox=({cz.SleeveBoundingBoxMinX:F3},{cz.SleeveBoundingBoxMinY:F3},{cz.SleeveBoundingBoxMinZ:F3}) to ({cz.SleeveBoundingBoxMaxX:F3},{cz.SleeveBoundingBoxMaxY:F3},{cz.SleeveBoundingBoxMaxZ:F3})\n");
+                    }
+                    
+                    return new BoundingBoxXYZ
+                    {
+                        Min = new XYZ(cz.SleeveBoundingBoxMinX, cz.SleeveBoundingBoxMinY, cz.SleeveBoundingBoxMinZ),
+                        Max = new XYZ(cz.SleeveBoundingBoxMaxX, cz.SleeveBoundingBoxMaxY, cz.SleeveBoundingBoxMaxZ),
+                        Enabled = true
+                    };
+                }
+
+                // ✅ FALLBACK: Use Sleeve Corners if primary BBox is empty (common for Voids/Batch-placed elements)
+                if (cz.SleeveCorner1X != null && cz.SleeveCorner1Y != null && cz.SleeveCorner1Z != null)
+                {
+                    var helper = new JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity.SleeveCornerProximityHelper();
+                    if (helper.HasValidSleeveCorners(cz))
+                    {
+                        var cornerBbox = helper.GetBoundingBoxFromCorners(cz);
+                        
+                        if (cz.MepElementCategory != null && (cz.MepElementCategory.IndexOf("Accessories", StringComparison.OrdinalIgnoreCase) >= 0 || cz.MepElementCategory.IndexOf("Duct", StringComparison.OrdinalIgnoreCase) >= 0 || cz.MepElementCategory.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0))
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] 📐 [GetBBox] Zone={cz.ClashZoneId}: DERIVED BBox from corners=({cornerBbox.minX:F3},{cornerBbox.minY:F3},{cornerBbox.minZ:F3}) to ({cornerBbox.maxX:F3},{cornerBbox.maxY:F3},{cornerBbox.maxZ:F3})\n");
+                        }
+
+                        return new BoundingBoxXYZ
+                        {
+                            Min = new XYZ(cornerBbox.minX, cornerBbox.minY, cornerBbox.minZ),
+                            Max = new XYZ(cornerBbox.maxX, cornerBbox.maxY, cornerBbox.maxZ),
+                            Enabled = true
+                        };
+                    }
                 }
                 
-                // ✅ DIAGNOSTIC: Log for dampers
-                if (cz.MepElementCategory != null && (cz.MepElementCategory.IndexOf("Accessories", StringComparison.OrdinalIgnoreCase) >= 0 || cz.MepElementCategory.IndexOf("Duct", StringComparison.OrdinalIgnoreCase) >= 0))
-                {
-                    SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss}] 📦 [GetBBox] Zone={cz.ClashZoneId}, SleeveId={cz.SleeveInstanceId}: SleeveBBox=({cz.SleeveBoundingBoxMinX:F6},{cz.SleeveBoundingBoxMinY:F6},{cz.SleeveBoundingBoxMinZ:F6}) to ({cz.SleeveBoundingBoxMaxX:F6},{cz.SleeveBoundingBoxMaxY:F6},{cz.SleeveBoundingBoxMaxZ:F6})\n");
-                }
-                
-                return new BoundingBoxXYZ
-                {
-                    Min = new XYZ(cz.SleeveBoundingBoxMinX, cz.SleeveBoundingBoxMinY, cz.SleeveBoundingBoxMinZ),
-                    Max = new XYZ(cz.SleeveBoundingBoxMaxX, cz.SleeveBoundingBoxMaxY, cz.SleeveBoundingBoxMaxZ),
-                    Enabled = true
-                };
+                return null;
             }
             catch
             {

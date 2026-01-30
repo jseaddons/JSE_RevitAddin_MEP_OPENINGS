@@ -276,5 +276,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Retrieves all clash zones that have been placed (SleeveInstanceId > 0).
         /// </summary>
         List<ClashZone> GetPlacedClashZones();
+        
+        /// <summary>
+        /// ✅ SELF-HEALING: Try to get SleeveInstanceId from SleeveSnapshots table if missing in ClashZones.
+        /// Used for recovering lost IDs during cleanup/swap operations.
+        /// </summary>
+        int TryGetSleeveInstanceIdFromSnapshot(System.Guid clashZoneGuid);
+        
+        /// <summary>
+        /// Save snapshots for placed sleeves to the SleeveSnapshots table.
+        /// Critical for Self-Healing Persistence.
+        /// </summary>
+        void SaveSleeveSnapshotsForPlacedSleeves(int filterId, List<ClashZone> placedZones);
     }
 }

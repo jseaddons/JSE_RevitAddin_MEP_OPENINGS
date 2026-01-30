@@ -333,8 +333,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // If clustering runs first, there will be no sleeves to cluster and it will fail
                 // NEVER PUT ExecuteClusteringForCategory BEFORE ExecuteUniversalSleevePlacement
 
-                // ✅ PERFORMANCE: Track individual sleeve placement
-                using (var individualTracker = performanceMonitor.TrackOperation("Individual Sleeve Placement"))
+                // ✅ PERFORMANCE: Track individual sleeve placement (name reflects bulk vs sequential method)
+                string placementMethod = OptimizationFlags.UseBulkIndividualSleevePlacement ? "Bulk Individual Sleeve Placement" : "Individual Sleeve Placement (Sequential)";
+                using (var individualTracker = performanceMonitor.TrackOperation(placementMethod))
                 {
                     var individualResult = ExecuteUniversalSleevePlacement(filter, showProgress);
                     totalIndividualSleeves = individualResult.placedCount;
@@ -346,7 +347,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (!DeploymentConfiguration.DeploymentMode && totalIndividualSleeves > 0)
                     {
                         var avgTimePerSleeve = 288705.0 / totalIndividualSleeves; // Approximate from log
-                        DebugLogger.Info($"[PERFORMANCE] Individual Sleeve Placement: {totalIndividualSleeves} sleeves in ~{288705 / 1000.0:F1}s = ~{avgTimePerSleeve / 1000.0:F2}s per sleeve (target: 0.02s)");
+                        string methodLabel = OptimizationFlags.UseBulkIndividualSleevePlacement ? "Bulk Individual" : "Individual Sequential";
+                        DebugLogger.Info($"[PERFORMANCE] {methodLabel} Sleeve Placement: {totalIndividualSleeves} sleeves in ~{288705 / 1000.0:F1}s = ~{avgTimePerSleeve / 1000.0:F2}s per sleeve (target: 0.02s)");
                         if (avgTimePerSleeve > 1000) // More than 1 second per sleeve
                         {
                             DebugLogger.Warning($"[PERFORMANCE] ⚠️ VERY SLOW: {avgTimePerSleeve / 1000.0:F2}s per sleeve is {avgTimePerSleeve / 20.0:F0}x slower than target (0.02s)");
@@ -512,31 +514,53 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-
-                // ✅ CRITICAL: Get category from filter
-                string categoryName = filter.Category switch
+                // ✅ BULK PLACEMENT FIX: Load ALL categories for this filter with ReadyForPlacement=1
+                // This enables true bulk placement - all categories placed together in one API call
+                var allZones = new List<ClashZone>();
+                
+                // Get all categories that have ReadyForPlacement=1 for this filter
+                var categoriesToLoad = GetCategoriesWithReadyForPlacement(filter);
+                
+                if (categoriesToLoad.Count == 0)
                 {
-                    Models.MepCategory.Ducts => "Ducts",
-                    Models.MepCategory.DuctAccessories => "Duct Accessories",
-                    Models.MepCategory.Pipes => "Pipes",
-                    Models.MepCategory.CableTrays => "Cable Trays",
-                    _ => "Ducts"
-                };
+                    // Fallback: Use the filter's single Category property (backward compatibility)
+                    string categoryName = filter.Category switch
+                    {
+                        Models.MepCategory.Ducts => "Ducts",
+                        Models.MepCategory.DuctAccessories => "Duct Accessories",
+                        Models.MepCategory.Pipes => "Pipes",
+                        Models.MepCategory.CableTrays => "Cable Trays",
+                        _ => "Ducts"
+                    };
+                    categoriesToLoad.Add(categoryName);
+                }
 
-                // ✅ PHASE SQLITE-2: Load from SQLite FIRST (primary source)
-                var dbZones = LoadClashZonesFromDatabase(filter, categoryName);
-                if (dbZones != null && dbZones.Count > 0)
+                // Load zones from ALL categories
+                foreach (var categoryName in categoriesToLoad)
+                {
+                    var dbZones = LoadClashZonesFromDatabase(filter, categoryName, readyForPlacementOnly: true);
+                    if (dbZones != null && dbZones.Count > 0)
+                    {
+                        allZones.AddRange(dbZones);
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Loaded {dbZones.Count} zones from category '{categoryName}' for filter '{filter.Name}'\n");
+                        }
+                    }
+                }
+
+                if (allZones.Count > 0)
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Loaded {dbZones.Count} clash zones from SQLite for filter '{filter.Name}' ({categoryName})\n");
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ TOTAL: Loaded {allZones.Count} clash zones from {categoriesToLoad.Count} category(ies) for filter '{filter.Name}'\n");
                     }
-                    return dbZones;
+                    return allZones;
                 }
 
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    DebugLogger.Warning($"[OpeningCommandOrchestrator] No clash zones found in database for filter '{filter.Name}' ({categoryName})");
+                    DebugLogger.Warning($"[OpeningCommandOrchestrator] No clash zones found in database for filter '{filter.Name}' (categories: {string.Join(", ", categoriesToLoad)})");
                 }
                 
                 return new List<ClashZone>();
@@ -551,7 +575,64 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
-        private List<ClashZone> LoadClashZonesFromDatabase(OpeningFilter filter, string categoryName)
+        /// <summary>
+        /// ✅ BULK PLACEMENT FIX: Get all categories that have ReadyForPlacement=1 for a filter
+        /// </summary>
+        private List<string> GetCategoriesWithReadyForPlacement(OpeningFilter filter)
+        {
+            var categories = new List<string>();
+            
+            try
+            {
+                using (var context = new SleeveDbContext(_document, msg =>
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[OpeningCommandOrchestrator][SQLite] {msg}");
+                }))
+                {
+                    var repository = new ClashZoneRepository(context);
+                    
+                    // Query distinct categories that have ReadyForPlacement=1 for this filter
+                    using (var cmd = context.Connection.CreateCommand())
+                    {
+                        cmd.CommandText = @"
+                            SELECT DISTINCT f.Category
+                            FROM Filters f
+                            INNER JOIN FileCombos fc ON f.FilterId = fc.FilterId
+                            INNER JOIN ClashZones cz ON fc.ComboId = cz.ComboId
+                            WHERE f.FilterName = @FilterName
+                              AND cz.ReadyForPlacementFlag = 1
+                              AND cz.IsCombinedResolved = 0";
+                        
+                        cmd.Parameters.AddWithValue("@FilterName", FilterNameHelper.NormalizeBaseName(filter.Name, filter.Name, ""));
+                        
+                        using (var reader = cmd.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                if (!reader.IsDBNull(0))
+                                {
+                                    var category = reader.GetString(0);
+                                    if (!string.IsNullOrWhiteSpace(category))
+                                        categories.Add(category);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Warning($"[OpeningCommandOrchestrator] Error getting categories with ReadyForPlacement: {ex.Message}");
+                }
+            }
+            
+            return categories;
+        }
+
+        private List<ClashZone> LoadClashZonesFromDatabase(OpeningFilter filter, string categoryName, bool readyForPlacementOnly = false)
         {
             if (filter == null || string.IsNullOrWhiteSpace(categoryName))
                 return new List<ClashZone>();
@@ -572,8 +653,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     List<ClashZone> zones = null;
                     using (var loadTracker = _performanceMonitor?.TrackOperation("Step 1: LOADING FROM DB"))
                     {
-                        // Query ALL zones (readyForPlacementOnly=false)
-                        zones = repository.GetClashZonesByFilter(filter.Name, categoryName, unresolvedOnly: false, readyForPlacementOnly: false) ?? new List<ClashZone>();
+                        // ✅ BULK PLACEMENT FIX: Use readyForPlacementOnly parameter
+                        zones = repository.GetClashZonesByFilter(filter.Name, categoryName, unresolvedOnly: false, readyForPlacementOnly: readyForPlacementOnly) ?? new List<ClashZone>();
 
                         // ✅ SIMPLIFIED ELIGIBILITY: Zone is eligible if:
                         // 1. IsCurrentClash = 1 (session flag set during refresh), OR
@@ -723,9 +804,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] LOAD_XML: zones={clashZones.Count}\n");
                         }
                     } catch { }
-
+                    
+                    // ✅ FLAG-MANAGER INTEGRATION: Create flag manager for this run
+                    var flagManager = JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement.FlagManagerFactory.CreateAdapter(_document);
+                    
                     if (clashZones.Count > 0)
                     {
+                        // ✅ SYNC FLAGS: Ensure in-memory zones reflect database state before placement
+                        try
+                        {
+                            string categoryStringSync = filter.Category.ToString(); // Or normalize if needed
+                            flagManager.SyncFlagsFromGlobal(clashZones, categoryStringSync);
+                        }
+                        catch (Exception syncEx)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Warning($"[OpeningCommandOrchestrator] Error syncing flags from DB: {syncEx.Message}");
+                        }
+
                         // ✅ CRITICAL FIX: Convert enum to proper string format for strategy creation
                         // Declare these variables FIRST before they are used in PATH 3 Invalidated block
                         string categoryString = filter.Category switch
@@ -780,6 +876,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                 _document.Delete(id);
                                                 deletedCount++;
                                             }
+                                            // ✅ CRITICAL: Reset the ID on the object so the placer knows it's a new placement
+                                            zone.SleeveInstanceId = 0;
+                                            zone.IsResolvedFlag = false;
                                         }
                                         catch { /* Ignore */ }
                                     }
@@ -795,48 +894,230 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         if (zonesToPlace.Count > 0)
                         {
-                            // ✅ PREPARE STRATEGY & CONDITIONS: Needed for Standard Placement path
-                            var projectFiltersDir = ProjectPathService.GetFiltersDirectory(_document);
-                            var conditionsService = new ConditionsService(_document, projectFiltersDir, msg => { if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info(msg); });
-                            var conditionsKey = $"{combinedFilterName}_{categoryString}";
-                            var conditions = conditionsService.LoadConditions(conditionsKey) ?? new OpeningConditions { FilterName = combinedFilterName, Category = categoryString };
-
-                            ISleevePlacementStrategy strategy = categoryString.ToLower() switch {
-                                "pipes" => new PipePlacementStrategy(),
-                                "cable trays" => new CableTrayPlacementStrategy(),
-                                "duct accessories" or "ductaccessories" => new DamperPlacementStrategy(_document),
-                                "ducts" => new DuctPlacementStrategy(),
-                                _ => new DuctPlacementStrategy()
-                            };
-
                             if (OptimizationFlags.UseBulkIndividualSleevePlacement)
                             {
                                 if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🚀 [BULK-PLACEMENT] Routing to Consolidated Bulk Path\n");
+                                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🚀 [BULK-PLACEMENT] Routing to Consolidated Bulk Path (ALL categories together)\n");
 
-                                var bulkService = new BulkPlacementService(_document, msg => DebugLogger.Info(msg));
+                                // ✅ BULK PLACEMENT FIX: Group zones by category, plan each category separately, then combine
+                                // This ensures each category gets the correct conditions/strategy, but all are placed together
+                                var projectFiltersDir = ProjectPathService.GetFiltersDirectory(_document);
+                                var conditionsService = new ConditionsService(_document, projectFiltersDir, msg => { if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info(msg); });
+                                
+                                var allBulkTaskItems = new List<(ClashZone Zone, SleevePlacementPlanningDto Plan)>();
+                                
+                                // Group zones by their MEP category
+                                var zonesByCategory = zonesToPlace
+                                    .GroupBy(z => z.MepElementCategory ?? "Ducts")
+                                    .ToList();
+                                
+                                foreach (var categoryGroup in zonesByCategory)
+                                {
+                                    var category = categoryGroup.Key;
+                                    var categoryZones = categoryGroup.ToList();
+                                    
+                                    // Get category string for conditions lookup (use different variable names to avoid conflicts)
+                                    string catString = category switch
+                                    {
+                                        "Ducts" => "Ducts",
+                                        "Duct Accessories" => "Duct Accessories",
+                                        "Pipes" => "Pipes",
+                                        "Cable Trays" or "CableTrays" => "Cable Trays",
+                                        _ => "Ducts"
+                                    };
+                                    
+                                    string catName = category switch
+                                    {
+                                        "Ducts" => "ducts",
+                                        "Duct Accessories" => "duct_accessories",
+                                        "Pipes" => "pipes",
+                                        "Cable Trays" or "CableTrays" => "cable_trays",
+                                        _ => "ducts"
+                                    };
+                                    string filterNameForCategory = $"{filter.Name}_{catName}.xml";
+                                    
+                                    // Load conditions for this category
+                                    var conditionsKey = $"{filterNameForCategory}_{catString}";
+                                    var categoryConditions = conditionsService.LoadConditions(conditionsKey) ?? new OpeningConditions { FilterName = filterNameForCategory, Category = catString };
+
+                                    // ✅ NEW: PRE-CALCULATE PLACEMENT DATA (Sizes, Family Names, Skip Rules)
+                                    // This ensures BulkPlacementService has all necessary metadata and follows the SAME rules as Standard path
+                                    var planner = new ParallelSleevePlacementPlanner(categoryConditions);
+                                    var planningResult = planner.Plan(categoryZones);
+                                
+                                    // Map planned data back to Task Items (Zone + Plan) for THIS category
+                                    var plannedMap = planningResult.Items.ToDictionary(i => i.ClashZoneId);
+                                    
+                                    foreach (var zone in categoryZones)
+                                    {
+                                        if (plannedMap.TryGetValue(zone.Id, out var plan))
+                                        {
+                                            if (plan.ShouldSkip) continue;
+                                            
+                                            // ✅ CRITICAL FIX: Map calculated values back to ClashZone object for persistence
+                                            // The Planner calculates these but doesn't mutate the zone. We must apply them 
+                                            // so they are saved to the DB later in Step 6 (BatchUpdateSleevePlacementData).
+                                            
+                                            // 1. Dimensions
+                                            zone.CalculatedSleeveWidth = plan.TargetWidthFt;
+                                            zone.CalculatedSleeveHeight = plan.TargetHeightFt;
+                                            zone.CalculatedSleeveDepth = plan.TargetDepthFt > 0 ? plan.TargetDepthFt : zone.StructuralElementThickness; // Fallback if 0
+                                            
+                                            // ✅ USER FIX: Also map to "Actual" DB columns so clustering works correctly
+                                            // Bulk placement forces these dimensions, so we can trust them as "Actual"
+                                            zone.SleeveWidth = plan.TargetWidthFt;
+                                            zone.SleeveHeight = plan.TargetHeightFt;
+                                            zone.SleeveDiameter = plan.TargetDiameterFt;
+                                            
+                                            // 2. Family Name
+                                            zone.SleeveFamilyName = plan.SleeveFamilyName;
+                                            
+                                            // 3. Placement Point & Rotation
+                                            if (plan.PlacementPoint != null)
+                                            {
+                                                zone.SleevePlacementPointX = plan.PlacementPoint.X;
+                                                zone.SleevePlacementPointY = plan.PlacementPoint.Y;
+                                                zone.SleevePlacementPointZ = plan.PlacementPoint.Z;
+                                                
+                                                // Ensure Calculated properties are also set for the Pre-Save
+                                                zone.CalculatedPlacementX = plan.PlacementPoint.X;
+                                                zone.CalculatedPlacementY = plan.PlacementPoint.Y;
+                                                zone.CalculatedPlacementZ = plan.PlacementPoint.Z;
+                                                zone.CalculatedFamilyName = plan.SleeveFamilyName;
+                                                zone.CalculatedRotation = plan.RotationRadians;
+                                            }
+                                            zone.MepElementRotationAngle = plan.RotationRadians;
+
+                                            // ✅ BULK PLACEMENT FIX: Add to combined list (all categories together)
+                                            allBulkTaskItems.Add((zone, plan));
+                                        }
+                                    }
+                                    
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[BULK-PLANNING] Category '{category}': Planned {plannedMap.Count} items (Total so far: {allBulkTaskItems.Count} across all categories)");
+                                }
+                                 
+                                // ✅ SAFETY STEP: PRE-SAVE CALCULATED DATA TO DATABASE (ALL categories together)
+                                // This ensures that if Revit crashes during the heavy bulk placement (1000+ items),
+                                // the dimensions and positions are safely stored in DB and not lost in memory.
+                                try
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info($"[BULK-SAFETY] Pre-saving {allBulkTaskItems.Count} items (ALL categories) to DB...");
+                                    var zonesToSave = allBulkTaskItems.Select(x => x.Zone).ToList();
+                                    
+                                    using (var dbContext = new JSE_RevitAddin_MEP_OPENINGS.Data.SleeveDbContext(_document))
+                                    {
+                                        var repo = new JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClashZoneRepository(dbContext);
+                                        repo.BatchUpdateCalculatedData(zonesToSave);
+                                        if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info($"[BULK-SAFETY] ✅ Pre-save complete.");
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Error($"[BULK-SAFETY] ❌ Pre-save failed: {ex.Message}");
+                                    // Non-fatal, continue with placement
+                                }
+
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[BULK-PLANNING] ✅ Planning complete for ALL categories. Total items to place: {allBulkTaskItems.Count}");
+
+                                // ✅ BULK PLACEMENT FIX: ONE bulk placement call for ALL categories together
+                                var bulkService = new BulkPlacementService(
+                                    _document, 
+                                    msg => 
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info(msg);
+                                        SafeFileLogger.SafeAppendTextAlways("bulk_placement_trace.log", $"{DateTime.Now:HH:mm:ss} {msg}\n");
+                                    },
+                                    _performanceMonitor);
                                 BulkPlacementResult bulkResult = null;
 
-                                using (var placeTracker = _performanceMonitor?.TrackOperation("Step 4: BULK PLACEMENT"))
+                                using (var placeTracker = _performanceMonitor?.TrackOperation("Step 4: BULK PLACEMENT (ALL Categories)"))
                                 {
-                                    using (var t = new Transaction(_document, $"Bulk Place {categoryString} Sleeves"))
+                                    using (var t = new Transaction(_document, $"Bulk Place All Categories - {filter.Name}"))
                                     {
                                         t.Start();
-                                        bulkResult = bulkService.ExecuteBulkPlacement(_document, zonesToPlace); // Use zonesToPlace
+                                         
+                                        // ✅ BULK PLACEMENT FIX: Pass ALL categories together to BulkPlacementService
+                                        // This places all sleeves from all categories in ONE API call (true bulk placement)
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            SafeFileLogger.SafeAppendText("placement_debug.log", 
+                                                $"[{DateTime.Now:HH:mm:ss}] [BULK-PLACEMENT] 🚀 Calling ExecuteBulkPlacement with {allBulkTaskItems.Count} items from {zonesByCategory.Count} categories (ALL at once)\n");
+                                        }
+                                        bulkResult = bulkService.ExecuteBulkPlacement(_document, allBulkTaskItems);
                                         
+                                        if (!DeploymentConfiguration.DeploymentMode && bulkResult != null)
+                                        {
+                                            SafeFileLogger.SafeAppendText("placement_debug.log", 
+                                                $"[{DateTime.Now:HH:mm:ss}] [BULK-PLACEMENT] ✅ ExecuteBulkPlacement completed: Placed={bulkResult.PlacedCount}, Failed={bulkResult.FailedCount}, Success={bulkResult.OverallSuccess}\n");
+                                        } 
+                                         
                                         if (bulkResult.OverallSuccess && bulkResult.PlacedCount > 0)
                                         {
-                                            var paramService = new SleeveParameterService(_document);
-                                            foreach (var item in bulkResult.PlacedItems)
-                                            {
-                                                var instance = _document.GetElement(item.ElementId) as FamilyInstance;
-                                                if (instance != null)
-                                                    paramService.SetSleeveParameters(instance, item.Zone.SleeveWidth, item.Zone.SleeveHeight, item.Zone.SleeveDiameter, item.Zone.SleeveDiameter > 0, item.Zone);
-                                            }
-                                            
                                             _document.Regenerate();
-                                            paramService.FlushDeferredParameters(); 
+                                             
+                                            var paramService = new SleeveParameterService(_document);
+                                            paramService.FlushDeferredParameters(clearList: true, context: "BulkPlacementEnd"); 
+
+                                            _document.Regenerate(); // Params are now applied, dimensions extracted below are accurate.
+
+                                            // ✅ CRITICAL REFACTOR: Extract ACTUAL geometry (Dims + Point) from placed elements
+                                            // This ensures Clustering uses the *Real* dimensions/location, not just Planned ones.
+                                            // Satisfies user request: "SLEEVE DIMENSION AND PALCMENT POINT ALSO NEED TO BE EXTRACTED ... SLEEVECORNERS"
+                                            bulkService.UpdateZonesFromElements(_document, bulkResult.PlacedItems);
+                                             
                                             t.Commit();
+                                            
+                                            // ✅ CRITICAL PERSISTENCE: Now save the fully populated Zone Data to DB
+                                            try
+                                            {
+                                                var placedZones = bulkResult.PlacedItems.Select(p => p.Zone).ToList();
+                                                
+                                                using (var dbContext = new JSE_RevitAddin_MEP_OPENINGS.Data.SleeveDbContext(_document))
+                                                {
+                                                    var repo = new JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClashZoneRepository(dbContext);
+                                                    
+                                                    // 1. Update Zone Data (ID, Width, Height, Diameter, PlacementPoint) - NOW ACCURATE
+                                                    repo.BatchUpdateSleevePlacementData(placedZones);
+                                                    
+                                                    // ✅ FIX: Corner extraction moved to Step 5 (line 1543) to avoid duplicate calls
+                                                    // Corner extraction will happen once in Step 5 after all placement is complete
+                                                    
+                                                    // Lookup Filter ID (robust category mapping)
+                                                    int filterId = -1;
+                                                    try 
+                                                    {
+                                                        string categoryForLookup = filter.Category switch
+                                                        {
+                                                            Models.MepCategory.Ducts => "Ducts",
+                                                            Models.MepCategory.DuctAccessories => "Duct Accessories",
+                                                            Models.MepCategory.Pipes => "Pipes",
+                                                            Models.MepCategory.CableTrays => "Cable Trays",
+                                                            _ => filter.Category.ToString()
+                                                        };
+                                                        
+                                                        var filterLookupService = new JSE_RevitAddin_MEP_OPENINGS.Services.Filters.FilterLookupService(dbContext);
+                                                        filterId = filterLookupService.GetFilterId(filter.Name, categoryForLookup);
+                                                    }
+                                                    catch { /* Ignore lookup errors, default to -1 */ }
+
+                                                    // ✅ CRITICAL FIX: SAVE SNAPSHOTS FOR PERSISTENCE (Fast Mode Parity)
+                                                    // Without this, "Fast Mode" fails to populate the SleeveSnapshots table,
+                                                    // preventing Self-Healing Retrieval during clustering.
+                                                    if (placedZones.Any())
+                                                    {
+                                                        if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info($"[BULK-PERSIST] 📸 Saving snapshots for {placedZones.Count} zones (FilterId={filterId})...");
+                                                        repo.SaveSleeveSnapshotsForPlacedSleeves(filterId > 0 ? filterId : -1, placedZones);
+                                                    }
+
+                                                    if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info($"[BULK-PERSIST] ✅ Saved {placedZones.Count} zones + corners + snapshots to DB.");
+                                                }
+                                            }
+                                            catch (Exception ex)
+                                            {
+                                                if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Error($"[BULK-PERSIST] ❌ Failed to save IDs: {ex.Message}");
+                                            }
                                             
                                             placedZonesForExtraction = bulkResult.PlacedItems
                                                 .Select(item => (ZoneGuid: item.Zone.Id, ElementId: item.ElementId.IntegerValue))
@@ -855,31 +1136,122 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                             else
                             {
+                                // ✅ STANDARD PLACEMENT PATH: Process each category separately (sequential placement)
                                 if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🚀 [STANDARD-PLACEMENT] Routing to Consolidated Standard Path\n");
                                 
-                                using (var context = new JSE_RevitAddin_MEP_OPENINGS.Data.SleeveDbContext(_document))
+                                // Group zones by category for standard placement (each category needs its own conditions/strategy)
+                                var zonesByCategoryStandard = zonesToPlace
+                                    .GroupBy(z => z.MepElementCategory ?? "Ducts")
+                                    .ToList();
+                                
+                                foreach (var categoryGroup in zonesByCategoryStandard)
                                 {
-                                    var repository = new JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClashZoneRepository(context);
+                                    var cat = categoryGroup.Key;
+                                    var categoryZonesForStandard = categoryGroup.ToList();
                                     
-                                    var placerService = new NewSleevePlacerService(
-                                        _document,
-                                        conditions,
-                                        strategy,
-                                        _uiClearances ?? new Dictionary<string, double>(),
-                                        repository, // ISleeveRepository (Use SQLite repo, not XML repo)
-                                        null, // IZoneFilterService (not needed here)
-                                        new Services.FamilyManager(_document), // IFamilyManager
-                                        null, // flagManager
-                                        isReplayPath: false,
-                                        filter.Name);
+                                    // Get category info for this category group
+                                    string catStr = cat switch
+                                    {
+                                        "Ducts" => "Ducts",
+                                        "Duct Accessories" => "Duct Accessories",
+                                        "Pipes" => "Pipes",
+                                        "Cable Trays" or "CableTrays" => "Cable Trays",
+                                        _ => "Ducts"
+                                    };
                                     
-                                    var placementOutcome = placerService.PlaceAllSleevesInTransaction(zonesToPlace); // Use zonesToPlace
+                                    string catNm = cat switch
+                                    {
+                                        "Ducts" => "ducts",
+                                        "Duct Accessories" => "duct_accessories",
+                                        "Pipes" => "pipes",
+                                        "Cable Trays" or "CableTrays" => "cable_trays",
+                                        _ => "ducts"
+                                    };
+                                    string filterNameForCat = $"{filter.Name}_{catNm}.xml";
                                     
-                                    placedCount = placementOutcome.placed;
-                                    skippedCount = placementOutcome.skipped;
-                                    errorCount = placementOutcome.errors;
-                                    placedZonesForExtraction = placementOutcome.placedItems;
+                                    // Load conditions and strategy for this category
+                                    var projectFiltersDir = ProjectPathService.GetFiltersDirectory(_document);
+                                    var conditionsService = new ConditionsService(_document, projectFiltersDir, msg => { if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info(msg); });
+                                    var conditionsKey = $"{filterNameForCat}_{catStr}";
+                                    var categoryConditions = conditionsService.LoadConditions(conditionsKey) ?? new OpeningConditions { FilterName = filterNameForCat, Category = catStr };
+
+                                    ISleevePlacementStrategy categoryStrategy = catStr.ToLower() switch {
+                                        "pipes" => new PipePlacementStrategy(),
+                                        "cable trays" => new CableTrayPlacementStrategy(),
+                                        "duct accessories" or "ductaccessories" => new DamperPlacementStrategy(_document),
+                                        "ducts" => new DuctPlacementStrategy(),
+                                        _ => new DuctPlacementStrategy()
+                                    };
+                                
+                                    using (var context = new JSE_RevitAddin_MEP_OPENINGS.Data.SleeveDbContext(_document))
+                                    {
+                                        var repository = new JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClashZoneRepository(context);
+                                        
+                                        var placerService = new NewSleevePlacerService(
+                                            _document,
+                                            categoryConditions,
+                                            categoryStrategy,
+                                            _uiClearances ?? new Dictionary<string, double>(),
+                                            repository, // ISleeveRepository (Use SQLite repo, not XML repo)
+                                            null, // IZoneFilterService (not needed here)
+                                            new Services.FamilyManager(_document), // IFamilyManager
+                                            flagManager, // ✅ Use real flagManager instead of null
+                                            isReplayPath: false,
+                                            filter.Name);
+                                        
+                                        var placementOutcome = placerService.PlaceAllSleevesInTransaction(categoryZonesForStandard); // Use category-specific zones
+                                        
+                                        placedCount += placementOutcome.placed;
+                                        skippedCount += placementOutcome.skipped;
+                                        errorCount += placementOutcome.errors;
+                                        placedZonesForExtraction.AddRange(placementOutcome.placedItems);
+                                    }
+                                }
+
+                                // ✅ FIX #1: ADD SNAPSHOT SAVING TO STANDARD PLACEMENT PATH (Issue #1 Fix)
+                                // Without this, snapshots are only saved in bulk mode, not in standard mode
+                                if (placedCount > 0)
+                                {
+                                    try
+                                    {
+                                        // Extract zones that were actually placed (have SleeveInstanceId)
+                                        var placedZonesStandard = zonesToPlace.Where(z => z.SleeveInstanceId > 0).ToList();
+                                        
+                                        if (placedZonesStandard.Any())
+                                        {
+                                            if (!DeploymentConfiguration.DeploymentMode) 
+                                                DebugLogger.Info($"[STANDARD-PERSIST] 📸 Saving snapshots for {placedZonesStandard.Count} standard-placed sleeves...");
+                                            
+                                            using (var dbContext = new SleeveDbContext(_document))
+                                            {
+                                                var repo = new ClashZoneRepository(dbContext);
+                                                
+                                                // Get FilterId for standard path
+                                                string categoryForSnapshot = filter.Category switch
+                                                {
+                                                    Models.MepCategory.Ducts => "Ducts",
+                                                    Models.MepCategory.DuctAccessories => "Duct Accessories",
+                                                    Models.MepCategory.Pipes => "Pipes",
+                                                    Models.MepCategory.CableTrays => "Cable Trays",
+                                                    _ => filter.Category.ToString()
+                                                };
+                                                
+                                                var filterLookupService = new JSE_RevitAddin_MEP_OPENINGS.Services.Filters.FilterLookupService(dbContext);
+                                                int filterIdStandard = filterLookupService.GetFilterId(filter.Name, categoryForSnapshot);
+                                                
+                                                repo.SaveSleeveSnapshotsForPlacedSleeves(filterIdStandard > 0 ? filterIdStandard : -1, placedZonesStandard);
+                                            }
+                                            
+                                            if (!DeploymentConfiguration.DeploymentMode) 
+                                                DebugLogger.Info($"[STANDARD-PERSIST] ✅ Snapshots saved for standard placement path");
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode) 
+                                            DebugLogger.Warning($"[STANDARD-PERSIST] ⚠️ Failed to save snapshots: {ex.Message}");
+                                    }
                                 }
                             }
                             
@@ -1173,22 +1545,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             
 
-            // ==========================================================================================
             // ✅ PHASE 2 & 3: HYBRID BATCH CLUSTERING (Extraction -> Calculation -> Placement/Swap)
             // ==========================================================================================
             // Executing Post-Placement Workflow
-            if (true) 
+            // Step 5: RETRIEVED PLACED DATA FROM MODEL & EXTRACT CORNERS
+            // ✅ MOVED OUTSIDE EnableClusteringWorkflow block (User Request: "verify db state")
+            using (var cornerTracker = _performanceMonitor?.TrackOperation("Step 5: RETRIEVED PLACED DATA FROM MODEL"))
             {
-                if (!DeploymentConfiguration.DeploymentMode)
+                try
                 {
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🚀 STARTING PHASE 2-4: Hybrid Cluster Workflow\n");
-                    SafeFileLogger.SafeAppendText("placement_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🚀 STARTING PHASE 2-4: Hybrid Cluster Workflow\n");
-                }
-
-                // Step 5: RETRIEVED PLACED DATA FROM MODEL
-                using (var cornerTracker = _performanceMonitor?.TrackOperation("Step 5: RETRIEVED PLACED DATA FROM MODEL"))
-                {
-                    try
+                    if (placedZonesForExtraction.Any())
                     {
                        if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Phase 2: Extracting Corners for {placedZonesForExtraction.Count} zones...\n");
@@ -1198,17 +1564,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var repo = new ClashZoneRepository(dbContext);
                             var extractor = new BatchSleeveCornerExtractor(repo);
                             
-                            // ✅ FIX: Use new method that accepts zones by GUID directly
-                            // This avoids SQLite WAL visibility issues where GetPlacedClashZones() returns 0 items
-                            int extractedCount = extractor.ExtractAndSaveCornersForZones(_document, placedZonesForExtraction);
+                            // ✅ FIX: Fetch full ClashZone objects to get Orientation (User Request)
+                            var guids = placedZonesForExtraction.Select(x => x.ZoneGuid).ToList();
+                            var fullZones = repo.GetClashZonesByGuids(guids);
+                            
+                            // Update SleeveInstanceId in objects (since they might be fresh from DB or stale)
+                            foreach (var fz in fullZones)
+                            {
+                                var match = placedZonesForExtraction.FirstOrDefault(p => p.ZoneGuid == fz.Id);
+                                if (match.ElementId > 0) fz.SleeveInstanceId = match.ElementId;
+                            }
+
+                            // ✅ FIX: Use new signature that accepts List<ClashZone>
+                            int extractedCount = extractor.ExtractAndSaveCornersForZones(_document, fullZones);
                             cornerTracker?.SetItemCount(extractedCount);
                        }
                     }
-                    catch (Exception ex)
-                    {
-                         if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Error($"[HybridBatch] Error in Corner Extraction: {ex.Message}");
-                    }
+                }
+                catch (Exception ex)
+                {
+                     if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error($"[HybridBatch] Error in Corner Extraction: {ex.Message}");
+                }
+            }
+
+            // 3. CLUSTER & SWAP (Phase 3 & 4) - only if enabled
+            // ✅ FIX: Removed duplicate Step 5 call - corner extraction already done above at line 1543
+            if (OptimizationFlags.EnableClusteringWorkflow)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🚀 STARTING PHASE 2-4: Hybrid Cluster Workflow\n");
+                    SafeFileLogger.SafeAppendText("placement_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🚀 STARTING PHASE 2-4: Hybrid Cluster Workflow\n");
                 }
 
                 // 3. CLUSTER & SWAP (Phase 3 & 4)

@@ -82,12 +82,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 }
             }
 
-            // ✅ PHASE 2: Calculate from Intersections if DB lookup skipped or failed
-            // Usage of explicitCenter (Geometric Center from Rotation Service) if available
-            placementPoint = explicitCenter ?? CalculateFromIntersections(cluster, xmlFilePath);
+            // ✅ PHASE 2: Determine Placement Point
+            // FIXED: Prioritize explicitCenter (Geometric Center of Union) to avoid "average of centers" error (Z-shift)
+            if (explicitCenter != null)
+            {
+                placementPoint = explicitCenter;
+                 if (!DeploymentConfiguration.DeploymentMode)
+                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                            $"[{DateTime.Now:HH:mm:ss}] 🎯 PLACEMENT: Using Geometric Center (Union of BBoxes): ({placementPoint.X:F4}, {placementPoint.Y:F4}, {placementPoint.Z:F4})\n");
+            }
+            else
+            {
+                // Fallback to intersection averaging only if no geometric center provided
+                placementPoint = CalculateFromIntersections(cluster, xmlFilePath);
+            }
 
             // ✅ PHASE 2b: Apply Alignment Constraints (Lateral Shift Fix / Wall Centerline)
-            // This applies to both calculated and explicitly passed centers
             placementPoint = ApplyDamperAlignment(placementPoint, cluster, xmlFilePath);
 
             // ✅ PHASE 3: Re-centering / Geometric Fallback (Category Dependent)
@@ -268,7 +278,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                              SafeFileLogger.SafeAppendText("cluster_sizing.log", $"[{DateTime.Now:HH:mm:ss}] 🎯 PLACEMENT (DAMPER): X-Wall Fixed Y={cY:F4}, Centroid X={cX:F4}, Z={cZ:F4}\n");
                     }
                     
-                    return new XYZ(cX, cY, cZ);
+                    XYZ placementPoint = new XYZ(cX, cY, cZ);
+
+                    // ✅ Z-AXIS DIAGNOSTIC: Log actual Z-coordinates to identify shift source
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        // For walls, we want to know the vertical range (Z)
+                        // SumZ / validCount is our centroid Z
+                        SafeFileLogger.SafeAppendText("cluster_placement_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] 🎯 Z-AXIS DIAGNOSTIC (WALL CENTROID): " +
+                            $"CentroidZ={cZ:F6}, PlacedZ={cZ:F6}\n");
+                    }
+
+                    return placementPoint;
                 }
 
                 if (!DeploymentConfiguration.DeploymentMode)

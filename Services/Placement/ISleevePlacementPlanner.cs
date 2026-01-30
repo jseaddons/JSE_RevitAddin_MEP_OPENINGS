@@ -9,5 +9,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
     public interface ISleevePlacementPlanner
     {
         SleevePlacementPlanningResult Plan(IEnumerable<ClashZone> clashZones);
+        SleevePlacementPlanningDto PlanSingle(ClashZone zone);
     }
 }

@@ -443,10 +443,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // This ensures problematic zones are processed last (less likely to block good zones)
                         filteredZones = filteredZones
                             .OrderBy(cz => planningMap.ContainsKey(cz.Id) 
-                                ? (int)planningMap[cz.Id].ClearanceRisk 
+                                ? (int)planningMap[cz.Id].Risk 
                                 : int.MaxValue)
                             .ThenByDescending(cz => planningMap.ContainsKey(cz.Id) 
-                                ? planningMap[cz.Id].RawMepSizeFt 
+                                ? planningMap[cz.Id].RawSleeveSizeFt 
                                 : 0)
                             .ToList();
                         
@@ -461,7 +461,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             if (planningResult.Items.Count > 0)
                             {
                                 var logLines = planningResult.Items
-                                    .Select(dto => $"[{DateTime.Now:HH:mm:ss.fff}] {dto.LogSummary}")
+                                    .Select(dto => $"[{DateTime.Now:HH:mm:ss.fff}] {dto.LogTrace}")
                                     .ToList();
                                 SafeFileLogger.SafeAppendText("planning_debug.log", string.Join("\n", logLines) + "\n");
                             }
@@ -502,16 +502,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             // ? BATCH MODE ENTRY LOG (User Request)
             SafeFileLogger.SafeAppendText("batch_mode_entry.log", $"[{DateTime.Now:HH:mm:ss}] - BATCH MODE STARTED - Processing {clashZones.Count} zones\n");
-
-            // ? FORCE RESET: For testing, ensure all passed zones are treated as new
-            foreach (var z in clashZones)
-            {
-                z.IsResolvedFlag = false;
-                z.IsClusterResolvedFlag = false;
-                z.SleeveInstanceId = 0;
-                z.ClusterSleeveInstanceId = 0;
-            }
-            SafeFileLogger.SafeAppendText("batch_mode_entry.log", $"[{DateTime.Now:HH:mm:ss}] ≡ƒöä FORCE RESET: Cleared flags for {clashZones.Count} zones in memory.\n");
 
             int loopCount = 0;
             foreach (var clashZone in filteredZones)
@@ -709,11 +699,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // Γ£à STEP 5 SUPPORT: Track placed item for corner extraction
                         placedSleeveResults.Add((clashZone.Id, placedSleeve.Id.IntegerValue));
                         
+                        // ✅ DELEGATE TO FLAG MANAGER: Update flags using dedicated service
+                        if (_flagManager != null)
+                        {
+                            var updateList = new List<(Guid, int, bool)> { (clashZone.Id, placedSleeve.Id.IntegerValue, false) };
+                            _flagManager.UpdateFlagsAfterPlacement(updateList);
+                        }
+                        
                         // ? DIAGNOSTIC: Log flag update for debugging
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             SafeFileLogger.SafeAppendText("placement_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ? SET FLAG: Zone {clashZone.Id}: IsResolved=true, SleeveId={clashZone.SleeveInstanceId}\n");
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ? SET FLAG (via Manager): Zone {clashZone.Id}: IsResolved=true, SleeveId={clashZone.SleeveInstanceId}\n");
                         }
                         
                         // ? CRITICAL FIX: Immediately update SleeveInstanceId in database
@@ -1085,20 +1082,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Select Family
             string familyName = ClusterPlacementService.GetFamilyName(zone.StructuralElementType, zone.MepElementCategory, isCircular ? zone.SleeveDiameter : Math.Max(zone.SleeveWidth, zone.SleeveHeight), isCluster: false);
             
-            // Γ£à CRITICAL FIX: Detect Family-Shape Constraint Mismatch
+            // ✅ CRITICAL FIX: Detect Family-Shape Constraint Mismatch
             // If the selected family is Rectangular (e.g. for a Pipe in a Wall), we MUST treat it as rectangular
             // regardless of whether the zone thinks it is circular (has a Diameter).
             if (!DeploymentConfiguration.DeploymentMode)
             {
-                SafeFileLogger.SafeAppendText("batch_mode_entry.log", $"[{DateTime.Now:HH:mm:ss.fff}] ≡ƒöÄ FAMILY CHECK: Zone {zone.Id}, Family='{familyName}', Dia={diameter*304.8:F1}mm\n");
+                SafeFileLogger.SafeAppendText("batch_mode_entry.log", $"[{DateTime.Now:HH:mm:ss.fff}] 🔎 FAMILY CHECK: Zone {zone.Id}, Family='{familyName}', Dia={diameter*304.8:F1}mm\n");
             }
 
-            // Γ£à CRITICAL FIX: Detect Family-Shape Constraint Mismatch
+            // ✅ CRITICAL FIX: Detect Family-Shape Constraint Mismatch
             // If the selected family is Rectangular (e.g. for a Pipe in a Wall), we MUST treat it as rectangular.
             // also enforcing the known business rule: Diameter > 200mm -> Rectangular.
             bool looksRectangular = familyName.Contains("Rectangular", StringComparison.OrdinalIgnoreCase) || 
-                                  familyName.Contains("Square", StringComparison.OrdinalIgnoreCase);
-                                  
+                                   familyName.Contains("Square", StringComparison.OrdinalIgnoreCase);
+                                   
             bool exceedsThreshold = diameter > (200.0 / 304.8); // > 200mm
 
             if (looksRectangular || (isCircular && exceedsThreshold))
@@ -1126,7 +1123,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
                 SafeFileLogger.SafeAppendText("batch_mode_entry.log", 
-                    $"[{DateTime.Now:HH:mm:ss.fff}] ≡ƒò╡∩╕Å DEBUG POST-FIX: Zone {zone.Id} Updated!\n" +
+                    $"[{DateTime.Now:HH:mm:ss.fff}] 🕵️‍♂️ DEBUG POST-FIX: Zone {zone.Id} Updated!\n" +
                     $"  - New W={width*304.8:F1}, H={height*304.8:F1}, D={diameter*304.8:F1}, Circ={isCircular}\n");
             }
             FamilySymbol symbol = LoadFamilySymbol(familyName);
@@ -1151,29 +1148,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var roundedHeight = height;
                 double roundedDiameter = diameter;
                 
-                // ? CRITICAL FIX: Pass ROUNDED dimensions to SetSleeveParameters (no rounding inside SetSleeveParameters to prevent double rounding)
+                // ? CRITICAL FIX: Pass ROUNDED dimensions to SetSleeveParameters (it will round again, but rounding already-rounded values is idempotent)
                 // This ensures Revit parameters are set with rounded values
                 _parameterService.SetSleeveParameters(instance, roundedWidth, roundedHeight, roundedDiameter, isCircular, zone);
                 
-                // ? CRITICAL FIX: Update zone with ROUNDED dimensions for bounding box calculation and database saving
-                // This ensures dimensions are available when batching is enabled AND replay mode uses rounded dimensions
-                zone.SleeveWidth = roundedWidth;
-                zone.SleeveHeight = roundedHeight;
-                zone.SleeveDiameter = roundedDiameter;
-
-                // ? CRITICAL FIX: Only update placement point for individual sleeves, not cluster sleeves
-                if (zone.ClusterSleeveInstanceId <= 0)
+                // ? CRITICAL FIX: Update zone with ROUNDED dimensions for saving to database
+                // For circular pipes/ducts, SleeveWidth and SleeveHeight should BOTH equal the diameter
+                // This ensures correct persistence to database (not bounding box dimensions)
+                if (isCircular && roundedDiameter > 0)
                 {
-                    zone.SleevePlacementPoint = placementPoint;
-                    zone.SleevePlacementPointX = placementPoint.X;
-                    zone.SleevePlacementPointY = placementPoint.Y;
-                    zone.SleevePlacementPointZ = placementPoint.Z;
+                    // For circular elements, width = height = diameter
+                    zone.SleeveWidth = roundedDiameter;
+                    zone.SleeveHeight = roundedDiameter;
+                    zone.SleeveDiameter = roundedDiameter;
                 }
-                else if (!DeploymentConfiguration.DeploymentMode)
+                else
                 {
-                    SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [PlaceSleeveNormal] [CLUSTER] Zone {zone.Id}: SKIPPED placement point update (cluster sleeve {zone.ClusterSleeveInstanceId}), keeping wall centerline\n");
+                    // For rectangular elements, use calculated width/height
+                    zone.SleeveWidth = roundedWidth;
+                    zone.SleeveHeight = roundedHeight;
+                    zone.SleeveDiameter = roundedDiameter;
                 }
+                zone.SleevePlacementPoint = placementPoint;
+                zone.SleevePlacementPointX = placementPoint.X;
+                zone.SleevePlacementPointY = placementPoint.Y;
+                zone.SleevePlacementPointZ = placementPoint.Z;
+                
+                // ✅ CRITICAL FIX: Set Active Document coordinates for proximity calculation and persistence
+                // Without this, database will have 0.0 for Active coordinates after batch placement
+                zone.SleevePlacementActiveX = placementPoint.X;
+                zone.SleevePlacementActiveY = placementPoint.Y;
+                zone.SleevePlacementActiveZ = placementPoint.Z;
+                zone.SleevePlacementPointActiveDocument = placementPoint;
             }
             
             return instance;
@@ -1738,12 +1744,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Use PipePlacementStrategy to resolve opening type with global rules
                     if (_strategy is PipePlacementStrategy pipeStrategy)
                     {
-                        var resolvedType = pipeStrategy.GetResolvedOpeningType(mepSize, pipeType, hostType);
+                        // ✅ CRITICAL FIX: Pass clearance to GetResolvedOpeningType (user requested Total Diameter = MEP + 2*Clearance)
+                        double pertinentClearanceMm = _conditions?.ClearanceSettings?.PipesNormal ?? 50.0;
+                        
+                        var resolvedType = pipeStrategy.GetResolvedOpeningType(mepSize, pipeType, hostType, pertinentClearanceMm);
                         bool isCircularResult = string.Equals(resolvedType, "Circular", StringComparison.OrdinalIgnoreCase);
                         
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Info($"[NewSleevePlacer] PIPE opening type resolved: Host={hostType}, UI='{pipeType}' ? Global Rule='{resolvedType}' ? isCircular={isCircularResult}");
+                            DebugLogger.Info($"[NewSleevePlacer] PIPE opening type resolved: Host={hostType}, UI='{pipeType}' ? Global Rule='{resolvedType}' ? isCircular={isCircularResult} (Clearance={pertinentClearanceMm}mm)");
                         }
                         
                         return isCircularResult;
@@ -2254,22 +2263,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     );
                 }
                 
-                // ? Calculate bounding box centered at placement point
-                // For rectangular openings: width (X), depth (Y), height (Z)
-                var bbox = new BoundingBoxXYZ
-                {
-                    Min = new XYZ(
-                        placementPoint.X - width / 2.0,
-                        placementPoint.Y - depth / 2.0,
-                        placementPoint.Z - height / 2.0
-                    ),
-                    Max = new XYZ(
-                        placementPoint.X + width / 2.0,
-                        placementPoint.Y + depth / 2.0,
-                        placementPoint.Z + height / 2.0
-                    ),
-                    Enabled = true
-                };
+                // ✅ CALCULATION: Create BoundingBoxXYZ from placement point and dimensions
+                // Note: We use the placement point as the center of the bounding box
+                BoundingBoxXYZ bbox = new BoundingBoxXYZ();
+                bbox.Min = new XYZ(placementPoint.X - width / 2.0, placementPoint.Y - depth / 2.0, placementPoint.Z - height / 2.0);
+                bbox.Max = new XYZ(placementPoint.X + width / 2.0, placementPoint.Y + depth / 2.0, placementPoint.Z + height / 2.0);
                 
                 return bbox;
             }

@@ -101,9 +101,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
         /// </summary>
         /// <param name="mepSize">MEP element size information</param>
         /// <param name="uiPreference">UI preference for opening type</param>
-        /// <param name="hostType">Host element type ("Wall", "Floor", "Structural Framing")</param>
+        /// <param name="clearanceMm">Clearance to include in diameter calculation (mm)</param>
         /// <returns>Resolved opening type: "Circular" or "Rectangular"</returns>
-        public string GetResolvedOpeningType(MepElementSize mepSize, string uiPreference = "Circular", string hostType = null)
+        public string GetResolvedOpeningType(MepElementSize mepSize, string uiPreference = "Circular", string hostType = null, double clearanceMm = 50.0)
         {
             try
             {
@@ -123,16 +123,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                 var uiPreferences = new UIUserPreferences
                 {
                     OpeningType = uiPreference,
-                    Clearance = 50.0 // Default clearance, will be resolved separately
+                    Clearance = clearanceMm // Use provided clearance
                 };
                 
                 // Resolve configuration using global rules
                 var resolvedConfig = ConfigurationResolutionService.Instance
                     .ResolveConfiguration("Pipes", elementProps, uiPreferences, hostType);
                 
-                DebugLogger.Info($"[PipeStrategy] Opening type resolution: {resolvedConfig}");
+                // Recalculate opening type directly (ResolveConfiguration calls ResolveOpeningType, but we want to ensure clearance is passed)
+                // Actually ResolveConfiguration creates a ResolvedConfiguration object which calls ResolveOpeningType without clearance?
+                // Wait, ResolveConfiguration method in ConfigurationResolutionService calls ResolveOpeningType.
+                // I need to update ConfigurationResolutionService.ResolveConfiguration to pass clearance too!
                 
-                return resolvedConfig.OpeningType;
+                // Direct call for opening type with clearance
+                return ConfigurationResolutionService.Instance.ResolveOpeningType("Pipes", elementProps, uiPreference, hostType, clearanceMm);
             }
             catch (Exception ex)
             {

@@ -1,0 +1,40 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.IO;
+using Autodesk.Revit.DB;
+using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
+using Autodesk.Revit.UI;
+
+namespace JSE_RevitAddin_MEP_OPENINGS.Services
+{
+    /// <summary>
+    /// Service for applying MEPMARK parameters to cluster sleeves.
+    /// Handles sequential numbering and prefix resolution.
+    /// </summary>
+    public partial class MarkParameterService
+    {
+        private readonly IMarkCacheService _cache;
+        private readonly ICombinedSleeveMarkService _combinedService;
+        private readonly ClusterPrefixResolutionService _prefixResolver;
+        private readonly Action<string> _logger;
+
+        public MarkParameterService(Document doc = null, Action<string> logger = null)
+        {
+            _logger = logger ?? ((msg) => { });
+            _cache = new MarkCacheService();
+            _combinedService = new CombinedSleeveMarkService();
+            
+            if (doc != null)
+            {
+                using var context = new SleeveDbContext(doc);
+                _cache.Initialize(doc, context);
+            }
+        }
+
+        #region Public API (Standard & Batch)
+

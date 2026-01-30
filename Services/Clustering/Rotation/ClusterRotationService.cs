@@ -90,6 +90,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 
                 if (firstClashZone != null)
                 {
+                    // ✅ CRITICAL FIX: Circular elements (Pipes and Round Ducts) should NOT rotate in clusters
+                    // This applies universally to all hosts (Walls, Floors, etc.)
+                    // User Request: "for circular pipes clustering should not rotate"
+                    bool allCircular = true;
+                    foreach (var item in cluster)
+                    {
+                        ClashZone? itemCz = null;
+                        if (item is ClashZone czItem) itemCz = czItem;
+                        else if (item?.ClashZone != null) itemCz = item.ClashZone as ClashZone;
+
+                        if (itemCz == null) { allCircular = false; break; }
+
+                        // ✅ DETECTION BY MEP ELEMENT: Circular elements (Pipes/Round Ducts) never rotate
+                        // User Req: "for circular element it should not rotate always even if it is rectangula sleeve"
+                        bool isPipe = string.Equals(itemCz.MepElementCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
+                        bool isRoundDuct = (string.Equals(itemCz.MepElementCategory, "Ducts", StringComparison.OrdinalIgnoreCase) || 
+                                           string.Equals(itemCz.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase)) &&
+                                          (string.Equals(itemCz.DuctShape, "Round", StringComparison.OrdinalIgnoreCase) ||
+                                           string.Equals(itemCz.DuctShape, "Circular", StringComparison.OrdinalIgnoreCase));
+
+                        if (!isPipe && !isRoundDuct)
+                        {
+                            allCircular = false;
+                            break;
+                        }
+                    }
+
+                    if (cluster.Count > 0 && allCircular)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ ALL-CIRCULAR CLUSTER: Skipping rotation (0.0°)\n");
+                        }
+                        return 0.0;
+                    }
+
                     // Normalize HostOrientation string
                     string hostOrientation = (firstClashZone.HostOrientation ?? "").Trim();
                     
@@ -153,38 +190,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     {
                         // For floors (or anything not explicitly X/Y wall), use MEP element rotation angle (from database)
                         // This covers "Floor", "Floors", or any other host type where we rely on the MEP element's rotation
-                        
-                        // ✅ CRITICAL FIX: Skip rotation for all-pipe clusters on floors
-                        // Pipes are circular and don't need rotation
-                        // Mixed clusters (pipe+duct) still rotate (rectangular elements take precedence)
-                        bool allPipes = true;
-                        foreach (var item in cluster)
-                        {
-                            ClashZone? itemCz = null;
-                            if (item is ClashZone clashZone)
-                                itemCz = clashZone;
-                            else if (item?.ClashZone != null)
-                                itemCz = item.ClashZone as ClashZone;
-                            
-                            string category = itemCz?.MepElementCategory ?? "";
-                            // If ANY element is NOT a pipe, then it's not all pipes
-                            if (!string.Equals(category, "Pipes", StringComparison.OrdinalIgnoreCase))
-                            {
-                                allPipes = false;
-                                break;
-                            }
-                        }
-                        
-                        // If ALL elements are pipes (circular), skip rotation
-                        if (allPipes)
-                        {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss}] ✅ ALL-PIPE CLUSTER ON FLOOR: Skipping rotation (0°)\n");
-                            }
-                            return 0.0; // No rotation for all-pipe clusters on floors
-                        }
                         
                         // For rectangular elements or mixed clusters: use MEP rotation
                         double rotationAngle = firstClashZone.MepElementRotationAngle;
@@ -1168,25 +1173,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                         double midY = (floorMinY + floorMaxY) / 2.0;
                                         double mixedFloorZ = 0.0;
                                         
-                                         // ✅ FIXED: Use Geometric Center Z (Midpoint of Z-extents)
-                                         // PREVIOUSLY: Used Z from first sleeve, causing "Moving Up" issue if first sleeve was offset
+                                         // ✅ FIXED: Use Geometric Center Z (Midpoint of Z-extents) initially
                                          mixedFloorZ = (floorMinZ + floorMaxZ) / 2.0;
 
-                                         /* PREVIOUS LOGIC REMOVED
-                                         // Z from first sleeve in cluster
+                                         // ✅ CRITICAL RE-VERIFICATION: Floor Cluster Z-Position Fix (Half-In/Half-Out)
+                                         // User Requirement: "rotated cluster should be pitch z coordinates for floor same as its constiuents... just get any constiuent sleeve and use the z coordinate"
+                                         // This overrides Geometric Center logic for Z-axis on floors
                                          if (clashZonesInCluster.Count > 0)
                                          {
                                              var mixedCz = clashZonesInCluster[0];
                                              if (mixedCz != null)
                                              {
-                                                 placementZ = mixedCz.SleevePlacementPointZ;
-                                                 if (placementZ == 0.0)
-                                                     placementZ = mixedCz.IntersectionPointZ;
-                                                 if (placementZ == 0.0 && mixedCz.SleeveCorner1Z.HasValue)
-                                                     placementZ = mixedCz.SleeveCorner1Z.Value;
+                                                 double z = mixedCz.SleevePlacementPointZ;
+                                                 if (z == 0.0) z = mixedCz.IntersectionPointZ;
+                                                 if (z != 0.0) 
+                                                 {
+                                                     mixedFloorZ = z;
+                                                      if (!DeploymentConfiguration.DeploymentMode)
+                                                     {
+                                                         SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                                             $"[{DateTime.Now:HH:mm:ss}]   ✅ MIXED FLOOR Z-FIX: Using Constituent Z (Pitch Z). Z={mixedFloorZ:F6}\n");
+                                                     }
+                                                 }
                                              }
                                          }
-                                         */
                                         
                                         placementPoint = new XYZ(midX, midY, mixedFloorZ);
                                         
@@ -1263,11 +1273,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                          SafeFileLogger.SafeAppendText("cluster_sizing.log", 
                                              $"    🧮 MATH (STRAIGHT FLOOR): X=[{wcsMinX:F4} to {wcsMaxX:F4}] -> MidX={midX:F4}, Y=[{wcsMinY:F4} to {wcsMaxY:F4}] -> MidY={midY:F4}\n");
                                         
-                                         // ✅ FIXED: Use Geometric Center Z (Midpoint of Z-extents) instead of First Sleeve Z
-                                        // This ensures the placement point is exactly in the middle of the vertical stack
+                                        // ✅ CRITICAL RE-VERIFICATION: Floor Cluster Z-Position Fix (Half-In/Half-Out)
+                                        // User Requirement: "rotated cluster should be pitch z coordinates for floor same as its constiuents... just get any constiuent sleeve and use the z coordinate"
+                                        // This overrides Geometric Center logic for Z-axis on floors
+                                        
                                         double minAZ = allCorners.Min(c => c.Z);
                                         double maxAZ = allCorners.Max(c => c.Z);
+                                        
+                                        // Default to Geometric Center initially for safety
                                         double placementZ = (minAZ + maxAZ) / 2.0;
+
+                                        // ✅ OVERRIDE with "Pitch Z" (Constituent Z) for Floors
+                                        if (!isWallOrFraming && clashZonesInCluster.Count > 0)
+                                        {
+                                            var refCz = clashZonesInCluster[0];
+                                            if (refCz != null)
+                                            {
+                                                double z = refCz.SleevePlacementPointZ;
+                                                if (z == 0.0) z = refCz.IntersectionPointZ;
+                                                if (z != 0.0) 
+                                                {
+                                                    placementZ = z;
+                                                    if (!DeploymentConfiguration.DeploymentMode)
+                                                    {
+                                                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                                            $"[{DateTime.Now:HH:mm:ss}]   ✅ FLOOR Z-FIX: Using Constituent Z (Pitch Z) instead of Geometric Center. Z={placementZ:F6} (from Sleeve {refCz.SleeveInstanceId})\n");
+                                                    }
+                                                }
+                                            }
+                                        }
 
                                         /* PREVIOUS LOGIC REMOVED
                                         // Z: From first sleeve in cluster (to maintain elevation? No, we want center)
@@ -1315,7 +1349,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                                 $"[{DateTime.Now:HH:mm:ss}] 🎯 Z-AXIS DIAGNOSTIC (STRAIGHT FLOOR): " +
                                                 $"LowerCornerZ={lowerZ:F6}, UpperCornerZ={upperZ:F6}, " +
                                                 $"TheoreticalMidZ={theoreticalMidZ:F6}, PlacedZ={placementZ:F6}, " +
-                                                $"Shift={placementZ - theoreticalMidZ:F6}\n");
+                                                $"Shift={placementZ - theoreticalMidZ:F6} (Should be non-zero if Pitch Z used)\n");
                                         }
                                         
                                         originX = midX;
@@ -1402,14 +1436,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                          }
                                      }
                                     
-                                    // ✅ CRITICAL RE-VERIFICATION: If we are in "Geometric Center" Mode, enforce it!
-                                    // The above "Legacy" block restores dependency on first-sleeve Z.
-                                    // If flag is true, override it back to geometric midZ.
-                                    if (OptimizationFlags.UseGeometricCenterForFloors)
+                                    // ✅ CRITICAL RE-VERIFICATION: Floor Cluster Z-Position Fix (Half-In/Half-Out)
+                                    // Override Geometric Center if it was set
+                                    if (!isWallOrFraming && clashZonesInCluster.Count > 0)
                                     {
-                                        double lowerZ = allCorners.Min(c => c.Z);
-                                        double upperZ = allCorners.Max(c => c.Z);
-                                        placementZ = (lowerZ + upperZ) / 2.0;
+                                        var refCz = clashZonesInCluster[0];
+                                        if (refCz != null)
+                                        {
+                                            double z = refCz.SleevePlacementPointZ;
+                                            if (z == 0.0) z = refCz.IntersectionPointZ;
+                                            if (z != 0.0) 
+                                            {
+                                                placementZ = z;
+                                                if (!DeploymentConfiguration.DeploymentMode)
+                                                {
+                                                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                                        $"[{DateTime.Now:HH:mm:ss}]   ✅ ROTATED FLOOR Z-FIX: Using Constituent Z (Pitch Z). Z={placementZ:F6}\n");
+                                                }
+                                            }
+                                        }
                                     }
 
                                     placementPoint = new XYZ(originX, originY, placementZ);
@@ -1483,13 +1528,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             }
                             else
                             {
-                                // For floors/other, cornerHeight is already correct from rotated Y range
-                                // But also verify Z range matches (should be same for 2D opening)
-                                if (Math.Abs(cornerHeight - calculatedHeight) > 0.001) // 0.001 feet = ~0.3mm tolerance
-                                {
-                                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                        $"[{DateTime.Now:HH:mm:ss}]   ⚠️ Height mismatch: Y-range={cornerHeight:F6}ft, Z-range={calculatedHeight:F6}ft, using Y-range\n");
-                                }
+                                // For floors/other, cornerHeight is already correct from rotated Y range.
+                                // CalculatedHeight is the Z-range (thickness), which is correctly assigned to depth below.
+                                // We don't compare them here as they represent different physical dimensions for floors.
                             }
                             
                             // ✅ DEPTH: Calculate based on host type (only if not already set for mixed orientations)

@@ -7433,7 +7433,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             SleeveCorner3X = @c3x, SleeveCorner3Y = @c3y, SleeveCorner3Z = @c3z,
                             SleeveCorner4X = @c4x, SleeveCorner4Y = @c4y, SleeveCorner4Z = @c4z,
                             CalculatedAt = CURRENT_TIMESTAMP
-                        WHERE ClashZoneGuid = @Guid";
+                        WHERE UPPER(ClashZoneGuid) = UPPER(@Guid)";
 
                     var pGuid = cmd.Parameters.Add("@Guid", System.Data.DbType.String);
                     var pC1X = cmd.Parameters.Add("@c1x", System.Data.DbType.Double);
@@ -8860,9 +8860,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 public void BatchUpdateSleevePlacementData(IEnumerable<ClashZone> placedZones)
 {
     if (placedZones == null || !placedZones.Any()) return;
-    var zonesList = placedZones.Where(z => z.SleeveInstanceId > 0).ToList();
+    var zonesList = placedZones.Where(z => !string.IsNullOrEmpty(z.ClashZoneGuid)).ToList();
     
-    if (!zonesList.Any()) return;
+    if (!zonesList.Any()) 
+    {
+        SafeFileLogger.SafeAppendTextAlways("bulk_placement_trace.log", $"[REPO-FAIL] BatchUpdateSleevePlacementData: No valid zones found (Guid != Empty). Total input: {placedZones?.Count() ?? 0}\n");
+        return;
+    }
+    
+    SafeFileLogger.SafeAppendTextAlways("bulk_placement_trace.log", $"[REPO-ENTRY] BatchUpdateSleevePlacementData: Updating {zonesList.Count} zones. Sample Zone 0: ID={zonesList[0].SleeveInstanceId} W={zonesList[0].SleeveWidth} GUID={zonesList[0].ClashZoneGuid}\n");
 
     if (!DeploymentConfiguration.DeploymentMode)
     {
@@ -8889,6 +8895,36 @@ public void BatchUpdateSleevePlacementData(IEnumerable<ClashZone> placedZones)
                         SleevePlacementActiveX = @SleevePlacementActiveX,
                         SleevePlacementActiveY = @SleevePlacementActiveY,
                         SleevePlacementActiveZ = @SleevePlacementActiveZ,
+
+                        -- ✅ ADDED: Persist BoundingBox (User Request)
+                        BoundingBoxMinX = @BoundingBoxMinX,
+                        BoundingBoxMinY = @BoundingBoxMinY,
+                        BoundingBoxMinZ = @BoundingBoxMinZ,
+                        BoundingBoxMaxX = @BoundingBoxMaxX,
+                        BoundingBoxMaxY = @BoundingBoxMaxY,
+                        BoundingBoxMaxZ = @BoundingBoxMaxZ,
+                        
+                        -- ✅ ADDED: Persist Rotation Components (User Request)
+                        MepRotationCos = @MepRotationCos,
+                        MepRotationSin = @MepRotationSin,
+                        
+                        -- ✅ ADDED: Persist Rotated BBox (RCS) (User Request)
+                        RotatedBoundingBoxMinX = @RotatedBoundingBoxMinX,
+                        RotatedBoundingBoxMinY = @RotatedBoundingBoxMinY,
+                        RotatedBoundingBoxMinZ = @RotatedBoundingBoxMinZ,
+                        RotatedBoundingBoxMaxX = @RotatedBoundingBoxMaxX,
+                        RotatedBoundingBoxMaxY = @RotatedBoundingBoxMaxY,
+                        RotatedBoundingBoxMaxZ = @RotatedBoundingBoxMaxZ,
+                        
+                        -- ✅ ADDED: Persist Family Name and Calculated Data
+                        SleeveFamilyName = @SleeveFamilyName,
+                        CalculatedSleeveWidth = @CalculatedSleeveWidth,
+                        CalculatedSleeveHeight = @CalculatedSleeveHeight,
+                        CalculatedSleeveDiameter = @CalculatedSleeveDiameter,
+                        CalculatedSleeveDepth = @CalculatedSleeveDepth,
+                        CalculatedRotation = @CalculatedRotation,
+                        CalculatedFamilyName = @CalculatedFamilyName,
+
                         UpdatedAt = datetime('now', '+5 hours', '+30 minutes') 
                     WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)";
 
@@ -8903,6 +8939,32 @@ public void BatchUpdateSleevePlacementData(IEnumerable<ClashZone> placedZones)
                 var pActiveX = cmd.Parameters.AddWithValue("@SleevePlacementActiveX", DBNull.Value);
                 var pActiveY = cmd.Parameters.AddWithValue("@SleevePlacementActiveY", DBNull.Value);
                 var pActiveZ = cmd.Parameters.AddWithValue("@SleevePlacementActiveZ", DBNull.Value);
+
+                var pBBMinX = cmd.Parameters.AddWithValue("@BoundingBoxMinX", DBNull.Value);
+                var pBBMinY = cmd.Parameters.AddWithValue("@BoundingBoxMinY", DBNull.Value);
+                var pBBMinZ = cmd.Parameters.AddWithValue("@BoundingBoxMinZ", DBNull.Value);
+                var pBBMaxX = cmd.Parameters.AddWithValue("@BoundingBoxMaxX", DBNull.Value);
+                var pBBMaxY = cmd.Parameters.AddWithValue("@BoundingBoxMaxY", DBNull.Value);
+                var pBBMaxZ = cmd.Parameters.AddWithValue("@BoundingBoxMaxZ", DBNull.Value);
+                
+                var pCos = cmd.Parameters.AddWithValue("@MepRotationCos", DBNull.Value);
+                var pSin = cmd.Parameters.AddWithValue("@MepRotationSin", DBNull.Value);
+
+                var pRCSMinX = cmd.Parameters.AddWithValue("@RotatedBoundingBoxMinX", DBNull.Value);
+                var pRCSMinY = cmd.Parameters.AddWithValue("@RotatedBoundingBoxMinY", DBNull.Value);
+                var pRCSMinZ = cmd.Parameters.AddWithValue("@RotatedBoundingBoxMinZ", DBNull.Value);
+                var pRCSMaxX = cmd.Parameters.AddWithValue("@RotatedBoundingBoxMaxX", DBNull.Value);
+                var pRCSMaxY = cmd.Parameters.AddWithValue("@RotatedBoundingBoxMaxY", DBNull.Value);
+                var pRCSMaxZ = cmd.Parameters.AddWithValue("@RotatedBoundingBoxMaxZ", DBNull.Value);
+
+                // Added Parameters
+                var pFamily = cmd.Parameters.AddWithValue("@SleeveFamilyName", DBNull.Value);
+                var pCalcWidth = cmd.Parameters.AddWithValue("@CalculatedSleeveWidth", DBNull.Value);
+                var pCalcHeight = cmd.Parameters.AddWithValue("@CalculatedSleeveHeight", DBNull.Value);
+                var pCalcDiameter = cmd.Parameters.AddWithValue("@CalculatedSleeveDiameter", DBNull.Value);
+                var pCalcDepth = cmd.Parameters.AddWithValue("@CalculatedSleeveDepth", DBNull.Value);
+                var pCalcRot = cmd.Parameters.AddWithValue("@CalculatedRotation", DBNull.Value);
+                var pCalcFam = cmd.Parameters.AddWithValue("@CalculatedFamilyName", DBNull.Value);
                 
                 int totalRowsAffected = 0;
                 foreach (var zone in zonesList)
@@ -8919,7 +8981,28 @@ public void BatchUpdateSleevePlacementData(IEnumerable<ClashZone> placedZones)
                     pActiveY.Value = zone.SleevePlacementPointActiveDocumentY;
                     pActiveZ.Value = zone.SleevePlacementPointActiveDocumentZ;
 
-                    totalRowsAffected += cmd.ExecuteNonQuery();
+                    pBBMinX.Value = zone.BoundingBoxMinX;
+                    pBBMinY.Value = zone.BoundingBoxMinY;
+                    pBBMinZ.Value = zone.BoundingBoxMinZ;
+                    pBBMaxX.Value = zone.BoundingBoxMaxX;
+                    pBBMaxY.Value = zone.BoundingBoxMaxY;
+                    pBBMaxZ.Value = zone.BoundingBoxMaxZ;
+
+                    // Set Added Parameters
+                    pFamily.Value = zone.SleeveFamilyName ?? (object)DBNull.Value;
+                    pCalcWidth.Value = zone.CalculatedSleeveWidth;
+                    pCalcHeight.Value = zone.CalculatedSleeveHeight;
+                    pCalcDiameter.Value = zone.CalculatedSleeveDiameter;
+                    pCalcDepth.Value = zone.CalculatedSleeveDepth;
+                    pCalcRot.Value = zone.CalculatedRotation;
+                    pCalcFam.Value = zone.CalculatedFamilyName ?? (object)DBNull.Value;
+
+                    int rows = cmd.ExecuteNonQuery();
+                    if (rows == 0)
+                    {
+                        SafeFileLogger.SafeAppendTextAlways("bulk_placement_trace.log", $"[REPO-UPDATE-FAIL] ❌ No row found for Guid={zone.ClashZoneGuid}. DB Update Failed.\n");
+                    }
+                    totalRowsAffected += rows;
                 }
                 
                 if (!DeploymentConfiguration.DeploymentMode)
@@ -9436,6 +9519,132 @@ public void BatchUpdateSleevePlacementData(IEnumerable<ClashZone> placedZones)
         public List<ClashZone> LoadDuctAccessoriesClashZones(string xmlFilePath)
         {
             return new List<ClashZone>(); // Return empty list as we rely on DB
+        }
+
+        /// <summary>
+        /// ✅ SELF-HEALING: Try to get SleeveInstanceId from SleeveSnapshots table if missing in ClashZones.
+        /// Used for recovering lost IDs during cleanup/swap operations.
+        /// </summary>
+        public int TryGetSleeveInstanceIdFromSnapshot(Guid clashZoneGuid)
+        {
+            if (clashZoneGuid == Guid.Empty) return -1;
+
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = @"
+                        SELECT SleeveInstanceId 
+                        FROM SleeveSnapshots 
+                        WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid) 
+                          AND SleeveInstanceId > 0
+                        LIMIT 1";
+
+                    cmd.Parameters.AddWithValue("@ClashZoneGuid", clashZoneGuid.ToString());
+                    var result = cmd.ExecuteScalar();
+                    
+                    if (result != null && result != DBNull.Value)
+                    {
+                        int id = Convert.ToInt32(result);
+                        if (id > 0)
+                        {
+                            SafeFileLogger.SafeAppendText("db_update_debug.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] 🩹 SELF-HEALING: Recovered SleeveInstanceId={id} from Snapshot for {clashZoneGuid}\n");
+                            return id;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                     SafeFileLogger.SafeAppendText("db_update_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ Self-healing failed for {clashZoneGuid}: {ex.Message}\n");
+                }
+            }
+            return -1;
+        }
+
+        /// <summary>
+        /// ✅ PRE-PLACEMENT PERSISTENCE: Batch save calculated sleeve data to database.
+        /// Optimized version of UpdateSleeveCalculatedData for bulk operations.
+        /// </summary>
+        public void BatchUpdateCalculatedData(IEnumerable<ClashZone> zones)
+        {
+            if (zones == null || !zones.Any()) return;
+            var zonesList = zones.ToList();
+
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Info($"[ClashZoneRepository] [BATCH-PRE-SAVE] Saving calculated data for {zonesList.Count} zones...");
+            }
+
+            try
+            {
+                using (var transaction = _context.Connection.BeginTransaction())
+                {
+                    using (var cmd = _context.Connection.CreateCommand())
+                    {
+                        cmd.Transaction = transaction;
+                        cmd.CommandText = @"
+                            UPDATE ClashZones SET 
+                                CalculatedSleeveWidth = @CalcWidth,
+                                CalculatedSleeveHeight = @CalcHeight,
+                                CalculatedSleeveDiameter = @CalcDiameter,
+                                CalculatedSleeveDepth = @CalcDepth,
+                                CalculatedRotation = @CalcRotation,
+                                CalculatedPlacementX = @CalcX,
+                                CalculatedPlacementY = @CalcY,
+                                CalculatedPlacementZ = @CalcZ,
+                                CalculatedFamilyName = @CalcFam,
+                                UpdatedAt = datetime('now', '+5 hours', '+30 minutes')
+                            WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)";
+
+                        var pGuid = cmd.Parameters.AddWithValue("@ClashZoneGuid", "");
+                        var pWidth = cmd.Parameters.AddWithValue("@CalcWidth", DBNull.Value);
+                        var pHeight = cmd.Parameters.AddWithValue("@CalcHeight", DBNull.Value);
+                        var pDiameter = cmd.Parameters.AddWithValue("@CalcDiameter", DBNull.Value);
+                        var pDepth = cmd.Parameters.AddWithValue("@CalcDepth", DBNull.Value);
+                        var pRot = cmd.Parameters.AddWithValue("@CalcRotation", DBNull.Value);
+                        var pX = cmd.Parameters.AddWithValue("@CalcX", DBNull.Value);
+                        var pY = cmd.Parameters.AddWithValue("@CalcY", DBNull.Value);
+                        var pZ = cmd.Parameters.AddWithValue("@CalcZ", DBNull.Value);
+                        var pFam = cmd.Parameters.AddWithValue("@CalcFam", DBNull.Value);
+
+                        int totalRowsAffected = 0;
+                        foreach (var zone in zonesList)
+                        {
+                            pGuid.Value = zone.ClashZoneGuid.ToString();
+                            pWidth.Value = zone.CalculatedSleeveWidth;
+                            pHeight.Value = zone.CalculatedSleeveHeight;
+                            pDiameter.Value = zone.CalculatedSleeveDiameter;
+                            pDepth.Value = zone.CalculatedSleeveDepth;
+                            pRot.Value = zone.CalculatedRotation;
+                            pX.Value = zone.CalculatedPlacementX;
+                            pY.Value = zone.CalculatedPlacementY;
+                            pZ.Value = zone.CalculatedPlacementZ;
+                            pFam.Value = zone.CalculatedFamilyName ?? (object)DBNull.Value;
+
+                            totalRowsAffected += cmd.ExecuteNonQuery();
+                        }
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[ClashZoneRepository] [BATCH-PRE-SAVE] Updated {totalRowsAffected}/{zonesList.Count} rows.");
+                        }
+                    }
+                    transaction.Commit();
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Error($"[ClashZoneRepository] [BATCH-PRE-SAVE] FAILED: {ex.Message}");
+                }
+                throw;
+            }
         }
     }
 }

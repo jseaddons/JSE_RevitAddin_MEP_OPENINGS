@@ -21,6 +21,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         private readonly OpeningConditions _conditions;
         private readonly Dictionary<string, double> _clearanceSettings;
         private readonly IInsulationAwareSizingService _sizingService;
+        private readonly JSE_RevitAddin_MEP_OPENINGS.Services.Placement.SleeveRotationService _rotationService;
 
         public ParallelSleevePlacementPlanner(
             OpeningConditions conditions = null,
@@ -35,6 +36,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             _clearanceSettings = clearanceSettings ?? new Dictionary<string, double>();
             // ✅ OOP METHOD: Initialize sizing service (SOLID principles)
             _sizingService = sizingService ?? new InsulationAwareSizingService();
+            _rotationService = new JSE_RevitAddin_MEP_OPENINGS.Services.Placement.SleeveRotationService();
         }
 
         public SleevePlacementPlanningResult Plan(IEnumerable<ClashZone> clashZones)
@@ -47,199 +49,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var bag = new ConcurrentBag<SleevePlacementPlanningDto>();
-            int skipped = 0; int highRisk = 0; int criticalRisk = 0;
+            int skippedCount = 0; int highRisk = 0; int criticalRisk = 0;
 
             Action<ClashZone> work = zone =>
             {
-                try
+                var dto = PlanSingle(zone);
+                if (dto != null)
                 {
-                    if (zone == null)
-                    {
-                        System.Threading.Interlocked.Increment(ref skipped);
-                        return;
-                    }
-
-                    // Basic skip rules (no mutation of original object)
-                    string skipReason = null;
-                    if (zone.IsResolved && zone.SleeveInstanceId > 0) skipReason = "AlreadyResolved";
-                    else if (zone.IsClusterResolved && zone.ClusterSleeveInstanceId > 0) skipReason = "ClusterResolved";
-                    else if (zone.HasDamperNearby) skipReason = "DamperSkip";
-
-                    // Host type string
-                    string hostType = zone.StructuralElementType ?? string.Empty;
-
-                    // Raw MEP size (convert from internal units to feet)
-                    // ✅ CRITICAL FIX: Use MepElementWidth/Height from ClashZone (already in database)
-                    // These are populated during refresh and persisted, unlike MepElementSizeData
-                    // ✅ PIPE FIX: For pipes, MepElementWidth should be OUTER DIAMETER (set during refresh)
-                    string mepCategory = zone.MepElementCategory ?? "Unknown";
-                    bool isPipesCategory = string.Equals(mepCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
-                    
-                    double rawWidth = zone.MepElementWidth;  // Already in feet
-                    double rawHeight = zone.MepElementHeight; // Already in feet
-                    
-                    // ✅ PIPE FIX: For pipes, use OUTER DIAMETER from database column (hardcoded route)
-                    // ✅ HARDCODED: Always use MepElementOuterDiameter (RBS_PIPE_OUTER_DIAMETER) for accurate sizing
-                    if (isPipesCategory)
-                    {
-                        // For pipes, use outer diameter from database column (preferred)
-                        double pipeDiameter = zone.MepElementOuterDiameter > 0 
-                            ? zone.MepElementOuterDiameter 
-                            : (rawWidth > 0 ? rawWidth : rawHeight); // Fallback to MepElementWidth if outer diameter not available
-                        
-                        // Additional fallback to MepElementSizeData if both are missing
-                        if (pipeDiameter <= 0 && zone.MepElementSizeData != null)
-                        {
-                            // Try to get diameter from MepElementSizeData
-                            if (zone.MepElementSizeData.Diameter > 0)
-                            {
-                                pipeDiameter = UnitUtils.ConvertFromInternalUnits(zone.MepElementSizeData.Diameter, UnitTypeId.Feet);
-                            }
-                        }
-                        // Final fallback
-                        if (pipeDiameter <= 0) pipeDiameter = zone.MepElementSize;
-                        if (pipeDiameter <= 0) pipeDiameter = 0.25; // Minimum fallback 3"
-                        
-                        // For pipes, width = height = diameter (round pipes)
-                        rawWidth = pipeDiameter;
-                        rawHeight = pipeDiameter;
-                    }
-                    
-                    double rawSize = Math.Max(rawWidth, rawHeight); // Use larger dimension
-                    
-                    // Fallback to MepElementSizeData if Width/Height are 0 (backward compatibility, non-pipes)
-                    if (rawSize <= 0 && !isPipesCategory && zone.MepElementSizeData != null)
-                    {
-                        // MepElementSize stores in internal units, convert to feet
-                        if (zone.MepElementSizeData.Diameter > 0)
-                        {
-                            rawSize = UnitUtils.ConvertFromInternalUnits(zone.MepElementSizeData.Diameter, UnitTypeId.Feet);
-                            rawWidth = rawSize;
-                            rawHeight = rawSize;
-                        }
-                        else if (zone.MepElementSizeData.Width > 0)
-                        {
-                            rawWidth = UnitUtils.ConvertFromInternalUnits(zone.MepElementSizeData.Width, UnitTypeId.Feet);
-                            rawHeight = UnitUtils.ConvertFromInternalUnits(zone.MepElementSizeData.Height, UnitTypeId.Feet);
-                            rawSize = Math.Max(rawWidth, rawHeight);
-                        }
-                    }
-                    // Final fallback to MepElementSize (already in feet)
-                    if (rawSize <= 0) rawSize = zone.MepElementSize;
-                    if (rawSize <= 0) rawSize = 0.25; // Minimum fallback 3"
-
-                    // ✅ OOP METHOD: Get clearance from OpeningConditions (same logic as UniversalSleevePlacerService)
-                    // ✅ CRITICAL FIX: Use ClashZone.IsInsulated for correct clearance selection (pipes, ducts, cable trays)
-                    double clearance;
-                    double clearanceInFeet;
-                    double targetWidth = 0.0;
-                    double targetHeight = 0.0;
-                    
-                    if (isPipesCategory)
-                    {
-                        clearance = GetClearanceForPipeFromClashZone(zone);
-                    }
-                    else if (string.Equals(mepCategory, "Ducts", StringComparison.OrdinalIgnoreCase))
-                    {
-                        clearance = GetClearanceForDuctFromClashZone(zone);
-                    }
-                    else if (string.Equals(mepCategory, "Cable Trays", StringComparison.OrdinalIgnoreCase))
-                    {
-                        // ✅ CRITICAL FIX: Cable trays need ASYMMETRIC clearances (Top=75mm, Other=25mm)
-                        // Width: 2 * OtherClearance (25mm * 2 = 50mm total)
-                        // Height: TopClearance + OtherClearance (75mm + 25mm = 100mm total)
-                        // CANNOT use single clearance value - must calculate separately
-                        var cableTrayClearances = GetCableTrayAsymmetricClearances(zone);
-                        double topClearanceFt = cableTrayClearances.topClearanceFt;
-                        double otherClearanceFt = cableTrayClearances.otherClearanceFt;
-                        
-                        // ✅ CRITICAL: Calculate cable tray dimensions with asymmetric clearances
-                        // Get insulation contribution
-                        double insulationContribution = 0.0;
-                        if (zone.IsInsulated && zone.InsulationThickness > 0)
-                        {
-                            insulationContribution = 2 * zone.InsulationThickness; // Both sides
-                        }
-                        
-                        // Convert raw dimensions to internal units (feet) if needed
-                        double rawWidthFt = rawWidth; // Already in feet from MepElementSizeData
-                        double rawHeightFt = rawHeight; // Already in feet from MepElementSizeData
-                        
-                        // ✅ ASYMMETRIC CLEARANCE CALCULATION:
-                        // Width: Left and right use OTHER clearance (25mm each = 50mm total)
-                        // Height: Top uses TOP clearance (75mm), bottom uses OTHER clearance (25mm) = 100mm total
-                        targetWidth = rawWidthFt + insulationContribution + (2 * otherClearanceFt);
-                        targetHeight = rawHeightFt + insulationContribution + topClearanceFt + otherClearanceFt;
-                        
-                        // Set clearance to average for risk classification (not used for dimension calculation)
-                        clearance = (topClearanceFt + otherClearanceFt) / 2.0;
-                        clearanceInFeet = clearance;
-                    }
+                    bag.Add(dto);
+                    if (dto.ShouldSkip) System.Threading.Interlocked.Increment(ref skippedCount);
                     else
                     {
-                        clearance = GetClearanceFromConditions(mepCategory, rawSize * 304.8);
-                        clearanceInFeet = clearance; // Already in internal units (feet)
-                        
-                        // ✅ OOP METHOD: Use sizing service for consistent calculation with insulation awareness
-                        // Formula: Raw + (2 * insulation) + (2 * clearance) - handled by sizing service
-                        // For pipes: Pass diameter as all three parameters (width, height, diameter)
-                        double rawDiameter = isPipesCategory ? rawWidth : Math.Max(rawWidth, rawHeight);
-                        (double targetW, double targetH, _) = _sizingService.CalculateFinalDimensionsFromClashZone(
-                            rawWidth, rawHeight, rawDiameter, zone, clearanceInFeet);
-                        targetWidth = targetW;
-                        targetHeight = targetH;
+                        if (dto.Risk == ClearanceRiskClassification.High) System.Threading.Interlocked.Increment(ref highRisk);
+                        if (dto.Risk == ClearanceRiskClassification.Critical) System.Threading.Interlocked.Increment(ref criticalRisk);
                     }
-
-                    // ✅ OOP METHOD: Get insulation thickness from ClashZone (already saved to DB during refresh)
-                    double insulationThicknessFt = zone.IsInsulated && zone.InsulationThickness > 0 
-                        ? zone.InsulationThickness 
-                        : 0.0;
-
-                    // Host thickness heuristics
-                    double hostThickness = zone.StructuralElementThickness;
-                    if (hostThickness <= 0 && hostType.Equals("Wall", StringComparison.OrdinalIgnoreCase)) hostThickness = zone.WallThickness;
-                    if (hostThickness <= 0 && hostType.Equals("Structural Framing", StringComparison.OrdinalIgnoreCase)) hostThickness = zone.FramingThickness;
-                    if (hostThickness <= 0 && hostType.Equals("Floor", StringComparison.OrdinalIgnoreCase)) hostThickness = 0.833; // 10" default
-                    if (hostThickness <= 0) hostThickness = 0.5; // Generic fallback 6"
-
-                    double requiredDepth = hostThickness + clearance;
-
-                    // Rotation angle (convert from radians to degrees)
-                    double rotationDeg = 0.0;
-                    if (Math.Abs(zone.MepElementRotationAngle) > 1e-6)
-                    {
-                        rotationDeg = zone.MepElementRotationAngle * 180.0 / Math.PI; // Convert radians to degrees
-                    }
-
-                    // Risk classification
-                    var risk = ClassifyRisk(hostThickness, clearance, rawSize);
-                    if (risk == ClearanceRiskClassification.High) System.Threading.Interlocked.Increment(ref highRisk);
-                    if (risk == ClearanceRiskClassification.Critical) System.Threading.Interlocked.Increment(ref criticalRisk);
-
-                    bool shouldSkip = skipReason != null;
-
-                    string logLine = $"PLAN ClashZone={zone.Id} Host={hostType} RawSizeFt={rawSize:F3} TargetFt={targetWidth:F3} ClearanceFt={clearance:F3} DepthFt={requiredDepth:F3} Risk={risk} Skip={shouldSkip} Reason={skipReason}";
-
-                    bag.Add(new SleevePlacementPlanningDto(
-                        zone.Id,
-                        hostType,
-                        rawSize,
-                        insulationThicknessFt,
-                        targetWidth,
-                        targetHeight,
-                        clearance,
-                        requiredDepth,
-                        rotationDeg,
-                        risk,
-                        shouldSkip,
-                        skipReason,
-                        logLine));
-
-                    if (shouldSkip) System.Threading.Interlocked.Increment(ref skipped);
                 }
-                catch
+                else
                 {
-                    System.Threading.Interlocked.Increment(ref skipped);
+                    System.Threading.Interlocked.Increment(ref skippedCount);
                 }
             };
 
@@ -253,8 +80,144 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             }
 
             sw.Stop();
-            var ordered = bag.OrderBy(b => b.ShouldSkip).ThenByDescending(b => b.RawMepSizeFt).ToList();
-            return new SleevePlacementPlanningResult(ordered, skipped, highRisk, criticalRisk, sw.ElapsedMilliseconds);
+            var ordered = bag.OrderBy(b => b.ShouldSkip).ThenByDescending(b => b.RawSleeveSizeFt).ToList();
+            return new SleevePlacementPlanningResult(ordered, skippedCount, highRisk, criticalRisk, sw.ElapsedMilliseconds);
+        }
+
+        public SleevePlacementPlanningDto PlanSingle(ClashZone zone)
+        {
+            try
+            {
+                if (zone == null) return null;
+
+                // 1. Basic skip rules (no mutation of original object)
+                bool shouldSkip = false;
+                string skipReason = null;
+                if (zone.IsResolved && zone.SleeveInstanceId > 0) { shouldSkip = true; skipReason = "AlreadyResolved"; }
+                else if (zone.IsClusterResolved && zone.ClusterSleeveInstanceId > 0) { shouldSkip = true; skipReason = "ClusterResolved"; }
+                else if (zone.HasDamperNearby) { shouldSkip = true; skipReason = "DamperSkip"; }
+
+                // 2. MEP Metadata & Categories
+                string mepCategory = zone.MepElementCategory ?? "Unknown";
+                string hostType = zone.StructuralElementType ?? "Wall";
+                bool isPipesCategory = string.Equals(mepCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
+                bool isDuctsCategory = string.Equals(mepCategory, "Ducts", StringComparison.OrdinalIgnoreCase);
+
+                double rawWidth = zone.MepElementOuterDiameter > 0 ? zone.MepElementOuterDiameter : zone.MepElementWidth;
+                double rawHeight = zone.MepElementHeight > 0 ? zone.MepElementHeight : rawWidth;
+                double rawDiameter = isPipesCategory ? rawWidth : Math.Max(rawWidth, rawHeight);
+
+                // 3. Resolve Opening Type (Circular vs Rectangular) - CENTRALIZED RULE
+                // ✅ REUSE: ConfigurationResolutionService is the absolute source of truth for rules
+                var elementProps = new JSE_RevitAddin_MEP_OPENINGS.Services.Configuration.ElementProperties
+                {
+                    Diameter = rawDiameter,
+                    Width = rawWidth,
+                    Height = rawHeight,
+                    Shape = (isPipesCategory || (isDuctsCategory && (
+                        string.Equals(zone.DuctShape, "Round", StringComparison.OrdinalIgnoreCase) || 
+                        string.Equals(zone.DuctShape, "Circular", StringComparison.OrdinalIgnoreCase) ||
+                        (zone.MepElementSizeData != null && (
+                            string.Equals(zone.MepElementSizeData.Shape, "Round", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(zone.MepElementSizeData.Shape, "Circular", StringComparison.OrdinalIgnoreCase)
+                        ))
+                    ))) ? "Round" : "Rectangular",
+                    IsInsulated = zone.IsInsulated,
+                    InsulationThickness = zone.InsulationThickness
+                };
+
+                string uiPreference = "Rectangular";
+                double pertinentClearanceMm = 0.0;
+
+                if (isPipesCategory) 
+                {
+                    uiPreference = _conditions?.OpeningTypePreferences?.Pipes ?? "Circular";
+                    pertinentClearanceMm = _conditions?.ClearanceSettings?.PipesNormal ?? 50.0;
+                }
+                else if (isDuctsCategory) 
+                {
+                    // ✅ CRITICAL FIX: Only apply "RoundDucts" preference if the duct is actually Round/Circular
+                    // Rectangular ducts should naturally default to "Rectangular"
+                    bool isRoundDuct = string.Equals(zone.DuctShape, "Round", StringComparison.OrdinalIgnoreCase) || 
+                                      string.Equals(zone.DuctShape, "Circular", StringComparison.OrdinalIgnoreCase) ||
+                                      (zone.MepElementSizeData != null && (
+                                          string.Equals(zone.MepElementSizeData.Shape, "Round", StringComparison.OrdinalIgnoreCase) ||
+                                          string.Equals(zone.MepElementSizeData.Shape, "Circular", StringComparison.OrdinalIgnoreCase)
+                                      ));
+                                      
+                    if (isRoundDuct)
+                    {
+                        uiPreference = _conditions?.OpeningTypePreferences?.RoundDucts ?? "Circular";
+                        pertinentClearanceMm = _conditions?.ClearanceSettings?.RoundNormal ?? 50.0;
+                    }
+                    else
+                    {
+                        uiPreference = "Rectangular"; // Rectangular ducts are always rectangular preference
+                    }
+                }
+                
+                // Fix for user request: Calculate total diameter (MEP + 2*Clearance) inside ResolveOpeningType
+                string resolvedType = JSE_RevitAddin_MEP_OPENINGS.Services.Configuration.ConfigurationResolutionService.Instance
+                    .ResolveOpeningType(mepCategory, elementProps, uiPreference, hostType, pertinentClearanceMm);
+                
+                bool isCircular = string.Equals(resolvedType, "Circular", StringComparison.OrdinalIgnoreCase);
+
+                // 4. Resolve Dimensions - CENTRALIZED SIZING
+                // ✅ REUSE: InsulationAwareSizingService handles insulation + clearance + rounding
+                double clearance = GetClearanceFromConditions(mepCategory, rawDiameter * 304.8);
+                
+                var (targetW, targetH, _) = _sizingService.CalculateFinalDimensionsFromClashZone(
+                    rawWidth, rawHeight, rawDiameter, zone, clearance);
+
+                // 5. Resolve Family Name - CENTRALIZED MAPPING
+                // ✅ REUSE: FamilyManager maps host+shape to the core 4 families
+                string familyName = FamilyManager.SelectUniversalFamily(hostType, resolvedType);
+
+                // 6. Resolve Rotation - CENTRALIZED ROTATION
+                // ✅ REUSE: SleeveRotationService handles X/Y Wall and Floor heuristics
+                double rotationRad = _rotationService.DetermineRotation(zone);
+
+                // 7. Resolve Placement Point - CENTRALIZED COORDINATES
+                // ✅ REUSE: Prioritize SleevePlacementPoint (set during refresh/adjustment) over IntersectionPoint
+                XYZ placementPoint = new XYZ(
+                    zone.SleevePlacementPointX != 0 ? zone.SleevePlacementPointX : zone.IntersectionPointX,
+                    zone.SleevePlacementPointY != 0 ? zone.SleevePlacementPointY : zone.IntersectionPointY,
+                    zone.SleevePlacementPointZ != 0 ? zone.SleevePlacementPointZ : zone.IntersectionPointZ);
+
+                // 8. Host Thickness & Depth
+                double hostThickness = zone.StructuralElementThickness;
+                if (hostThickness <= 0) hostThickness = 0.5; // Fallback 6"
+                double requiredDepth = hostThickness + (clearance * 2); // Internal units (feet)
+
+                // 9. Risk assessment
+                var risk = ClassifyRisk(hostThickness, clearance, rawDiameter);
+
+                string logLine = $"PLAN ClashZone={zone.Id} Host={hostType} Cat={mepCategory} Type={resolvedType} Family={familyName} Skip={shouldSkip}";
+
+                return new SleevePlacementPlanningDto(
+                    zone.Id,
+                    hostType,
+                    rawDiameter,
+                    zone.InsulationThickness,
+                    targetW,
+                    targetH,
+                    clearance,
+                    requiredDepth,
+                    rotationRad,
+                    risk,
+                    shouldSkip,
+                    skipReason,
+                    logLine,
+                    familyName,
+                    placementPoint,
+                    isCircular);
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    SafeFileLogger.SafeAppendText("planner_errors.log", $"[{DateTime.Now:HH:mm:ss}] Error planning zone {zone?.Id}: {ex.Message}\n");
+                return null;
+            }
         }
 
         private static ClearanceRiskClassification ClassifyRisk(double hostThickness, double clearance, double rawSize)

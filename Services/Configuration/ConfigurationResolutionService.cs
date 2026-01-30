@@ -49,19 +49,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Configuration
         /// <param name="elementProps">Element properties including size and shape</param>
         /// <param name="uiPreference">UI preference ("Circular" or "Rectangular")</param>
         /// <param name="hostType">Host element type ("Wall", "Floor", "Structural Framing")</param>
+        /// <param name="clearanceMm">Optional clearance to include in diameter calculation (mm)</param>
         /// <returns>Resolved opening type</returns>
-        public string ResolveOpeningType(string category, ElementProperties elementProps, string uiPreference, string? hostType = null)
+        public string ResolveOpeningType(string category, ElementProperties elementProps, string uiPreference, string? hostType = null, double clearanceMm = 0)
         {
             try
             {
-                // Priority 1: Global size-based rules (for pipes on walls/floors, NOT structural framing)
-                if (category.Equals("Pipes", StringComparison.OrdinalIgnoreCase))
+                // Priority 1: Global size-based rules (for pipes and ROUND ducts on walls/floors, NOT structural framing)
+                bool isCircularElement = category.Equals("Pipes", StringComparison.OrdinalIgnoreCase) || 
+                                       elementProps.Shape.Equals("Round", StringComparison.OrdinalIgnoreCase) || 
+                                       elementProps.Shape.Equals("Circular", StringComparison.OrdinalIgnoreCase);
+
+                if (isCircularElement)
                 {
-                    // CRITICAL FIX: Round pipes intersecting structural framing should ALWAYS be circular
+                    // CRITICAL FIX: Round elements intersecting structural framing should ALWAYS be circular
                     if (hostType != null && (hostType.Contains("Structural Framing", StringComparison.OrdinalIgnoreCase) || 
                                            hostType.Contains("Framing", StringComparison.OrdinalIgnoreCase)))
                     {
-                        DebugLogger.Info($"[ConfigResolution] Pipe intersecting {hostType} → Circular (structural framing rule overrides size threshold)");
+                        DebugLogger.Info($"[ConfigResolution] {category} intersecting {hostType} → Circular (structural framing rule overrides size threshold)");
                         return "Circular"; // Always circular for structural framing intersections
                     }
                     
@@ -71,15 +76,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Configuration
                     // Convert diameter to mm for comparison
                     var diameterMm = RevitUnitConversionService.Instance.FromInternalMillimeters(elementProps.Diameter);
                     
-                    if (diameterMm > diameterThreshold)
+                    // ✅ FIXED: Include clearance in total diameter calculation (User Request: 140 Pipe + 50 Clearance = 240 > 200)
+                    // Total diameter = MEP Diameter + (Clearance * 2)
+                    var totalDiameterMm = diameterMm + (clearanceMm * 2);
+
+                    if (totalDiameterMm > diameterThreshold)
                     {
-                        DebugLogger.Info($"[ConfigResolution] Pipe {diameterMm:F1}mm > {diameterThreshold}mm threshold → Rectangular (global rule overrides UI: {uiPreference}) for {hostType ?? "Unknown"} host");
-                        return "Rectangular"; // Global rule wins for pipes >200mm on walls/floors
+                        DebugLogger.Info($"[ConfigResolution] {category} Total {totalDiameterMm:F1}mm (MEP {diameterMm:F1}mm + 2x{clearanceMm:F1}mm) > {diameterThreshold}mm threshold → Rectangular (global rule overrides UI: {uiPreference}) for {hostType ?? "Unknown"} host");
+                        return "Rectangular"; // Global rule wins for round elements >200mm
                     }
                     else
                     {
-                        DebugLogger.Info($"[ConfigResolution] Pipe {diameterMm:F1}mm <= {diameterThreshold}mm threshold → {uiPreference} (UI preference respected) for {hostType ?? "Unknown"} host");
-                        return uiPreference; // UI preference for pipes ≤200mm on walls/floors
+                        DebugLogger.Info($"[ConfigResolution] {category} Total {totalDiameterMm:F1}mm (MEP {diameterMm:F1}mm + 2x{clearanceMm:F1}mm) <= {diameterThreshold}mm threshold → {uiPreference} (UI preference respected) for {hostType ?? "Unknown"} host");
+                        return uiPreference; // UI preference for small round elements
                     }
                 }
                 

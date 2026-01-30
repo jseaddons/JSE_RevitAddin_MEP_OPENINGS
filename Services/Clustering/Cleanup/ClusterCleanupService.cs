@@ -180,10 +180,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                     var sleeveInstanceParam = s.LookupParameter("Sleeve Instance ID");
                     int clusterValue = clusterParam?.AsInteger() ?? -1;
                     int sleeveInstanceValue = sleeveInstanceParam?.AsInteger() ?? -999;
-                    if ((sleeveInstanceValue == -1) || (clusterValue > 0 && clusterValue == id)) continue;
+                    
+                    // ✅ RELAXED SAFETY CHECK: Even if sleeveInstanceValue is -1, it might be an orphaned individual sleeve.
+                    // We only skip if it IS one of the newly placed clusters.
+                    // (sleeveInstanceValue == -1) check removed to ensure persistent orphans are caught.
+                    if (clusterValue > 0 && clusterValue == id) continue;
 
                     individualSleeves.Add(s);
                 }
+
+                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Found {individualSleeves.Count} candidate individual sleeves for overlap check\n");
 
                 if (individualSleeves.Count == 0) return 0;
 
@@ -263,10 +270,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                         }
                     }
                     
-                    // ✅ CRITICAL: Determine which BBox calculation to use based on safety flag
+                    // ✅ CRITICAL: Determine which BBox calculation to use based on safety flags
                     bool handled = false;
                     
-                    if (OptimizationFlags.UseGeometricCenterForClustering)
+                    // Identify host type to pick correct flag
+                    bool isHostedOnFloor = freshCluster.Host is Floor;
+                    bool isHostedOnWall = freshCluster.Host is Wall;
+                    bool useGeometricCenter = (isHostedOnFloor && OptimizationFlags.UseGeometricCenterForFloors) || 
+                                             (isHostedOnWall && OptimizationFlags.UseGeometricCenterForWalls);
+
+                    if (useGeometricCenter)
                     {
                         // Prioritize Revit's native BoundingBox (Correct for Rotated Clusters)
                         var nativeBbox = freshCluster.get_BoundingBox(null);
@@ -277,6 +290,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                             
                             SafeFileLogger.SafeAppendText("cluster_debug.log", 
                                 $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Cluster {clusterId} bbox (NATIVE get_BoundingBox - FLAG ENABLED) - " +
+                                $"Host={(isHostedOnFloor ? "FLOOR" : isHostedOnWall ? "WALL" : "OTHER")}, " +
                                 $"Min=({nativeBbox.Min.X:F3}, {nativeBbox.Min.Y:F3}, {nativeBbox.Min.Z:F3}), " +
                                 $"Max=({nativeBbox.Max.X:F3}, {nativeBbox.Max.Y:F3}, {nativeBbox.Max.Z:F3})\n");
                             
@@ -348,6 +362,69 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
 
                 SafeFileLogger.SafeAppendText("cluster_debug.log", 
                     $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Built {clusterBboxes.Count} cluster bounding boxes from {placedClusters.Count} placed clusters\n");
+
+                // ✅ NEW: DATABASE-DRIVEN FALLBACK (User Request)
+                // Use the constituent GUIDs from ClusterSleeves_v2 to identify sleeves that MUST be deleted.
+                // This catches cases where geometric checks (proximity) fail but DB knows the mapping.
+                var dbTrackedSleeveIds = new List<ElementId>();
+                try
+                {
+                    using (var context = new SleeveDbContext(doc))
+                    {
+                        var repo = new ClashZoneRepository(context, _ => { });
+                        foreach (var cluster in placedClusters)
+                        {
+                            if (cluster == null) continue;
+                            int clusterRevId = cluster.Id.IntegerValue;
+                            
+                            // Query ClusterSleeves_v2 for constituents
+                            string cGuidsStr = "";
+                            using (var qCmd = context.Connection.CreateCommand())
+                            {
+                                qCmd.CommandText = "SELECT ConstituentZoneGuids FROM ClusterSleeves_v2 WHERE ClusterInstanceId = @id";
+                                qCmd.Parameters.AddWithValue("@id", clusterRevId);
+                                var qRes = qCmd.ExecuteScalar();
+                                if (qRes != null && qRes != DBNull.Value) cGuidsStr = qRes.ToString();
+                            }
+                            
+                            if (!string.IsNullOrEmpty(cGuidsStr))
+                            {
+                                var gList = cGuidsStr.Split(new[] { ',', ';', ' ', '[', ']', '\"' }, StringSplitOptions.RemoveEmptyEntries)
+                                                     .Select(g => Guid.TryParse(g.Trim(), out var guid) ? guid : Guid.Empty)
+                                                     .Where(g => g != Guid.Empty)
+                                                     .ToList();
+                                
+                                if (gList.Any())
+                                {
+                                    var zones = repo.GetClashZonesByGuids(gList);
+                                    foreach (var z in zones)
+                                    {
+                                        // Use AfterClusterSleevePlacedSleeveInstanceId (captured before reset) OR SleeveInstanceId (if not yet reset)
+                                        int targetSleeveId = z.AfterClusterSleevePlacedSleeveInstanceId > 0 ? z.AfterClusterSleevePlacedSleeveInstanceId : z.SleeveInstanceId;
+                                        
+                                        if (targetSleeveId > 0)
+                                        {
+                                            var eid = new ElementId(targetSleeveId);
+                                            // Check if element still exists in Revit
+                                            var el = doc.GetElement(eid);
+                                            if (el != null && el.IsValidObject)
+                                            {
+                                                if (!clusterSleeveIds.Contains(targetSleeveId)) // Safety check: not a cluster itself
+                                                {
+                                                    dbTrackedSleeveIds.Add(eid);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception dbEx)
+                {
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ CLEANUP: DB fallback failed: {dbEx.Message}\n");
+                }
 
                 if (clusterBboxes.Count == 0) return 0;
 
@@ -451,7 +528,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                 }
 
                 SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Found {toDelete.Count} individual sleeves to delete\n");
+                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Found {toDelete.Count} individual sleeves to delete via geometric check\n");
+
+                // ✅ MERGE DB-TRACKED SLEEVES
+                if (dbTrackedSleeveIds.Any())
+                {
+                    int addedFromDb = 0;
+                    foreach (var dbId in dbTrackedSleeveIds)
+                    {
+                        if (!toDelete.Contains(dbId))
+                        {
+                            toDelete.Add(dbId);
+                            addedFromDb++;
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: ✅ Individual sleeve {dbId.IntegerValue} added via DB mapping\n");
+                        }
+                    }
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Added {addedFromDb} additional sleeves via DB mapping (Total to delete: {toDelete.Count})\n");
+                }
 
                 if (toDelete.Count == 0) return 0;
 
@@ -656,6 +751,223 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
             catch (Exception ex)
             {
                 DebugLogger.Error($"[ClusterCleanupService] Error resetting cluster flags: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// ✅ DB-ONLY CLEANUP: Uses bounding boxes from database (zero Revit queries).
+        /// Finds individual sleeves within cluster bounding boxes using DB data only.
+        /// Combines Stage 1 and Stage 2 cleanup into one operation.
+        /// </summary>
+        public int CleanupSleevesWithinClustersFromDatabase(Document doc, string targetCategory = null, List<int> clusterInstanceIds = null)
+        {
+            int deletedCount = 0;
+            try
+            {
+                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🧹 DB-ONLY CLEANUP: Starting (Category={targetCategory ?? "ALL"}, ClusterIds={clusterInstanceIds?.Count ?? 0})\n");
+
+                using (var context = new SleeveDbContext(doc))
+                {
+                    var repo = new ClashZoneRepository(context, msg => SafeFileLogger.SafeAppendText("cluster_debug.log", $"[Repo] {msg}\n"));
+
+                    // Step 1: Query individual sleeves with valid bounding boxes from DB
+                    var individualSleeves = new List<(int SleeveInstanceId, double MinX, double MinY, double MinZ, double MaxX, double MaxY, double MaxZ, string MepCategory)>();
+                    
+                    using (var cmd = context.Connection.CreateCommand())
+                    {
+                        var query = @"
+                            SELECT SleeveInstanceId, 
+                                   SleeveBoundingBoxMinX, SleeveBoundingBoxMinY, SleeveBoundingBoxMinZ,
+                                   SleeveBoundingBoxMaxX, SleeveBoundingBoxMaxY, SleeveBoundingBoxMaxZ,
+                                   MepElementCategory
+                            FROM ClashZones
+                            WHERE SleeveInstanceId > 0
+                              AND SleeveBoundingBoxMinX != 0.0 AND SleeveBoundingBoxMinY != 0.0 AND SleeveBoundingBoxMinZ != 0.0
+                              AND SleeveBoundingBoxMaxX != 0.0 AND SleeveBoundingBoxMaxY != 0.0 AND SleeveBoundingBoxMaxZ != 0.0
+                              AND (ClusterSleeveInstanceId = 0 OR ClusterSleeveInstanceId IS NULL)";
+
+                        if (!string.IsNullOrEmpty(targetCategory))
+                        {
+                            query += " AND MepElementCategory = @targetCategory";
+                            cmd.Parameters.AddWithValue("@targetCategory", targetCategory);
+                        }
+
+                        cmd.CommandText = query;
+
+                        using (var reader = cmd.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                var sleeveId = reader.GetInt32(reader.GetOrdinal("SleeveInstanceId"));
+                                var minX = reader.GetDouble(reader.GetOrdinal("SleeveBoundingBoxMinX"));
+                                var minY = reader.GetDouble(reader.GetOrdinal("SleeveBoundingBoxMinY"));
+                                var minZ = reader.GetDouble(reader.GetOrdinal("SleeveBoundingBoxMinZ"));
+                                var maxX = reader.GetDouble(reader.GetOrdinal("SleeveBoundingBoxMaxX"));
+                                var maxY = reader.GetDouble(reader.GetOrdinal("SleeveBoundingBoxMaxY"));
+                                var maxZ = reader.GetDouble(reader.GetOrdinal("SleeveBoundingBoxMaxZ"));
+                                var mepCat = reader.IsDBNull(reader.GetOrdinal("MepElementCategory")) ? "" : reader.GetString(reader.GetOrdinal("MepElementCategory"));
+
+                                // Validate bounding box
+                                if (minX < maxX && minY < maxY && minZ < maxZ)
+                                {
+                                    individualSleeves.Add((sleeveId, minX, minY, minZ, maxX, maxY, maxZ, mepCat));
+                                }
+                            }
+                        }
+                    }
+
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🧹 DB-ONLY CLEANUP: Found {individualSleeves.Count} individual sleeves with valid bounding boxes\n");
+
+                    // Step 2: Query cluster sleeves with valid bounding boxes from DB
+                    var clusterSleeves = new List<(int ClusterInstanceId, double MinX, double MinY, double MinZ, double MaxX, double MaxY, double MaxZ, string MepCategory)>();
+                    
+                    using (var cmd = context.Connection.CreateCommand())
+                    {
+                        var query = @"
+                            SELECT DISTINCT ClusterSleeveInstanceId,
+                                   ClusterSleeveBoundingBoxMinX, ClusterSleeveBoundingBoxMinY, ClusterSleeveBoundingBoxMinZ,
+                                   ClusterSleeveBoundingBoxMaxX, ClusterSleeveBoundingBoxMaxY, ClusterSleeveBoundingBoxMaxZ,
+                                   MepElementCategory
+                            FROM ClashZones
+                            WHERE ClusterSleeveInstanceId > 0
+                              AND ClusterSleeveBoundingBoxMinX != 0.0 AND ClusterSleeveBoundingBoxMinY != 0.0 AND ClusterSleeveBoundingBoxMinZ != 0.0
+                              AND ClusterSleeveBoundingBoxMaxX != 0.0 AND ClusterSleeveBoundingBoxMaxY != 0.0 AND ClusterSleeveBoundingBoxMaxZ != 0.0";
+
+                        if (clusterInstanceIds != null && clusterInstanceIds.Count > 0)
+                        {
+                            var idPlaceholders = string.Join(",", clusterInstanceIds.Select((_, i) => $"@clusterId{i}"));
+                            query += $" AND ClusterSleeveInstanceId IN ({idPlaceholders})";
+                            for (int i = 0; i < clusterInstanceIds.Count; i++)
+                            {
+                                cmd.Parameters.AddWithValue($"@clusterId{i}", clusterInstanceIds[i]);
+                            }
+                        }
+
+                        if (!string.IsNullOrEmpty(targetCategory))
+                        {
+                            query += " AND MepElementCategory = @targetCategory2";
+                            cmd.Parameters.AddWithValue("@targetCategory2", targetCategory);
+                        }
+
+                        cmd.CommandText = query;
+
+                        using (var reader = cmd.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                var clusterId = reader.GetInt32(reader.GetOrdinal("ClusterSleeveInstanceId"));
+                                var minX = reader.GetDouble(reader.GetOrdinal("ClusterSleeveBoundingBoxMinX"));
+                                var minY = reader.GetDouble(reader.GetOrdinal("ClusterSleeveBoundingBoxMinY"));
+                                var minZ = reader.GetDouble(reader.GetOrdinal("ClusterSleeveBoundingBoxMinZ"));
+                                var maxX = reader.GetDouble(reader.GetOrdinal("ClusterSleeveBoundingBoxMaxX"));
+                                var maxY = reader.GetDouble(reader.GetOrdinal("ClusterSleeveBoundingBoxMaxY"));
+                                var maxZ = reader.GetDouble(reader.GetOrdinal("ClusterSleeveBoundingBoxMaxZ"));
+                                var mepCat = reader.IsDBNull(reader.GetOrdinal("MepElementCategory")) ? "" : reader.GetString(reader.GetOrdinal("MepElementCategory"));
+
+                                // Validate bounding box
+                                if (minX < maxX && minY < maxY && minZ < maxZ)
+                                {
+                                    clusterSleeves.Add((clusterId, minX, minY, minZ, maxX, maxY, maxZ, mepCat));
+                                }
+                            }
+                        }
+                    }
+
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🧹 DB-ONLY CLEANUP: Found {clusterSleeves.Count} cluster sleeves with valid bounding boxes\n");
+
+                    if (clusterSleeves.Count == 0 || individualSleeves.Count == 0)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] 🧹 DB-ONLY CLEANUP: No clusters or no individual sleeves, skipping\n");
+                        return 0;
+                    }
+
+                    // Step 3: Find overlaps (pure C# math, no Revit API)
+                    var sleevesToDelete = new HashSet<int>();
+                    var clusterIdsSet = new HashSet<int>(clusterSleeves.Select(c => c.ClusterInstanceId));
+
+                    foreach (var individual in individualSleeves)
+                    {
+                        // Skip if this individual sleeve is actually a cluster sleeve
+                        if (clusterIdsSet.Contains(individual.SleeveInstanceId))
+                        {
+                            continue;
+                        }
+
+                        // Check category compatibility
+                        if (!string.IsNullOrEmpty(targetCategory) && !string.IsNullOrEmpty(individual.MepCategory))
+                        {
+                            bool isCrossCategory = false;
+                            if (targetCategory.Contains("Pipe") && (individual.MepCategory.Contains("Duct") || individual.MepCategory.Contains("Tray") || individual.MepCategory.Contains("Accessory") || individual.MepCategory.Contains("Damper"))) isCrossCategory = true;
+                            if (targetCategory.Contains("Duct") && (individual.MepCategory.Contains("Pipe") || individual.MepCategory.Contains("Tray") || individual.MepCategory.Contains("Accessory") || individual.MepCategory.Contains("Damper"))) isCrossCategory = true;
+                            if (targetCategory.Contains("Tray") && !individual.MepCategory.Contains("Tray")) isCrossCategory = true;
+                            
+                            if (isCrossCategory)
+                            {
+                                continue; // Protect cross-category sleeves
+                            }
+                        }
+
+                        // Check if individual sleeve bounding box overlaps with any cluster bounding box
+                        foreach (var cluster in clusterSleeves)
+                        {
+                            // Bounding box overlap check: two boxes overlap if they intersect on all three axes
+                            bool bboxOverlaps = individual.MaxX >= cluster.MinX && individual.MinX <= cluster.MaxX &&
+                                               individual.MaxY >= cluster.MinY && individual.MinY <= cluster.MaxY &&
+                                               individual.MaxZ >= cluster.MinZ && individual.MinZ <= cluster.MaxZ;
+
+                            if (bboxOverlaps)
+                            {
+                                sleevesToDelete.Add(individual.SleeveInstanceId);
+                                SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] 🗑 OVERLAP: Individual sleeve {individual.SleeveInstanceId} overlaps with cluster {cluster.ClusterInstanceId}\n");
+                                break; // Found overlap, no need to check other clusters
+                            }
+                        }
+                    }
+
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🧹 DB-ONLY CLEANUP: Found {sleevesToDelete.Count} sleeves to delete\n");
+
+                    // Step 4: Delete sleeves in one batch operation
+                    if (sleevesToDelete.Count > 0)
+                    {
+                        var elementIdsToDelete = sleevesToDelete.Select(id => new ElementId(id)).ToList();
+                        
+                        bool alreadyInTransaction = doc.IsModifiable;
+                        if (alreadyInTransaction)
+                        {
+                            // We're inside an existing transaction - delete directly
+                            var deletedIds = doc.Delete(elementIdsToDelete);
+                            deletedCount = deletedIds.Count;
+                        }
+                        else
+                        {
+                            // No active transaction - create one for deletion
+                            using (Transaction tx = new Transaction(doc, "Delete Individual Sleeves Within Clusters (DB-Only)"))
+                            {
+                                tx.Start();
+                                var deletedIds = doc.Delete(elementIdsToDelete);
+                                deletedCount = deletedIds.Count;
+                                tx.Commit();
+                            }
+                        }
+
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] 🧹 DB-ONLY CLEANUP: Deleted {deletedCount} individual sleeves\n");
+                    }
+                }
+
+                return deletedCount;
+            }
+            catch (Exception ex)
+            {
+                SafeFileLogger.SafeAppendText("placement_errors.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ DB-ONLY CLEANUP FAILED: {ex.Message}\n{ex.StackTrace}\n");
+                return 0;
             }
         }
     }

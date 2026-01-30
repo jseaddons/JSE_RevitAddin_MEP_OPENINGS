@@ -29,7 +29,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         private readonly IClusterAlgorithmService _algorithmService;
         private readonly IClusterRotationService _rotationService;
         private readonly string _databasePath;
-        private readonly JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IPerformanceMonitor _performanceMonitor;
 
         // Shared Deduplication Cache (Batch-Scope)
         // Key: "{BatchId}_{X:F1}_{Y:F1}_{Z:F1}" -> Prevents stacking at same location in same batch
@@ -38,13 +37,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         public BatchClusterCalculationService(
             IClusterAlgorithmService algorithmService,
             IClusterRotationService rotationService,
-            string databasePath,
-            JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IPerformanceMonitor performanceMonitor = null)
+            string databasePath)
         {
             _algorithmService = algorithmService ?? throw new ArgumentNullException(nameof(algorithmService));
             _rotationService = rotationService ?? throw new ArgumentNullException(nameof(rotationService));
             _databasePath = databasePath;
-            _performanceMonitor = performanceMonitor;
         }
 
         public string CalculateAndSave(
@@ -58,103 +55,72 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             string batchId = $"{DateTime.Now:yyyyMMdd_HHmmss}_{targetCategory}_{filterId}";
             SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🚀 STARTING BATCH V2: {batchId}, Zones={clashZones.Count}\n");
 
+            // 2. Group Zones (Standard Grouping Logic: Host, Orientation, Spatial Bucket)
+            // Note: Bucketing is used for "Primary Grouping" to limit N^2 complexity. 
+            // Splitting across buckets is handled by Deduplication logic later.
+            var sleeveGroups = GroupZones(clashZones);
+            SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 📦 Grouped into {sleeveGroups.Length} processing buckets.\n");
+
+            // 3. Form Clusters (Parallel)
+            // ✅ READ FROM USER SETTINGS: "Join openings if distance < (mm)"
+            var settings = ApplicationProfileService.Instance.GetCurrentSettings();
+            double toleranceMM = settings.JoinOpeningsDistance; // User setting (default: 100mm)
+            var toleranceDist = RevitUnitConversionService.Instance.ToInternalMillimeters(toleranceMM);
+            
+            // ✅ CRITICAL FIX: Wrap ClashZone objects in anonymous objects with ClashZone property
+            // FormClusters expects items to have a ClashZone property, not be ClashZone objects directly
+            var wrappedZones = clashZones.Select(z => new
+            {
+                SleeveInstanceId = z.SleeveInstanceId,
+                Category = z.MepElementCategory,
+                ClashZone = z
+            });
+            
+            // Group the wrapped zones
+            var groupedZones = wrappedZones.GroupBy(w => new SleeveGroupKey(
+                w.ClashZone.StructuralElementType ?? "Unknown",
+                w.ClashZone.MepElementCategory ?? "Unknown", 
+                w.ClashZone.HostOrientation ?? "Unknown",
+                (int)(w.ClashZone.IntersectionPointX / 100000), // ✅ FIX: Disable Bucketing (Large value effectively puts all in same bucket)
+                (int)(w.ClashZone.IntersectionPointY / 100000), 
+                (int)(w.ClashZone.IntersectionPointZ / 100000)));
+            
+            var clustersByGroup = _algorithmService.FormClusters(groupedZones, toleranceDist, doc, enableParallel: true);
+
             // 4. Process Results (Parallel Calculation + Serial DB Save? Or Parallel Save?)
             // We'll collect all Valid Clusters in a concurrent bag first.
             var validClusters = new ConcurrentBag<BatchClusterCalculationResult>();
 
-            using (var calcTracker = _performanceMonitor?.TrackOperation("Step 7: CLUSTER CALCULATION"))
+            System.Threading.Tasks.Parallel.ForEach(clustersByGroup, (kvp) =>
             {
-                // 2. Group Zones (Standard Grouping Logic: Host, Orientation, Spatial Bucket)
-                // Note: Bucketing is used for "Primary Grouping" to limit N^2 complexity. 
-                // Splitting across buckets is handled by Deduplication logic later.
-                var sleeveGroups = GroupZones(clashZones);
-                SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 📦 Grouped into {sleeveGroups.Length} processing buckets.\n");
-
-                // 3. Form Clusters (Parallel)
-                // ✅ READ FROM USER SETTINGS: "Join openings if distance < (mm)"
-                var settings = ApplicationProfileService.Instance.GetCurrentSettings();
-                double toleranceMM = settings.JoinOpeningsDistance; // User setting (default: 100mm)
-                var toleranceDist = RevitUnitConversionService.Instance.ToInternalMillimeters(toleranceMM);
-                
-                // ✅ CRITICAL FIX: Wrap ClashZone objects in anonymous objects with ClashZone property
-                // FormClusters expects items to have a ClashZone property, not be ClashZone objects directly
-                var wrappedZones = clashZones.Select(z => new
+                foreach (var clusterList in kvp.Value)
                 {
-                    SleeveInstanceId = z.SleeveInstanceId,
-                    Category = z.MepElementCategory,
-                    ClashZone = z
-                });
-                
-                // Group the wrapped zones
-                var groupedZones = wrappedZones.GroupBy(w => new SleeveGroupKey(
-                    w.ClashZone.StructuralElementType ?? "Unknown",
-                    w.ClashZone.MepElementCategory ?? "Unknown", 
-                    w.ClashZone.HostOrientation ?? "Unknown",
-                    (int)(w.ClashZone.IntersectionPointX / 100000), // ✅ FIX: Disable Bucketing (Large value effectively puts all in same bucket)
-                    (int)(w.ClashZone.IntersectionPointY / 100000), 
-                    (int)(w.ClashZone.IntersectionPointZ / 100000)));
-                
-                var clustersByGroup = _algorithmService.FormClusters(groupedZones, toleranceDist, doc, enableParallel: true);
-
-                // 4. Process Results (Parallel Calculation + Serial DB Save? Or Parallel Save?)
-                // We'll collect all Valid Clusters in a concurrent bag first.
-                System.Threading.Tasks.Parallel.ForEach(clustersByGroup, (kvp) =>
-                {
-                    foreach (var clusterList in kvp.Value)
+                    // ✅ FIX: Filter out single-item "clusters"
+                    // If Count < 2, no clustering happened (proximity failed).
+                    // These should remain as individual sleeves.
+                    if (clusterList == null || clusterList.Count < 2) continue;
+                    
+                    try
                     {
-                        // ✅ FIX: Filter out single-item "clusters"
-                        // If Count < 2, no clustering happened (proximity failed).
-                        // These should remain as individual sleeves.
-                        if (clusterList == null || clusterList.Count < 2) continue;
-                        
-                        try
+                        var result = CalculateCluster(clusterList, batchId, comboId, filterId);
+                        if (result != null)
                         {
-                            var result = CalculateCluster(clusterList, batchId, comboId, filterId);
-                            if (result != null)
-                            {
-                                validClusters.Add(result);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            SafeFileLogger.SafeAppendText("batch_v2_errors.log", $"[{DateTime.Now:HH:mm:ss}] ❌ CALC ERROR: {ex.Message}\n");
+                            validClusters.Add(result);
                         }
                     }
-                });
-                
-                calcTracker?.SetItemCount(validClusters.Count);
-            }
+                    catch (Exception ex)
+                    {
+                        SafeFileLogger.SafeAppendText("batch_v2_errors.log", $"[{DateTime.Now:HH:mm:ss}] ❌ CALC ERROR: {ex.Message}\n");
+                    }
+                }
+            });
 
             SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🧮 Calculated {validClusters.Count} candidate clusters. Saving to DB...\n");
 
             // 5. Save to DB (Sequential for SQLite Safety, though SQLite handles concurrent reasonably well)
-            using (var saveTracker = _performanceMonitor?.TrackOperation("Step 3: SAVE THEORETICAL DATA TO DB"))
-            {
-                SaveToDatabase(validClusters, batchId);
-                saveTracker?.SetItemCount(validClusters.Count);
-            }
+            SaveToDatabase(validClusters, batchId);
 
             return batchId;
-        }
-
-        private string GenerateDeterministicClusterGuid(List<Guid> clashZoneIds)
-        {
-            if (clashZoneIds == null || clashZoneIds.Count == 0)
-                return Guid.NewGuid().ToString();
-
-            // Sort GUIDs to ensure deterministic result
-            var sortedGuids = clashZoneIds.OrderBy(g => g.ToString()).ToList();
-
-            // Create a deterministic string from sorted GUIDs
-            var guidString = string.Join("|", sortedGuids.Select(g => g.ToString().ToUpperInvariant()));
-
-            // Generate a deterministic GUID from the string using MD5
-            using (var md5 = System.Security.Cryptography.MD5.Create())
-            {
-                var hash = md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes(guidString));
-                var guid = new Guid(hash);
-                return guid.ToString().ToUpperInvariant();
-            }
         }
 
 
@@ -162,70 +128,53 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
         private void SaveToDatabase(ConcurrentBag<BatchClusterCalculationResult> results, string batchId)
         {
+            // using (var repo = new ClusterSleeveRepository(_databasePath)) ...
+
+            // Re-using direct connection style for speed/custom table
             using (var conn = new System.Data.SQLite.SQLiteConnection($"Data Source={_databasePath};Version=3;"))
             {
                 conn.Open();
                 using (var trans = conn.BeginTransaction())
+                using (var cmd = conn.CreateCommand())
                 {
-                    // 1. Insert new clusters (Ignore if already exists by ClusterGUID)
-                    using (var cmd = conn.CreateCommand())
+                    cmd.Transaction = trans;
+                    cmd.CommandText = @"
+                        INSERT INTO ClusterSleeves_v2 (
+                            ClusterGUID, ClusterBatchId, PlacementX, PlacementY, PlacementZ, 
+                            ClusterWidth, ClusterHeight, ClusterDepth, RotationAngleRad,
+                            HostElementId, HostType, HostOrientation, Category, FamilyName,
+                            ConstituentZoneGuids, ComboId, FilterId, Status, ValidationStatus
+                        ) VALUES (
+                            @guid, @batch, @x, @y, @z, 
+                            @w, @h, @d, @rot,
+                            @host, @htype, @horient, @cat, @fam,
+                            @zones, @combo, @filter, @status, @valid
+                        )";
+
+                    foreach (var r in results)
                     {
-                        cmd.Transaction = trans;
-                        cmd.CommandText = @"
-                            INSERT OR IGNORE INTO ClusterSleeves_v2 (
-                                ClusterGUID, ClusterBatchId, PlacementX, PlacementY, PlacementZ, 
-                                ClusterWidth, ClusterHeight, ClusterDepth, RotationAngleRad,
-                                HostElementId, HostType, HostOrientation, Category, FamilyName,
-                                ConstituentZoneGuids, ComboId, FilterId, Status, ValidationStatus
-                            ) VALUES (
-                                @guid, @batch, @x, @y, @z, 
-                                @w, @h, @d, @rot,
-                                @host, @htype, @horient, @cat, @fam,
-                                @zones, @combo, @filter, @status, @valid
-                            )";
-
-                        foreach (var r in results)
-                        {
-                            cmd.Parameters.Clear();
-                            cmd.Parameters.AddWithValue("@guid", r.ClusterGUID);
-                            cmd.Parameters.AddWithValue("@batch", r.ClusterBatchId);
-                            cmd.Parameters.AddWithValue("@x", r.PlacementX);
-                            cmd.Parameters.AddWithValue("@y", r.PlacementY);
-                            cmd.Parameters.AddWithValue("@z", r.PlacementZ);
-                            cmd.Parameters.AddWithValue("@w", r.ClusterWidth);
-                            cmd.Parameters.AddWithValue("@h", r.ClusterHeight);
-                            cmd.Parameters.AddWithValue("@d", r.ClusterDepth);
-                            cmd.Parameters.AddWithValue("@rot", r.RotationAngleRad);
-                            cmd.Parameters.AddWithValue("@host", r.HostElementId);
-                            cmd.Parameters.AddWithValue("@htype", r.HostType);
-                            cmd.Parameters.AddWithValue("@horient", r.HostOrientation);
-                            cmd.Parameters.AddWithValue("@cat", r.Category);
-                            cmd.Parameters.AddWithValue("@fam", r.FamilyName);
-                            cmd.Parameters.AddWithValue("@zones", r.ConstituentZoneGuids);
-                            cmd.Parameters.AddWithValue("@combo", r.ComboId);
-                            cmd.Parameters.AddWithValue("@filter", r.FilterId);
-                            cmd.Parameters.AddWithValue("@status", r.Status);
-                            cmd.Parameters.AddWithValue("@valid", r.ValidationStatus);
-                            cmd.ExecuteNonQuery();
-                        }
+                        cmd.Parameters.Clear();
+                        cmd.Parameters.AddWithValue("@guid", r.ClusterGUID);
+                        cmd.Parameters.AddWithValue("@batch", r.ClusterBatchId);
+                        cmd.Parameters.AddWithValue("@x", r.PlacementX);
+                        cmd.Parameters.AddWithValue("@y", r.PlacementY);
+                        cmd.Parameters.AddWithValue("@z", r.PlacementZ);
+                        cmd.Parameters.AddWithValue("@w", r.ClusterWidth);
+                        cmd.Parameters.AddWithValue("@h", r.ClusterHeight);
+                        cmd.Parameters.AddWithValue("@d", r.ClusterDepth);
+                        cmd.Parameters.AddWithValue("@rot", r.RotationAngleRad);
+                        cmd.Parameters.AddWithValue("@host", r.HostElementId);
+                        cmd.Parameters.AddWithValue("@htype", r.HostType);
+                        cmd.Parameters.AddWithValue("@horient", r.HostOrientation);
+                        cmd.Parameters.AddWithValue("@cat", r.Category);
+                        cmd.Parameters.AddWithValue("@fam", r.FamilyName);
+                        cmd.Parameters.AddWithValue("@zones", r.ConstituentZoneGuids);
+                        cmd.Parameters.AddWithValue("@combo", r.ComboId);
+                        cmd.Parameters.AddWithValue("@filter", r.FilterId);
+                        cmd.Parameters.AddWithValue("@status", r.Status);
+                        cmd.Parameters.AddWithValue("@valid", r.ValidationStatus);
+                        cmd.ExecuteNonQuery();
                     }
-
-                    // 2. Update BatchId for existing 'Pending' clusters so they are picked up by the current placement run
-                    using (var updateCmd = conn.CreateCommand())
-                    {
-                        updateCmd.Transaction = trans;
-                        updateCmd.CommandText = "UPDATE ClusterSleeves_v2 SET ClusterBatchId = @batch WHERE ClusterGUID = @guid AND Status = 'Pending'";
-                        var pBatch = updateCmd.Parameters.Add("@batch", System.Data.DbType.String);
-                        var pGuid = updateCmd.Parameters.Add("@guid", System.Data.DbType.String);
-
-                        foreach (var r in results)
-                        {
-                            pBatch.Value = batchId;
-                            pGuid.Value = r.ClusterGUID;
-                            updateCmd.ExecuteNonQuery();
-                        }
-                    }
-
                     trans.Commit();
                 }
             }
@@ -404,7 +353,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             return new BatchClusterCalculationResult
             {
                 // ... (object initializer above)
-                ClusterGUID = GenerateDeterministicClusterGuid(zones.Select(z => z.Id).ToList()),
+                ClusterGUID = Guid.NewGuid().ToString(),
                 ClusterBatchId = batchId,
                 PlacementX = cX, PlacementY = cY, PlacementZ = cZ,
                 ClusterWidth = width, ClusterHeight = height, ClusterDepth = depth,

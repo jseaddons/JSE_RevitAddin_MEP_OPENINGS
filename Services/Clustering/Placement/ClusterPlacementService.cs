@@ -6,7 +6,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
-using JSE_RevitAddin_MEP_OPENINGS.Helpers;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Safety;
@@ -415,7 +415,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                         // Set metadata (including HostOrientation for proper orientation)
                         SetMetadata(inst, targetCategory, null, deferredParameters, hostOrientation, mepRotationAngle);
 
-                        // ✅ SCHEDULE LEVEL: Set from first ClashZone's MEP element level
+                        // ✅ SCHEDULE LEVEL & ELEVATION: Set from first ClashZone's MEP element level
                         try
                         {
                             var firstSleeve = cluster[0];
@@ -425,30 +425,39 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                             else if (firstSleeve?.SleeveInstanceId != null && _getClashZoneBySleeveInstanceId != null)
                                 firstClashZone = _getClashZoneBySleeveInstanceId(firstSleeve.SleeveInstanceId, xmlFilePath);
 
-                            if (firstClashZone != null && !string.IsNullOrWhiteSpace(firstClashZone.MepElementLevelName))
+                            if (firstClashZone != null)
                             {
-                                // ✅ PRIMARY LOGIC: Set Schedule Level directly (matches yesterday's stable behavior)
-                                Level? mepLevel = new FilteredElementCollector(doc)
-                                    .OfClass(typeof(Level))
-                                    .Cast<Level>()
-                                    .FirstOrDefault(l => string.Equals(l.Name, firstClashZone.MepElementLevelName, StringComparison.OrdinalIgnoreCase));
-
-                                if (mepLevel != null)
+                                if (_parameterService != null)
                                 {
-                                    var scheduleLevelParam = inst.LookupParameter("Schedule of Level")
-                                                         ?? inst.LookupParameter("Schedule Level")
-                                                         ?? inst.LookupParameter("ScheduleLevel");
-                                    
-                                    if (scheduleLevelParam != null && !scheduleLevelParam.IsReadOnly)
+                                    var verifyBeforeParams = doc.GetElement(inst.Id) as FamilyInstance;
+                                    if (verifyBeforeParams != null && verifyBeforeParams.IsValidObject)
                                     {
-                                        if (scheduleLevelParam.StorageType == StorageType.ElementId)
-                                            scheduleLevelParam.Set(mepLevel.Id);
-                                        else
-                                            scheduleLevelParam.Set(mepLevel.Name);
+                                        _parameterService.SetScheduleLevelAndElevationForCluster(inst, firstClashZone, inst.Id);
+                                    }
+                                }
+                                else
+                                {
+                                    // ✅ FALLBACK: Set Schedule Level directly if SleeveParameterService not injected
+                                    if (!string.IsNullOrWhiteSpace(firstClashZone.MepElementLevelName))
+                                    {
+                                        Level? mepLevel = new FilteredElementCollector(doc)
+                                            .OfClass(typeof(Level))
+                                            .Cast<Level>()
+                                            .FirstOrDefault(l => string.Equals(l.Name, firstClashZone.MepElementLevelName, StringComparison.OrdinalIgnoreCase));
 
-                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        if (mepLevel != null)
                                         {
-                                            DebugLogger.Info($"[ClusterPlacementService] Set Schedule Level to '{mepLevel.Name}' for cluster {inst.Id}");
+                                            var scheduleLevelParam = inst.LookupParameter("Schedule of Level")
+                                                                 ?? inst.LookupParameter("Schedule Level")
+                                                                 ?? inst.LookupParameter("ScheduleLevel");
+                                            
+                                            if (scheduleLevelParam != null && !scheduleLevelParam.IsReadOnly)
+                                            {
+                                                if (scheduleLevelParam.StorageType == StorageType.ElementId)
+                                                    scheduleLevelParam.Set(mepLevel.Id);
+                                                else
+                                                    scheduleLevelParam.Set(mepLevel.Name);
+                                            }
                                         }
                                     }
                                 }
@@ -456,8 +465,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                         }
                         catch (Exception levelEx)
                         {
-                            SafeFileLogger.SafeAppendText("placement_errors.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] ⚠️ Error setting Schedule Level: {levelEx.Message}\n");
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Warning($"[ClusterPlacementService] Error setting level for cluster: {levelEx.Message}");
                         }
 
                         // ✅ BOTTOM OF OPENING

@@ -133,6 +133,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
 
         /// <summary>
+        /// ✅ UNIFIED ARCHITECTURE: Apply parameters using planned values.
+        /// Used by BulkPlacementService to set dimensions and depth from DTO values.
+        /// </summary>
+        public void ApplyBatchSleeveParameters(
+            FamilyInstance instance,
+            double width,
+            double height,
+            double diameter,
+            double depth,
+            bool isCircular)
+        {
+            if (instance == null) return;
+            var currentSleeveId = instance.Id;
+
+            // Pipes > threshold use RectangularOpeningOnWall families
+            string famName = instance.Symbol?.Family?.Name;
+            bool isActuallyCircular = famName != null && (famName.IndexOf("Round", StringComparison.OrdinalIgnoreCase) >= 0 || famName.IndexOf("Circular", StringComparison.OrdinalIgnoreCase) >= 0);
+
+            if (isActuallyCircular)
+            {
+                SetParameter(instance, "Diameter", diameter, currentSleeveId, fallbackName: "Sleeve Diameter");
+                SetParameter(instance, "Sleeve Diameter", diameter, currentSleeveId);
+            }
+            else
+            {
+                SetParameter(instance, "Width", width, currentSleeveId, fallbackName: "Sleeve Width");
+                SetParameter(instance, "Sleeve Width", width, currentSleeveId);
+                SetParameter(instance, "Height", height, currentSleeveId, fallbackName: "Sleeve Height");
+                SetParameter(instance, "Sleeve Height", height, currentSleeveId);
+            }
+
+            // Depth is critical for geometry
+            SetParameter(instance, "Depth", depth, currentSleeveId);
+            SetParameter(instance, "Wall Width", depth, currentSleeveId);
+        }
+
+        /// <summary>
         /// ✅ MAIN METHOD: Set all parameters on a sleeve instance.
         /// Handles dimensions, metadata, clearances, and depth parameters.
         /// CRITICAL PERFORMANCE OPTIMIZATION: Batch parameter setting for 8x faster performance.

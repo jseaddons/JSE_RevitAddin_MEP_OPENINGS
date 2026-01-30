@@ -18,7 +18,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// When false: Uses interleaved processing per filter (legacy behavior).
         /// Default: false (safe rollout)
         /// </summary>
-        public static bool UseSequentialOrchestrator { get; set; } = false;
+        public static bool UseSequentialOrchestrator { get; set; } = true;
 
         /// <summary>
         /// Enable refactored parameter transfer optimizations (buffered logging, lazy cache, unified lookup, struct-based deferred params).
@@ -327,7 +327,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Use in production/deployment mode for maximum performance.
         /// Location: DebugLogger.cs (all Log calls check this flag)
         /// </summary>
-        public static bool DisableVerboseLogging { get; set; } = false; // ✅ ENABLED for performance - reduces overhead
+        public static bool DisableVerboseLogging { get; set; } = true; // ✅ ENABLED for performance - reduces overhead
 
         /// <summary>
         /// Skip synchronous parameter capture for existing zones in ClashZoneService.
@@ -343,7 +343,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Location: Services/BulkPlacementService.cs
         /// Default: false (safe rollout)
         /// </summary>
-        public static bool UseBulkIndividualSleevePlacement { get; set; } = false;
+        public static bool UseBulkIndividualSleevePlacement { get; set; } = true;
 
         /// <summary>
         /// Skip forced garbage collection at end of refresh.
@@ -973,7 +973,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// When false: ClashZoneRepository performs operations directly (legacy).
         /// Default: true (enabled).
         /// </summary>
-        public static bool UseSolidRefactoredRepositories { get; set; } = false;
+        public static bool UseSolidRefactoredRepositories { get; set; } = true;
         
         /// <summary>
         /// Enable dependency injection for refresh services.
@@ -1018,7 +1018,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 // Load Phase 2 flags (experimental defaults)
                 UseRTreeFilter = GetConfigValue("UseRTreeFilter", true);
-                UseParallelProcessing = GetConfigValue("UseParallelProcessing", false);
+                UseParallelProcessing = GetConfigValue("UseParallelProcessing", true);
                 UseSpatialGrid = GetConfigValue("UseSpatialGrid", true); // ✅ PERFORMANCE FIX: Enable spatial grid by default (70-90% reduction in intersection tests)
                 UseRTreeDatabaseIndex = GetConfigValue("UseRTreeDatabaseIndex", true); // ✅ R-TREE: Enable database R-tree by default
                 
@@ -1177,6 +1177,16 @@ Refactoring Flags: SleeveRepository={UseNewSleeveRepository}, ZoneFilter={UseNew
         /// Default: false (safety flag per user request)
         /// </summary>
         public static bool UseGeometricCenterForClustering { get; set; } = true;
+
+        public static bool UseGeometricCenterForWalls { get; set; } = true;
+        public static bool UseGeometricCenterForFloors { get; set; } = true;
+
+        /// <summary>
+        /// Enable the post-placement clustering workflow (Phase 2-4).
+        /// When false: Skips corner extraction and clustering, only places individual sleeves.
+        /// Default: true
+        /// </summary>
+        public static bool EnableClusteringWorkflow { get; set; } = true;
 
     }
 }
