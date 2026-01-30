@@ -115,7 +115,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 }
             });
 
-            SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🧮 Calculated {validClusters.Count} candidate clusters. Saving to DB...\n");
+            SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🧮 Calculated {validClusters.Count} candidate clusters. Saving to ClusterSleeves_v2 table...\n");
 
             // 5. Save to DB (Sequential for SQLite Safety, though SQLite handles concurrent reasonably well)
             SaveToDatabase(validClusters, batchId);
@@ -128,55 +128,104 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
         private void SaveToDatabase(ConcurrentBag<BatchClusterCalculationResult> results, string batchId)
         {
-            // using (var repo = new ClusterSleeveRepository(_databasePath)) ...
+            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: SaveToDatabase called with {results.Count} clusters, batchId={batchId}\n");
+            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                $"[{DateTime.Now:HH:mm:ss}] 📊 TABLE: Saving to ClusterSleeves_v2 table in database\n");
+            
+            if (results.Count == 0)
+            {
+                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ DIAGNOSTIC: No clusters to save to ClusterSleeves_v2, returning early\n");
+                return;
+            }
 
             // Re-using direct connection style for speed/custom table
-            using (var conn = new System.Data.SQLite.SQLiteConnection($"Data Source={_databasePath};Version=3;"))
+            try
             {
-                conn.Open();
-                using (var trans = conn.BeginTransaction())
-                using (var cmd = conn.CreateCommand())
+                using (var conn = new System.Data.SQLite.SQLiteConnection($"Data Source={_databasePath};Version=3;"))
                 {
-                    cmd.Transaction = trans;
-                    cmd.CommandText = @"
-                        INSERT INTO ClusterSleeves_v2 (
-                            ClusterGUID, ClusterBatchId, PlacementX, PlacementY, PlacementZ, 
-                            ClusterWidth, ClusterHeight, ClusterDepth, RotationAngleRad,
-                            HostElementId, HostType, HostOrientation, Category, FamilyName,
-                            ConstituentZoneGuids, ComboId, FilterId, Status, ValidationStatus
-                        ) VALUES (
-                            @guid, @batch, @x, @y, @z, 
-                            @w, @h, @d, @rot,
-                            @host, @htype, @horient, @cat, @fam,
-                            @zones, @combo, @filter, @status, @valid
-                        )";
-
-                    foreach (var r in results)
+                    conn.Open();
+                    SafeFileLogger.SafeAppendText("batch_v2.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: Database connection opened, starting transaction for ClusterSleeves_v2\n");
+                    
+                    using (var trans = conn.BeginTransaction())
+                    using (var cmd = conn.CreateCommand())
                     {
-                        cmd.Parameters.Clear();
-                        cmd.Parameters.AddWithValue("@guid", r.ClusterGUID);
-                        cmd.Parameters.AddWithValue("@batch", r.ClusterBatchId);
-                        cmd.Parameters.AddWithValue("@x", r.PlacementX);
-                        cmd.Parameters.AddWithValue("@y", r.PlacementY);
-                        cmd.Parameters.AddWithValue("@z", r.PlacementZ);
-                        cmd.Parameters.AddWithValue("@w", r.ClusterWidth);
-                        cmd.Parameters.AddWithValue("@h", r.ClusterHeight);
-                        cmd.Parameters.AddWithValue("@d", r.ClusterDepth);
-                        cmd.Parameters.AddWithValue("@rot", r.RotationAngleRad);
-                        cmd.Parameters.AddWithValue("@host", r.HostElementId);
-                        cmd.Parameters.AddWithValue("@htype", r.HostType);
-                        cmd.Parameters.AddWithValue("@horient", r.HostOrientation);
-                        cmd.Parameters.AddWithValue("@cat", r.Category);
-                        cmd.Parameters.AddWithValue("@fam", r.FamilyName);
-                        cmd.Parameters.AddWithValue("@zones", r.ConstituentZoneGuids);
-                        cmd.Parameters.AddWithValue("@combo", r.ComboId);
-                        cmd.Parameters.AddWithValue("@filter", r.FilterId);
-                        cmd.Parameters.AddWithValue("@status", r.Status);
-                        cmd.Parameters.AddWithValue("@valid", r.ValidationStatus);
-                        cmd.ExecuteNonQuery();
+                        cmd.Transaction = trans;
+                        cmd.CommandText = @"
+                            INSERT INTO ClusterSleeves_v2 (
+                                ClusterGUID, ClusterBatchId, PlacementX, PlacementY, PlacementZ, 
+                                ClusterWidth, ClusterHeight, ClusterDepth, RotationAngleRad,
+                                HostElementId, HostType, HostOrientation, Category, FamilyName,
+                                ConstituentZoneGuids, ComboId, FilterId, Status, ValidationStatus
+                            ) VALUES (
+                                @guid, @batch, @x, @y, @z, 
+                                @w, @h, @d, @rot,
+                                @host, @htype, @horient, @cat, @fam,
+                                @zones, @combo, @filter, @status, @valid
+                            )";
+
+                        int savedCount = 0;
+                        foreach (var r in results)
+                        {
+                            try
+                            {
+                                cmd.Parameters.Clear();
+                                cmd.Parameters.AddWithValue("@guid", r.ClusterGUID);
+                                cmd.Parameters.AddWithValue("@batch", r.ClusterBatchId);
+                                cmd.Parameters.AddWithValue("@x", r.PlacementX);
+                                cmd.Parameters.AddWithValue("@y", r.PlacementY);
+                                cmd.Parameters.AddWithValue("@z", r.PlacementZ);
+                                cmd.Parameters.AddWithValue("@w", r.ClusterWidth);
+                                cmd.Parameters.AddWithValue("@h", r.ClusterHeight);
+                                cmd.Parameters.AddWithValue("@d", r.ClusterDepth);
+                                cmd.Parameters.AddWithValue("@rot", r.RotationAngleRad);
+                                cmd.Parameters.AddWithValue("@host", r.HostElementId);
+                                cmd.Parameters.AddWithValue("@htype", r.HostType ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("@horient", r.HostOrientation ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("@cat", r.Category ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("@fam", r.FamilyName ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("@zones", r.ConstituentZoneGuids ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("@combo", r.ComboId);
+                                cmd.Parameters.AddWithValue("@filter", r.FilterId);
+                                cmd.Parameters.AddWithValue("@status", r.Status ?? "Pending");
+                                cmd.Parameters.AddWithValue("@valid", r.ValidationStatus ?? "Valid");
+                                
+                                int rowsAffected = cmd.ExecuteNonQuery();
+                                if (rowsAffected > 0)
+                                {
+                                    savedCount++;
+                                }
+                                else
+                                {
+                                    SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ TABLE: INSERT into ClusterSleeves_v2 returned 0 rows for cluster {r.ClusterGUID}\n");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                SafeFileLogger.SafeAppendText("batch_v2_errors.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] ❌ TABLE ERROR: Failed to INSERT cluster {r.ClusterGUID} into ClusterSleeves_v2: {ex.Message}\n{ex.StackTrace}\n");
+                                throw; // Re-throw to rollback transaction
+                            }
+                        }
+                        
+                        SafeFileLogger.SafeAppendText("batch_v2.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: Inserted {savedCount} of {results.Count} clusters into ClusterSleeves_v2, committing transaction\n");
+                        
+                        trans.Commit();
+                        
+                        SafeFileLogger.SafeAppendText("batch_v2.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] ✅ TABLE: Transaction committed successfully, {savedCount} clusters saved to ClusterSleeves_v2 table\n");
                     }
-                    trans.Commit();
                 }
+            }
+            catch (Exception ex)
+            {
+                SafeFileLogger.SafeAppendText("batch_v2_errors.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ❌ TABLE CRITICAL ERROR: SaveToDatabase failed to save to ClusterSleeves_v2 table: {ex.Message}\n{ex.StackTrace}\n");
+                throw;
             }
         }
 

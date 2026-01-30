@@ -9,6 +9,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Commands;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined;
@@ -1079,7 +1080,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                     var repo = new JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClashZoneRepository(dbContext);
                                                     
                                                     // 1. Update Zone Data (ID, Width, Height, Diameter, PlacementPoint) - NOW ACCURATE
-                                                    repo.BatchUpdateSleevePlacementData(placedZones);
+                                                    // ✅ CRITICAL: Ensure SleeveInstanceId is set before database update
+                                                    var zonesWithIds = placedZones.Where(z => z.SleeveInstanceId > 0).ToList();
+                                                    if (zonesWithIds.Count != placedZones.Count)
+                                                    {
+                                                        SafeFileLogger.SafeAppendText("placement_debug.log", 
+                                                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ WARNING: {placedZones.Count - zonesWithIds.Count} zones missing SleeveInstanceId before DB update\n");
+                                                    }
+                                                    repo.BatchUpdateSleevePlacementData(zonesWithIds);
+                                                    
+                                                    // ✅ CRITICAL: Verify SleeveInstanceId was saved to database
+                                                    if (!DeploymentConfiguration.DeploymentMode)
+                                                    {
+                                                        SafeFileLogger.SafeAppendText("placement_debug.log", 
+                                                            $"[{DateTime.Now:HH:mm:ss}] ✅ BatchUpdateSleevePlacementData completed for {zonesWithIds.Count} zones with SleeveInstanceId\n");
+                                                    }
                                                     
                                                     // ✅ FIX: Corner extraction moved to Step 5 (line 1543) to avoid duplicate calls
                                                     // Corner extraction will happen once in Step 5 after all placement is complete
@@ -1322,6 +1337,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ PERFORMANCE: Log success
             SafeFileLogger.SafeAppendText("placement_debug.log",
                 $"[{DateTime.Now:HH:mm:ss}] ExecuteUniversalSleevePlacement SUCCESS: Placed={placedCount}, Skipped={skippedCount}, Errors={errorCount}\n");
+            
+            // ✅ DIAGNOSTIC: Log that we're continuing past the return statement
+            SafeFileLogger.SafeAppendText("batch_v2.log",
+                $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: Continuing after ExecuteUniversalSleevePlacement return, about to enter coordinate update block\n");
             
             // ✅ CRITICAL: Following reference document - Regenerate FIRST, then read from Revit and save to XML
             // Reference: SLEEVE_PLACEMENT_SEQUENCING_REFERENCE.md lines 22-35
@@ -1590,8 +1609,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             // 3. CLUSTER & SWAP (Phase 3 & 4) - only if enabled
             // ✅ FIX: Removed duplicate Step 5 call - corner extraction already done above at line 1543
+            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                $"[{DateTime.Now:HH:mm:ss}] 🔍 CLUSTERING CHECK: EnableClusteringWorkflow={OptimizationFlags.EnableClusteringWorkflow}\n");
+            
+            // ✅ DIAGNOSTIC: Log that we reached the clustering block
+            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: Reached clustering block in ExecuteUniversalSleevePlacement\n");
+            
             if (OptimizationFlags.EnableClusteringWorkflow)
             {
+                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ✅ CLUSTERING ENABLED: Starting cluster workflow\n");
+                    
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🚀 STARTING PHASE 2-4: Hybrid Cluster Workflow\n");
@@ -1608,6 +1637,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     List<ClashZone> clashZones;
                     // FIX: Use current filter category instead of "All" to prevent "Zombie" placement of unselected categories
                     string categoryString = Models.MepCategoryConstants.Normalize(filter.Category.ToString());
+                    
+                    SafeFileLogger.SafeAppendText("batch_v2.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🔍 CLUSTERING: Processing category={categoryString}\n");
 
                     using (var ctx = new SleeveDbContext(_document))
                     {
@@ -1623,27 +1655,103 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Instantiate using Factory
                     var clusterService = ClusterServiceFactory.CreateWithAllServices(_document);
 
-                     // Perform Clustering
+                     // ✅ CONSOLIDATED CLUSTERING: Calculate only (skip placement for consolidation)
+                     // Placement and cleanup will be done once for all categories after all clustering completes
+                     SafeFileLogger.SafeAppendText("batch_v2.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🔍 CLUSTERING: Calling ClusterSleevesV2 with skipPlacement=TRUE (will consolidate)\n");
+                     
                      var clusterResult = clusterService.ClusterSleevesV2(
                         _document, 
                         clashZones, // Uses filtered zones from earlier in method
                         categoryString, 
                         comboId, 
                         filterId, 
-                        useSingleTransaction: true
+                        useSingleTransaction: true,
+                        skipPlacement: true // ✅ Skip placement - will be consolidated
                      );
+                     
+                     SafeFileLogger.SafeAppendText("batch_v2.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🔍 CLUSTERING: ClusterSleevesV2 returned placed={clusterResult.placedCount}, failed={clusterResult.failedCount}\n");
 
                      if (!DeploymentConfiguration.DeploymentMode)
                      {
-                        DebugLogger.Info($"[HybridBatch] Clustering Complete: {clusterResult.placedCount} placed, {clusterResult.failedCount} failed.");
-                        SafeFileLogger.SafeAppendText("placement_debug.log", $"[{DateTime.Now:HH:mm:ss}] [HybridBatch] Clustering Complete: {clusterResult.placedCount} placed, {clusterResult.failedCount} failed.\n");
+                        DebugLogger.Info($"[HybridBatch] Clustering Calculation Complete for {categoryString} (placement will be consolidated)");
+                        SafeFileLogger.SafeAppendText("placement_debug.log", $"[{DateTime.Now:HH:mm:ss}] [HybridBatch] Clustering Calculation Complete for {categoryString} (placement will be consolidated)\n");
                      }
                 }
                 catch (Exception ex)
                 {
+                     SafeFileLogger.SafeAppendText("batch_v2.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] ❌ CLUSTERING ERROR: {ex.Message}\n{ex.StackTrace}\n");
                      if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Error($"[HybridBatch] Error in Clustering Phase: {ex.Message}");
                 }
+                
+                // ✅ CONSOLIDATED PLACEMENT & CLEANUP: After all categories are clustered, place all at once
+                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🔍 CONSOLIDATED PLACEMENT: About to call PlaceAllCategoriesAndCleanup\n");
+                    
+                try
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🚀 CONSOLIDATED PLACEMENT: Placing all clusters from all categories in one stroke\n");
+                        SafeFileLogger.SafeAppendText("placement_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🚀 CONSOLIDATED PLACEMENT: Placing all clusters from all categories in one stroke\n");
+                    }
+                    
+                    SafeFileLogger.SafeAppendText("batch_v2.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🚀 CONSOLIDATED PLACEMENT: Starting PlaceAllCategoriesAndCleanup\n");
+                    
+                    // ✅ FIX: Get database path from SleeveDbContext (same as BatchClusterCalculationService uses)
+                    string dbPath;
+                    using (var tempContext = new SleeveDbContext(_document))
+                    {
+                        dbPath = tempContext.DatabasePath;
+                    }
+                    SafeFileLogger.SafeAppendText("batch_v2.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: Using database path: {dbPath}\n");
+                    
+                    // Create services for consolidated placement
+                    var cleanupService = new ClusterCleanupService(); // ✅ No constructor parameters needed
+                    
+                    var batchPlacementService = new BatchClusterPlacementService(
+                        dbPath,
+                        new ClashZoneRepository(new SleeveDbContext(_document)),
+                        new SleeveParameterService(_document),
+                        cleanupService, // Pass the cleanup service
+                        null); // performanceMonitor
+                    
+                    // Place all categories and cleanup once
+                    var (placed, failed, cleanedUp) = batchPlacementService.PlaceAllCategoriesAndCleanup(
+                        _document, 
+                        cleanupService, 
+                        useSingleTransaction: true);
+                    
+                    // ✅ Note: totalClusters is tracked in ExecuteCommandSequence method scope
+                    // This consolidated placement happens in a different method, so we log the result
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[HybridBatch] Consolidated placement result: {placed} clusters placed");
+                    }
+                    
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[HybridBatch] CONSOLIDATED PLACEMENT Complete: {placed} placed, {failed} failed, {cleanedUp} cleaned up");
+                        SafeFileLogger.SafeAppendText("placement_debug.log", $"[{DateTime.Now:HH:mm:ss}] [HybridBatch] CONSOLIDATED PLACEMENT Complete: {placed} placed, {failed} failed, {cleanedUp} cleaned up\n");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error($"[HybridBatch] Error in Consolidated Placement: {ex.Message}");
+                    SafeFileLogger.SafeAppendText("placement_errors.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ CONSOLIDATED PLACEMENT FAILED: {ex.Message}\n{ex.StackTrace}\n");
+                }
+            }
+            else
+            {
+                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ CLUSTERING DISABLED: EnableClusteringWorkflow=false, skipping cluster workflow\n");
             }
 
             // ✅ PERFORMANCE: Return counts AFTER saving bounding boxes to database

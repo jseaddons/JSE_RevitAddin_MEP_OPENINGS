@@ -4,6 +4,7 @@ using System.Data.SQLite;
 using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Utils;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
@@ -44,6 +45,74 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             _performanceMonitor = performanceMonitor;
         }
 
+        /// <summary>
+        /// ✅ CONSOLIDATED PLACEMENT: Place all pending clusters from all categories in one stroke
+        /// Then run cleanup once for all placed clusters
+        /// </summary>
+        public (int placed, int failed, int cleanedUp) PlaceAllCategoriesAndCleanup(Document doc, IClusterCleanupService cleanupService, bool useSingleTransaction = true)
+        {
+            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                $"[{DateTime.Now:HH:mm:ss}] 🚀 CONSOLIDATED PLACEMENT: Starting placement for ALL categories\n");
+            
+            // Step 1: Place all pending clusters (all categories)
+            var (placed, failed) = PlaceFromDatabase(doc, batchId: null, useSingleTransaction);
+            
+            // Step 2: Cleanup once for all placed clusters
+            int cleanedUp = 0;
+            if (cleanupService != null && placed > 0)
+            {
+                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CONSOLIDATED CLEANUP: Starting cleanup for ALL categories after placement\n");
+                
+                try
+                {
+                    // Get all cluster instance IDs that were just placed (from all categories)
+                    // Query ClusterSleeves_v2 for all clusters with Status='Placed' and ClusterInstanceId > 0
+                    var clusterInstanceIds = new List<int>();
+                    using (var conn = new SQLiteConnection($"Data Source={_databasePath};Version=3;"))
+                    {
+                        conn.Open();
+                        using (var cmd = conn.CreateCommand())
+                        {
+                            cmd.CommandText = @"
+                                SELECT DISTINCT ClusterInstanceId 
+                                FROM ClusterSleeves_v2 
+                                WHERE Status = 'Placed' AND ClusterInstanceId > 0";
+                            using (var reader = cmd.ExecuteReader())
+                            {
+                                while (reader.Read())
+                                {
+                                    clusterInstanceIds.Add(reader.GetInt32(0));
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (clusterInstanceIds.Count > 0)
+                    {
+                        SafeFileLogger.SafeAppendText("batch_v2.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CONSOLIDATED CLEANUP: Found {clusterInstanceIds.Count} placed clusters from all categories\n");
+                        
+                        // ✅ CLEANUP ALL CATEGORIES: No category filter - check all individual sleeves against all cluster bboxes
+                        cleanedUp = cleanupService.CleanupSleevesWithinClustersFromDatabase(
+                            doc, 
+                            targetCategory: null, // null = all categories
+                            clusterInstanceIds: clusterInstanceIds);
+                        
+                        SafeFileLogger.SafeAppendText("batch_v2.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CONSOLIDATED CLEANUP COMPLETE: Deleted {cleanedUp} individual sleeves (all categories)\n");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SafeFileLogger.SafeAppendText("placement_errors.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ CONSOLIDATED CLEANUP FAILED: {ex.Message}\n{ex.StackTrace}\n");
+                }
+            }
+            
+            return (placed, failed, cleanedUp);
+        }
+
         public (int placed, int failed) PlaceFromDatabase(Document doc, string batchId, bool useSingleTransaction = true)
         {
             // 🔥 DIAGNOSTIC: Log entry and transaction state at method start
@@ -58,14 +127,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
                 // 1. Query Pending Clusters
                 List<BatchClusterData> pendingClusters;
+                SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: About to call GetPendingClusters with batchId={(batchId ?? "NULL")}\n");
                 using (_performanceMonitor?.TrackOperation("Query Pending Clusters"))
                 {
                     pendingClusters = GetPendingClusters(batchId);
                 }
                 
+                SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: GetPendingClusters returned {pendingClusters.Count} clusters\n");
                 SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🏗️ STARTING PLACEMENT V2: Batch {batchId}, Pending={pendingClusters.Count}, Mode={(useSingleTransaction ? "BULK" : "SEQUENTIAL")}\n");
+                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 📊 TABLE: Will save placed clusters to ClusterSleeves table (legacy) after placement\n");
 
-                if (pendingClusters.Count == 0) return (0, 0);
+                if (pendingClusters.Count == 0)
+                {
+                    SafeFileLogger.SafeAppendText("batch_v2.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ DIAGNOSTIC: No pending clusters found, returning early (ClusterSleeves table will not be populated)\n");
+                    return (0, 0);
+                }
 
                 // ✅ OPTIMIZATION: Pre-fetch all required Family Symbols
                 var symbolCache = new Dictionary<string, FamilySymbol>();
@@ -242,51 +320,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     }
                 }
                 
-                // ✅ STAGE 1 + STAGE 2 CLEANUP: Delete individual sleeves within placed cluster bounding boxes
-                // Uses DB-only approach (zero Revit queries) - combines Stage 1 and Stage 2 into one operation
-                // IMPORTANT: This must run AFTER parameter flush and database save (so cluster bounding boxes are in DB)
-                if (_cleanupService != null && placedInstances.Count > 0)
-                {
-                    using (var cleanupTracker = _performanceMonitor?.TrackOperation("Cleanup Individual Sleeves (DB-Only, Stage 1+2)"))
-                    {
-                        try
-                        {
-                            // Extract target category from batchId (format: "20260117_180808_Ducts_3")
-                            string targetCategory = null;
-                            var batchParts = batchId.Split('_');
-                            if (batchParts.Length >= 3)
-                            {
-                                targetCategory = batchParts[2]; // "Ducts", "Pipes", etc.
-                            }
-                            
-                            // Get cluster instance IDs that were just placed
-                            var clusterInstanceIds = placedInstances
-                                .Where(inst => inst != null && inst.IsValidObject)
-                                .Select(inst => inst.Id.IntegerValue)
-                                .ToList();
-                            
-                            SafeFileLogger.SafeAppendText("batch_v2.log", 
-                                $"[{DateTime.Now:HH:mm:ss}] 🧹 STARTING DB-ONLY CLEANUP: {clusterInstanceIds.Count} cluster sleeves, Category={targetCategory ?? "ALL"}\n");
-                            
-                            // ✅ DB-ONLY CLEANUP: Uses bounding boxes from database (zero Revit queries)
-                            // This combines Stage 1 (sleeves that formed clusters) and Stage 2 (sleeves within cluster bboxes)
-                            int deletedCount = _cleanupService.CleanupSleevesWithinClustersFromDatabase(
-                                doc, 
-                                targetCategory: targetCategory,
-                                clusterInstanceIds: clusterInstanceIds);
-                            
-                            SafeFileLogger.SafeAppendText("batch_v2.log", 
-                                $"[{DateTime.Now:HH:mm:ss}] 🧹 DB-ONLY CLEANUP COMPLETE: Deleted {deletedCount} individual sleeves (Category={targetCategory ?? "ALL"})\n");
-                            
-                            cleanupTracker?.SetItemCount(deletedCount);
-                        }
-                        catch (Exception ex)
-                        {
-                            SafeFileLogger.SafeAppendText("placement_errors.log", 
-                                $"[{DateTime.Now:HH:mm:ss}] ⚠️ DB-ONLY CLEANUP FAILED: {ex.Message}\n{ex.StackTrace}\n");
-                        }
-                    }
-                }
+                // ✅ CLEANUP REMOVED: Cleanup is now handled at orchestrator level after ALL categories are placed
+                // This allows cleanup to run once for all categories instead of per-category
+                // The placedInstances list is still populated for potential future use
                 else
                 {
                     if (_cleanupService == null)
@@ -313,9 +349,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         private List<BatchClusterData> GetPendingClusters(string batchId)
         {
             var list = new List<BatchClusterData>();
+            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: GetPendingClusters called with batchId={(batchId ?? "NULL")}\n");
+            
             using (var conn = new SQLiteConnection($"Data Source={_databasePath};Version=3;"))
             {
                 conn.Open();
+                
+                // ✅ DIAGNOSTIC: First check total count of clusters in table
+                using (var countCmd = conn.CreateCommand())
+                {
+                    countCmd.CommandText = "SELECT COUNT(*) FROM ClusterSleeves_v2";
+                    var totalCount = Convert.ToInt32(countCmd.ExecuteScalar());
+                    SafeFileLogger.SafeAppendText("batch_v2.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: Total clusters in ClusterSleeves_v2: {totalCount}\n");
+                }
+                
+                // ✅ DIAGNOSTIC: Check pending clusters count
+                using (var pendingCmd = conn.CreateCommand())
+                {
+                    pendingCmd.CommandText = "SELECT COUNT(*) FROM ClusterSleeves_v2 WHERE Status = 'Pending' AND ValidationStatus = 'Valid'";
+                    var pendingCount = Convert.ToInt32(pendingCmd.ExecuteScalar());
+                    SafeFileLogger.SafeAppendText("batch_v2.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: Pending+Valid clusters: {pendingCount}\n");
+                }
+                
                 using (var cmd = conn.CreateCommand())
                 {
                     cmd.CommandText = @"
@@ -326,9 +384,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         WHERE (ClusterBatchId = @batch OR @batch IS NULL) AND Status = 'Pending' AND ValidationStatus = 'Valid'";
                     // Allow batchId to be null to fetch ALL pending
                     if (string.IsNullOrEmpty(batchId))
+                    {
                         cmd.Parameters.AddWithValue("@batch", DBNull.Value);
+                        SafeFileLogger.SafeAppendText("batch_v2.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: Using DBNull.Value for batchId (fetching all pending)\n");
+                    }
                     else
+                    {
                         cmd.Parameters.AddWithValue("@batch", batchId);
+                        SafeFileLogger.SafeAppendText("batch_v2.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: Using batchId='{batchId}'\n");
+                    }
                     
                     using (var reader = cmd.ExecuteReader())
                     {
@@ -354,6 +420,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     }
                 }
             }
+            
+            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: GetPendingClusters returning {list.Count} clusters\n");
             return list;
         }
 
@@ -759,6 +828,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             // ✅ DIAGNOSTIC: Log method entry
             SafeFileLogger.SafeAppendText("batch_v2.log",
                 $"\n[{DateTime.Now:HH:mm:ss}] 🔴 SaveToClusterSleevesLegacy CALLED!\n" +
+                $"    📊 TABLE: Saving to ClusterSleeves table (legacy)\n" +
                 $"    ClusterInstanceId: {clusterInstanceId}\n" +
                 $"    ConstituentZoneGuids: {cluster.ConstituentZoneGuids}\n");
             
@@ -848,10 +918,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
                                 // 🔍 LOG BLOCK 4: SaveToClusterSleevesLegacy Success
                                 SafeFileLogger.SafeAppendText("debug_db.log", 
-                                    $"[{DateTime.Now:HH:mm:ss}] 💾 SAVED to ClusterSleeves (legacy): ClusterInstanceId={clusterInstanceId}, ComboId={comboId}\n");
+                                    $"[{DateTime.Now:HH:mm:ss}] 💾 TABLE: SAVED to ClusterSleeves table (legacy): ClusterInstanceId={clusterInstanceId}, ComboId={comboId}\n");
 
                                 SafeFileLogger.SafeAppendText("batch_v2.log",
-                                    $"[{DateTime.Now:HH:mm:ss}] 💾 SAVED to ClusterSleeves (legacy): ClusterInstanceId={clusterInstanceId}, ComboId={comboId}\n");
+                                    $"[{DateTime.Now:HH:mm:ss}] ✅ TABLE: SAVED to ClusterSleeves table (legacy): ClusterInstanceId={clusterInstanceId}, ComboId={comboId}\n");
                             }
                         }
                     }
@@ -1040,7 +1110,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
 
         /// <summary>
-        /// Legacy Cleanup: Deletes old ClusterSleeves by Instance IDs.
+        /// ✅ CRITICAL FIX: Deletes old cluster records from BOTH ClusterSleeves (legacy) AND ClusterSleeves_v2 tables.
+        /// This prevents stale placement points from being used when clusters are recalculated.
         /// </summary>
         private void DeleteOldClusterSleeves(List<int> clusterInstanceIds)
         {
@@ -1057,11 +1128,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         {
                             cmd.Transaction = transaction;
                             var ids = string.Join(",", clusterInstanceIds);
+                            
+                            // ✅ FIX: Delete from BOTH tables to prevent stale placement points
+                            // 1. Delete from legacy ClusterSleeves table
                             cmd.CommandText = $"DELETE FROM ClusterSleeves WHERE ClusterInstanceId IN ({ids})";
-                            int rows = cmd.ExecuteNonQuery();
+                            int rowsLegacy = cmd.ExecuteNonQuery();
+                            
+                            // 2. Delete from ClusterSleeves_v2 table (where GetPendingClusters reads from)
+                            // ClusterSleeves_v2 has ClusterInstanceId column, so we can delete directly
+                            cmd.CommandText = $"DELETE FROM ClusterSleeves_v2 WHERE ClusterInstanceId IN ({ids})";
+                            int rowsV2 = cmd.ExecuteNonQuery();
                             
                             SafeFileLogger.SafeAppendText("batch_v2.log", 
-                                $"[{DateTime.Now:HH:mm:ss}] 🗑️ DELETED {rows} old cluster rows from ClusterSleeves (Ids: {ids}) to prevent duplication.\n");
+                                $"[{DateTime.Now:HH:mm:ss}] 🗑️ DELETED {rowsLegacy} old cluster rows from ClusterSleeves, {rowsV2} rows from ClusterSleeves_v2 (Ids: {ids}) to prevent stale placement points.\n");
                         }
                         transaction.Commit();
                     }
@@ -1192,6 +1271,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 {
                     PerformSwapDeletion(doc, cluster, clusterInstanceId);
                     UpdateStatus(cluster.ClusterGUID, "Placed", null, clusterInstanceId);
+                    SafeFileLogger.SafeAppendText("batch_v2.log",
+                        $"[{DateTime.Now:HH:mm:ss}] 📊 TABLE: About to save cluster {clusterInstanceId} to ClusterSleeves table (legacy)\n");
                     SaveToClusterSleevesLegacy(doc, cluster, clusterInstanceId, instance);
                     totalPlaced++;
                 }
@@ -1285,43 +1366,243 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                 $"[{DateTime.Now:HH:mm:ss}] ⚠️ Failed to update ClusterSleeves for {clusterInstanceId}: {ex.Message}\n");
                         }
                         
-                        // Step 2: Update ClashZones.ClusterSleeveBoundingBox columns (for Stage 2 cleanup)
+                        // Step 2: SKIP - Cluster bounding boxes are already in ClusterSleeves table
+                        // No need to duplicate them in ClashZones - cleanup service queries ClusterSleeves directly
+                        // This was removed to avoid unnecessary data duplication
+                        /*
                         try
                         {
-                            using (var cmd = context.Connection.CreateCommand())
+                            // First, get constituent zone GUIDs for this cluster
+                            var constituentGuids = new List<string>();
+                            using (var queryCmd = context.Connection.CreateCommand())
                             {
-                                cmd.CommandText = @"
-                                    UPDATE ClashZones 
-                                    SET ClusterSleeveBoundingBoxMinX = @MinX,
-                                        ClusterSleeveBoundingBoxMinY = @MinY,
-                                        ClusterSleeveBoundingBoxMinZ = @MinZ,
-                                        ClusterSleeveBoundingBoxMaxX = @MaxX,
-                                        ClusterSleeveBoundingBoxMaxY = @MaxY,
-                                        ClusterSleeveBoundingBoxMaxZ = @MaxZ
-                                    WHERE ClusterInstanceId = @ClusterId";
+                                // Try ClusterSleeves_v2 first (new table)
+                                queryCmd.CommandText = @"
+                                    SELECT ConstituentZoneGuids 
+                                    FROM ClusterSleeves_v2 
+                                    WHERE ClusterInstanceId = @ClusterId
+                                    LIMIT 1";
+                                queryCmd.Parameters.AddWithValue("@ClusterId", clusterInstanceId);
                                 
-                                cmd.Parameters.AddWithValue("@ClusterId", clusterInstanceId);
-                                cmd.Parameters.AddWithValue("@MinX", bbox.Min.X);
-                                cmd.Parameters.AddWithValue("@MinY", bbox.Min.Y);
-                                cmd.Parameters.AddWithValue("@MinZ", bbox.Min.Z);
-                                cmd.Parameters.AddWithValue("@MaxX", bbox.Max.X);
-                                cmd.Parameters.AddWithValue("@MaxY", bbox.Max.Y);
-                                cmd.Parameters.AddWithValue("@MaxZ", bbox.Max.Z);
-                                
-                                int rowsAffected = cmd.ExecuteNonQuery();
-                                if (rowsAffected > 0)
+                                var result = queryCmd.ExecuteScalar();
+                                if (result != null && result != DBNull.Value)
                                 {
-                                    clashZonesUpdated += rowsAffected;
+                                    var guidString = result.ToString();
+                                    if (!string.IsNullOrEmpty(guidString))
+                                    {
+                                        constituentGuids = guidString.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                                            .Select(g => g.Trim())
+                                            .ToList();
+                                    }
+                                }
+                                
+                                // Fallback to ClusterSleeves table if not found
+                                if (constituentGuids.Count == 0)
+                                {
+                                    queryCmd.Parameters.Clear();
+                                    queryCmd.CommandText = @"
+                                        SELECT ClashZoneGuids 
+                                        FROM ClusterSleeves 
+                                        WHERE ClusterInstanceId = @ClusterId
+                                        LIMIT 1";
+                                    queryCmd.Parameters.AddWithValue("@ClusterId", clusterInstanceId);
+                                    
+                                    result = queryCmd.ExecuteScalar();
+                                    if (result != null && result != DBNull.Value)
+                                    {
+                                        var guidString = result.ToString();
+                                        if (!string.IsNullOrEmpty(guidString))
+                                        {
+                                            // ClashZoneGuids might be JSON array or comma-separated
+                                            if (guidString.TrimStart().StartsWith("["))
+                                            {
+                                                // JSON array - parse it
+                                                try
+                                                {
+                                                    var jsonArray = System.Text.Json.JsonSerializer.Deserialize<List<string>>(guidString);
+                                                    if (jsonArray != null) constituentGuids = jsonArray;
+                                                }
+                                                catch { }
+                                            }
+                                            else
+                                            {
+                                                // Comma-separated
+                                                constituentGuids = guidString.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                                                    .Select(g => g.Trim())
+                                                    .ToList();
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            if (constituentGuids.Count > 0)
+                            {
+                                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: Found {constituentGuids.Count} constituent GUIDs for cluster {clusterInstanceId}\n");
+                                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: GUIDs = {string.Join(", ", constituentGuids)}\n");
+                                
+                                // ✅ DIAGNOSTIC: First check if GUIDs exist in database BEFORE attempting UPDATE
+                                using (var checkCmd = context.Connection.CreateCommand())
+                                {
+                                    var checkPlaceholders = string.Join(",", constituentGuids.Select((_, i) => $"@CheckGuid{i}"));
+                                    checkCmd.CommandText = $@"
+                                        SELECT COUNT(*) 
+                                        FROM ClashZones 
+                                        WHERE UPPER(ClashZoneGuid) IN ({checkPlaceholders})";
+                                    for (int i = 0; i < constituentGuids.Count; i++)
+                                    {
+                                        checkCmd.Parameters.AddWithValue($"@CheckGuid{i}", constituentGuids[i].ToUpperInvariant());
+                                    }
+                                    var guidCount = Convert.ToInt32(checkCmd.ExecuteScalar());
                                     SafeFileLogger.SafeAppendText("batch_v2.log", 
-                                        $"[{DateTime.Now:HH:mm:ss}] ✅ Updated {rowsAffected} ClashZones with cluster bounding box for cluster {clusterInstanceId}\n");
+                                        $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: {guidCount} of {constituentGuids.Count} GUIDs found in ClashZones table BEFORE UPDATE\n");
+                                    
+                                    if (guidCount == 0)
+                                    {
+                                        // Try without UPPER() to see if case is the issue
+                                        checkCmd.Parameters.Clear();
+                                        checkCmd.CommandText = $@"
+                                            SELECT COUNT(*) 
+                                            FROM ClashZones 
+                                            WHERE ClashZoneGuid IN ({checkPlaceholders})";
+                                        for (int i = 0; i < constituentGuids.Count; i++)
+                                        {
+                                            checkCmd.Parameters.AddWithValue($"@CheckGuid{i}", constituentGuids[i]);
+                                        }
+                                        var guidCountExact = Convert.ToInt32(checkCmd.ExecuteScalar());
+                                        SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                            $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: {guidCountExact} of {constituentGuids.Count} GUIDs found with EXACT case match\n");
+                                        
+                                        // Show sample GUID from database for comparison
+                                        checkCmd.Parameters.Clear();
+                                        checkCmd.CommandText = "SELECT ClashZoneGuid FROM ClashZones WHERE ClashZoneGuid IS NOT NULL LIMIT 1";
+                                        var sampleGuid = checkCmd.ExecuteScalar()?.ToString();
+                                        SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                            $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: Sample GUID from DB: {sampleGuid}\n");
+                                    }
+                                }
+                                
+                                // Update zones by GUID (more reliable)
+                                try
+                                {
+                                    SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                        $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: About to execute UPDATE query for cluster {clusterInstanceId}\n");
+                                    
+                                    using (var cmd = context.Connection.CreateCommand())
+                                    {
+                                        var guidPlaceholders = string.Join(",", constituentGuids.Select((_, i) => $"@Guid{i}"));
+                                        cmd.CommandText = $@"
+                                            UPDATE ClashZones 
+                                            SET ClusterSleeveBoundingBoxMinX = @MinX,
+                                                ClusterSleeveBoundingBoxMinY = @MinY,
+                                                ClusterSleeveBoundingBoxMinZ = @MinZ,
+                                                ClusterSleeveBoundingBoxMaxX = @MaxX,
+                                                ClusterSleeveBoundingBoxMaxY = @MaxY,
+                                                ClusterSleeveBoundingBoxMaxZ = @MaxZ
+                                            WHERE UPPER(ClashZoneGuid) IN ({guidPlaceholders})";
+                                        
+                                        SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                            $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: UPDATE SQL prepared with {constituentGuids.Count} GUID placeholders\n");
+                                        
+                                        for (int i = 0; i < constituentGuids.Count; i++)
+                                        {
+                                            cmd.Parameters.AddWithValue($"@Guid{i}", constituentGuids[i].ToUpperInvariant());
+                                        }
+                                        
+                                        cmd.Parameters.AddWithValue("@MinX", bbox.Min.X);
+                                        cmd.Parameters.AddWithValue("@MinY", bbox.Min.Y);
+                                        cmd.Parameters.AddWithValue("@MinZ", bbox.Min.Z);
+                                        cmd.Parameters.AddWithValue("@MaxX", bbox.Max.X);
+                                        cmd.Parameters.AddWithValue("@MaxY", bbox.Max.Y);
+                                        cmd.Parameters.AddWithValue("@MaxZ", bbox.Max.Z);
+                                        
+                                        SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                            $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: About to call ExecuteNonQuery()\n");
+                                        
+                                        int rowsAffected = cmd.ExecuteNonQuery();
+                                        
+                                        SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                            $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: UPDATE query returned {rowsAffected} rows affected\n");
+                                        
+                                        if (rowsAffected > 0)
+                                        {
+                                            clashZonesUpdated += rowsAffected;
+                                            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                                $"[{DateTime.Now:HH:mm:ss}] ✅ Updated {rowsAffected} ClashZones with cluster bounding box for cluster {clusterInstanceId} (via {constituentGuids.Count} GUIDs)\n");
+                                        }
+                                        else
+                                        {
+                                            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                                $"[{DateTime.Now:HH:mm:ss}] ⚠️ No ClashZones updated for cluster {clusterInstanceId} (found {constituentGuids.Count} GUIDs but 0 rows matched)\n");
+                                        }
+                                    }
+                                }
+                                catch (Exception updateEx)
+                                {
+                                    SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                        $"[{DateTime.Now:HH:mm:ss}] ❌ EXCEPTION in UPDATE query for cluster {clusterInstanceId}: {updateEx.Message}\n{updateEx.StackTrace}\n");
+                                    throw; // Re-throw to be caught by outer try-catch
+                                }
+                            }
+                            else
+                            {
+                                // Fallback: Try by ClusterInstanceId (in case GUIDs not available)
+                                // ✅ DIAGNOSTIC: First check if any rows exist with this ClusterInstanceId
+                                using (var checkCmd = context.Connection.CreateCommand())
+                                {
+                                    checkCmd.CommandText = @"
+                                        SELECT COUNT(*) 
+                                        FROM ClashZones 
+                                        WHERE ClusterInstanceId = @ClusterId";
+                                    checkCmd.Parameters.AddWithValue("@ClusterId", clusterInstanceId);
+                                    var count = Convert.ToInt32(checkCmd.ExecuteScalar());
+                                    SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                        $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: Found {count} ClashZones with ClusterInstanceId={clusterInstanceId}\n");
+                                }
+                                
+                                using (var cmd = context.Connection.CreateCommand())
+                                {
+                                    cmd.CommandText = @"
+                                        UPDATE ClashZones 
+                                        SET ClusterSleeveBoundingBoxMinX = @MinX,
+                                            ClusterSleeveBoundingBoxMinY = @MinY,
+                                            ClusterSleeveBoundingBoxMinZ = @MinZ,
+                                            ClusterSleeveBoundingBoxMaxX = @MaxX,
+                                            ClusterSleeveBoundingBoxMaxY = @MaxY,
+                                            ClusterSleeveBoundingBoxMaxZ = @MaxZ
+                                        WHERE ClusterInstanceId = @ClusterId";
+                                    
+                                    cmd.Parameters.AddWithValue("@ClusterId", clusterInstanceId);
+                                    cmd.Parameters.AddWithValue("@MinX", bbox.Min.X);
+                                    cmd.Parameters.AddWithValue("@MinY", bbox.Min.Y);
+                                    cmd.Parameters.AddWithValue("@MinZ", bbox.Min.Z);
+                                    cmd.Parameters.AddWithValue("@MaxX", bbox.Max.X);
+                                    cmd.Parameters.AddWithValue("@MaxY", bbox.Max.Y);
+                                    cmd.Parameters.AddWithValue("@MaxZ", bbox.Max.Z);
+                                    
+                                    int rowsAffected = cmd.ExecuteNonQuery();
+                                    if (rowsAffected > 0)
+                                    {
+                                        clashZonesUpdated += rowsAffected;
+                                        SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                            $"[{DateTime.Now:HH:mm:ss}] ✅ Updated {rowsAffected} ClashZones with cluster bounding box for cluster {clusterInstanceId} (via ClusterInstanceId fallback)\n");
+                                    }
+                                    else
+                                    {
+                                        SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ UPDATE by ClusterInstanceId returned 0 rows for cluster {clusterInstanceId}\n");
+                                    }
                                 }
                             }
                         }
                         catch (Exception ex)
                         {
                             SafeFileLogger.SafeAppendText("placement_errors.log", 
-                                $"[{DateTime.Now:HH:mm:ss}] ⚠️ Failed to update ClashZones for cluster {clusterInstanceId}: {ex.Message}\n");
+                                $"[{DateTime.Now:HH:mm:ss}] ⚠️ Failed to update ClashZones for cluster {clusterInstanceId}: {ex.Message}\n{ex.StackTrace}\n");
                         }
+                        */
                     }
                     
                     SafeFileLogger.SafeAppendText("batch_v2.log", 

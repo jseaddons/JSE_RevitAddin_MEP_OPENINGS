@@ -198,7 +198,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
 
         /// <summary>
-        /// ✅ BATCH V2: Robust Orchestration (Calculation First -> Sequential Placement)
+        /// ✅ BATCH V2: Robust Orchestration (Calculation First -> Optional Placement)
         /// </summary>
         public (int placedCount, int failedCount) ClusterSleevesV2(
             Document doc,
@@ -206,11 +206,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             string targetCategory,
             int comboId,
             int filterId,
-            bool useSingleTransaction = true)
+            bool useSingleTransaction = true,
+            bool skipPlacement = false) // ✅ NEW: Option to skip placement for consolidation
         {
             try
             {
-                SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🚀 ORCHESTRATOR V2 START: Category={targetCategory}, Zones={clashZones.Count}, Mode={(useSingleTransaction ? "Bulk" : "Sequential")}, doc.IsModifiable={doc.IsModifiable}\n");
+                SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🚀 ORCHESTRATOR V2 START: Category={targetCategory}, Zones={clashZones.Count}, Mode={(useSingleTransaction ? "Bulk" : "Sequential")}, SkipPlacement={skipPlacement}, doc.IsModifiable={doc.IsModifiable}\n");
 
                 // Phase 1: Calculation (Parallel Safe, No Revit Transaction needed usually, or ReadOnly)
                 // Ensure we are not in a transaction here if possible, or it's fine.
@@ -218,13 +219,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 string batchId = _batchCalculationService.CalculateAndSave(clashZones, targetCategory, comboId, filterId, doc);
                 SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🟢 AFTER CalculateAndSave, batchId={batchId}\n");
 
-                // Phase 2: Placement (Sequential / Bulk Transaction)
-                // This MUST be run on the main thread (which we are on).
-                SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🟡 BEFORE PlaceFromDatabase, doc.IsModifiable={doc.IsModifiable}...\n");
-                var result = _batchPlacementService.PlaceFromDatabase(doc, batchId, useSingleTransaction);
-                SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🟢 AFTER PlaceFromDatabase, placed={result.placed}, failed={result.failed}\n");
-
-                return result;
+                // Phase 2: Placement (Sequential / Bulk Transaction) - SKIP if consolidating
+                if (!skipPlacement)
+                {
+                    SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🟡 BEFORE PlaceFromDatabase, doc.IsModifiable={doc.IsModifiable}...\n");
+                    var result = _batchPlacementService.PlaceFromDatabase(doc, batchId, useSingleTransaction);
+                    SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🟢 AFTER PlaceFromDatabase, placed={result.placed}, failed={result.failed}\n");
+                    return result;
+                }
+                else
+                {
+                    SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ⏭️ SKIPPING placement (will be consolidated for all categories)\n");
+                    return (0, 0); // Return 0,0 to indicate calculation only
+                }
             }
             catch (Exception ex)
             {

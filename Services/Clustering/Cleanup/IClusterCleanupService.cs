@@ -4,30 +4,28 @@ using Autodesk.Revit.DB;
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
 {
     /// <summary>
-    /// Interface for cluster cleanup operations: deleting individual sleeves inside clusters and resetting flags.
+    /// Interface for cluster cleanup operations
     /// </summary>
     public interface IClusterCleanupService
     {
         /// <summary>
-        /// Delete individual sleeves that fall within placed cluster sleeves. Returns count deleted.
-        /// </summary>
-        /// <param name="deferredParameters">Optional deferred parameters dictionary to read correct dimensions when batching is enabled</param>
-        int CleanupSleevesWithinClusters(Document doc, List<FamilyInstance> placedClusters, Dictionary<ElementId, Dictionary<string, object>> deferredParameters = null, string targetCategory = null);
-
-        /// <summary>
-        /// ✅ NEW: DB-ONLY cleanup - Uses bounding boxes from database (zero Revit queries).
-        /// Finds individual sleeves within cluster bounding boxes using DB data only.
-        /// Combines Stage 1 and Stage 2 cleanup into one operation.
+        /// Cleanup individual sleeves within clusters using database-only approach (Stage 2 cleanup)
+        /// Checks if individual sleeve placement points are inside cluster bounding boxes
         /// </summary>
         /// <param name="doc">Revit document</param>
-        /// <param name="targetCategory">MEP category to filter (e.g., "Ducts", "Pipes")</param>
-        /// <param name="clusterInstanceIds">Optional list of cluster instance IDs to check. If null, checks all clusters.</param>
-        /// <returns>Number of sleeves deleted</returns>
+        /// <param name="targetCategory">Optional category filter (null = all categories)</param>
+        /// <param name="clusterInstanceIds">Optional list of specific cluster IDs to check against (null = all clusters)</param>
+        /// <returns>Number of individual sleeves deleted</returns>
         int CleanupSleevesWithinClustersFromDatabase(Document doc, string targetCategory = null, List<int> clusterInstanceIds = null);
 
         /// <summary>
-        /// Reset database flags for cluster sleeves that were deleted from the model.
+        /// Cleanup individual sleeves within the bounding boxes of the provided cluster instances.
         /// </summary>
-        void ResetClusterFlagsForDeletedSleeves(Document doc, string? xmlFilePath = null);
+        /// <param name="doc">Revit document</param>
+        /// <param name="clusters">List of placed cluster family instances</param>
+        /// <param name="deferredParameters">Optional dictionary of deferred parameters (to ensure correct dimensions)</param>
+        /// <param name="targetCategory">Optional category filter</param>
+        /// <returns>Number of individual sleeves deleted</returns>
+        int CleanupSleevesWithinClusters(Document doc, List<FamilyInstance> clusters, Dictionary<ElementId, Dictionary<string, object>> deferredParameters = null, string targetCategory = null);
     }
 }

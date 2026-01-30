@@ -711,6 +711,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     AddColumnIfMissing("ClashZones", "AfterClusterSleeveId", "INTEGER NOT NULL DEFAULT -1", transaction);
                     // ✅ COMBINED RESOLVED: Instance ID for the combined sleeve if this zone is part of one
                     AddColumnIfMissing("ClashZones", "CombinedClusterSleeveInstanceId", "INTEGER", transaction);
+                    // ✅ NOTE: Cluster bounding boxes are stored in ClusterSleeves table, not duplicated in ClashZones
+                    // Cleanup service queries ClusterSleeves directly for cluster bounding boxes
                     AddColumnIfMissing("ClashZones", "HasDamperNearbyFlag", "INTEGER NOT NULL DEFAULT 0", transaction);
                     AddColumnIfMissing("ClashZones", "IsCurrentClashFlag", "INTEGER NOT NULL DEFAULT 0", transaction);
                     // ✅ SESSION FLAG: Track zones ready for placement in current refresh session

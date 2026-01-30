@@ -9002,6 +9002,12 @@ public void BatchUpdateSleevePlacementData(IEnumerable<ClashZone> placedZones)
                     {
                         SafeFileLogger.SafeAppendTextAlways("bulk_placement_trace.log", $"[REPO-UPDATE-FAIL] ❌ No row found for Guid={zone.ClashZoneGuid}. DB Update Failed.\n");
                     }
+                    else if (rows > 0 && !DeploymentConfiguration.DeploymentMode)
+                    {
+                        // ✅ DIAGNOSTIC: Log SleeveInstanceId and bounding box values being saved
+                        SafeFileLogger.SafeAppendTextAlways("bulk_placement_trace.log", 
+                            $"[REPO-UPDATE-SUCCESS] ✅ Updated Guid={zone.ClashZoneGuid}, SleeveInstanceId={zone.SleeveInstanceId}, BBox=({zone.BoundingBoxMinX:F2},{zone.BoundingBoxMinY:F2},{zone.BoundingBoxMinZ:F2}) to ({zone.BoundingBoxMaxX:F2},{zone.BoundingBoxMaxY:F2},{zone.BoundingBoxMaxZ:F2})\n");
+                    }
                     totalRowsAffected += rows;
                 }
                 
