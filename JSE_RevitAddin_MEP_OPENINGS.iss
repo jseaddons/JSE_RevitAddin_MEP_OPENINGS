@@ -75,6 +75,31 @@ Source: "Resources\RectangularOpeningOnSlab.rfa"; DestDir: "{userappdata}\Autode
 Source: "Resources\CircularOpeningOnSlab.rfa"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2023\Resources"; Flags: ignoreversion
 
 
+
+; ✅ JSE_Parameter_Service (From Release 2023 build)
+; Deploying to Revit 2024
+Source: "..\JSE_Parameter_Service\bin\Release 2023\net48\JSE_Parameter_Service.dll"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2024"; Flags: ignoreversion
+Source: "..\JSE_Parameter_Service\JSE_Parameter_Service.addin"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2024"; Flags: ignoreversion
+; Dependencies for Parameter Service
+Source: "..\JSE_Parameter_Service\bin\Release 2023\net48\Newtonsoft.Json.dll"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2024"; Flags: ignoreversion
+Source: "..\JSE_Parameter_Service\bin\Release 2023\net48\EntityFramework.dll"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2024"; Flags: ignoreversion
+Source: "..\JSE_Parameter_Service\bin\Release 2023\net48\EntityFramework.SqlServer.dll"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2024"; Flags: ignoreversion
+Source: "..\JSE_Parameter_Service\bin\Release 2023\net48\Microsoft.Bcl.AsyncInterfaces.dll"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2024"; Flags: ignoreversion
+Source: "..\JSE_Parameter_Service\bin\Release 2023\net48\System.Threading.Tasks.Extensions.dll"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2024"; Flags: ignoreversion
+Source: "..\JSE_Parameter_Service\bin\Release 2023\net48\System.ValueTuple.dll"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2024"; Flags: ignoreversion
+
+; Deploying to Revit 2023
+Source: "..\JSE_Parameter_Service\bin\Release 2023\net48\JSE_Parameter_Service.dll"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2023"; Flags: ignoreversion
+Source: "..\JSE_Parameter_Service\JSE_Parameter_Service.addin"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2023"; Flags: ignoreversion
+; Dependencies for Parameter Service
+Source: "..\JSE_Parameter_Service\bin\Release 2023\net48\Newtonsoft.Json.dll"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2023"; Flags: ignoreversion
+Source: "..\JSE_Parameter_Service\bin\Release 2023\net48\EntityFramework.dll"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2023"; Flags: ignoreversion
+Source: "..\JSE_Parameter_Service\bin\Release 2023\net48\EntityFramework.SqlServer.dll"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2023"; Flags: ignoreversion
+Source: "..\JSE_Parameter_Service\bin\Release 2023\net48\Microsoft.Bcl.AsyncInterfaces.dll"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2023"; Flags: ignoreversion
+Source: "..\JSE_Parameter_Service\bin\Release 2023\net48\System.Threading.Tasks.Extensions.dll"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2023"; Flags: ignoreversion
+Source: "..\JSE_Parameter_Service\bin\Release 2023\net48\System.ValueTuple.dll"; DestDir: "{userappdata}\Autodesk\Revit\Addins\2023"; Flags: ignoreversion
+
+
 [Icons]
 Name: "{autoprograms}\MEP OPENING Uninstall"; Filename: "{uninstallexe}"
 

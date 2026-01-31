@@ -181,7 +181,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             double diameter, 
             bool isCircular, 
             ClashZone zone,
-            double? depthOverride = null)
+                double? depthOverride = null,
+            bool isCluster = false)
         {
             // ✅ PERFORMANCE MONITORING: Track parameter setting
             using (var tracker = _performanceMonitor?.TrackOperation("Set Sleeve Parameters"))
@@ -208,7 +209,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 if (!DeploymentConfiguration.DeploymentMode && !OptimizationFlags.DisableVerboseLogging)
                 {
                     SafeFileLogger.SafeAppendTextAlways("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [PARAMETERS] Zone={zone?.Id}, Sleeve={instance?.Id}, " +
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [PARAMETERS] Zone={zone?.Id}, Sleeve={instance?.Id}, IsCluster={isCluster}, " +
                         $"Width={roundedWidth * 304.8:F1}mm, Height={roundedHeight * 304.8:F1}mm, Diameter={roundedDiameter * 304.8:F1}mm, " + 
                         $"DepthOverride={(depthOverride.HasValue ? (depthOverride.Value * 304.8).ToString("F1") + "mm" : "None")}\n");
                 }
@@ -857,7 +858,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         /// <summary>
         /// ✅ FLAG MANAGEMENT SUPPORT: Set Sleeve Instance ID IMMEDIATELY (not deferred)
         /// </summary>
-        private void SetSleeveInstanceId(FamilyInstance instance, ElementId currentSleeveId)
+        public void SetSleeveInstanceId(FamilyInstance instance, ElementId currentSleeveId)
         {
             var sleeveInstanceIdParam = instance.LookupParameter("Sleeve Instance ID");
             if (sleeveInstanceIdParam != null && !sleeveInstanceIdParam.IsReadOnly)

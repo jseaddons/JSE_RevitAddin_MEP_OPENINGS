@@ -51,6 +51,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             int filterId,
             Document doc)
         {
+            // ✅ PATH 1 FAST PATH: Check if cluster data already exists in database
+            // If clusters exist for this comboId/filterId/category, skip calculation and save
+            string existingBatchId = CheckExistingClusterData(comboId, filterId, targetCategory);
+            if (!string.IsNullOrEmpty(existingBatchId))
+            {
+                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ✅ PATH 1 FAST PATH: Cluster data already exists in DB for ComboId={comboId}, FilterId={filterId}, Category={targetCategory} - skipping calculation, using existing batchId={existingBatchId}\n");
+                return existingBatchId;
+            }
+            
             // 1. Generate Batch ID
             string batchId = $"{DateTime.Now:yyyyMMdd_HHmmss}_{targetCategory}_{filterId}";
             SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🚀 STARTING BATCH V2: {batchId}, Zones={clashZones.Count}\n");
@@ -119,8 +129,59 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
             // 5. Save to DB (Sequential for SQLite Safety, though SQLite handles concurrent reasonably well)
             SaveToDatabase(validClusters, batchId);
+            
+            // ✅ FLAG MANAGEMENT: Update MarkedForClusterProcess flag in ClashZones table (mimic slow mode)
+            // Only set to true for zones in clusters with >1 sleeve (multi-sleeve clusters)
+            // Zones not in clusters should remain false/null
+            UpdateMarkedForClusterProcessFlags(validClusters);
 
             return batchId;
+        }
+        
+        /// <summary>
+        /// ✅ PATH 1 FAST PATH: Check if cluster data already exists in database
+        /// Returns existing batchId if clusters exist, null otherwise
+        /// </summary>
+        private string CheckExistingClusterData(int comboId, int filterId, string category)
+        {
+            try
+            {
+                using (var conn = new System.Data.SQLite.SQLiteConnection($"Data Source={_databasePath};Version=3;"))
+                {
+                    conn.Open();
+                    using (var cmd = conn.CreateCommand())
+                    {
+                        // ✅ PATH 1: Check if clusters exist for this combo/filter/category
+                        // Use Path 1 if clusters exist (either Pending or Placed)
+                        // Placement will check if they need to be placed (Status='Pending' OR Status='Placed' with ClusterInstanceId=0)
+                        cmd.CommandText = @"
+                            SELECT DISTINCT ClusterBatchId 
+                            FROM ClusterSleeves_v2 
+                            WHERE ComboId = @ComboId 
+                            AND FilterId = @FilterId 
+                            AND Category = @Category
+                            AND (Status = 'Pending' OR Status = 'Placed')
+                            LIMIT 1";
+                        
+                        cmd.Parameters.AddWithValue("@ComboId", comboId);
+                        cmd.Parameters.AddWithValue("@FilterId", filterId);
+                        cmd.Parameters.AddWithValue("@Category", category);
+                        
+                        var result = cmd.ExecuteScalar();
+                        if (result != null && !string.IsNullOrEmpty(result.ToString()))
+                        {
+                            return result.ToString();
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ Error checking existing cluster data: {ex.Message} - will proceed with calculation\n");
+            }
+            
+            return null;
         }
 
 
@@ -167,10 +228,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             )";
 
                         int savedCount = 0;
+                        int skippedCount = 0;
+                        double tolerance = 0.1; // 0.1 feet tolerance for duplicate detection
+                        
                         foreach (var r in results)
                         {
                             try
                             {
+                                // ✅ CRITICAL FIX: Check if cluster with same placement point already exists (when DB is not cleared)
+                                // This prevents duplicate clusters from being saved when database is not cleared
+                                using (var checkCmd = conn.CreateCommand())
+                                {
+                                    checkCmd.Transaction = trans;
+                                    checkCmd.CommandText = @"
+                                        SELECT COUNT(*) FROM ClusterSleeves_v2 
+                                        WHERE ABS(PlacementX - @x) < @tol 
+                                          AND ABS(PlacementY - @y) < @tol 
+                                          AND ABS(PlacementZ - @z) < @tol
+                                          AND FamilyName = @fam
+                                          AND Status IN ('Pending', 'Placed')";
+                                    checkCmd.Parameters.AddWithValue("@x", r.PlacementX);
+                                    checkCmd.Parameters.AddWithValue("@y", r.PlacementY);
+                                    checkCmd.Parameters.AddWithValue("@z", r.PlacementZ);
+                                    checkCmd.Parameters.AddWithValue("@tol", tolerance);
+                                    checkCmd.Parameters.AddWithValue("@fam", r.FamilyName ?? "");
+                                    
+                                    int existingCount = Convert.ToInt32(checkCmd.ExecuteScalar());
+                                    if (existingCount > 0)
+                                    {
+                                        SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ SKIPPING DUPLICATE CLUSTER in DB: ClusterGUID={r.ClusterGUID}, Location=({r.PlacementX:F6}, {r.PlacementY:F6}, {r.PlacementZ:F6}), ExistingCount={existingCount}\n");
+                                        skippedCount++;
+                                        continue; // Skip this cluster - duplicate already exists
+                                    }
+                                }
+                                
                                 cmd.Parameters.Clear();
                                 cmd.Parameters.AddWithValue("@guid", r.ClusterGUID);
                                 cmd.Parameters.AddWithValue("@batch", r.ClusterBatchId);
@@ -209,6 +301,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                     $"[{DateTime.Now:HH:mm:ss}] ❌ TABLE ERROR: Failed to INSERT cluster {r.ClusterGUID} into ClusterSleeves_v2: {ex.Message}\n{ex.StackTrace}\n");
                                 throw; // Re-throw to rollback transaction
                             }
+                        }
+                        
+                        if (skippedCount > 0)
+                        {
+                            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] ⚠️ DIAGNOSTIC: Skipped {skippedCount} duplicate clusters (already exist in DB)\n");
                         }
                         
                         SafeFileLogger.SafeAppendText("batch_v2.log", 
@@ -420,6 +518,88 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 ConstituentZoneGuids = string.Join(",", zones.Select(z => z.ClashZoneGuid)),
                 ComboId = comboId, FilterId = filterId, Status = "Pending", ValidationStatus = "Valid"
             };
+        }
+
+        /// <summary>
+        /// ✅ FLAG MANAGEMENT: Update MarkedForClusterProcess flag in ClashZones table (mimic slow mode)
+        /// Only set to true for zones in clusters with >1 sleeve (multi-sleeve clusters)
+        /// Zones not in clusters should remain false/null
+        /// </summary>
+        private void UpdateMarkedForClusterProcessFlags(ConcurrentBag<BatchClusterCalculationResult> validClusters)
+        {
+            if (validClusters == null || validClusters.Count == 0)
+            {
+                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🔍 FLAG UPDATE: No clusters to update flags for\n");
+                return;
+            }
+
+            try
+            {
+                using (var conn = new System.Data.SQLite.SQLiteConnection($"Data Source={_databasePath};Version=3;"))
+                {
+                    conn.Open();
+                    using (var trans = conn.BeginTransaction())
+                    {
+                        int updatedCount = 0;
+                        
+                        foreach (var cluster in validClusters)
+                        {
+                            if (string.IsNullOrEmpty(cluster.ConstituentZoneGuids)) continue;
+                            
+                            // Parse zone GUIDs from cluster
+                            var zoneGuids = cluster.ConstituentZoneGuids
+                                .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                                .Select(g => g.Trim())
+                                .Where(g => !string.IsNullOrEmpty(g))
+                                .ToList();
+                            
+                            if (zoneGuids.Count == 0) continue;
+                            
+                            // ✅ CRITICAL: Only update flags for clusters with >1 zone (multi-sleeve clusters)
+                            // Single-zone "clusters" should NOT have MarkedForClusterProcess = true
+                            // This matches slow mode behavior where only multi-sleeve clusters get the flag
+                            if (zoneGuids.Count < 2)
+                            {
+                                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] 🔍 FLAG UPDATE: Skipping single-zone cluster {cluster.ClusterGUID} (zones={zoneGuids.Count})\n");
+                                continue;
+                            }
+                            
+                            // Update MarkedForClusterProcess = true for all zones in this multi-sleeve cluster
+                            using (var cmd = conn.CreateCommand())
+                            {
+                                cmd.Transaction = trans;
+                                cmd.CommandText = @"
+                                    UPDATE ClashZones 
+                                    SET MarkedForClusterProcess = 1,
+                                        UpdatedAt = CURRENT_TIMESTAMP
+                                    WHERE ClashZoneGuid IN (" + string.Join(",", zoneGuids.Select((_, i) => $"@guid{i}")) + ")";
+                                
+                                for (int i = 0; i < zoneGuids.Count; i++)
+                                {
+                                    cmd.Parameters.AddWithValue($"@guid{i}", zoneGuids[i]);
+                                }
+                                
+                                int rowsAffected = cmd.ExecuteNonQuery();
+                                updatedCount += rowsAffected;
+                                
+                                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] 🔍 FLAG UPDATE: Set MarkedForClusterProcess=TRUE for {rowsAffected} zones in cluster {cluster.ClusterGUID} (zones={zoneGuids.Count})\n");
+                            }
+                        }
+                        
+                        trans.Commit();
+                        SafeFileLogger.SafeAppendText("batch_v2.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] ✅ FLAG UPDATE: Updated MarkedForClusterProcess flag for {updatedCount} zones across {validClusters.Count} multi-sleeve clusters\n");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                SafeFileLogger.SafeAppendText("batch_v2_errors.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ❌ FLAG UPDATE ERROR: Failed to update MarkedForClusterProcess flags: {ex.Message}\n{ex.StackTrace}\n");
+            }
         }
 
     }

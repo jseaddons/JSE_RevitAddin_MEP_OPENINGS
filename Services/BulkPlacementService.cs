@@ -207,19 +207,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                // ✅ UNIFIED ARCHITECTURE: Apply all planned dimensions and metadata
-                _parameterService.ApplyBatchSleeveParameters(
+                        // ✅ UNIFIED ARCHITECTURE: Apply all parameters using the main service method
+                // This ensures Elevation, Bottom of Opening, Schedule Level, and MEP Metadata are all set correctly.
+                _parameterService.SetSleeveParameters(
                     instance, 
                     plan.TargetWidthFt, 
                     plan.TargetHeightFt, 
                     plan.TargetDiameterFt, 
-                    plan.RequiredDepthFt, 
-                    plan.IsCircular);
+                    plan.IsCircular, 
+                    zone,
+                    plan.RequiredDepthFt);
                 
-                // Track the instance ID in the database-targeted field
-               //_parameterService.SetClusterSleeveInstanceId(instance, instance.Id.IntegerValue);
-                
-                _logger?.Invoke($"[BulkPlacement] Set parameters for {instance.Id}: W={plan.TargetWidthFt*304.8:F0}mm, H={plan.TargetHeightFt*304.8:F0}mm, Circ={plan.IsCircular}");
+                _logger?.Invoke($"[BulkPlacement] Set parameters for {instance.Id}: W={plan.TargetWidthFt*304.8:F0}mm, H={plan.TargetHeightFt*304.8:F0}mm, Circ={plan.IsCircular}, ID={instance.Id}");
             }
             catch (Exception ex)
             {

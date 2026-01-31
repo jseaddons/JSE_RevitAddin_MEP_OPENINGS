@@ -8,6 +8,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Commands;
 using static JSE_RevitAddin_MEP_OPENINGS.Models.MepCategoryConstants;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
 // using JSE_RevitAddin_MEP_OPENINGS.Services.Parameters.Configuration;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
@@ -65,6 +66,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         public void Execute(UIApplication app)
         {
+            // ✅ PERFORMANCE MONITORING: Initialize performance monitor from the very start
+            string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+            string performanceLogName = $"SleevePlacement_Batch_{timestamp}.log";
+            var performanceMonitor = new PlacementPerformanceMonitor(performanceLogName);
+            
             // ✅ CRITICAL: Force direct file write to ensure we see this even if logger fails
             try
             {
@@ -76,315 +82,343 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
             catch { }
-            
+
             try
             {
-                // 🔥 CRITICAL DEBUG: Force direct file logging to bypass any logger issues
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: {DateTime.Now:yyyy-MM-dd HH:mm:ss} 🔥🔥🔥\n");
-                
-                // 🔥 CRITICAL DEBUG: Force direct file logging to trace execution
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 1: Execute method started\n");
-                
-                // ✅ CRITICAL: Log to file immediately to verify Execute() reaches this point
-                try
+                // ✅ PERFORMANCE: Track entire placement workflow from entry point
+                using (var placementWorkflowTracker = performanceMonitor.TrackOperation("PLACEMENT WORKFLOW (From Button Click)"))
                 {
-                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                    // 🔥 CRITICAL DEBUG: Force direct file logging to bypass any logger issues
                     if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 1: Execute method started\n");
-                    }
-                }
-                catch { }
-                
-                // ✅ DEBUG: Add immediate logging to confirm Execute is called
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info("[SleevePlacementExternalEvent] ===== EXECUTE METHOD CALLED =====");
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[SleevePlacementExternalEvent] _selectedCategories is null: {_selectedCategories == null}");
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[SleevePlacementExternalEvent] _markPrefixes is null: {_markPrefixes == null}");
-                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 2: _selectedCategories is null: {_selectedCategories == null}\n");
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 3: _markPrefixes is null: {_markPrefixes == null}\n");
-                
-                // ✅ CRITICAL: Log to file at each step
-                try
-                {
-                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥🔥🔥 EXECUTE METHOD CALLED - BUILD TIMESTAMP: {DateTime.Now:yyyy-MM-dd HH:mm:ss} 🔥🔥🔥\n");
+
+                    // 🔥 CRITICAL DEBUG: Force direct file logging to trace execution
                     if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 2: Categories null={_selectedCategories == null}, Count={_selectedCategories?.Count ?? 0}\n");
-                    }
-                                        // ✅ DEPLOYMENT MODE: Skip file writes
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 3: MarkPrefixes null={_markPrefixes == null}\n");
-                    }
-                }
-                catch { }
-                
-                // ✅ CORRECTED: Defensive null check with fallback
-                 // Deprecated
-                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 5: Starting sleeve placement process\n");
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info("[SleevePlacementExternalEvent] Starting sleeve placement process");
-                
-                _uiDocument = app.ActiveUIDocument;
-                _document = _uiDocument.Document;
-                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 6: Got UI document and document\n");
-                
-                // Log document details for debugging
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[SleevePlacementExternalEvent] Active document - Path: {_document.PathName}");
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[SleevePlacementExternalEvent] Active document - IsModifiable: {_document.IsModifiable}");
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[SleevePlacementExternalEvent] Active document - IsLinked: {_document.IsLinked}");
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[SleevePlacementExternalEvent] Active document - IsWorkshared: {_document.IsWorkshared}");
-                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 7: Document: {_document.Title}, IsLinked: {_document.IsLinked}\n");
-                
-                // Ensure we're working with the host document, not a linked file
-                // Sleeves must be placed in the host document where structural elements are located
-                if (_document.IsLinked)
-                {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 8: ❌ DOCUMENT IS LINKED - RETURNING EARLY\n");
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 1: Execute method started\n");
+
+                    // ✅ CRITICAL: Log to file immediately to verify Execute() reaches this point
                     try
                     {
                         var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                                                // ✅ DEPLOYMENT MODE: Skip file writes
+                        // ✅ DEPLOYMENT MODE: Skip file writes
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 8: ❌ DOCUMENT IS LINKED - RETURNING EARLY\n");
+                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 1: Execute method started\n");
                         }
                     }
                     catch { }
-                    var msg = "Cannot place sleeves: Currently active document is a linked file.\n\n" +
-                             "Please activate the host document (main project file) and try again.\n" +
-                             "Sleeves must be placed in the host document, not in linked files.";
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Error($"[SleevePlacementExternalEvent] {msg}");
-                    TaskDialog.Show("Wrong Document Active", msg);
-                    return;
-                }
 
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 9: ✅ Document is not linked, continuing\n");
-                try
-                {
-                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                    // ✅ DEBUG: Add immediate logging to confirm Execute is called
                     if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9: ✅ Document is not linked, continuing\n");
-                    }
-                }
-                catch { }
+                        DebugLogger.Info("[SleevePlacementExternalEvent] ===== EXECUTE METHOD CALLED =====");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[SleevePlacementExternalEvent] _selectedCategories is null: {_selectedCategories == null}");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[SleevePlacementExternalEvent] _markPrefixes is null: {_markPrefixes == null}");
 
-                // ✅ CRITICAL FIX: Check for null _selectedCategories
-                if (_selectedCategories == null)
-                {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Error("[SleevePlacementExternalEvent] _selectedCategories is null - cannot process");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 2: _selectedCategories is null: {_selectedCategories == null}\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 3: _markPrefixes is null: {_markPrefixes == null}\n");
+
+                    // ✅ CRITICAL: Log to file at each step
                     try
                     {
                         var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                                                // ✅ DEPLOYMENT MODE: Skip file writes
+                        // ✅ DEPLOYMENT MODE: Skip file writes
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ _selectedCategories is NULL - RETURNING EARLY\n");
+                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 2: Categories null={_selectedCategories == null}, Count={_selectedCategories?.Count ?? 0}\n");
+                        }
+                        // ✅ DEPLOYMENT MODE: Skip file writes
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 3: MarkPrefixes null={_markPrefixes == null}\n");
                         }
                     }
                     catch { }
-                    TaskDialog.Show("Error", "No categories selected for processing");
-                    return;
-                }
-                
-                // ✅ CRITICAL: Log categories count
-                try
-                {
-                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9.5: Categories count: {_selectedCategories.Count}, Categories: {string.Join(", ", _selectedCategories)}\n");
-                }
-                catch { }
 
-                // Log immediate feedback (non-blocking)
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[SleevePlacementExternalEvent] Processing {_selectedCategories.Count} categories: {string.Join(", ", _selectedCategories)}");
+                    // ✅ CORRECTED: Defensive null check with fallback
+                    // Deprecated
 
-                // ✅ DEBUG: Add try-catch around LoadClusterConfigurationFromFilters
-                try
-                {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info("[SleevePlacementExternalEvent] About to call LoadClusterConfigurationFromFilters...");
-                    LoadClusterConfigurationFromFilters();
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info("[SleevePlacementExternalEvent] LoadClusterConfigurationFromFilters completed successfully");
-                }
-                catch (Exception loadEx)
-                {
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Error($"[SleevePlacementExternalEvent] Error in LoadClusterConfigurationFromFilters: {loadEx.Message}");
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Error($"[SleevePlacementExternalEvent] LoadClusterConfigurationFromFilters stack trace: {loadEx.StackTrace}");
-                    throw; // Re-throw to be caught by outer try-catch
-                }
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 5: Starting sleeve placement process\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info("[SleevePlacementExternalEvent] Starting sleeve placement process");
 
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 10: About to create orchestrator\n");
-                try
-                {
-                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                    // ✅ PERFORMANCE: Track document acquisition
+                    using (placementWorkflowTracker?.TrackSubOperation("Get Active Document"))
+                    {
+                        _uiDocument = app.ActiveUIDocument;
+                        _document = _uiDocument.Document;
+                    }
+
                     if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 10: About to create orchestrator\n");
-                    }
-                }
-                catch { }
-                
-                // ✅ ARCHITECTURE COMPLIANCE: Use OpeningCommandOrchestrator for proper command execution
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info("[SleevePlacementExternalEvent] Creating OpeningCommandOrchestrator for proper architecture compliance");
-                
-                // ✅ FORCE DETECTION MODE: Load from SettingsModel
-                // This setting is controlled by the checkbox in EmergencyMainDialog
-                var settingsService = new SettingsService();
-                var settingsModel = settingsService.LoadSettings();
-                bool forceDetectionMode = settingsModel.ForceDetectionMode;
-                
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    DebugLogger.Info($"[SleevePlacementExternalEvent] ForceDetectionMode: {forceDetectionMode}");
-                }
-                
-                var clearanceSettings = GetClearanceSettingsFromUI();
-                try
-                {
-                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 6: Got UI document and document\n");
+
+                    // Log document details for debugging
                     if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 10.5: Clearance settings count: {clearanceSettings?.Count ?? 0}\n");
-                    }
-                }
-                catch { }
-                
-                var orchestrator = new OpeningCommandOrchestrator(_document, _uiDocument, clearanceSettings, _markPrefixes, forceDetectionMode);
-                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 11: Orchestrator created successfully with clearances and mark prefixes\n");
-                try
-                {
-                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                        DebugLogger.Info($"[SleevePlacementExternalEvent] Active document - Path: {_document.PathName}");
                     if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 11: Orchestrator created successfully\n");
-                    }
-                }
-                catch { }
-                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[SleevePlacementExternalEvent] Set {clearanceSettings.Count} UI clearance settings and mark prefixes in orchestrator");
-                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 12: Set UI clearances in orchestrator\n");
-                
-                // ✅ Convert categories to filters for orchestrator
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 12.5: About to convert categories to filters\n");
-                try
-                {
-                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                        DebugLogger.Info($"[SleevePlacementExternalEvent] Active document - IsModifiable: {_document.IsModifiable}");
                     if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 12.5: About to convert {_selectedCategories.Count} categories to filters\n");
-                    }
-                }
-                catch { }
-                
-                var filters = ConvertCategoriesToFilters(_selectedCategories);
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[SleevePlacementExternalEvent] Converted {_selectedCategories.Count} categories to {filters.Count} filters");
-                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 13: Converted {_selectedCategories.Count} categories to {filters.Count} filters\n");
-                try
-                {
-                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                                        // ✅ DEPLOYMENT MODE: Skip file writes
+                        DebugLogger.Info($"[SleevePlacementExternalEvent] Active document - IsLinked: {_document.IsLinked}");
                     if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[SleevePlacementExternalEvent] Active document - IsWorkshared: {_document.IsWorkshared}");
+
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 7: Document: {_document.Title}, IsLinked: {_document.IsLinked}\n");
+
+                    // Ensure we're working with the host document, not a linked file
+                    // Sleeves must be placed in the host document where structural elements are located
+                    if (_document.IsLinked)
                     {
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 13: Converted to {filters.Count} filters\n");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 8: ❌ DOCUMENT IS LINKED - RETURNING EARLY\n");
+                        try
+                        {
+                            var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                            // ✅ DEPLOYMENT MODE: Skip file writes
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 8: ❌ DOCUMENT IS LINKED - RETURNING EARLY\n");
+                            }
+                        }
+                        catch { }
+                        var msg = "Cannot place sleeves: Currently active document is a linked file.\n\n" +
+                                 "Please activate the host document (main project file) and try again.\n" +
+                                 "Sleeves must be placed in the host document, not in linked files.";
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Error($"[SleevePlacementExternalEvent] {msg}");
+                        TaskDialog.Show("Wrong Document Active", msg);
+                        return;
                     }
-                    if (filters != null && filters.Count > 0)
+
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 9: ✅ Document is not linked, continuing\n");
+                    try
                     {
-                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 13.5: Filter names: {string.Join(", ", filters.Select(f => f.Name))}\n");
+                        var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                        // ✅ DEPLOYMENT MODE: Skip file writes
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9: ✅ Document is not linked, continuing\n");
+                        }
                     }
+                    catch { }
+
+                    // ✅ CRITICAL FIX: Check for null _selectedCategories
+                    if (_selectedCategories == null)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Error("[SleevePlacementExternalEvent] _selectedCategories is null - cannot process");
+                        try
+                        {
+                            var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                            // ✅ DEPLOYMENT MODE: Skip file writes
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌ _selectedCategories is NULL - RETURNING EARLY\n");
+                            }
+                        }
+                        catch { }
+                        TaskDialog.Show("Error", "No categories selected for processing");
+                        return;
+                    }
+
+                    // ✅ CRITICAL: Log categories count
+                    try
+                    {
+                        var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 9.5: Categories count: {_selectedCategories.Count}, Categories: {string.Join(", ", _selectedCategories)}\n");
+                    }
+                    catch { }
+
+                    // Log immediate feedback (non-blocking)
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[SleevePlacementExternalEvent] Processing {_selectedCategories.Count} categories: {string.Join(", ", _selectedCategories)}");
+
+                    // ✅ DEBUG: Add try-catch around LoadClusterConfigurationFromFilters
+                    // ✅ PERFORMANCE: Track cluster configuration loading
+                    using (placementWorkflowTracker?.TrackSubOperation("Load Cluster Configuration"))
+                    {
+                        try
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info("[SleevePlacementExternalEvent] About to call LoadClusterConfigurationFromFilters...");
+                            LoadClusterConfigurationFromFilters();
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Info("[SleevePlacementExternalEvent] LoadClusterConfigurationFromFilters completed successfully");
+                        }
+                        catch (Exception loadEx)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Error($"[SleevePlacementExternalEvent] Error in LoadClusterConfigurationFromFilters: {loadEx.Message}");
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Error($"[SleevePlacementExternalEvent] LoadClusterConfigurationFromFilters stack trace: {loadEx.StackTrace}");
+                            throw; // Re-throw to be caught by outer try-catch
+                        }
+                    }
+
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 10: About to create orchestrator\n");
+                    try
+                    {
+                        var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                        // ✅ DEPLOYMENT MODE: Skip file writes
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 10: About to create orchestrator\n");
+                        }
+                    }
+                    catch { }
+
+                    // ✅ ARCHITECTURE COMPLIANCE: Use OpeningCommandOrchestrator for proper command execution
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info("[SleevePlacementExternalEvent] Creating OpeningCommandOrchestrator for proper architecture compliance");
+
+                    // ✅ PERFORMANCE: Track orchestrator setup
+                    using (placementWorkflowTracker?.TrackSubOperation("Setup Orchestrator"))
+                    {
+                        // ✅ FORCE DETECTION MODE: Load from SettingsModel
+                        // This setting is controlled by the checkbox in EmergencyMainDialog
+                        var settingsService = new SettingsService();
+                        var settingsModel = settingsService.LoadSettings();
+                        bool forceDetectionMode = settingsModel.ForceDetectionMode;
+
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Info($"[SleevePlacementExternalEvent] ForceDetectionMode: {forceDetectionMode}");
+                        }
+
+                        var clearanceSettings = GetClearanceSettingsFromUI();
+                        try
+                        {
+                            var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                            // ✅ DEPLOYMENT MODE: Skip file writes
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 10.5: Clearance settings count: {clearanceSettings?.Count ?? 0}\n");
+                            }
+                        }
+                        catch { }
+
+                        var orchestrator = new OpeningCommandOrchestrator(_document, _uiDocument, clearanceSettings, _markPrefixes, forceDetectionMode, performanceMonitor);
+
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 11: Orchestrator created successfully with clearances and mark prefixes\n");
+                        try
+                        {
+                            var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                            // ✅ DEPLOYMENT MODE: Skip file writes
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 11: Orchestrator created successfully\n");
+                            }
+                        }
+                        catch { }
+
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[SleevePlacementExternalEvent] Set {clearanceSettings.Count} UI clearance settings and mark prefixes in orchestrator");
+
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 12: Set UI clearances in orchestrator\n");
+
+                        // ✅ Convert categories to filters for orchestrator
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 12.5: About to convert categories to filters\n");
+                        try
+                        {
+                            var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                            // ✅ DEPLOYMENT MODE: Skip file writes
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 12.5: About to convert {_selectedCategories.Count} categories to filters\n");
+                            }
+                        }
+                        catch { }
+
+                        // ✅ PERFORMANCE: Track category to filter conversion
+                        List<OpeningFilter> filters;
+                        using (placementWorkflowTracker?.TrackSubOperation("Convert Categories to Filters"))
+                        {
+                            filters = ConvertCategoriesToFilters(_selectedCategories);
+                        }
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[SleevePlacementExternalEvent] Converted {_selectedCategories.Count} categories to {filters.Count} filters");
+
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 13: Converted {_selectedCategories.Count} categories to {filters.Count} filters\n");
+                        try
+                        {
+                            var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                            // ✅ DEPLOYMENT MODE: Skip file writes
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 13: Converted to {filters.Count} filters\n");
+                            }
+                            if (filters != null && filters.Count > 0)
+                            {
+                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] STEP 13.5: Filter names: {string.Join(", ", filters.Select(f => f.Name))}\n");
+                            }
+                        }
+                        catch { }
+
+                        // ✅ Execute through orchestrator (proper architecture)
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info("[SleevePlacementExternalEvent] Executing through OpeningCommandOrchestrator...");
+
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 14: About to execute orchestrator\n");
+
+                        // ✅ CRITICAL: Log before and after orchestrator call to see if it completes
+                        try
+                        {
+                            var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: {filters?.Count ?? 0}\n");
+                        }
+                        catch { }
+
+                        // ✅ PERFORMANCE: Track orchestrator execution (this is the main placement work)
+                        using (placementWorkflowTracker?.TrackSubOperation("Execute Multiple Filters (Orchestrator)"))
+                        {
+                            orchestrator.ExecuteMultipleFilters(filters, showProgress: true);
+                        }
+
+                        // ✅ CRITICAL: Log after orchestrator returns to confirm it completed
+                        try
+                        {
+                            var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
+                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully\n");
+                        }
+                        catch { }
+
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 15: ✅ Orchestrator execution completed\n");
+
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info("[SleevePlacementExternalEvent] Orchestrator execution completed");
+
+                        // ✅ SIMPLIFIED: Coordinate saving now handled directly in UniversalSleevePlacerService
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 16: ✅ Coordinate saving completed in UniversalSleevePlacerService\n");
+
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info("[SleevePlacementExternalEvent] Coordinate saving completed in UniversalSleevePlacerService");
+
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info("[SleevePlacementExternalEvent] ✓ COMPLETED THROUGH PROPER ORCHESTRATOR ARCHITECTURE");
+                    }
+
+                    // ✅ PERFORMANCE: Generate final report
+                    performanceMonitor.GenerateReport(0, 0); // Counts are tracked inside orchestrator
                 }
-                catch { }
-                
-                // ✅ Execute through orchestrator (proper architecture)
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info("[SleevePlacementExternalEvent] Executing through OpeningCommandOrchestrator...");
-                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 14: About to execute orchestrator\n");
-                
-                // ✅ CRITICAL: Log before and after orchestrator call to see if it completes
-                try
-                {
-                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 BEFORE orchestrator.ExecuteMultipleFilters() - filters count: {filters?.Count ?? 0}\n");
-                }
-                catch { }
-                
-                orchestrator.ExecuteMultipleFilters(filters, showProgress: true);
-                
-                // ✅ CRITICAL: Log after orchestrator returns to confirm it completed
-                try
-                {
-                    var logPath = SafeFileLogger.GetLogFilePath("placement_event_trace.log");
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 🔥 AFTER orchestrator.ExecuteMultipleFilters() - returned successfully\n");
-                }
-                catch { }
-                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 15: ✅ Orchestrator execution completed\n");
-                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info("[SleevePlacementExternalEvent] Orchestrator execution completed");
-                
-                // ✅ SIMPLIFIED: Coordinate saving now handled directly in UniversalSleevePlacerService
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] STEP 16: ✅ Coordinate saving completed in UniversalSleevePlacerService\n");
-                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info("[SleevePlacementExternalEvent] Coordinate saving completed in UniversalSleevePlacerService");
-                
-                                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info("[SleevePlacementExternalEvent] ✓ COMPLETED THROUGH PROPER ORCHESTRATOR ARCHITECTURE");
             }
             catch (Exception ex)
             {
-                                if (!DeploymentConfiguration.DeploymentMode)
+                if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[SleevePlacementExternalEvent] Exception: {ex.Message}");
-                                if (!DeploymentConfiguration.DeploymentMode)
+                if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[SleevePlacementExternalEvent] Stack trace: {ex.StackTrace}");
                 TaskDialog.Show("Error", $"Failed to complete sleeve placement: {ex.Message}");
             }

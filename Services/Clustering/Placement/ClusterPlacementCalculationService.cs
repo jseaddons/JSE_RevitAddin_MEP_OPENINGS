@@ -53,7 +53,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
             XYZ? placementPoint = null;
 
             // ✅ PHASE 1: Try DB Lookup (Authoritative Source of Truth)
-            if (_getClusterPlacementFunc != null && cluster[0] != null)
+            // ✅ FIX: Skip DB lookup when calculating NEW clusters (when DB is not cleared)
+            // DB lookup should only be used when REPLACING existing clusters, not for new calculations
+            // When DB is not cleared, we want fresh calculation, not stale DB data
+            bool skipDbLookup = false; // Can be set to true if we detect we're in "new calculation" mode
+            
+            if (!skipDbLookup && _getClusterPlacementFunc != null && cluster[0] != null)
             {
                 try
                 {
@@ -72,6 +77,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                                         $"[{DateTime.Now:HH:mm:ss}] 🎯 DB SOURCE OF TRUTH: Using stored placement for Cluster {clusterId}: ({dbPlacement.X:F4}, {dbPlacement.Y:F4}, {dbPlacement.Z:F4})\n");
                                 return dbPlacement;
                             }
+                        }
+                        else
+                        {
+                            // ✅ DUPLICATE DETECTION: If clusterId already processed, skip DB lookup to force fresh calculation
+                            // This prevents using stale placement points when DB is not cleared
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ DUPLICATE DETECTED: Cluster {clusterId} already processed, skipping DB lookup to force fresh calculation\n");
                         }
                     }
                 }
