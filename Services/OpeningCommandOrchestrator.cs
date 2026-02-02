@@ -271,7 +271,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
 
-                foreach (var filter in orderedFilters)
+                // ✅ FIX: Deduplicate filters by name to prevent multiple placement calls for the same filter
+                // Since LoadClashZonesForFilter loads ALL categories for a filter name,
+                // we only need to call it ONCE per unique filter name.
+                var uniqueFilters = orderedFilters.GroupBy(f => f.Name).Select(g => g.First()).ToList();
+
+                foreach (var filter in uniqueFilters)
                 {
                     var commandSequence = GetCommandSequence(filter);
                     ExecuteCommandSequence(commandSequence, filter, showProgress);
@@ -358,46 +363,86 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             DebugLogger.Warning($"[PERFORMANCE] ⚠️ VERY SLOW: {avgTimePerSleeve / 1000.0:F2}s per sleeve is {avgTimePerSleeve / 20.0:F0}x slower than target (0.02s)");
                         }
                     }
-                }
 
-                // Γ£à LOGGING: Wrap with SafeFileLogger
-                SafeFileLogger.SafeAppendText("orchestrator_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss}] AFTER ExecuteUniversalSleevePlacement, ABOUT TO CALL ExecuteClusteringForCategory for filter={filter.Name}, category={filter.Category}\n");
+                    // ✅ LOGGING: Wrap with SafeFileLogger
+                    SafeFileLogger.SafeAppendText("orchestrator_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss}] AFTER ExecuteUniversalSleevePlacement, ABOUT TO CALL ExecuteClusteringForCategory for filter={filter.Name}, category={filter.Category}\n");
 
+                    // ✅ PATH 3: Retrieve PATH 3 flags for clustering
+                    string categoryString = filter.Category switch
+                    {
+                        Models.MepCategory.Ducts => "Ducts",
+                        Models.MepCategory.DuctAccessories => "Duct Accessories",
+                        Models.MepCategory.Pipes => "Pipes",
+                        Models.MepCategory.CableTrays => "Cable Trays",
+                        _ => "Ducts"
+                    };
 
-                // ✅ CRITICAL: Execute clustering immediately after sleeve placement for each category
-                // This follows the architecture: Place sleeves → Cluster sleeves → Mark sleeves
-                // Use UniversalClusterService directly (faster than old RectangularSleeveClusterCommandV2)
+                    // ✅ CRITICAL: Respect EnableClusteringWorkflow flag - skip clustering when disabled
+                    if (!OptimizationFlags.EnableClusteringWorkflow)
+                    {
+                        SafeFileLogger.SafeAppendText("orchestrator_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ CLUSTERING SKIPPED: EnableClusteringWorkflow=false (orchestrator path)\n");
+                    }
+                    else
+                    {
+                    // ✅ CRITICAL: Execute clustering immediately after sleeve placement for each category
+                    // This follows the architecture: Place sleeves → Cluster sleeves → Mark sleeves
+                    // Use UniversalClusterService directly (faster than old RectangularSleeveClusterCommandV2)
 
-                // ✅ PERFORMANCE: Track cluster placement
-                // ✅ PATH 3: Retrieve PATH 3 flags for clustering
-                string categoryString = filter.Category switch
-                {
-                    Models.MepCategory.Ducts => "Ducts",
-                    Models.MepCategory.DuctAccessories => "Duct Accessories",
-                    Models.MepCategory.Pipes => "Pipes",
-                    Models.MepCategory.CableTrays => "Cable Trays",
-                    _ => "Ducts"
-                };
-                string path3Key = $"{filter.Name}_{categoryString}";
-                bool isPath3Validated = false;
-                bool isPath3Invalidated = false;
-                bool isPath3New = false;
-                if (_path3Flags.TryGetValue(path3Key, out var path3Flags))
-                {
-                    // Γ£à FIX: Removed duplicate call to ExecuteClusteringForCategory
-                    // Clustering is now handled internally by ExecuteUniversalSleevePlacement (Hybrid Phase 2 & 3)
-                    // This prevents double-execution and ensures 'placedZonesForExtraction' is used correctly
+                    // ✅ RESTORED & MOVED: Trigger V2 Clustering (Calculate -> Place)
+                    // MOVED OUTSIDE _path3Flags CHECK to ensure it always runs!
+                    try
+                    {
+                        // Pass existing performance monitor to unify logging
+                        var clusterService = ClusterServiceFactory.CreateRefactored(_document, performanceMonitor: performanceMonitor);
 
-                    // Track clusters from the internal execution if possible, or just log 0 here
-                    // Since ExecuteUniversalSleevePlacement returns a tuple without cluster count, 
-                    // we assume it handles its own logging/tracking internally.
+                        // Load zones for V2 clustering (Database Only)
+                        var dataService = new JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data.ClusterDataService(_document);
+                        var v2Zones = dataService.LoadClashZonesFromRegularXml(null, categoryString, _document);
 
-                    // ✅ COMBO FLAG: Reset IsFilterComboNew to false after full sequence completes (individual + cluster)
-                    // This marks the filter+category combo as "used" so next time it will use PATH 1 (Replay)
-                    ResetFilterComboFlagAfterPlacement(filter);
+                        if (v2Zones != null && v2Zones.Count > 0)
+                        {
+                            // Execute V2 Clustering (Calculation + Placement)
+                            // Passing 0 for comboId/filterId as per plan default
+                            var clusterResult = clusterService.ClusterSleevesV2(
+                                _document,
+                                v2Zones,
+                                categoryString,
+                                comboId: 0,
+                                filterId: 0
+                            );
 
-                    // ✅ PERFORMANCE: Generate final report
+                            totalClusters = clusterResult.placedCount;
+
+                            SafeFileLogger.SafeAppendText("orchestrator_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ V2 CLUSTERING TRIGGERED for {categoryString}: Placed {totalClusters} clusters.\n");
+                        }
+                        else
+                        {
+                            SafeFileLogger.SafeAppendText("orchestrator_debug.log",
+                               $"[{DateTime.Now:HH:mm:ss}] ⚠️ V2 CLUSTERING SKIPPED for {categoryString}: No zones loaded.\n");
+                        }
+                    }
+                    catch (Exception clusterEx)
+                    {
+                        SafeFileLogger.SafeAppendText("orchestrator_debug.log",
+                              $"[{DateTime.Now:HH:mm:ss}] ❌ V2 CLUSTERING FAILED for {categoryString}: {clusterEx.Message}\n");
+                    }
+                    } // end if EnableClusteringWorkflow
+
+                    string path3Key = $"{filter.Name}_{categoryString}";
+                    bool isPath3Validated = false;
+                    bool isPath3Invalidated = false;
+
+                    if (_path3Flags.TryGetValue(path3Key, out var path3Flags))
+                    {
+                        // Path 3 logic (previously had clustering here, now handled above)
+                        // ✅ COMBO FLAG: Reset isNew to false after full sequence completes (individual + cluster)
+                        // This marks the filter+category combo as "used" so next time it will use PATH 1 (Replay)
+                        _path3Flags[path3Key] = (path3Flags.isValidated, path3Flags.isInvalidated, false);
+                        isPath3Validated = true;
+                    }     // ✅ PERFORMANCE: Generate final report
                     performanceMonitor.GenerateReport(totalIndividualSleeves, totalClusters);
                 }
             }
@@ -553,14 +598,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
 
-                if (allZones.Count > 0)
+        if (allZones.Count > 0)
+        {
+            // ✅ DEDUPLICATE: Ensure each zone is only represented once by GUID
+            // This prevents duplicate placement if a zone exists in multiple categories or file combos
+            int originalCount = allZones.Count;
+            allZones = allZones
+                .Where(z => !string.IsNullOrEmpty(z.ClashZoneGuid))
+                .GroupBy(z => z.ClashZoneGuid.ToUpper())
+                .Select(g => g.First())
+                .ToList();
+
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                if (allZones.Count < originalCount)
                 {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ TOTAL: Loaded {allZones.Count} clash zones from {categoriesToLoad.Count} category(ies) for filter '{filter.Name}'\n");
-                    }
-                    return allZones;
+                    DebugLogger.Warning($"[OpeningCommandOrchestrator] ⚠️ DEDUPLICATED: {originalCount} -> {allZones.Count} zones (Removed {originalCount - allZones.Count} duplicates from categories)");
                 }
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ TOTAL: Loaded {allZones.Count} clash zones from {categoriesToLoad.Count} category(ies) for filter '{filter.Name}'\n");
+            }
+            return allZones;
+        }
 
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
@@ -1121,28 +1179,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 // ✅ SAFETY STEP: PRE-SAVE CALCULATED DATA TO DATABASE (ALL categories together)
                                 // This ensures that if Revit crashes during the heavy bulk placement (1000+ items),
                                 // the dimensions and positions are safely stored in DB and not lost in memory.
-                                // ✅ PATH 1 FAST PATH: Skip pre-save if zones already have data in DB
+                                // ✅ FIX: Always pre-save zones that HAVE calculated data (CalculatedSleeveWidth > 0).
+                                // Previous logic used "zonesNeedingSave" = zones MISSING data, which excluded PATH 2 zones
+                                // (they had just been populated by planner) - causing CalculatedSleeveWidth to never persist.
                                 var zonesToSave = allBulkTaskItems.Select(x => x.Zone).ToList();
-                                var zonesNeedingSave = zonesToSave.Where(z => 
-                                    (z.CalculatedSleeveWidth == 0 && z.SleeveWidth == 0) ||
-                                    (z.CalculatedSleeveHeight == 0 && z.SleeveHeight == 0) ||
-                                    (z.SleevePlacementPointX == 0 && z.CalculatedPlacementX == 0) ||
-                                    string.IsNullOrEmpty(z.SleeveFamilyName ?? z.CalculatedFamilyName)
+                                var zonesWithCalculatedData = zonesToSave.Where(z => 
+                                    (z.CalculatedSleeveWidth > 0.001 || z.SleeveWidth > 0.001) &&
+                                    (z.CalculatedSleeveHeight > 0.001 || z.SleeveHeight > 0.001) &&
+                                    !string.IsNullOrEmpty(z.SleeveFamilyName ?? z.CalculatedFamilyName)
                                 ).ToList();
                                 
-                                if (zonesNeedingSave.Count > 0)
+                                if (zonesWithCalculatedData.Count > 0)
                                 {
-                                    // ✅ PERFORMANCE: Track pre-save operation (as sub-operation of individual placement)
                                     using (parentTracker?.TrackSubOperation("Pre-Save Calculated Data to DB"))
                                     {
                                         try
                                         {
-                                            if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info($"[BULK-SAFETY] Pre-saving {zonesNeedingSave.Count} items (out of {zonesToSave.Count} total) to DB...");
+                                            if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info($"[BULK-SAFETY] Pre-saving {zonesWithCalculatedData.Count} zones (CalculatedSleeveWidth/Height) to DB...");
                                             
                                             using (var dbContext = new JSE_RevitAddin_MEP_OPENINGS.Data.SleeveDbContext(_document))
                                             {
                                                 var repo = new JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClashZoneRepository(dbContext);
-                                                repo.BatchUpdateCalculatedData(zonesNeedingSave);
+                                                repo.BatchUpdateCalculatedData(zonesWithCalculatedData);
                                                 if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info($"[BULK-SAFETY] ✅ Pre-save complete.");
                                             }
                                         }
@@ -1153,192 +1211,158 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         }
                                     }
                                 }
-                                else
-                                {
-                                    // ✅ PATH 1 FAST PATH: All zones already have data - skip pre-save
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                    {
-                                        DebugLogger.Info($"[BULK-SAFETY] ✅ PATH 1 FAST PATH: All {zonesToSave.Count} zones already have placement data in DB - skipping pre-save");
-                                    }
-                                }
 
                                 if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[BULK-PLANNING] ✅ Planning complete for ALL categories. Total items to place: {allBulkTaskItems.Count}");
 
-                                // ✅ BULK PLACEMENT FIX: ONE bulk placement call for ALL categories together
-                                var bulkService = new BulkPlacementService(
-                                    _document, 
-                                    msg => 
-                                    {
-                                        if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info(msg);
-                                        SafeFileLogger.SafeAppendTextAlways("bulk_placement_trace.log", $"{DateTime.Now:HH:mm:ss} {msg}\n");
-                                    },
-                                    _performanceMonitor);
+                                 // ✅ FIX: Instantiate paramService ONCE and share it with BulkPlacementService
+                                 // This ensures the batched parameters are correctly captured and flushed
+                                 var paramService = new SleeveParameterService(_document);
+                                 var bulkService = new BulkPlacementService(
+                                     _document, 
+                                     msg => 
+                                     {
+                                         if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info(msg);
+                                         SafeFileLogger.SafeAppendTextAlways("bulk_placement_trace.log", $"{DateTime.Now:HH:mm:ss} {msg}\n");
+                                     },
+                                     _performanceMonitor,
+                                     paramService);
                                 BulkPlacementResult bulkResult = null;
+                                 SafeFileLogger.SafeAppendTextAlways("placement_debug.log", $"\n[{DateTime.Now:HH:mm:ss}] [BULK-PLACEMENT-START] allBulkTaskItems.Count = {allBulkTaskItems.Count}\n");
+
+                                 // Check for duplicates
+                                 var duplicateZones = allBulkTaskItems
+                                     .GroupBy(x => x.Zone.ClashZoneGuid)
+                                     .Where(g => !string.IsNullOrEmpty(g.Key) && g.Count() > 1)
+                                     .ToList();
+
+                                 if (duplicateZones.Count > 0)
+                                 {
+                                     SafeFileLogger.SafeAppendTextAlways("placement_debug.log", 
+                                         $"[{DateTime.Now:HH:mm:ss}] [WARNING] Found {duplicateZones.Count} duplicate zones in allBulkTaskItems!\n");
+                                     foreach (var dup in duplicateZones)
+                                     {
+                                         SafeFileLogger.SafeAppendTextAlways("placement_debug.log", 
+                                             $"  - Zone {dup.Key} appears {dup.Count()} times\n");
+                                     }
+                                 }
 
                                 // ✅ PERFORMANCE: Track bulk placement as sub-operation of individual placement
                                 using (var placeTracker = parentTracker?.TrackSubOperation("Step 4: BULK PLACEMENT (ALL Categories)"))
                                 {
-                                    using (var t = new Transaction(_document, $"Bulk Place All Categories - {filter.Name}"))
+                                    // ✅ TRANSACTION 1: PLACEMENT ONLY (Fast)
+                                    using (var t = new Transaction(_document, $"Bulk Place {filter.Name}"))
                                     {
                                         t.Start();
-                                         
-                                        // ✅ BULK PLACEMENT FIX: Pass ALL categories together to BulkPlacementService
-                                        // This places all sleeves from all categories in ONE API call (true bulk placement)
-                                        if (!DeploymentConfiguration.DeploymentMode)
-                                        {
-                                            SafeFileLogger.SafeAppendText("placement_debug.log", 
-                                                $"[{DateTime.Now:HH:mm:ss}] [BULK-PLACEMENT] 🚀 Calling ExecuteBulkPlacement with {allBulkTaskItems.Count} items from {zonesByCategory.Count} categories (ALL at once)\n");
-                                        }
                                         
-                                        // ✅ PERFORMANCE: Track the actual bulk placement operation
                                         using (placeTracker?.TrackSubOperation("ExecuteBulkPlacement (Revit API)"))
                                         {
                                             bulkResult = bulkService.ExecuteBulkPlacement(_document, allBulkTaskItems);
                                         }
                                         
-                                        if (!DeploymentConfiguration.DeploymentMode && bulkResult != null)
+                                        // ✅ ALWAYS commit - don't condition on PlacedCount
+                                        // This ensures elements created in Revit are persisted even if post-processing skips
+                                        using (placeTracker?.TrackSubOperation("Transaction Commit (Placement)"))
                                         {
-                                            SafeFileLogger.SafeAppendText("placement_debug.log", 
-                                                $"[{DateTime.Now:HH:mm:ss}] [BULK-PLACEMENT] ✅ ExecuteBulkPlacement completed: Placed={bulkResult.PlacedCount}, Failed={bulkResult.FailedCount}, Success={bulkResult.OverallSuccess}\n");
-                                        } 
-                                         
-                                        if (bulkResult.OverallSuccess && bulkResult.PlacedCount > 0)
+                                            t.Commit();
+                                        }
+                                    }
+
+                                    // ✅ STEP 2: POST-PLACEMENT PROCESSING (Parameters, Metadata, Geometry)
+                                    // Isolated into separate steps for performance and state sync
+                                    if (bulkResult != null && bulkResult.OverallSuccess && bulkResult.PlacedCount > 0)
+                                    {
+                                        // 2a. TRANSACTION 2: Flush Parameters FIRST (Deferred)
+                                        // Applying parameters BEFORE regeneration ensures Revit caches the correct dimensions
+                                        using (var tParams = new Transaction(_document, "Flush Parameters"))
                                         {
-                                            // ✅ PERFORMANCE: Track Regenerate operations
-                                            using (placeTracker?.TrackSubOperation("Regenerate (After Placement)"))
-                                            {
-                                                _document.Regenerate();
-                                            }
-                                             
-                                            var paramService = new SleeveParameterService(_document);
+                                            tParams.Start();
+                                            
                                             using (placeTracker?.TrackSubOperation("Flush Deferred Parameters"))
                                             {
-                                                paramService.FlushDeferredParameters(clearList: true, context: "BulkPlacementEnd");
-                                            }
-
-                                            // ✅ PERFORMANCE: Track second Regenerate
-                                            using (placeTracker?.TrackSubOperation("Regenerate (After Parameters)"))
-                                            {
-                                                _document.Regenerate(); // Params are now applied, dimensions extracted below are accurate.
-                                            }
-
-                                            // ✅ CRITICAL REFACTOR: Extract ACTUAL geometry (Dims + Point) from placed elements
-                                            // This ensures Clustering uses the *Real* dimensions/location, not just Planned ones.
-                                            // Satisfies user request: "SLEEVE DIMENSION AND PALCMENT POINT ALSO NEED TO BE EXTRACTED ... SLEEVECORNERS"
-                                            using (placeTracker?.TrackSubOperation("Update Zones From Elements"))
-                                            {
-                                                bulkService.UpdateZonesFromElements(_document, bulkResult.PlacedItems);
-                                            }
-                                             
-                                            // ✅ PERFORMANCE: Track transaction commit
-                                            using (placeTracker?.TrackSubOperation("Transaction Commit"))
-                                            {
-                                                t.Commit();
+                                                paramService.FlushDeferredParameters(clearList: true, context: "AfterPlacement");
                                             }
                                             
-                                            // ✅ CRITICAL PERSISTENCE: Now save the fully populated Zone Data to DB
-                                            try
+                                            using (placeTracker?.TrackSubOperation("Transaction Commit (Parameters)"))
                                             {
-                                                var placedZones = bulkResult.PlacedItems.Select(p => p.Zone).ToList();
-                                                
-                                                using (var dbContext = new JSE_RevitAddin_MEP_OPENINGS.Data.SleeveDbContext(_document))
-                                                {
-                                                    var repo = new JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClashZoneRepository(dbContext);
-                                                    
-                                                    // 1. Update Zone Data (ID, Width, Height, Diameter, PlacementPoint) - NOW ACCURATE
-                                                    // ✅ CRITICAL: Ensure SleeveInstanceId is set before database update
-                                                    var zonesWithIds = placedZones.Where(z => z.SleeveInstanceId > 0).ToList();
-                                                    if (zonesWithIds.Count != placedZones.Count)
-                                                    {
-                                                        SafeFileLogger.SafeAppendText("placement_debug.log", 
-                                                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ WARNING: {placedZones.Count - zonesWithIds.Count} zones missing SleeveInstanceId before DB update\n");
-                                                    }
-                                                    
-                                                    // ✅ PERFORMANCE: Track database update operation
-                                                    using (placeTracker?.TrackSubOperation("BatchUpdateSleevePlacementData"))
-                                                    {
-                                                        repo.BatchUpdateSleevePlacementData(zonesWithIds);
-                                                    }
-                                                    
-                                                    // ✅ CRITICAL: Verify SleeveInstanceId was saved to database
-                                                    if (!DeploymentConfiguration.DeploymentMode)
-                                                    {
-                                                        SafeFileLogger.SafeAppendText("placement_debug.log", 
-                                                            $"[{DateTime.Now:HH:mm:ss}] ✅ BatchUpdateSleevePlacementData completed for {zonesWithIds.Count} zones with SleeveInstanceId\n");
-                                                    }
-                                                    
-                                                    // ✅ FIX: Corner extraction moved to Step 5 (line 1543) to avoid duplicate calls
-                                                    // Corner extraction will happen once in Step 5 after all placement is complete
-                                                    
-                                                    // Lookup Filter ID (robust category mapping)
-                                                    int filterId = -1;
-                                                    try 
-                                                    {
-                                                        string categoryForLookup = filter.Category switch
-                                                        {
-                                                            Models.MepCategory.Ducts => "Ducts",
-                                                            Models.MepCategory.DuctAccessories => "Duct Accessories",
-                                                            Models.MepCategory.Pipes => "Pipes",
-                                                            Models.MepCategory.CableTrays => "Cable Trays",
-                                                            _ => filter.Category.ToString()
-                                                        };
-                                                        
-                                                        var filterLookupService = new JSE_RevitAddin_MEP_OPENINGS.Services.Filters.FilterLookupService(dbContext);
-                                                        filterId = filterLookupService.GetFilterId(filter.Name, categoryForLookup);
-                                                    }
-                                                    catch { /* Ignore lookup errors, default to -1 */ }
-
-                                                    // ✅ CRITICAL FIX: SAVE SNAPSHOTS FOR PERSISTENCE (Fast Mode Parity)
-                                                    // Without this, "Fast Mode" fails to populate the SleeveSnapshots table,
-                                                    // preventing Self-Healing Retrieval during clustering.
-                                                    if (placedZones.Any())
-                                                    {
-                                                        if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info($"[BULK-PERSIST] 📸 Saving snapshots for {placedZones.Count} zones (FilterId={filterId})...");
-                                                        
-                                                        // ✅ PERFORMANCE: Track snapshot save operation
-                                                        using (placeTracker?.TrackSubOperation("SaveSleeveSnapshotsForPlacedSleeves"))
-                                                        {
-                                                            repo.SaveSleeveSnapshotsForPlacedSleeves(filterId > 0 ? filterId : -1, placedZones);
-                                                        }
-                                                    }
-
-                                                    if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info($"[BULK-PERSIST] ✅ Saved {placedZones.Count} zones + corners + snapshots to DB.");
-                                                }
-                                            }
-                                            catch (Exception ex)
-                                            {
-                                                if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Error($"[BULK-PERSIST] ❌ Failed to save IDs: {ex.Message}");
-                                            }
-                                            
-                                            placedZonesForExtraction = bulkResult.PlacedItems
-                                                .Select(item => (ZoneGuid: item.Zone.Id, ElementId: item.ElementId.IntegerValue))
-                                                .ToList();
-
-                                            placedCount = bulkResult.PlacedCount;
-                                            errorCount = bulkResult.FailedCount;
-                                            
-                                            // ✅ DIAGNOSTIC: Log actual zones placed to identify duplicates
-                                            if (!DeploymentConfiguration.DeploymentMode)
-                                            {
-                                                var placedZoneIds = bulkResult.PlacedItems.Select(p => p.Zone.Id.ToString()).ToList();
-                                                SafeFileLogger.SafeAppendText("placement_debug.log", 
-                                                    $"[{DateTime.Now:HH:mm:ss}] [BULK-PLACEMENT] 📊 PLACED {placedCount} sleeves from {bulkResult.PlacedItems.Count} zones. Zone IDs: {string.Join(", ", placedZoneIds.Take(10))}{(placedZoneIds.Count > 10 ? "..." : "")}\n");
-                                                
-                                                // Check for duplicates
-                                                var duplicateIds = placedZoneIds.GroupBy(id => id).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
-                                                if (duplicateIds.Any())
-                                                {
-                                                    SafeFileLogger.SafeAppendText("placement_debug.log", 
-                                                        $"[{DateTime.Now:HH:mm:ss}] [BULK-PLACEMENT] ⚠️ DUPLICATE ZONES DETECTED: {string.Join(", ", duplicateIds)}\n");
-                                                }
+                                                tParams.Commit();
                                             }
                                         }
-                                        else
+                                        
+                                        // 2b. NOW Regenerate after parameters applied (updates physical geometry)
+                                        using (placeTracker?.TrackSubOperation("Regenerate (After Parameters)"))
                                         {
-                                            t.RollBack();
-                                            if (!bulkResult.OverallSuccess) errorCount = zonesToPlace.Count;
+                                            _document.Regenerate();
                                         }
+                                        
+                                        // 2d. OUTSIDE TRANSACTIONS: Extract geometry (now accurate!)
+                                        using (placeTracker?.TrackSubOperation("Update Zones From Elements"))
+                                        {
+                                            bulkService.UpdateZonesFromElements(_document, bulkResult.PlacedItems);
+                                        }
+
+                                        // 2e. OUTSIDE ALL TRANSACTIONS: Database persistence
+                                        try
+                                        {
+                                            var placedZones = bulkResult.PlacedItems.Select(p => p.Zone).ToList();
+                                             
+                                             // ✅ FIX: Update flags in database after bulk placement
+                                             if (placedZones.Any())
+                                             {
+                                                 var flagUpdates = bulkResult.PlacedItems
+                                                     .Select(item => (item.Zone.Id, item.ElementId.IntegerValue, false))
+                                                     .ToList();
+                                                 
+                                                 flagManager.UpdateFlagsAfterPlacement(flagUpdates);
+                                             }
+
+                                             using (var dbContext = new JSE_RevitAddin_MEP_OPENINGS.Data.SleeveDbContext(_document))
+                                            {
+                                                var repo = new JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClashZoneRepository(dbContext);
+                                                
+                                                // 1. Identify Filter ID
+                                                int filterId = -1;
+                                                string categoryForLookup = filter.Category switch
+                                                {
+                                                    Models.MepCategory.Ducts => "Ducts",
+                                                    Models.MepCategory.DuctAccessories => "Duct Accessories",
+                                                    Models.MepCategory.Pipes => "Pipes",
+                                                    Models.MepCategory.CableTrays => "Cable Trays",
+                                                    _ => filter.Category.ToString()
+                                                };
+                                                var filterLookupService = new JSE_RevitAddin_MEP_OPENINGS.Services.Filters.FilterLookupService(dbContext);
+                                                filterId = filterLookupService.GetFilterId(filter.Name, categoryForLookup);
+
+                                                // 2. Batch Update Placement Data
+                                                var zonesWithIds = placedZones.Where(z => z.SleeveInstanceId > 0).ToList();
+                                                using (placeTracker?.TrackSubOperation("BatchUpdateSleevePlacementData"))
+                                                {
+                                                    repo.BatchUpdateSleevePlacementData(zonesWithIds);
+                                                }
+                                                
+                                                // 3. Save Snapshots
+                                                using (placeTracker?.TrackSubOperation("SaveSleeveSnapshotsForPlacedSleeves"))
+                                                {
+                                                    repo.SaveSleeveSnapshotsForPlacedSleeves(filterId > 0 ? filterId : -1, placedZones);
+                                                }
+                                            }
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Error($"[BULK-PERSIST] ❌ Database persistence failed: {ex.Message}");
+                                        }
+
+                                        // 2f. Set orchestration variables for downstream Corner Extraction (Step 5)
+                                        placedZonesForExtraction = bulkResult.PlacedItems
+                                            .Select(item => (ZoneGuid: item.Zone.Id, ElementId: item.ElementId.IntegerValue))
+                                            .ToList();
+
+                                        placedCount = bulkResult.PlacedCount;
+                                        errorCount = bulkResult.FailedCount;
+                                    }
+                                    else if (bulkResult != null && !bulkResult.OverallSuccess)
+                                    {
+                                        errorCount = zonesToPlace.Count;
                                     }
                                 }
                             }

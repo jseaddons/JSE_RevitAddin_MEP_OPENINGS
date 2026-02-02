@@ -28,7 +28,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private TabPage _levelTab;
         private TabPage _modelTab;
         private TabPage _renamingTab;
-        private TabPage _serviceSizeTab;
         
         // Reference Element to Opening controls
         private CheckBox _referenceEnabledCheckBox;
@@ -59,12 +58,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private Button _loadPredefinedButton;
         private Button _manageAbbreviationsButton;
         private Button _configureOpeningParametersButton;
-        
-        // Service Size Calculation controls
-        private CheckBox _serviceSizeEnabledCheckBox;
-        private ComboBox _serviceSizeTargetComboBox;
-        private TextBox _clearanceTextBox;
-        private TextBox _clearanceSuffixTextBox;
         
         // Action buttons
         private Button _okButton;

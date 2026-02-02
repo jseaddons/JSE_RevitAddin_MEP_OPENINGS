@@ -47,8 +47,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         private Dictionary<ElementId, Dictionary<string, object>> _deferredParameters = 
             new Dictionary<ElementId, Dictionary<string, object>>();
         
-        // ✅ SAFETY FLAG: Prevents multiple flushes (critical for performance)
-        private bool _hasFlushedParameters = false;
 
         /// <summary>
         /// ✅ NEW: Support for external batch dictionaries (e.g. from RefactoredClusterService).
@@ -83,6 +81,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             _doc = doc ?? throw new ArgumentNullException(nameof(doc));
             _isReplayPath = isReplayPath;
             _performanceMonitor = performanceMonitor;
+        }
+
+        /// <summary>
+        /// ✅ DUPLICATE FIX: Set SleeveInstanceId on Revit element.
+        /// Use this to mark the element as "placed" so future runs can identify it.
+        /// </summary>
+        public void SetSleeveInstanceId(FamilyInstance instance, int elementId)
+        {
+            try
+            {
+                var param = instance.LookupParameter("SleeveInstanceId");
+                if (param != null && !param.IsReadOnly)
+                {
+                    // Direct set (no batching) to ensure ID is always on the element
+                    param.Set(elementId);
+                }
+                else
+                {
+                    // Some families might not have this parameter, which is fine, but log valid warning
+                     if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"SleeveInstanceId parameter not found or read-only on instance {instance.Id}");
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"Failed to set SleeveInstanceId on instance {instance.Id}: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -654,7 +679,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         /// </summary>
         public void ResetFlushFlag()
         {
-            _hasFlushedParameters = false;
         }
 
         /// <summary>

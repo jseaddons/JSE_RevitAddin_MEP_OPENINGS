@@ -24,21 +24,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         // Elements Section Controls
         private WinForms.CheckBox _cutOpeningWithHostsCheckBox;
         private WinForms.CheckBox _pipeOpeningTypeRectangularCheckBox;
-        private WinForms.CheckBox _createVerticalOpeningsCheckBox;
-        private WinForms.CheckBox _createHorizontalOpeningsCheckBox;
-        private WinForms.CheckBox _adoptProvisionForVoidsCheckBox;
-        
-        // Element Filter Section Controls
-        private WinForms.ComboBox _elementFilterComboBox;
-        private WinForms.CheckBox _includeHostElementsNotVisibleCheckBox;
-        private WinForms.CheckBox _includeReferenceElementsNotVisibleCheckBox;
-        private WinForms.CheckBox _includeHostElementsDemolishedCheckBox;
         
         // Limits Section Controls
         private WinForms.TextBox _ignoreOpeningsSmallerThanTextBox;
         private WinForms.TextBox _roundOpeningsRectangularTextBox;
         private WinForms.TextBox _joinOpeningsDistanceTextBox;
-        private WinForms.CheckBox _createOpeningsWithSlopeCheckBox;
         private WinForms.TextBox _roundingValueTextBox;
         private WinForms.CheckBox _roundAlwaysUpCheckBox;
         private WinForms.TextBox _minWallThicknessTextBox;
@@ -450,21 +440,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 };
             }
             _pipeOpeningTypeRectangularCheckBox.Checked = _settings.PipeOpeningTypeRectangular;
-            if (_createVerticalOpeningsCheckBox != null)
-                _createVerticalOpeningsCheckBox.Checked = _settings.CreateVerticalOpenings;
-            if (_createHorizontalOpeningsCheckBox != null)
-                _createHorizontalOpeningsCheckBox.Checked = _settings.CreateHorizontalOpenings;
-            if (_adoptProvisionForVoidsCheckBox != null)
-                _adoptProvisionForVoidsCheckBox.Checked = _settings.AdoptProvisionForVoids;
-            
-            if (_elementFilterComboBox != null)
-                _elementFilterComboBox.SelectedItem = _settings.ElementFilter;
-            if (_includeHostElementsNotVisibleCheckBox != null)
-                _includeHostElementsNotVisibleCheckBox.Checked = _settings.IncludeHostElementsNotVisible;
-            if (_includeReferenceElementsNotVisibleCheckBox != null)
-                _includeReferenceElementsNotVisibleCheckBox.Checked = _settings.IncludeReferenceElementsNotVisible;
-            if (_includeHostElementsDemolishedCheckBox != null)
-                _includeHostElementsDemolishedCheckBox.Checked = _settings.IncludeHostElementsDemolished;
             
             if (_ignoreOpeningsSmallerThanTextBox != null)
                 _ignoreOpeningsSmallerThanTextBox.Text = _settings.IgnoreOpeningsSmallerThan.ToString();
@@ -472,8 +447,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 _roundOpeningsRectangularTextBox.Text = _settings.RoundOpeningsRectangular.ToString();
             if (_joinOpeningsDistanceTextBox != null)
                 _joinOpeningsDistanceTextBox.Text = _settings.JoinOpeningsDistance.ToString();
-            if (_createOpeningsWithSlopeCheckBox != null)
-                _createOpeningsWithSlopeCheckBox.Checked = _settings.CreateOpeningsWithSlope;
             if (_roundingValueTextBox != null)
                 _roundingValueTextBox.Text = _settings.RoundingValue.ToString();
             if (_roundAlwaysUpCheckBox != null)
@@ -509,12 +482,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                 
                 if (_pipeOpeningTypeRectangularCheckBox != null)
                     _settings.PipeOpeningTypeRectangular = _pipeOpeningTypeRectangularCheckBox.Checked;
-                
-                if (_ignoreOpeningsSmallerThanTextBox != null && double.TryParse(_ignoreOpeningsSmallerThanTextBox.Text, out double ignoreSmall))
-                    _settings.IgnoreOpeningsSmallerThan = ignoreSmall;
-                
-                if (_roundOpeningsRectangularTextBox != null && double.TryParse(_roundOpeningsRectangularTextBox.Text, out double roundRect))
-                    _settings.RoundOpeningsRectangular = roundRect;
                 
                 if (_joinOpeningsDistanceTextBox != null && double.TryParse(_joinOpeningsDistanceTextBox.Text, out double joinDist))
                     _settings.JoinOpeningsDistance = joinDist;

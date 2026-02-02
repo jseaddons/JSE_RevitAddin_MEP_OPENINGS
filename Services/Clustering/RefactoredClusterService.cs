@@ -213,6 +213,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             {
                 SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🚀 ORCHESTRATOR V2 START: Category={targetCategory}, Zones={clashZones.Count}, Mode={(useSingleTransaction ? "Bulk" : "Sequential")}, SkipPlacement={skipPlacement}, doc.IsModifiable={doc.IsModifiable}\n");
 
+                // ✅ CRITICAL: Populate ClashZone cache BEFORE calculation so ClusterRotationService can look up by SleeveInstanceId
+                // Required for Wall/Framing detection, correct dimensions (Width/Height), and orientation
+                _dataService.LoadClashZoneCacheFromLoadedClashZones(clashZones, targetCategory);
+
                 // Phase 1: Calculation (Parallel Safe, No Revit Transaction needed usually, or ReadOnly)
                 // Ensure we are not in a transaction here if possible, or it's fine.
                 SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🟡 BEFORE CalculateAndSave...\n");

@@ -34,12 +34,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         // Store all collected parameters globally to persist across refreshes
         private Dictionary<string, List<Models.ParameterInfo>> _allCollectedParameters = new Dictionary<string, List<Models.ParameterInfo>>();
         
-        // Flag to prevent infinite loops during ComboBox population
-        private bool _isUpdatingComboBoxes = false;
-        
-        // Flag to track if user has made manual changes to UI selections
-        private bool _userHasMadeManualChanges = false;
-        
         // Store filters from last refresh to reuse during opening creation
         private bool _isInitializing = true; // Flag to prevent refresh during initialization
         
@@ -79,10 +73,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         
         // Toolbar buttons
         private WinForms.Button _okButton = null!;
-        private WinForms.Button _cancelButton = null!;
-        private WinForms.Button _saveButton = null!;
         private WinForms.Button _closeButton = null!;
-        private WinForms.Button _parameterTransferButton = null!;
         
         // Bottom control bar buttons (scaffolding only)
         private WinForms.Button _refreshButton = null!;
@@ -106,7 +97,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.CheckBox _roundAlwaysUpCheckBox = null!;
         private WinForms.TextBox _minWallThicknessTextBox = null!;
         private WinForms.CheckBox _ignoreArchitecturalFloorsCheckBox = null!;
-        private WinForms.Panel _settingsPanel = null!; // Scrollable panel for settings
         
         // ✅ UI STATE PERSISTENCE: Store references to host category listboxes for proper save/load
         private WinForms.CheckedListBox _horizontalCategoriesListBox = null!;
@@ -117,10 +107,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         // ✨ NEW: Mark Prefix Panel Controls (MEPMARK Implementation)
         // Added: 2025-10-08 for custom discipline-specific mark generation
         // ═══════════════════════════════════════════════════════════════
-        private WinForms.Panel _markPrefixPanel = null!;
-        private WinForms.TextBox _projectPrefixTextBox = null!;
         private WinForms.TextBox _disciplinePrefixTextBox = null!;
-        private WinForms.CheckBox _remarkAllCheckBox = null!;
         
         // In-memory storage for category-specific discipline prefixes
         // Synced when user switches MEP Type dropdown
@@ -1354,7 +1341,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
                     DebugLogger.Info($"[FILTER_SELECTION] Filter selected: '{selectedFilterName}'");
                     
                     // Reset manual changes flag when user explicitly selects a filter
-                    _userHasMadeManualChanges = false;
                     DebugLogger.Info("[FILTER_UI] User explicitly selected filter - resetting manual changes flag");
                     
                     // Auto-load the selected filter instead of showing file dialog
@@ -1698,9 +1684,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
 
             // Add event handler for category selection changes
             referenceCategoriesListBox.ItemCheck += (sender, e) => {
-                // Mark that user has made manual changes
-                _userHasMadeManualChanges = true;
-                DebugLogger.Info("[FILTER_UI] User manually changed MEP category selection - marking as manual change");
                 
                 // Use a timer to delay the update to avoid issues during the check operation
                 System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();

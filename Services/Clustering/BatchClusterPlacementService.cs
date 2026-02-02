@@ -382,26 +382,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: Clusters in ClusterSleeves with ClusterInstanceId: {totalWithInstanceId}\n");
                 }
                 
-                using (var cmd = conn.CreateCommand())
+            using (var cmd = conn.CreateCommand())
+            {
+                // ✅ FIX: Query from ClusterSleeves_v2 table (New Batch V2)
+                // PENDING clusters: (ClusterInstanceId IS NULL OR <= 0) - NEW clusters needing placement
+                // RECOVERY clusters: ClusterInstanceId > 0 - check existence, re-place if deleted from Revit
+                // Previously only queried ClusterInstanceId > 0, which excluded all new clusters!
+                cmd.CommandText = @"
+                    SELECT 
+                        cs.ClusterGUID, 
+                        cs.PlacementX, cs.PlacementY, cs.PlacementZ, 
+                        cs.ClusterWidth, cs.ClusterHeight, cs.ClusterDepth, 
+                        cs.RotationAngleRad,
+                        cs.HostElementId, cs.HostType, cs.HostOrientation, 
+                        cs.FamilyName, cs.ConstituentZoneGuids,
+                        cs.ClusterInstanceId
+                    FROM ClusterSleeves_v2 cs
+                    WHERE cs.Status IN ('Pending', 'Placed')";
+                
+                // Add optional batch filtering if provided
+                if (!string.IsNullOrEmpty(batchId))
                 {
-                    // ✅ FIX: Query from ClusterSleeves table (legacy) where ClusterInstanceId is saved
-                    // Join with ClusterSleeves_v2 to get additional metadata if needed
-                    cmd.CommandText = @"
-                        SELECT 
-                            cs.ClusterGUID, 
-                            cs.PlacementX, cs.PlacementY, cs.PlacementZ, 
-                            cs.ClusterWidth, cs.ClusterHeight, cs.ClusterDepth, 
-                            cs.RotationAngleRad,
-                            cs.HostElementId, cs.HostType, cs.HostOrientation, 
-                            cs.FamilyName, cs.ConstituentZoneGuids,
-                            cs.ClusterInstanceId
-                        FROM ClusterSleeves cs
-                        WHERE cs.ClusterInstanceId IS NOT NULL";
-                    // Note: ClusterSleeves table doesn't have batchId, so we fetch all
-                    SafeFileLogger.SafeAppendText("batch_v2.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: Querying ClusterSleeves table (legacy) for clusters with ClusterInstanceId\n");
-                    
-                    int totalInTable = 0;
+                    cmd.CommandText += " AND cs.ClusterBatchId = @BatchId";
+                    cmd.Parameters.AddWithValue("@BatchId", batchId);
+                }
+
+                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] 🔍 Batch V2: Querying ClusterSleeves_v2 for Pending/Placed clusters (new + recovery)\n");
+                
+                int totalInTable = 0;
                     int needsPlacementCount = 0;
                     int alreadyExistsCount = 0;
                     
@@ -415,19 +424,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             
                             if (clusterInstanceId <= 0)
                             {
-                                SafeFileLogger.SafeAppendText("batch_v2.log", 
-                                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ SKIPPING: Cluster {clusterGuid} has invalid ClusterInstanceId={clusterInstanceId}\n");
-                                continue;
-                            }
-                            
-                            // ✅ CRITICAL: Check if cluster actually exists in Revit
-                            bool existsInRevit = existenceChecker.ClusterSleeveExists(clusterInstanceId);
-                            if (!existsInRevit)
-                            {
-                                // Cluster was placed before but doesn't exist now (was deleted) - needs re-placement
+                                // ✅ NEW CLUSTER: Never placed - needs placement
                                 needsPlacementCount++;
                                 SafeFileLogger.SafeAppendText("batch_v2.log", 
-                                    $"[{DateTime.Now:HH:mm:ss}] 🔍 PATH 1: Cluster {clusterGuid} has ClusterInstanceId={clusterInstanceId} but doesn't exist in Revit - will re-place\n");
+                                    $"[{DateTime.Now:HH:mm:ss}] 🔍 NEW: Cluster {clusterGuid} (ClusterInstanceId={clusterInstanceId}) - needs placement\n");
                                 
                                 list.Add(new BatchClusterData
                                 {
@@ -448,9 +448,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             }
                             else
                             {
-                                alreadyExistsCount++;
-                                SafeFileLogger.SafeAppendText("batch_v2.log", 
-                                    $"[{DateTime.Now:HH:mm:ss}] ✅ PATH 1: Cluster {clusterGuid} with ClusterInstanceId={clusterInstanceId} already exists in Revit - skipping\n");
+                                // ✅ RECOVERY: ClusterInstanceId > 0 - check if element still exists in Revit
+                                bool existsInRevit = existenceChecker.ClusterSleeveExists(clusterInstanceId);
+                                if (!existsInRevit)
+                                {
+                                    needsPlacementCount++;
+                                    SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                        $"[{DateTime.Now:HH:mm:ss}] 🔍 PATH 1 RECOVERY: Cluster {clusterGuid} ClusterInstanceId={clusterInstanceId} deleted from Revit - will re-place\n");
+                                    
+                                    list.Add(new BatchClusterData
+                                    {
+                                        ClusterGUID = clusterGuid,
+                                        PlacementX = Convert.ToDouble(reader["PlacementX"]),
+                                        PlacementY = Convert.ToDouble(reader["PlacementY"]),
+                                        PlacementZ = Convert.ToDouble(reader["PlacementZ"]),
+                                        ClusterWidth = Convert.ToDouble(reader["ClusterWidth"]),
+                                        ClusterHeight = Convert.ToDouble(reader["ClusterHeight"]),
+                                        ClusterDepth = Convert.ToDouble(reader["ClusterDepth"]),
+                                        RotationAngleRad = Convert.ToDouble(reader["RotationAngleRad"]),
+                                        HostElementId = Convert.ToInt64(reader["HostElementId"]),
+                                        HostType = reader["HostType"]?.ToString(),
+                                        HostOrientation = reader["HostOrientation"]?.ToString(),
+                                        FamilyName = reader["FamilyName"]?.ToString() ?? "",
+                                        ConstituentZoneGuids = reader["ConstituentZoneGuids"]?.ToString() ?? ""
+                                    });
+                                }
+                                else
+                                {
+                                    alreadyExistsCount++;
+                                    SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                        $"[{DateTime.Now:HH:mm:ss}] ✅ PATH 1: Cluster {clusterGuid} ClusterInstanceId={clusterInstanceId} exists in Revit - skipping\n");
+                                }
                             }
                         }
                     }

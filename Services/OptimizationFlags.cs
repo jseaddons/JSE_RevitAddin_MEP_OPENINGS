@@ -1186,7 +1186,7 @@ Refactoring Flags: SleeveRepository={UseNewSleeveRepository}, ZoneFilter={UseNew
         /// When false: Skips corner extraction and clustering, only places individual sleeves.
         /// Default: true
         /// </summary>
-        public static bool EnableClusteringWorkflow { get; set; } = true;
+        public static bool EnableClusteringWorkflow { get; set; } = false;
 
     }
 }

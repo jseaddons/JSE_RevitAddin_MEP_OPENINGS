@@ -13,8 +13,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     {
         private double _defaultClearance = 50.0; // Default clearance in mm
         private string _clearanceSuffix = "mm A.SPACE";
-        private string _calculationSeparator = " + ";
-        private string _calculationEquals = " = ";
         
         /// <summary>
         /// Get MEP element dimensions

@@ -21,8 +21,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         // private StatusUpdateExternalEventHandler? _statusUpdateHandler;
 
         // External events
-        private ExternalEvent? _openingPlacementEvent;
-        private ExternalEvent? _parameterSyncEvent;
         private ExternalEvent? _statusUpdateEvent;
 
         // Thread safety
@@ -98,8 +96,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // _parameterSyncEvent?.Dispose();
                 // _statusUpdateEvent?.Dispose();
 
-                _openingPlacementEvent = null;
-                _parameterSyncEvent = null;
                 _statusUpdateEvent = null;
 
                 // _openingPlacementHandler = null;

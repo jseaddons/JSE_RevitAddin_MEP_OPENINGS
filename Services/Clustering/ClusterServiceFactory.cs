@@ -256,12 +256,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             var cleanupService = new ClusterCleanupService();
 
             // ✅ Phase 6: Rotation Service (requires getClashZoneFunc - will be wired from dataService)
+            // ✅ CRITICAL FIX: Must return actual ClashZone for Wall/Framing detection and dimension calculation
+            // Previously returned null, causing hostType=Floor/Other, wrong dimensions (Width=0, Height=0), wrong orientation
             Func<int, string, ClashZone> getClashZoneFunc = (sleeveId, xmlPath) =>
             {
-                // Use dataService cache to get ClashZone
-                // Note: This is a simplified implementation - in practice, we'd need to track sleeveId to ClashZone mapping
-                // For now, return null - RotationService will handle fallback
-                return null;
+                return dataService.GetClashZoneBySleeveInstanceId(sleeveId);
             };
             // ✅ Phase 9b: Cluster Placement Lookup Delegate
             Func<int, XYZ> getClusterPlacementFunc = (clusterId) =>

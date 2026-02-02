@@ -51,15 +51,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             int filterId,
             Document doc)
         {
-            // ✅ PATH 1 FAST PATH: Check if cluster data already exists in database
-            // If clusters exist for this comboId/filterId/category, skip calculation and save
-            string existingBatchId = CheckExistingClusterData(comboId, filterId, targetCategory);
-            if (!string.IsNullOrEmpty(existingBatchId))
-            {
-                SafeFileLogger.SafeAppendText("batch_v2.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] ✅ PATH 1 FAST PATH: Cluster data already exists in DB for ComboId={comboId}, FilterId={filterId}, Category={targetCategory} - skipping calculation, using existing batchId={existingBatchId}\n");
-                return existingBatchId;
-            }
+            // ✅ PATH 1 REMOVED: Always recalculate clusters (User Request: "Path 1 is cause of bug")
+            // CheckExistingClusterData logic removed to force fresh calculation.
             
             // 1. Generate Batch ID
             string batchId = $"{DateTime.Now:yyyyMMdd_HHmmss}_{targetCategory}_{filterId}";

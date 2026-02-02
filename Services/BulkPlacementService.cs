@@ -39,10 +39,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public BulkPlacementService(
             Document doc, 
             Action<string>? logger = null,
-            JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IPerformanceMonitor? performanceMonitor = null)
+            JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IPerformanceMonitor? performanceMonitor = null,
+            SleeveParameterService? parameterService = null)
         {
             _logger = logger ?? (msg => DebugLogger.Info(msg));
-            _parameterService = new SleeveParameterService(doc);
+            _parameterService = parameterService ?? new SleeveParameterService(doc);
             _performanceMonitor = performanceMonitor;
         }
 
@@ -106,6 +107,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     using (_performanceMonitor?.TrackOperation("Revit NewFamilyInstances2"))
                     {
                         createdIds = doc.Create.NewFamilyInstances2(creationDataList);
+                        
+                        // ✅ DIAGNOSTIC: Log actual Revit creation count (User Request)
+                        var idListDiag = createdIds.ToList();
+                        SafeFileLogger.SafeAppendTextAlways("placement_debug.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] [BULK-PLACEMENT-RESULT] createdIds.Count = {idListDiag.Count}\n");
                     }
                     var idList = createdIds.ToList();
                     _logger?.Invoke($"[BulkPlacement] Created {idList.Count} family instances");
@@ -126,6 +132,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 
                                 // ✅ UNIFIED ARCHITECTURE: Use planned dimensions
                                 SetSleeveParameters(instance, item.Zone, item.Plan);
+
+                                // ✅ DUPLICATE FIX: Set parameter on REVIT ELEMENT so it's recognized in future runs
+                                _parameterService.SetSleeveInstanceId(instance, elementId.IntegerValue); 
+                                
                                 item.Zone.SleeveInstanceId = elementId.IntegerValue;
                                 
                                 result.PlacedItems.Add((item.Zone, elementId));
@@ -139,12 +149,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         }
                     }
                     
-                    // ✅ CRITICAL FIX: Flush batched parameters to elements!
-                    // Without this, all parameters remain in memory and sleeves keep default sizes (300x200x200)
-                    using (_performanceMonitor?.TrackOperation("Flush Deferred Parameters"))
-                    {
-                        _parameterService.FlushDeferredParameters(clearList: true, context: "BulkPlacement");
-                    }
+                    // ✅ CRITICAL FIX: Removed FlushDeferredParameters from here.
+                    // This is now decoupled and called from the orchestrator in a separate transaction
+                    // after Transaction 1 (Placement) is committed and the document is regenerated.
 
                     result.OverallSuccess = true;
                     result.ElapsedTime = DateTime.Now - startTime;

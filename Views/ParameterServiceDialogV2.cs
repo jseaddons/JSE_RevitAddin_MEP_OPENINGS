@@ -58,7 +58,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
         private WinForms.TabControl _masterParameterTabs = null!;
         private WinForms.TabControl _referenceParameterTabs = null!;
         private WinForms.TabControl _hostParameterTabs = null!;
-        private WinForms.Button _addParameterButton = null!;
 
         // Top bar
         // REMOVED: private WinForms.Button _applyMarksButton = null!;
