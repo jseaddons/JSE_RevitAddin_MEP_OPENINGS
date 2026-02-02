@@ -410,8 +410,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             DebugLogger.Info("[SleevePlacementExternalEvent] ✓ COMPLETED THROUGH PROPER ORCHESTRATOR ARCHITECTURE");
                     }
 
-                    // ✅ PERFORMANCE: Generate final report
-                    performanceMonitor.GenerateReport(0, 0); // Counts are tracked inside orchestrator
+                    // Report is generated once by orchestrator after all filters (do not duplicate here)
                 }
             }
             catch (Exception ex)

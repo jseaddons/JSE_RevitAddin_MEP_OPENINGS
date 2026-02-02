@@ -15,6 +15,9 @@ obj/
 Logs/
 *.log
 Log/
+build_log*.txt
+build_output*.txt
+build_errors*.txt
 *.tmp
 *.temp
 fresh_placement_debug.log

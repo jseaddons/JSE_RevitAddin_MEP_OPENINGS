@@ -137,7 +137,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             report.AppendLine($"=== PLACEMENT PERFORMANCE REPORT ===");
             report.AppendLine($"Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
             report.AppendLine($"🔨 Build Timestamp: {buildTimestamp} | Assembly: {System.IO.Path.GetFileName(assemblyPath)}");
-            report.AppendLine($"Total Time: {_totalTimer.ElapsedMilliseconds}ms ({_totalTimer.Elapsed:mm\\:ss})");
+            report.AppendLine($"Total Workflow Time: {_totalTimer.ElapsedMilliseconds}ms ({_totalTimer.Elapsed:mm\\:ss})");
+            // Placement phase = duration of "Bulk Individual Sleeve Placement" (matches log timestamps: create + params + commit)
+            var bulkOp = _operations.Values.FirstOrDefault(op => op.Name != null && op.Name.Contains("Bulk Individual Sleeve Placement"));
+            if (bulkOp != null && bulkOp.TotalMilliseconds > 0)
+                report.AppendLine($"Placement Phase (Bulk block): {bulkOp.TotalMilliseconds}ms ({TimeSpan.FromMilliseconds(bulkOp.TotalMilliseconds):mm\\:ss})");
             report.AppendLine($"Total Individual Sleeves: {totalIndividualSleeves}");
             report.AppendLine($"Total Clusters: {totalClusters}");
             report.AppendLine();
@@ -321,14 +325,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         private bool IsIndividualPlacementOperation(string operationName)
         {
             string name = operationName.ToLowerInvariant();
-            return name.Contains("individual") || 
+            return name.Contains("individual") ||
                    name.Contains("bulk individual") ||
                    name.Contains("step 1") ||
                    name.Contains("step 4") ||
                    name.Contains("step 5") ||
                    name.Contains("step 6") ||
                    name.Contains("load clash zones") ||
+                   name.Contains("loading from db") ||
                    name.Contains("pre-filter") ||
+                   name.Contains("pre-activate") ||
+                   name.Contains("build creation") ||
+                   name.Contains("newfamilyinstances") ||
+                   name.Contains("apply rotation") ||
                    name.Contains("sync flags") ||
                    name.Contains("delete invalidated") ||
                    name.Contains("plan placement") ||
@@ -345,7 +354,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
         
         /// <summary>
-        /// Determine if an operation is related to cluster placement
+        /// Cluster-only operations. Excludes "Apply Rotation & Parameters" (used by BulkPlacementService for individual sleeves)
+        /// so when EnableClusteringWorkflow is false we do not attribute that time to cluster.
         /// </summary>
         private bool IsClusterPlacementOperation(string operationName)
         {
@@ -354,9 +364,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                    name.Contains("prepare creation") ||
                    name.Contains("collect individual sleeves") ||
                    name.Contains("delete individual sleeves") ||
-                   name.Contains("newfamilyinstances2") && name.Contains("cluster") ||
+                   (name.Contains("newfamilyinstances2") && name.Contains("cluster")) ||
                    name.Contains("post-placement") ||
-                   name.Contains("rotation & parameters") ||
                    name.Contains("database updates") ||
                    name.Contains("cleanup");
         }

@@ -68,9 +68,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     _logger?.Invoke($"[BulkPlacement] Activated {symbolCache.Count} unique symbols");
                 }
 
-                // Step 2: Build Creation Data
+                // Step 2: Build Creation Data (with safety dedupe by location to avoid Revit "identical instances in the same place" warning)
                 var creationDataList = new List<Autodesk.Revit.Creation.FamilyInstanceCreationData>();
                 var itemMap = new List<(ClashZone Zone, SleevePlacementPlanningDto Plan)>();
+
+                const double locationToleranceFt = 0.00656; // ~2mm - same as orchestrator
+                double RoundLoc(double v) => Math.Round(v / locationToleranceFt) * locationToleranceFt;
+                var seenLocations = new HashSet<(string fam, double x, double y, double z)>();
 
                 using (_performanceMonitor?.TrackOperation("Build Creation Data"))
                 {
@@ -86,9 +90,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // ✅ UNIFIED ARCHITECTURE: Use planned placement point
                             XYZ point = plan.PlacementPoint ?? new XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ);
 
+                            var key = (plan.SleeveFamilyName ?? zone.SleeveFamilyName ?? "", RoundLoc(point.X), RoundLoc(point.Y), RoundLoc(point.Z));
+                            if (seenLocations.Contains(key))
+                            {
+                                // Skip second (or more) at same location - prevents "identical instances in the same place" / double Family2 warning
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    _logger?.Invoke($"[BulkPlacement] Skipped duplicate location for zone {zone.Id} at ({point.X:F4}, {point.Y:F4}, {point.Z:F4})");
+                                continue;
+                            }
+                            seenLocations.Add(key);
+
                             var creationData = new Autodesk.Revit.Creation.FamilyInstanceCreationData(
                                 point, symbol, StructuralType.NonStructural);
-                            
+
                             creationDataList.Add(creationData);
                             itemMap.Add(item);
                         }

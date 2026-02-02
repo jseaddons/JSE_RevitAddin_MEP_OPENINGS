@@ -4754,6 +4754,70 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         }
 
         /// <summary>
+        /// Get clash zones by filter for all given categories in a single query (placement optimization).
+        /// </summary>
+        public List<ClashZone> GetClashZonesByFilterAllCategories(string filterName, IReadOnlyList<string> categories, bool unresolvedOnly = false, bool readyForPlacementOnly = false)
+        {
+            var result = new List<ClashZone>();
+            if (string.IsNullOrWhiteSpace(filterName) || categories == null || categories.Count == 0)
+                return result;
+
+            // Normalize filter name (use first category for normalization; base name is same for all)
+            string normalizedFilterName = FilterNameHelper.NormalizeBaseName(filterName, filterName, categories[0]);
+
+            // Build IN clause placeholders and parameters
+            var inPlaceholders = new List<string>();
+            for (int i = 0; i < categories.Count; i++)
+                inPlaceholders.Add($"@Category{i}");
+            string categoryInClause = "f.Category IN (" + string.Join(", ", inPlaceholders) + ")";
+
+            var whereConditions = new List<string>
+            {
+                "f.FilterName = @FilterName",
+                categoryInClause,
+                "cz.IsCombinedResolved = 0"
+            };
+            if (unresolvedOnly)
+                whereConditions.Add("(cz.IsResolvedFlag = 0 AND cz.IsClusterResolvedFlag = 0)");
+            if (readyForPlacementOnly)
+                whereConditions.Add("cz.ReadyForPlacementFlag = 1");
+
+            var whereClause = string.Join(" AND ", whereConditions);
+
+            using (var cmd = _context.Connection.CreateCommand())
+            {
+                cmd.CommandText = $@"
+                    SELECT 
+                        cz.*,
+                        fc.LinkedFileKey,
+                        fc.HostFileKey,
+                        f.FilterName
+                    FROM Filters f
+                    INNER JOIN FileCombos fc ON f.FilterId = fc.FilterId
+                    INNER JOIN ClashZones cz ON fc.ComboId = cz.ComboId
+                    WHERE {whereClause}
+                    ORDER BY cz.UpdatedAt DESC";
+
+                cmd.Parameters.AddWithValue("@FilterName", normalizedFilterName);
+                for (int i = 0; i < categories.Count; i++)
+                    cmd.Parameters.AddWithValue($"@Category{i}", categories[i]);
+
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        var clashZone = MapClashZone(reader);
+                        SetMetadataFromReader(clashZone, reader);
+                        if (clashZone.IntersectionPoint == null && (Math.Abs(clashZone.IntersectionPointX) > 1e-9 || Math.Abs(clashZone.IntersectionPointY) > 1e-9 || Math.Abs(clashZone.IntersectionPointZ) > 1e-9))
+                            clashZone.IntersectionPoint = new XYZ(clashZone.IntersectionPointX, clashZone.IntersectionPointY, clashZone.IntersectionPointZ);
+                        result.Add(clashZone);
+                    }
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
         /// Returns all ClashZones matching the given filter names and categories.
         /// </summary>
         public List<ClashZone> GetClashZonesByFilterAndCategory(List<string> filterNames, List<string> categories)
@@ -6362,6 +6426,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             clashZone.SleeveHeight = GetDouble(reader, "SleeveHeight");
             clashZone.SleeveDiameter = GetDouble(reader, "SleeveDiameter");
 
+            // ✅ PERSISTENCE: Load Calculated* columns so persisted pre-save values show on reload.
+            // Use Safe helpers so one missing column (e.g. old DB before migration) doesn't break loading of all other columns.
+            clashZone.CalculatedSleeveWidth = GetNullableDoubleSafe(reader, "CalculatedSleeveWidth") ?? 0.0;
+            clashZone.CalculatedSleeveHeight = GetNullableDoubleSafe(reader, "CalculatedSleeveHeight") ?? 0.0;
+            clashZone.CalculatedSleeveDiameter = GetNullableDoubleSafe(reader, "CalculatedSleeveDiameter") ?? 0.0;
+            clashZone.CalculatedSleeveDepth = GetNullableDoubleSafe(reader, "CalculatedSleeveDepth") ?? 0.0;
+            clashZone.CalculatedRotation = GetNullableDoubleSafe(reader, "CalculatedRotation") ?? 0.0;
+            clashZone.CalculatedFamilyName = GetNullableStringSafe(reader, "CalculatedFamilyName");
+            var calcX = GetNullableDoubleSafe(reader, "CalculatedPlacementX");
+            var calcY = GetNullableDoubleSafe(reader, "CalculatedPlacementY");
+            var calcZ = GetNullableDoubleSafe(reader, "CalculatedPlacementZ");
+            if (calcX.HasValue || calcY.HasValue || calcZ.HasValue)
+            {
+                clashZone.CalculatedPlacementX = calcX ?? 0.0;
+                clashZone.CalculatedPlacementY = calcY ?? 0.0;
+                clashZone.CalculatedPlacementZ = calcZ ?? 0.0;
+            }
+            // Fallback: use Calculated* when main columns are zero so display and placement see persisted values
+            if (clashZone.SleeveWidth < 0.001 && clashZone.CalculatedSleeveWidth > 0.001) clashZone.SleeveWidth = clashZone.CalculatedSleeveWidth;
+            if (clashZone.SleeveHeight < 0.001 && clashZone.CalculatedSleeveHeight > 0.001) clashZone.SleeveHeight = clashZone.CalculatedSleeveHeight;
+            if (clashZone.SleeveDiameter < 0.001 && clashZone.CalculatedSleeveDiameter > 0.001) clashZone.SleeveDiameter = clashZone.CalculatedSleeveDiameter;
+            if (string.IsNullOrEmpty(clashZone.SleeveFamilyName) && !string.IsNullOrEmpty(clashZone.CalculatedFamilyName)) clashZone.SleeveFamilyName = clashZone.CalculatedFamilyName;
+
             // ✅ DIRECT LOGGING: Always log sleeve dimensions being loaded for duct accessories
             if (string.Equals(clashZone.MepElementCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
             {
@@ -6394,6 +6481,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 GetNullableDouble(reader, "SleevePlacementX") ?? 0.0,
                 GetNullableDouble(reader, "SleevePlacementY") ?? 0.0,
                 GetNullableDouble(reader, "SleevePlacementZ") ?? 0.0);
+
+            // Fallback: use CalculatedPlacement when SleevePlacement is zero so persisted placement shows on reload
+            if (Math.Abs(clashZone.SleevePlacementPointX) < 1e-9 && Math.Abs(clashZone.SleevePlacementPointY) < 1e-9 && Math.Abs(clashZone.SleevePlacementPointZ) < 1e-9
+                && (clashZone.CalculatedPlacementX != 0 || clashZone.CalculatedPlacementY != 0 || clashZone.CalculatedPlacementZ != 0))
+            {
+                clashZone.SleevePlacementPoint = new XYZ(clashZone.CalculatedPlacementX, clashZone.CalculatedPlacementY, clashZone.CalculatedPlacementZ);
+            }
 
             clashZone.SleevePlacementPointActiveDocument = new XYZ(
                 GetNullableDouble(reader, "SleevePlacementActiveX") ?? 0.0,
@@ -6644,6 +6738,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         {
             var ordinal = reader.GetOrdinal(column);
             return reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+        }
+
+        /// <summary>Returns value or null; does not throw if column is missing (e.g. old DB before migration).</summary>
+        private static double? GetNullableDoubleSafe(SQLiteDataReader reader, string column)
+        {
+            try
+            {
+                var ordinal = reader.GetOrdinal(column);
+                return reader.IsDBNull(ordinal) ? (double?)null : Convert.ToDouble(reader.GetValue(ordinal));
+            }
+            catch (IndexOutOfRangeException)
+            {
+                return null;
+            }
+            catch (ArgumentException)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>Returns value or null; does not throw if column is missing (e.g. old DB before migration).</summary>
+        private static string GetNullableStringSafe(SQLiteDataReader reader, string column)
+        {
+            try
+            {
+                var ordinal = reader.GetOrdinal(column);
+                return reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+            }
+            catch (IndexOutOfRangeException)
+            {
+                return null;
+            }
+            catch (ArgumentException)
+            {
+                return null;
+            }
         }
 
         private static double GetDouble(SQLiteDataReader reader, string column, double defaultValue = 0.0)
@@ -9593,6 +9723,9 @@ public void BatchUpdateSleevePlacementData(IEnumerable<ClashZone> placedZones)
                     using (var cmd = _context.Connection.CreateCommand())
                     {
                         cmd.Transaction = transaction;
+                        // ✅ PERSIST BOTH Calculated* AND main columns (SleeveWidth, SleevePlacementX/Y/Z).
+                        // MapClashZone reads SleeveWidth/SleevePlacementX on load; without this, placement would load zeros.
+                        // ✅ FIX: Use ClashZoneId (primary key) so UPDATE always matches the row we loaded; GUID can fail due to format/casing.
                         cmd.CommandText = @"
                             UPDATE ClashZones SET 
                                 CalculatedSleeveWidth = @CalcWidth,
@@ -9604,10 +9737,17 @@ public void BatchUpdateSleevePlacementData(IEnumerable<ClashZone> placedZones)
                                 CalculatedPlacementY = @CalcY,
                                 CalculatedPlacementZ = @CalcZ,
                                 CalculatedFamilyName = @CalcFam,
+                                SleeveWidth = @SleeveWidth,
+                                SleeveHeight = @SleeveHeight,
+                                SleeveDiameter = @SleeveDiameter,
+                                SleevePlacementX = @SleevePlacementX,
+                                SleevePlacementY = @SleevePlacementY,
+                                SleevePlacementZ = @SleevePlacementZ,
+                                SleeveFamilyName = @SleeveFamilyName,
                                 UpdatedAt = datetime('now', '+5 hours', '+30 minutes')
-                            WHERE UPPER(ClashZoneGuid) = UPPER(@ClashZoneGuid)";
+                            WHERE ClashZoneId = @ClashZoneId";
 
-                        var pGuid = cmd.Parameters.AddWithValue("@ClashZoneGuid", "");
+                        var pClashZoneId = cmd.Parameters.AddWithValue("@ClashZoneId", 0);
                         var pWidth = cmd.Parameters.AddWithValue("@CalcWidth", DBNull.Value);
                         var pHeight = cmd.Parameters.AddWithValue("@CalcHeight", DBNull.Value);
                         var pDiameter = cmd.Parameters.AddWithValue("@CalcDiameter", DBNull.Value);
@@ -9617,11 +9757,24 @@ public void BatchUpdateSleevePlacementData(IEnumerable<ClashZone> placedZones)
                         var pY = cmd.Parameters.AddWithValue("@CalcY", DBNull.Value);
                         var pZ = cmd.Parameters.AddWithValue("@CalcZ", DBNull.Value);
                         var pFam = cmd.Parameters.AddWithValue("@CalcFam", DBNull.Value);
+                        var pSleeveW = cmd.Parameters.AddWithValue("@SleeveWidth", DBNull.Value);
+                        var pSleeveH = cmd.Parameters.AddWithValue("@SleeveHeight", DBNull.Value);
+                        var pSleeveD = cmd.Parameters.AddWithValue("@SleeveDiameter", DBNull.Value);
+                        var pSleeveX = cmd.Parameters.AddWithValue("@SleevePlacementX", DBNull.Value);
+                        var pSleeveY = cmd.Parameters.AddWithValue("@SleevePlacementY", DBNull.Value);
+                        var pSleeveZ = cmd.Parameters.AddWithValue("@SleevePlacementZ", DBNull.Value);
+                        var pSleeveFam = cmd.Parameters.AddWithValue("@SleeveFamilyName", DBNull.Value);
 
                         int totalRowsAffected = 0;
+                        int skippedNoId = 0;
                         foreach (var zone in zonesList)
                         {
-                            pGuid.Value = zone.ClashZoneGuid.ToString();
+                            if (zone.ClashZoneId <= 0)
+                            {
+                                skippedNoId++;
+                                continue;
+                            }
+                            pClashZoneId.Value = zone.ClashZoneId;
                             pWidth.Value = zone.CalculatedSleeveWidth;
                             pHeight.Value = zone.CalculatedSleeveHeight;
                             pDiameter.Value = zone.CalculatedSleeveDiameter;
@@ -9631,10 +9784,22 @@ public void BatchUpdateSleevePlacementData(IEnumerable<ClashZone> placedZones)
                             pY.Value = zone.CalculatedPlacementY;
                             pZ.Value = zone.CalculatedPlacementZ;
                             pFam.Value = zone.CalculatedFamilyName ?? (object)DBNull.Value;
+                            // Main columns so placement load (MapClashZone) gets width/placement/family
+                            pSleeveW.Value = zone.SleeveWidth > 0.001 ? zone.SleeveWidth : (object)(zone.CalculatedSleeveWidth > 0.001 ? zone.CalculatedSleeveWidth : DBNull.Value);
+                            pSleeveH.Value = zone.SleeveHeight > 0.001 ? zone.SleeveHeight : (object)(zone.CalculatedSleeveHeight > 0.001 ? zone.CalculatedSleeveHeight : DBNull.Value);
+                            pSleeveD.Value = zone.SleeveDiameter > 0.001 ? zone.SleeveDiameter : (object)(zone.CalculatedSleeveDiameter > 0.001 ? zone.CalculatedSleeveDiameter : DBNull.Value);
+                            pSleeveX.Value = zone.SleevePlacementPointX != 0 ? zone.SleevePlacementPointX : (object)(zone.CalculatedPlacementX != 0 ? zone.CalculatedPlacementX : DBNull.Value);
+                            pSleeveY.Value = zone.SleevePlacementPointY != 0 ? zone.SleevePlacementPointY : (object)(zone.CalculatedPlacementY != 0 ? zone.CalculatedPlacementY : DBNull.Value);
+                            pSleeveZ.Value = zone.SleevePlacementPointZ != 0 ? zone.SleevePlacementPointZ : (object)(zone.CalculatedPlacementZ != 0 ? zone.CalculatedPlacementZ : DBNull.Value);
+                            pSleeveFam.Value = !string.IsNullOrEmpty(zone.SleeveFamilyName) ? zone.SleeveFamilyName : (zone.CalculatedFamilyName ?? (object)DBNull.Value);
 
                             totalRowsAffected += cmd.ExecuteNonQuery();
                         }
-                        
+
+                        // ✅ Always log to placement_debug.log so user can verify even when DebugLogger is off
+                        var sample = zonesList.FirstOrDefault();
+                        SafeFileLogger.SafeAppendTextAlways("placement_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-PRE-SAVE] Updated {totalRowsAffected}/{zonesList.Count} rows (skipped ClashZoneId<=0: {skippedNoId}). Sample: ClashZoneId={sample?.ClashZoneId}, W={sample?.SleeveWidth}\n");
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             DebugLogger.Info($"[ClashZoneRepository] [BATCH-PRE-SAVE] Updated {totalRowsAffected}/{zonesList.Count} rows.");

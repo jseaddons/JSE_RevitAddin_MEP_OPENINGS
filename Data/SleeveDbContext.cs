@@ -600,8 +600,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                         
                     AddColumnIfMissing("ClashZones", "CalculatedSleeveWidth", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "CalculatedSleeveHeight", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "CalculatedSleeveDiameter", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "CalculatedSleeveDepth", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "CalculatedRotation", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "CalculatedPlacementX", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "CalculatedPlacementY", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "CalculatedPlacementZ", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "CalculatedFamilyName", "TEXT", transaction);
                     AddColumnIfMissing("ClashZones", "ValidationStatus", "TEXT DEFAULT 'Valid'", transaction);
                     AddColumnIfMissing("ClashZones", "ValidationMessage", "TEXT", transaction);
@@ -707,7 +711,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     if (AddColumnIfMissing("ClashZones", "IsCombinedResolved", "INTEGER NOT NULL DEFAULT 0", transaction))
                         _logger("[SQLite] ✅ Added IsCombinedResolved column to ClashZones (for combined sleeves)");
                     AddColumnIfMissing("ClashZones", "IsClusteredFlag", "INTEGER NOT NULL DEFAULT 0", transaction);
-                    AddColumnIfMissing("ClashZones", "MarkedForClusterProcess", "INTEGER NOT NULL DEFAULT 0", transaction);
+                    // ⚠️ IMPORTANT: MarkedForClusterProcess is nullable in the model (bool?).
+                    // NULL = not yet evaluated for clustering (Refresh stage),
+                    //  1   = should be clustered,
+                    //  0   = explicitly skip clustering.
+                    // Therefore the database column MUST allow NULL; using NOT NULL here causes
+                    // inserts during Refresh to fail with \"NOT NULL constraint failed\".
+                    AddColumnIfMissing("ClashZones", "MarkedForClusterProcess", "INTEGER", transaction);
                     AddColumnIfMissing("ClashZones", "AfterClusterSleeveId", "INTEGER NOT NULL DEFAULT -1", transaction);
                     // ✅ COMBINED RESOLVED: Instance ID for the combined sleeve if this zone is part of one
                     AddColumnIfMissing("ClashZones", "CombinedClusterSleeveInstanceId", "INTEGER", transaction);

@@ -32,8 +32,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Helpers
             if (string.IsNullOrEmpty(category)) return instances;
 
             // 2. FILTER BY CATEGORY (DB Check for Standard/Cluster)
-            // For performance, we'll do this in memory using a lookup if possible, 
-            // but for now, we'll keep the original logic which is reliable.
+            // For performance, provide an optimized LINQ path with a strict rollback flag.
+            if (OptimizationFlags.UseOptimizedSleeveCategoryFilter)
+            {
+                return instances
+                    .Where(fi => IsMatchingCategory(fi, category, context))
+                    .ToList();
+            }
+
+            // Legacy path: explicit loop, retained for rollback safety.
             var filtered = new List<FamilyInstance>();
             foreach (var fi in instances)
             {

@@ -670,6 +670,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Location: Services/Clustering/BatchClusterPlacementService.cs
         /// </summary>
         public static bool UseBulkClusterSleevePlacement { get; set; } = true;
+        
+        /// <summary>
+        /// Enable optimized sleeve category filtering in RevitSleeveHelper.
+        /// When true: Uses LINQ-based filtering over collected sleeve instances.
+        /// When false: Uses the legacy foreach loop (identical behavior, slightly less efficient).
+        /// Default: true (safe to enable; rollback by setting to false).
+        /// Location: Services/Helpers/RevitSleeveHelper.cs
+        /// </summary>
+        public static bool UseOptimizedSleeveCategoryFilter { get; set; } = true;
 
         #endregion
 

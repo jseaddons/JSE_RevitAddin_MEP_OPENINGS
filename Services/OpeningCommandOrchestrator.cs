@@ -276,11 +276,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // we only need to call it ONCE per unique filter name.
                 var uniqueFilters = orderedFilters.GroupBy(f => f.Name).Select(g => g.First()).ToList();
 
+                int totalIndividualSleeves = 0;
+                int totalClusters = 0;
                 foreach (var filter in uniqueFilters)
                 {
                     var commandSequence = GetCommandSequence(filter);
-                    ExecuteCommandSequence(commandSequence, filter, showProgress);
+                    var (sleeves, clusters) = ExecuteCommandSequence(commandSequence, filter, showProgress);
+                    totalIndividualSleeves += sleeves;
+                    totalClusters += clusters;
                 }
+
+                // ✅ Single report after all filters (was per-filter, causing two half-done sections)
+                if (_performanceMonitor != null)
+                    _performanceMonitor.GenerateReport(totalIndividualSleeves, totalClusters);
 
                 // Force garbage collection after each discipline
                 GC.Collect();
@@ -321,11 +329,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// Execute a sequence of commands
+        /// Execute a sequence of commands. Returns (individual sleeves placed, clusters placed) for report aggregation.
         /// </summary>
-        private void ExecuteCommandSequence(List<IExternalCommand> commands, OpeningFilter filter, bool showProgress)
+        private (int totalIndividualSleeves, int totalClusters) ExecuteCommandSequence(List<IExternalCommand> commands, OpeningFilter filter, bool showProgress)
         {
-            // ✅ PERFORMANCE MONITORING: Use shared monitor from orchestrator
             var performanceMonitor = _performanceMonitor;
             int totalIndividualSleeves = 0;
             int totalClusters = 0;
@@ -349,8 +356,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var individualResult = ExecuteUniversalSleevePlacement(filter, showProgress, individualTracker);
                     totalIndividualSleeves = individualResult.placedCount;
 
-                    // ✅ FIX: Set item count BEFORE tracker disposes (must be inside using block)
-                    individualTracker.SetItemCount(totalIndividualSleeves);
+                    // ✅ FIX: Set item count only when we have it from return; bulk path sets it inside to avoid closure/return lag
+                    if (totalIndividualSleeves > 0)
+                        individualTracker.SetItemCount(totalIndividualSleeves);
 
                     // ✅ PERFORMANCE LOGGING: Log actual performance metrics
                     if (!DeploymentConfiguration.DeploymentMode && totalIndividualSleeves > 0)
@@ -442,18 +450,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // This marks the filter+category combo as "used" so next time it will use PATH 1 (Replay)
                         _path3Flags[path3Key] = (path3Flags.isValidated, path3Flags.isInvalidated, false);
                         isPath3Validated = true;
-                    }     // ✅ PERFORMANCE: Generate final report
-                    performanceMonitor.GenerateReport(totalIndividualSleeves, totalClusters);
+                    }
                 }
+                return (totalIndividualSleeves, totalClusters);
             }
             catch (Exception ex)
             {
-                // ✅ LOGGING: Wrap with SafeFileLogger
                 SafeFileLogger.SafeAppendText("placement_errors.log",
                     $"[{DateTime.Now:HH:mm:ss}] ERROR in ExecuteCommandSequence for {filter.Name}: {ex.Message}\n");
-
-                // Still generate report even on error
-                performanceMonitor.GenerateReport(totalIndividualSleeves, totalClusters);
+                _performanceMonitor?.GenerateReport(totalIndividualSleeves, totalClusters);
                 throw;
             }
         }
@@ -563,16 +568,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                // ✅ BULK PLACEMENT FIX: Load ALL categories for this filter with ReadyForPlacement=1
-                // This enables true bulk placement - all categories placed together in one API call
-                var allZones = new List<ClashZone>();
-                
-                // Get all categories that have ReadyForPlacement=1 for this filter
+                // ✅ BULK PLACEMENT FIX: Load ALL categories for this filter with ReadyForPlacement=1 in ONE DB call
+                // ReadyForPlacementFlag=1 is set during refresh (SetReadyForPlacementForUnresolvedZonesInSectionBox) so we can place in one shot
                 var categoriesToLoad = GetCategoriesWithReadyForPlacement(filter);
-                
+
                 if (categoriesToLoad.Count == 0)
                 {
-                    // Fallback: Use the filter's single Category property (backward compatibility)
                     string categoryName = filter.Category switch
                     {
                         Models.MepCategory.Ducts => "Ducts",
@@ -584,55 +585,69 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     categoriesToLoad.Add(categoryName);
                 }
 
-                // Load zones from ALL categories
-                foreach (var categoryName in categoriesToLoad)
+                using (var context = new SleeveDbContext(_document, msg =>
                 {
-                    var dbZones = LoadClashZonesFromDatabase(filter, categoryName, readyForPlacementOnly: true);
-                    if (dbZones != null && dbZones.Count > 0)
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[OpeningCommandOrchestrator][SQLite] {msg}");
+                }))
+                {
+                    var repository = new ClashZoneRepository(context);
+                    List<ClashZone> zones;
+                    List<ClashZone> eligibleZones;
+
+                    // Single DB call: load all categories with ReadyForPlacementFlag=1 in one query
+                    using (var loadTracker = _performanceMonitor?.TrackOperation("Step 1: LOADING FROM DB"))
                     {
-                        allZones.AddRange(dbZones);
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Loaded {dbZones.Count} zones from category '{categoryName}' for filter '{filter.Name}'\n");
-                        }
+                        zones = repository.GetClashZonesByFilterAllCategories(filter.Name, categoriesToLoad, unresolvedOnly: false, readyForPlacementOnly: true) ?? new List<ClashZone>();
+                        eligibleZones = zones.Where(cz => cz != null && (
+                            cz.IsCurrentClash ||
+                            (!cz.IsResolvedFlag && !cz.IsClusterResolvedFlag && !cz.IsCombinedResolved)
+                        )).ToList();
+                        loadTracker?.SetItemCount(eligibleZones.Count);
                     }
-                }
 
-        if (allZones.Count > 0)
-        {
-            // ✅ DEDUPLICATE: Ensure each zone is only represented once by GUID
-            // This prevents duplicate placement if a zone exists in multiple categories or file combos
-            int originalCount = allZones.Count;
-            allZones = allZones
-                .Where(z => !string.IsNullOrEmpty(z.ClashZoneGuid))
-                .GroupBy(z => z.ClashZoneGuid.ToUpper())
-                .Select(g => g.First())
-                .ToList();
+                    if (!DeploymentConfiguration.DeploymentMode && zones.Count > 0)
+                    {
+                        int bySession = zones.Count(cz => cz?.IsCurrentClash == true);
+                        int byFallback = zones.Count(cz => cz != null && !cz.IsResolvedFlag && !cz.IsClusterResolvedFlag && !cz.IsCombinedResolved);
+                        DebugLogger.Info($"[OpeningCommandOrchestrator] 🔄 Filtered: {zones.Count} total -> {eligibleZones.Count} eligible (session={bySession}, fallback={byFallback})");
+                    }
 
-            if (!DeploymentConfiguration.DeploymentMode)
-            {
-                if (allZones.Count < originalCount)
-                {
-                    DebugLogger.Warning($"[OpeningCommandOrchestrator] ⚠️ DEDUPLICATED: {originalCount} -> {allZones.Count} zones (Removed {originalCount - allZones.Count} duplicates from categories)");
-                }
-                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ TOTAL: Loaded {allZones.Count} clash zones from {categoriesToLoad.Count} category(ies) for filter '{filter.Name}'\n");
-            }
-            return allZones;
-        }
+                    foreach (var zone in eligibleZones)
+                    {
+                        zone?.EnsureSleevePlacementPointReconstructed();
+                        zone?.EnsureSleevePlacementPointActiveDocumentReconstructed();
+                    }
 
-                if (!DeploymentConfiguration.DeploymentMode)
-                {
-                    DebugLogger.Warning($"[OpeningCommandOrchestrator] No clash zones found in database for filter '{filter.Name}' (categories: {string.Join(", ", categoriesToLoad)})");
+                    if (eligibleZones.Count == 0)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[OpeningCommandOrchestrator] No clash zones found in database for filter '{filter.Name}' (categories: {string.Join(", ", categoriesToLoad)})");
+                        return new List<ClashZone>();
+                    }
+
+                    // Deduplicate by GUID (same zone can appear in multiple categories/file combos)
+                    int originalCount = eligibleZones.Count;
+                    var allZones = eligibleZones
+                        .Where(z => !string.IsNullOrEmpty(z.ClashZoneGuid))
+                        .GroupBy(z => z.ClashZoneGuid.ToUpper())
+                        .Select(g => g.First())
+                        .ToList();
+
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        if (allZones.Count < originalCount)
+                            DebugLogger.Warning($"[OpeningCommandOrchestrator] ⚠️ DEDUPLICATED: {originalCount} -> {allZones.Count} zones (Removed {originalCount - allZones.Count} duplicates)");
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ TOTAL: Loaded {allZones.Count} clash zones from {categoriesToLoad.Count} category(ies) in ONE DB call for filter '{filter.Name}'\n");
+                    }
+
+                    return allZones;
                 }
-                
-                return new List<ClashZone>();
             }
             catch (Exception ex)
             {
                 if (!DeploymentConfiguration.DeploymentMode)
-                {
                     DebugLogger.Error($"[OpeningCommandOrchestrator] Error loading clash zones for filter {filter.Name}: {ex.Message}");
-                }
                 return new List<ClashZone>();
             }
         }
@@ -1183,12 +1198,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 // Previous logic used "zonesNeedingSave" = zones MISSING data, which excluded PATH 2 zones
                                 // (they had just been populated by planner) - causing CalculatedSleeveWidth to never persist.
                                 var zonesToSave = allBulkTaskItems.Select(x => x.Zone).ToList();
-                                var zonesWithCalculatedData = zonesToSave.Where(z => 
-                                    (z.CalculatedSleeveWidth > 0.001 || z.SleeveWidth > 0.001) &&
-                                    (z.CalculatedSleeveHeight > 0.001 || z.SleeveHeight > 0.001) &&
+
+                                // ✅ FIX: Include pipe sleeves (diameter-only) and any sleeve
+                                // that has *any* meaningful calculated size, not just width+height.
+                                // Previously we required BOTH width and height > 0, which excluded pipes.
+                                var zonesWithCalculatedData = zonesToSave.Where(z =>
+                                    !string.IsNullOrWhiteSpace(z.ClashZoneGuid) &&
+                                    (
+                                        (z.CalculatedSleeveWidth > 0.001 || z.SleeveWidth > 0.001) ||
+                                        (z.CalculatedSleeveHeight > 0.001 || z.SleeveHeight > 0.001) ||
+                                        (z.CalculatedSleeveDiameter > 0.001 || z.SleeveDiameter > 0.001)
+                                    ) &&
                                     !string.IsNullOrEmpty(z.SleeveFamilyName ?? z.CalculatedFamilyName)
                                 ).ToList();
-                                
+
+                                // ✅ Diagnostic: log to placement_debug.log so user can verify pre-save input
+                                var sampleZ = zonesWithCalculatedData.FirstOrDefault();
+                                SafeFileLogger.SafeAppendTextAlways("placement_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-PRE-SAVE] zonesToSave={zonesToSave.Count}, zonesWithCalculatedData={zonesWithCalculatedData.Count}, sample ClashZoneId={sampleZ?.ClashZoneId}, W={sampleZ?.SleeveWidth}, Guid={sampleZ?.ClashZoneGuid}\n");
+
                                 if (zonesWithCalculatedData.Count > 0)
                                 {
                                     using (parentTracker?.TrackSubOperation("Pre-Save Calculated Data to DB"))
@@ -1206,6 +1234,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         }
                                         catch (Exception ex)
                                         {
+                                            SafeFileLogger.SafeAppendTextAlways("placement_debug.log", $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-PRE-SAVE] ❌ Pre-save failed: {ex.Message}\n");
                                             if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Error($"[BULK-SAFETY] ❌ Pre-save failed: {ex.Message}");
                                             // Non-fatal, continue with placement
                                         }
@@ -1230,7 +1259,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 BulkPlacementResult bulkResult = null;
                                  SafeFileLogger.SafeAppendTextAlways("placement_debug.log", $"\n[{DateTime.Now:HH:mm:ss}] [BULK-PLACEMENT-START] allBulkTaskItems.Count = {allBulkTaskItems.Count}\n");
 
-                                 // Check for duplicates
+                                 // Check for duplicates by ClashZoneGuid
                                  var duplicateZones = allBulkTaskItems
                                      .GroupBy(x => x.Zone.ClashZoneGuid)
                                      .Where(g => !string.IsNullOrEmpty(g.Key) && g.Count() > 1)
@@ -1247,6 +1276,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                      }
                                  }
 
+                                 // ✅ FIX: Dedupe by placement location to avoid "identical instances in the same place" (Revit warning).
+                                 // Two zones with same XYZ (different GUIDs) would create two sleeves → two nested Family2 at same spot.
+                                 // Keep first per (family + rounded XYZ) so we only place one instance per location.
+                                 const double locationToleranceFt = 0.00656; // ~2mm - catches near-duplicates from floating point / different calc paths
+                                 Func<double, double> round = v => Math.Round(v / locationToleranceFt) * locationToleranceFt;
+                                 var bulkTaskItemsDeduped = allBulkTaskItems
+                                     .GroupBy(x =>
+                                     {
+                                         var pt = x.Plan.PlacementPoint ?? new XYZ(x.Zone.IntersectionPointX, x.Zone.IntersectionPointY, x.Zone.IntersectionPointZ);
+                                         return ($"{x.Plan.SleeveFamilyName ?? x.Zone.SleeveFamilyName}", round(pt.X), round(pt.Y), round(pt.Z));
+                                     })
+                                     .Select(g => g.First())
+                                     .ToList();
+                                 if (bulkTaskItemsDeduped.Count < allBulkTaskItems.Count)
+                                 {
+                                     var dropped = allBulkTaskItems.Count - bulkTaskItemsDeduped.Count;
+                                     SafeFileLogger.SafeAppendTextAlways("placement_debug.log",
+                                         $"[{DateTime.Now:HH:mm:ss}] [DEDUPE-LOCATION] Removed {dropped} items with same placement point (kept {bulkTaskItemsDeduped.Count}) to avoid Revit duplicate warning.\n");
+                                     if (!DeploymentConfiguration.DeploymentMode)
+                                         DebugLogger.Info($"[BULK-PLACEMENT] Deduped by location: {allBulkTaskItems.Count} → {bulkTaskItemsDeduped.Count} (dropped {dropped} to prevent identical instances)");
+                                 }
+
                                 // ✅ PERFORMANCE: Track bulk placement as sub-operation of individual placement
                                 using (var placeTracker = parentTracker?.TrackSubOperation("Step 4: BULK PLACEMENT (ALL Categories)"))
                                 {
@@ -1254,48 +1305,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     using (var t = new Transaction(_document, $"Bulk Place {filter.Name}"))
                                     {
                                         t.Start();
-                                        
+                                        // ✅ Set preprocessor at transaction start so it's in effect when Commit runs
+                                        var failureOptions = t.GetFailureHandlingOptions();
+                                        failureOptions.SetFailuresPreprocessor(new NestedFamilyClashWarningSuppressor(_document, "Family2", "Bulk Place"));
+                                        t.SetFailureHandlingOptions(failureOptions);
+
                                         using (placeTracker?.TrackSubOperation("ExecuteBulkPlacement (Revit API)"))
                                         {
-                                            bulkResult = bulkService.ExecuteBulkPlacement(_document, allBulkTaskItems);
+                                            bulkResult = bulkService.ExecuteBulkPlacement(_document, bulkTaskItemsDeduped);
                                         }
                                         
-                                        // ✅ ALWAYS commit - don't condition on PlacedCount
-                                        // This ensures elements created in Revit are persisted even if post-processing skips
-                                        using (placeTracker?.TrackSubOperation("Transaction Commit (Placement)"))
+                                        // ✅ OPTIMIZATION: Flush parameters in SAME transaction so Revit does one commit (create + set dimensions from DB)
+                                        if (bulkResult != null && bulkResult.OverallSuccess && bulkResult.PlacedCount > 0)
+                                        {
+                                            using (placeTracker?.TrackSubOperation("Flush Deferred Parameters"))
+                                            {
+                                                paramService.FlushDeferredParameters(clearList: true, context: "AfterPlacement");
+                                            }
+                                        }
+                                        
+                                        // ✅ ALWAYS commit - don't condition on PlacedCount (single commit: placement + parameters)
+                                        using (placeTracker?.TrackSubOperation("Transaction Commit (Placement + Parameters)"))
                                         {
                                             t.Commit();
                                         }
                                     }
 
-                                    // ✅ STEP 2: POST-PLACEMENT PROCESSING (Parameters, Metadata, Geometry)
-                                    // Isolated into separate steps for performance and state sync
+                                    // ✅ Set count immediately after commit so final log/report show correct Placed even if post-placement throws
+                                    if (bulkResult != null && bulkResult.PlacedCount > 0)
+                                    {
+                                        placedCount = bulkResult.PlacedCount;
+                                        parentTracker?.SetItemCount(bulkResult.PlacedCount);
+                                    }
+
+                                    // ✅ STEP 2: POST-PLACEMENT PROCESSING (Metadata, Geometry) - no second transaction
                                     if (bulkResult != null && bulkResult.OverallSuccess && bulkResult.PlacedCount > 0)
                                     {
-                                        // 2a. TRANSACTION 2: Flush Parameters FIRST (Deferred)
-                                        // Applying parameters BEFORE regeneration ensures Revit caches the correct dimensions
-                                        using (var tParams = new Transaction(_document, "Flush Parameters"))
-                                        {
-                                            tParams.Start();
-                                            
-                                            using (placeTracker?.TrackSubOperation("Flush Deferred Parameters"))
-                                            {
-                                                paramService.FlushDeferredParameters(clearList: true, context: "AfterPlacement");
-                                            }
-                                            
-                                            using (placeTracker?.TrackSubOperation("Transaction Commit (Parameters)"))
-                                            {
-                                                tParams.Commit();
-                                            }
-                                        }
-                                        
-                                        // 2b. NOW Regenerate after parameters applied (updates physical geometry)
                                         using (placeTracker?.TrackSubOperation("Regenerate (After Parameters)"))
                                         {
                                             _document.Regenerate();
                                         }
                                         
-                                        // 2d. OUTSIDE TRANSACTIONS: Extract geometry (now accurate!)
+                                        // Extract geometry (now accurate!)
                                         using (placeTracker?.TrackSubOperation("Update Zones From Elements"))
                                         {
                                             bulkService.UpdateZonesFromElements(_document, bulkResult.PlacedItems);
@@ -1359,10 +1410,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                                         placedCount = bulkResult.PlacedCount;
                                         errorCount = bulkResult.FailedCount;
+                                        parentTracker?.SetItemCount(bulkResult.PlacedCount);
                                     }
                                     else if (bulkResult != null && !bulkResult.OverallSuccess)
                                     {
                                         errorCount = zonesToPlace.Count;
+                                        placedCount = bulkResult.PlacedCount;
+                                        parentTracker?.SetItemCount(bulkResult.PlacedCount);
+                                    }
+                                    // ✅ FIX: Always sync placed count and tracker when we have bulk result (so report shows correct count even when PlacedCount=0)
+                                    if (bulkResult != null)
+                                    {
+                                        placedCount = bulkResult.PlacedCount;
+                                        parentTracker?.SetItemCount(bulkResult.PlacedCount);
                                     }
                                 }
                             }
@@ -2084,6 +2144,161 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
             return FailureProcessingResult.Continue;
+        }
+    }
+
+    /// <summary>
+    /// Suppresses only the "identical instances in the same place" / "double counting in schedules" warning
+    /// when it involves a specific nested family (e.g. Family2). Other families and other warnings are not suppressed.
+    /// </summary>
+    public class NestedFamilyClashWarningSuppressor : IFailuresPreprocessor
+    {
+        private readonly Document _doc;
+        private readonly string _nestedFamilyName;
+        private readonly string _context;
+
+        public NestedFamilyClashWarningSuppressor(Document doc, string nestedFamilyName, string context = null)
+        {
+            _doc = doc ?? throw new ArgumentNullException(nameof(doc));
+            _nestedFamilyName = nestedFamilyName ?? string.Empty;
+            _context = context ?? "unknown";
+        }
+
+        public FailureProcessingResult PreprocessFailures(FailuresAccessor fa)
+        {
+            var failures = fa.GetFailureMessages();
+            const string logFile = "failure_suppression_debug.log";
+
+            SafeFileLogger.SafeAppendTextAlways(logFile,
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [NestedFamilyClashWarningSuppressor] PreprocessFailures INVOKED (context={_context}). Failure count = {failures?.Count ?? 0}\n");
+
+            if (failures == null || failures.Count == 0)
+            {
+                SafeFileLogger.SafeAppendTextAlways(logFile, $"[{DateTime.Now:HH:mm:ss.fff}] No failures to process.\n");
+                return FailureProcessingResult.Continue;
+            }
+
+            foreach (var f in failures)
+            {
+                var severity = f.GetSeverity();
+                var desc = f.GetDescriptionText() ?? string.Empty;
+
+                SafeFileLogger.SafeAppendTextAlways(logFile,
+                    $"[{DateTime.Now:HH:mm:ss.fff}] Failure: Severity={severity}, Description=\"{desc}\"\n");
+
+                // Match "identical instances in the same place" / "double counting" (allow slight wording differences)
+                bool hasIdentical = desc.IndexOf("identical", StringComparison.OrdinalIgnoreCase) >= 0;
+                bool hasSamePlace = desc.IndexOf("same place", StringComparison.OrdinalIgnoreCase) >= 0;
+                bool hasInstance = desc.IndexOf("instance", StringComparison.OrdinalIgnoreCase) >= 0;
+                bool hasDoubleCounting = desc.IndexOf("double counting", StringComparison.OrdinalIgnoreCase) >= 0;
+
+                bool isIdenticalInstances = (hasIdentical && hasSamePlace) || hasDoubleCounting || (hasSamePlace && hasInstance);
+
+                if (!isIdenticalInstances)
+                {
+                    SafeFileLogger.SafeAppendTextAlways(logFile,
+                        $"[{DateTime.Now:HH:mm:ss.fff}]   -> SKIP (not identical-instances match). hasIdentical={hasIdentical}, hasSamePlace={hasSamePlace}, hasInstance={hasInstance}, hasDoubleCounting={hasDoubleCounting}\n");
+                    continue;
+                }
+
+                SafeFileLogger.SafeAppendTextAlways(logFile,
+                    $"[{DateTime.Now:HH:mm:ss.fff}]   -> MATCH identical-instances. Attempting suppress...\n");
+
+                if (severity == FailureSeverity.Warning)
+                {
+                    try
+                    {
+                        fa.DeleteWarning(f);
+                        SafeFileLogger.SafeAppendTextAlways(logFile,
+                            $"[{DateTime.Now:HH:mm:ss.fff}]   -> DeleteWarning SUCCESS.\n");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[NestedFamilyClashWarningSuppressor] Suppressed (Family2): {desc}");
+                    }
+                    catch (Exception ex)
+                    {
+                        SafeFileLogger.SafeAppendTextAlways(logFile,
+                            $"[{DateTime.Now:HH:mm:ss.fff}]   -> DeleteWarning EXCEPTION: {ex.GetType().Name}: {ex.Message}\n");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[NestedFamilyClashWarningSuppressor] DeleteWarning failed: {ex.Message}");
+                    }
+                }
+                else if (severity == FailureSeverity.Error)
+                {
+                    try
+                    {
+                        int numRes = f.GetNumberOfResolutions();
+                        SafeFileLogger.SafeAppendTextAlways(logFile,
+                            $"[{DateTime.Now:HH:mm:ss.fff}]   -> Error path: GetNumberOfResolutions={numRes}\n");
+                        if (numRes > 0)
+                        {
+                            bool resolved = false;
+                            foreach (FailureResolutionType resolutionType in Enum.GetValues(typeof(FailureResolutionType)))
+                            {
+                                if (f.HasResolutionOfType(resolutionType))
+                                {
+                                    f.SetCurrentResolutionType(resolutionType);
+                                    SafeFileLogger.SafeAppendTextAlways(logFile,
+                                        $"[{DateTime.Now:HH:mm:ss.fff}]   -> SetCurrentResolutionType({resolutionType}) SUCCESS.\n");
+                                    resolved = true;
+                                    if (!DeploymentConfiguration.DeploymentMode)
+                                        DebugLogger.Info($"[NestedFamilyClashWarningSuppressor] Resolved Error (Family2): {desc}");
+                                    break;
+                                }
+                            }
+                            if (!resolved)
+                                SafeFileLogger.SafeAppendTextAlways(logFile,
+                                    $"[{DateTime.Now:HH:mm:ss.fff}]   -> No resolution type matched (HasResolutionOfType false for all).\n");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        SafeFileLogger.SafeAppendTextAlways(logFile,
+                            $"[{DateTime.Now:HH:mm:ss.fff}]   -> Error resolution EXCEPTION: {ex.GetType().Name}: {ex.Message}\n");
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Warning($"[NestedFamilyClashWarningSuppressor] Could not resolve Error: {ex.Message}");
+                    }
+                }
+                else
+                {
+                    SafeFileLogger.SafeAppendTextAlways(logFile,
+                        $"[{DateTime.Now:HH:mm:ss.fff}]   -> SKIP (severity not Warning or Error: {severity}).\n");
+                }
+            }
+
+            SafeFileLogger.SafeAppendTextAlways(logFile,
+                $"[{DateTime.Now:HH:mm:ss.fff}] PreprocessFailures DONE. Returning Continue.\n");
+            return FailureProcessingResult.Continue;
+        }
+
+        /// <summary>True if any failing or additional elements are FamilyInstances whose family/symbol name matches.</summary>
+        private bool ElementsIncludeFamily(FailureMessageAccessor fm, string familyName)
+        {
+            if (string.IsNullOrEmpty(familyName) || _doc == null) return false;
+            try
+            {
+                if (ElementIdsIncludeFamily(fm.GetFailingElementIds(), familyName)) return true;
+                if (ElementIdsIncludeFamily(fm.GetAdditionalElementIds(), familyName)) return true;
+            }
+            catch { /* ignore if API differs or element invalid */ }
+            return false;
+        }
+
+        private bool ElementIdsIncludeFamily(ICollection<ElementId> ids, string familyName)
+        {
+            if (ids == null || ids.Count == 0) return false;
+            foreach (ElementId id in ids)
+            {
+                var el = _doc.GetElement(id);
+                if (el is FamilyInstance fi)
+                {
+                    var famName = fi.Symbol?.FamilyName ?? string.Empty;
+                    var symName = fi.Symbol?.Name ?? string.Empty;
+                    if (famName.IndexOf(familyName, StringComparison.OrdinalIgnoreCase) >= 0
+                        || symName.IndexOf(familyName, StringComparison.OrdinalIgnoreCase) >= 0)
+                        return true;
+                }
+            }
+            return false;
         }
     }
 }
