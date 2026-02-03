@@ -1002,20 +1002,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🚀 [BULK-PLACEMENT] Routing to Consolidated Bulk Path (ALL categories together)\n");
 
-                                // ✅ BULK PLACEMENT FIX: Group zones by category, plan each category separately, then combine
-                                // This ensures each category gets the correct conditions/strategy, but all are placed together
+                                // ═══════════════════════════════════════════════════════════════════════════════
+                                // OPERATION 1: Calculate (pre-plan) and save to DB. No Revit API yet.
+                                // ═══════════════════════════════════════════════════════════════════════════════
                                 var projectFiltersDir = ProjectPathService.GetFiltersDirectory(_document);
                                 var conditionsService = new ConditionsService(_document, projectFiltersDir, msg => { if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info(msg); });
                                 
                                 var allBulkTaskItems = new List<(ClashZone Zone, SleevePlacementPlanningDto Plan)>();
                                 
-                                // Group zones by their MEP category
                                 var zonesByCategory = zonesToPlace
                                     .GroupBy(z => z.MepElementCategory ?? "Ducts")
                                     .ToList();
                                 
-                                // ✅ PERFORMANCE: Track planning loop for all categories (as sub-operation of individual placement)
-                                using (parentTracker?.TrackSubOperation("Plan Placement for All Categories"))
+                                using (parentTracker?.TrackSubOperation("Operation 1: Calculate and save to DB"))
+                                {
+                                // Sub-op: plan placement for all categories
+                                using (parentTracker?.TrackSubOperation("Plan placement (all categories)"))
                                 {
                                     foreach (var categoryGroup in zonesByCategory)
                                     {
@@ -1070,28 +1072,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         {
                                             double width = zone.CalculatedSleeveWidth > 0 ? zone.CalculatedSleeveWidth : zone.SleeveWidth;
                                             double height = zone.CalculatedSleeveHeight > 0 ? zone.CalculatedSleeveHeight : zone.SleeveHeight;
+                                            // ✅ ROUNDING: Apply user rounding (RoundAlwaysUp, RoundingValue) so e.g. 710 → 750
+                                            var (roundedW, roundedH) = OpeningSettingsHelper.RoundDimensionsToNearest5mm(width, height);
+                                            width = roundedW; height = roundedH;
+                                            zone.CalculatedSleeveWidth = width; zone.CalculatedSleeveHeight = height;
+                                            zone.SleeveWidth = width; zone.SleeveHeight = height;
                                             
-                                            // ✅ DEPTH FIX: Use same priority logic as SetDepthParameter
-                                            // Priority: CalculatedSleeveDepth > SleeveDepth > WallThickness/FramingThickness > StructuralElementThickness
-                                            double depth = zone.CalculatedSleeveDepth > 0 ? zone.CalculatedSleeveDepth : zone.SleeveDepth;
-                                            if (depth <= 0.001)
-                                            {
-                                                bool isWallHost = zone.StructuralElementType == "Wall" || zone.StructuralElementType == "Walls";
-                                                bool isFramingHost = string.Equals(zone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
-                                                
-                                                if (isWallHost && zone.WallThickness > 0.001)
-                                                {
-                                                    depth = zone.WallThickness;
-                                                }
-                                                else if (isFramingHost && zone.FramingThickness > 0.001)
-                                                {
-                                                    depth = zone.FramingThickness;
-                                                }
-                                                else if (zone.StructuralElementThickness > 0.001)
-                                                {
-                                                    depth = zone.StructuralElementThickness;
-                                                }
-                                            }
+                                            // ✅ DEPTH FIX: Sleeve depth = host thickness only (never thickness+clearance). Overwrite any stored wrong value.
+                                            bool isWallHost = zone.StructuralElementType == "Wall" || zone.StructuralElementType == "Walls";
+                                            bool isFramingHost = string.Equals(zone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
+                                            double depth = 0;
+                                            if (isWallHost && zone.WallThickness > 0.001)
+                                                depth = zone.WallThickness;
+                                            else if (isFramingHost && zone.FramingThickness > 0.001)
+                                                depth = zone.FramingThickness;
+                                            else if (zone.StructuralElementThickness > 0.001)
+                                                depth = zone.StructuralElementThickness;
+                                            else
+                                                depth = zone.CalculatedSleeveDepth > 0 ? zone.CalculatedSleeveDepth : zone.SleeveDepth;
+                                            zone.CalculatedSleeveDepth = depth > 0 ? depth : zone.CalculatedSleeveDepth;
                                             
                                             double placementX = zone.SleevePlacementPointX != 0 ? zone.SleevePlacementPointX : zone.CalculatedPlacementX;
                                             double placementY = zone.SleevePlacementPointY != 0 ? zone.SleevePlacementPointY : zone.CalculatedPlacementY;
@@ -1153,7 +1152,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                 // 1. Dimensions
                                                 zone.CalculatedSleeveWidth = plan.TargetWidthFt;
                                                 zone.CalculatedSleeveHeight = plan.TargetHeightFt;
-                                                zone.CalculatedSleeveDepth = plan.TargetDepthFt > 0 ? plan.TargetDepthFt : zone.StructuralElementThickness; // Fallback if 0
+                                                // Sleeve depth = host thickness only (wall/framing/structural), NOT thickness+clearance
+                                                double depthForSleeve = 0;
+                                                bool isWallHost = string.Equals(zone.StructuralElementType, "Wall", StringComparison.OrdinalIgnoreCase) || string.Equals(zone.StructuralElementType, "Walls", StringComparison.OrdinalIgnoreCase);
+                                                bool isFramingHost = string.Equals(zone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
+                                                if (isWallHost && zone.WallThickness > 0.001)
+                                                    depthForSleeve = zone.WallThickness;
+                                                else if (isFramingHost && zone.FramingThickness > 0.001)
+                                                    depthForSleeve = zone.FramingThickness;
+                                                else if (zone.StructuralElementThickness > 0.001)
+                                                    depthForSleeve = zone.StructuralElementThickness;
+                                                zone.CalculatedSleeveDepth = depthForSleeve > 0 ? depthForSleeve : (plan.TargetDepthFt > 0 ? plan.TargetDepthFt : zone.StructuralElementThickness);
                                                 
                                                 // ✅ USER FIX: Also map to "Actual" DB columns so clustering works correctly
                                                 // Bulk placement forces these dimensions, so we can trust them as "Actual"
@@ -1214,7 +1223,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                                 // ✅ Diagnostic: log to placement_debug.log so user can verify pre-save input
                                 var sampleZ = zonesWithCalculatedData.FirstOrDefault();
-                                SafeFileLogger.SafeAppendTextAlways("placement_debug.log",
+                                SafeFileLogger.SafeAppendText("placement_debug.log",
                                     $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-PRE-SAVE] zonesToSave={zonesToSave.Count}, zonesWithCalculatedData={zonesWithCalculatedData.Count}, sample ClashZoneId={sampleZ?.ClashZoneId}, W={sampleZ?.SleeveWidth}, Guid={sampleZ?.ClashZoneGuid}\n");
 
                                 if (zonesWithCalculatedData.Count > 0)
@@ -1234,7 +1243,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         }
                                         catch (Exception ex)
                                         {
-                                            SafeFileLogger.SafeAppendTextAlways("placement_debug.log", $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-PRE-SAVE] ❌ Pre-save failed: {ex.Message}\n");
+                                            SafeFileLogger.SafeAppendText("placement_debug.log", $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-PRE-SAVE] ❌ Pre-save failed: {ex.Message}\n");
                                             if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Error($"[BULK-SAFETY] ❌ Pre-save failed: {ex.Message}");
                                             // Non-fatal, continue with placement
                                         }
@@ -1243,21 +1252,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                                 if (!DeploymentConfiguration.DeploymentMode)
                                     DebugLogger.Info($"[BULK-PLANNING] ✅ Planning complete for ALL categories. Total items to place: {allBulkTaskItems.Count}");
+                                } // end Operation 1: Calculate and save to DB
 
-                                 // ✅ FIX: Instantiate paramService ONCE and share it with BulkPlacementService
-                                 // This ensures the batched parameters are correctly captured and flushed
+                                // ═══════════════════════════════════════════════════════════════════════════════
+                                // OPERATION 2: Bulk placement (Revit API) using data saved in DB from Operation 1.
+                                // ═══════════════════════════════════════════════════════════════════════════════
                                  var paramService = new SleeveParameterService(_document);
                                  var bulkService = new BulkPlacementService(
                                      _document, 
                                      msg => 
                                      {
                                          if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info(msg);
-                                         SafeFileLogger.SafeAppendTextAlways("bulk_placement_trace.log", $"{DateTime.Now:HH:mm:ss} {msg}\n");
+                                         SafeFileLogger.SafeAppendText("bulk_placement_trace.log", $"{DateTime.Now:HH:mm:ss} {msg}\n");
                                      },
                                      _performanceMonitor,
                                      paramService);
                                 BulkPlacementResult bulkResult = null;
-                                 SafeFileLogger.SafeAppendTextAlways("placement_debug.log", $"\n[{DateTime.Now:HH:mm:ss}] [BULK-PLACEMENT-START] allBulkTaskItems.Count = {allBulkTaskItems.Count}\n");
+                                 SafeFileLogger.SafeAppendText("placement_debug.log", $"\n[{DateTime.Now:HH:mm:ss}] [BULK-PLACEMENT-START] allBulkTaskItems.Count = {allBulkTaskItems.Count}\n");
 
                                  // Check for duplicates by ClashZoneGuid
                                  var duplicateZones = allBulkTaskItems
@@ -1267,11 +1278,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                                  if (duplicateZones.Count > 0)
                                  {
-                                     SafeFileLogger.SafeAppendTextAlways("placement_debug.log", 
+                                     SafeFileLogger.SafeAppendText("placement_debug.log", 
                                          $"[{DateTime.Now:HH:mm:ss}] [WARNING] Found {duplicateZones.Count} duplicate zones in allBulkTaskItems!\n");
                                      foreach (var dup in duplicateZones)
                                      {
-                                         SafeFileLogger.SafeAppendTextAlways("placement_debug.log", 
+                                         SafeFileLogger.SafeAppendText("placement_debug.log", 
                                              $"  - Zone {dup.Key} appears {dup.Count()} times\n");
                                      }
                                  }
@@ -1292,20 +1303,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                  if (bulkTaskItemsDeduped.Count < allBulkTaskItems.Count)
                                  {
                                      var dropped = allBulkTaskItems.Count - bulkTaskItemsDeduped.Count;
-                                     SafeFileLogger.SafeAppendTextAlways("placement_debug.log",
+                                     SafeFileLogger.SafeAppendText("placement_debug.log",
                                          $"[{DateTime.Now:HH:mm:ss}] [DEDUPE-LOCATION] Removed {dropped} items with same placement point (kept {bulkTaskItemsDeduped.Count}) to avoid Revit duplicate warning.\n");
                                      if (!DeploymentConfiguration.DeploymentMode)
                                          DebugLogger.Info($"[BULK-PLACEMENT] Deduped by location: {allBulkTaskItems.Count} → {bulkTaskItemsDeduped.Count} (dropped {dropped} to prevent identical instances)");
                                  }
 
-                                // ✅ PERFORMANCE: Track bulk placement as sub-operation of individual placement
-                                using (var placeTracker = parentTracker?.TrackSubOperation("Step 4: BULK PLACEMENT (ALL Categories)"))
+                                using (var placeTracker = parentTracker?.TrackSubOperation("Operation 2: Bulk placement (Revit API)"))
                                 {
-                                    // ✅ TRANSACTION 1: PLACEMENT ONLY (Fast)
+                                    // Single transaction: placement + flush. Two transactions caused ~3x slowdown (second commit very slow).
                                     using (var t = new Transaction(_document, $"Bulk Place {filter.Name}"))
                                     {
                                         t.Start();
-                                        // ✅ Set preprocessor at transaction start so it's in effect when Commit runs
                                         var failureOptions = t.GetFailureHandlingOptions();
                                         failureOptions.SetFailuresPreprocessor(new NestedFamilyClashWarningSuppressor(_document, "Family2", "Bulk Place"));
                                         t.SetFailureHandlingOptions(failureOptions);
@@ -1314,17 +1323,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         {
                                             bulkResult = bulkService.ExecuteBulkPlacement(_document, bulkTaskItemsDeduped);
                                         }
-                                        
-                                        // ✅ OPTIMIZATION: Flush parameters in SAME transaction so Revit does one commit (create + set dimensions from DB)
                                         if (bulkResult != null && bulkResult.OverallSuccess && bulkResult.PlacedCount > 0)
                                         {
                                             using (placeTracker?.TrackSubOperation("Flush Deferred Parameters"))
                                             {
                                                 paramService.FlushDeferredParameters(clearList: true, context: "AfterPlacement");
                                             }
+                                            // Explicit Regenerate before commit is disabled again (no measurable benefit, per latest test).
+                                            // using (placeTracker?.TrackSubOperation("Regenerate (Before Commit)"))
+                                            // {
+                                            //      _document.Regenerate();
+                                            // }
                                         }
-                                        
-                                        // ✅ ALWAYS commit - don't condition on PlacedCount (single commit: placement + parameters)
                                         using (placeTracker?.TrackSubOperation("Transaction Commit (Placement + Parameters)"))
                                         {
                                             t.Commit();
@@ -1341,23 +1351,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     // ✅ STEP 2: POST-PLACEMENT PROCESSING (Metadata, Geometry) - no second transaction
                                     if (bulkResult != null && bulkResult.OverallSuccess && bulkResult.PlacedCount > 0)
                                     {
-                                        using (placeTracker?.TrackSubOperation("Regenerate (After Parameters)"))
+                                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                                            $"[{DateTime.Now:HH:mm:ss.fff}] [BULK-POST-PLACEMENT] UpdateZonesFromElements + DB persist (PlacedCount={bulkResult.PlacedCount}, Regenerate already done in transaction)\n");
+                                        try
                                         {
-                                            _document.Regenerate();
+                                            using (placeTracker?.TrackSubOperation("Update Zones From Elements"))
+                                            {
+                                                bulkService.UpdateZonesFromElements(_document, bulkResult.PlacedItems);
+                                            }
                                         }
-                                        
-                                        // Extract geometry (now accurate!)
-                                        using (placeTracker?.TrackSubOperation("Update Zones From Elements"))
+                                        catch (Exception updateEx)
                                         {
-                                            bulkService.UpdateZonesFromElements(_document, bulkResult.PlacedItems);
+                                            SafeFileLogger.SafeAppendText("placement_debug.log",
+                                                $"[{DateTime.Now:HH:mm:ss.fff}] [BULK-POST-PLACEMENT] UpdateZonesFromElements failed (continuing to persist): {updateEx.Message}\n{updateEx.StackTrace}\n");
                                         }
 
-                                        // 2e. OUTSIDE ALL TRANSACTIONS: Database persistence
+                                        // 2e. OUTSIDE ALL TRANSACTIONS: Database persistence (always run when PlacedCount>0)
                                         try
                                         {
                                             var placedZones = bulkResult.PlacedItems.Select(p => p.Zone).ToList();
+                                            SafeFileLogger.SafeAppendText("placement_debug.log",
+                                                $"[{DateTime.Now:HH:mm:ss.fff}] [BULK-PERSIST-START] placedZones={placedZones.Count}, SleeveInstanceId>0={placedZones.Count(z => z.SleeveInstanceId > 0)}\n");
                                              
-                                             // ✅ FIX: Update flags in database after bulk placement
+                                             // ✅ Update flags in database after bulk placement
                                              if (placedZones.Any())
                                              {
                                                  var flagUpdates = bulkResult.PlacedItems
@@ -1365,13 +1381,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                      .ToList();
                                                  
                                                  flagManager.UpdateFlagsAfterPlacement(flagUpdates);
+                                                 // Set in-memory so BatchUpdateSleevePlacementData persists correct flag
+                                                 foreach (var z in placedZones) z.IsResolvedFlag = true;
                                              }
 
                                              using (var dbContext = new JSE_RevitAddin_MEP_OPENINGS.Data.SleeveDbContext(_document))
                                             {
                                                 var repo = new JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClashZoneRepository(dbContext);
                                                 
-                                                // 1. Identify Filter ID
                                                 int filterId = -1;
                                                 string categoryForLookup = filter.Category switch
                                                 {
@@ -1384,22 +1401,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                 var filterLookupService = new JSE_RevitAddin_MEP_OPENINGS.Services.Filters.FilterLookupService(dbContext);
                                                 filterId = filterLookupService.GetFilterId(filter.Name, categoryForLookup);
 
-                                                // 2. Batch Update Placement Data
+                                                // Persist sleeve data: corners, bounding box, flags, dimensions, placement
                                                 var zonesWithIds = placedZones.Where(z => z.SleeveInstanceId > 0).ToList();
                                                 using (placeTracker?.TrackSubOperation("BatchUpdateSleevePlacementData"))
                                                 {
                                                     repo.BatchUpdateSleevePlacementData(zonesWithIds);
                                                 }
+                                                SafeFileLogger.SafeAppendText("placement_debug.log",
+                                                    $"[{DateTime.Now:HH:mm:ss.fff}] [BULK-PERSIST] BatchUpdateSleevePlacementData completed for {zonesWithIds.Count} zones\n");
                                                 
                                                 // 3. Save Snapshots
                                                 using (placeTracker?.TrackSubOperation("SaveSleeveSnapshotsForPlacedSleeves"))
                                                 {
                                                     repo.SaveSleeveSnapshotsForPlacedSleeves(filterId > 0 ? filterId : -1, placedZones);
                                                 }
+                                                SafeFileLogger.SafeAppendText("placement_debug.log",
+                                                    $"[{DateTime.Now:HH:mm:ss.fff}] [BULK-PERSIST-OK] Post-placement DB persistence completed\n");
                                             }
                                         }
                                         catch (Exception ex)
                                         {
+                                            SafeFileLogger.SafeAppendText("placement_debug.log",
+                                                $"[{DateTime.Now:HH:mm:ss.fff}] [BULK-PERSIST] ❌ Failed: {ex.Message}\n{ex.StackTrace}\n");
                                             if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Error($"[BULK-PERSIST] ❌ Database persistence failed: {ex.Message}");
                                         }
 
@@ -1414,9 +1437,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     }
                                     else if (bulkResult != null && !bulkResult.OverallSuccess)
                                     {
+                                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                                            $"[{DateTime.Now:HH:mm:ss.fff}] [BULK-PERSIST] Skipped (OverallSuccess=false). PlacedCount={bulkResult.PlacedCount}\n");
                                         errorCount = zonesToPlace.Count;
                                         placedCount = bulkResult.PlacedCount;
                                         parentTracker?.SetItemCount(bulkResult.PlacedCount);
+                                    }
+                                    else if (bulkResult == null || bulkResult.PlacedCount == 0)
+                                    {
+                                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                                            $"[{DateTime.Now:HH:mm:ss.fff}] [BULK-PERSIST] Skipped (bulkResult null or PlacedCount=0). bulkResult!=null={bulkResult != null}, PlacedCount={bulkResult?.PlacedCount ?? -1}\n");
                                     }
                                     // ✅ FIX: Always sync placed count and tracker when we have bulk result (so report shows correct count even when PlacedCount=0)
                                     if (bulkResult != null)
@@ -1690,26 +1720,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     catch { }
                 }
                 
-                // ✅ CRITICAL FIX: Regenerate document BEFORE getting bounding boxes
-                // Without regeneration, bounding boxes may not be available immediately after placement
+                // ✅ RE-ENABLED: Explicit Regenerate() + short sleep so that
+                // all sleeve bounding boxes and centers reflect final Revit geometry
+                // (constraints, joins, host updates) before we read them for DB persistence.
                 try
                 {
                     _document.Regenerate();
-                    // Wait for regeneration to complete
                     System.Threading.Thread.Sleep(200);
-                    // ✅ DEPLOYMENT: Wrapped in deployment mode check
+
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Document regenerated, now getting bounding boxes...\n");
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Document regenerated before AFTER_REGEN + coordinate update.\n");
                     }
                 }
-                catch (Exception regenEx)
+                catch (Exception ex)
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Warning($"[OpeningCommandOrchestrator] Could not regenerate document: {regenEx.Message}");
+                        DebugLogger.Warning($"[{DateTime.Now:HH:mm:ss}] Regenerate failed (continuing with existing geometry): {ex.Message}\n");
                     }
                 }
                 

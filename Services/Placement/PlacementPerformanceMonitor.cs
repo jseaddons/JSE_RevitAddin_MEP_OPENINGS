@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
@@ -13,24 +15,74 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
     /// </summary>
     public class PlacementPerformanceMonitor : JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IPerformanceMonitor
     {
+        /// <summary>Single consolidated log file so we don't create a new file per run (avoids 1000s of log files).</summary>
+        private const string PlacementPerformanceLogFile = "placement_performance.log";
         private readonly string _logFileName;
         private readonly Stopwatch _totalTimer;
+        private static string _lastWrittenLogPath;
+
+        /// <summary>Write to AppData\Roaming\JSE_MEP_Openings\Logs\R2023\placement_performance.log. No dependency on SafeFileLogger (root cause fix: GetLogDirectory can throw or not be ready).</summary>
+        private static void WritePerformanceLogDirect(string content)
+        {
+            if (string.IsNullOrEmpty(content)) return;
+            string path = null;
+            try
+            {
+                string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                string baseFolder = Path.Combine(appData, "JSE_MEP_Openings");
+                string versionTag = VersionInfo.VersionTag;
+                string logDir = Path.Combine(baseFolder, "Logs", versionTag);
+                if (!Directory.Exists(logDir))
+                    Directory.CreateDirectory(logDir);
+                path = Path.Combine(logDir, PlacementPerformanceLogFile);
+                File.AppendAllText(path, content);
+                _lastWrittenLogPath = path;
+                return;
+            }
+            catch (Exception) { }
+            try
+            {
+                path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), PlacementPerformanceLogFile);
+                File.AppendAllText(path, content);
+                _lastWrittenLogPath = path;
+            }
+            catch (Exception) { }
+        }
+
+        /// <summary>Full path where the performance log was last written (so user can open it).</summary>
+        public static string GetLastPerformanceLogPath()
+        {
+            if (!string.IsNullOrEmpty(_lastWrittenLogPath)) return _lastWrittenLogPath;
+            try
+            {
+                string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                return Path.Combine(appData, "JSE_MEP_Openings", "Logs", VersionInfo.VersionTag, PlacementPerformanceLogFile);
+            }
+            catch { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), PlacementPerformanceLogFile); }
+        }
         private readonly Dictionary<string, OperationMetrics> _operations;
+        private readonly List<SubOpRecord> _subOpsForReport;
         private long _startMemoryBytes;
+
+        private struct SubOpRecord
+        {
+            public string ParentName;
+            public string OpName;
+            public long Ms;
+        }
         
         public PlacementPerformanceMonitor(string logFileName)
         {
             _logFileName = logFileName;
             _totalTimer = Stopwatch.StartNew();
             _operations = new Dictionary<string, OperationMetrics>();
+            _subOpsForReport = new List<SubOpRecord>();
             _startMemoryBytes = GC.GetTotalMemory(false);
             _activeTrackers = new Dictionary<string, JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IOperationTracker>();
             
-            // ✅ INITIALIZE LOG: Log start time (ALWAYS log, even in deployment mode)
-            SafeFileLogger.SafeAppendTextAlways($"performance_{_logFileName}", 
-                $"=== PLACEMENT PERFORMANCE MONITOR STARTED ===\n" +
-                $"Timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n" +
-                $"Log File: {_logFileName}\n" +
+            // ✅ Write directly so performance log always appears (no DeploymentMode / SafeFileLogger dependency)
+            WritePerformanceLogDirect(
+                $"\n=== RUN {DateTime.Now:yyyy-MM-dd HH:mm:ss} (Log File: {_logFileName}) ===\n" +
                 $"Start Memory: {_startMemoryBytes / 1024.0 / 1024.0:F2} MB\n\n");
         }
 
@@ -59,8 +111,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 
         public void LogMetric(string metricName, object value)
         {
-             SafeFileLogger.SafeAppendTextAlways($"performance_{_logFileName}", 
-                $"[{DateTime.Now:HH:mm:ss.fff}] METRIC: {metricName} = {value}\n");
+            WritePerformanceLogDirect($"[{DateTime.Now:HH:mm:ss.fff}] METRIC: {metricName} = {value}\n");
         }
         
         /// <summary>
@@ -92,6 +143,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             
             if (milliseconds < metrics.MinMilliseconds || metrics.MinMilliseconds == 0)
                 metrics.MinMilliseconds = milliseconds;
+        }
+
+        /// <summary>
+        /// Record sub-operations so the report can list all steps (excluding the parent as a row).
+        /// </summary>
+        internal void RecordSubOperationsForReport(string parentName, IEnumerable<(string Name, long TotalMilliseconds)> subOps)
+        {
+            if (subOps == null) return;
+            foreach (var item in subOps)
+            {
+                if (string.IsNullOrEmpty(item.Name)) continue;
+                _subOpsForReport.Add(new SubOpRecord { ParentName = parentName, OpName = item.Name, Ms = item.TotalMilliseconds });
+            }
         }
         
         /// <summary>
@@ -134,14 +198,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 totalClusters = clusterOps.Sum(op => op.TotalItemCount);
             }
             
+            // One total only: use the wall-clock of "Bulk Individual Sleeve Placement" when present (it wraps everything).
+            // Step 1, Pre-activate, Build, Revit NewFamilyInstances2, Apply Rotation all run INSIDE that block — do not sum them or we double-count.
+            var bulkBlockOp = _operations.Values.FirstOrDefault(op => op.Name != null && op.Name.Contains("Bulk Individual Sleeve Placement"));
+            var individualOpsForTotal = _operations.Values.Where(op => IsIndividualPlacementOperation(op.Name)).ToList();
+            long totalPlacementMs = bulkBlockOp != null && bulkBlockOp.TotalMilliseconds > 0
+                ? bulkBlockOp.TotalMilliseconds
+                : individualOpsForTotal.Sum(op => op.TotalMilliseconds);
+
             report.AppendLine($"=== PLACEMENT PERFORMANCE REPORT ===");
             report.AppendLine($"Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
             report.AppendLine($"🔨 Build Timestamp: {buildTimestamp} | Assembly: {System.IO.Path.GetFileName(assemblyPath)}");
-            report.AppendLine($"Total Workflow Time: {_totalTimer.ElapsedMilliseconds}ms ({_totalTimer.Elapsed:mm\\:ss})");
-            // Placement phase = duration of "Bulk Individual Sleeve Placement" (matches log timestamps: create + params + commit)
-            var bulkOp = _operations.Values.FirstOrDefault(op => op.Name != null && op.Name.Contains("Bulk Individual Sleeve Placement"));
-            if (bulkOp != null && bulkOp.TotalMilliseconds > 0)
-                report.AppendLine($"Placement Phase (Bulk block): {bulkOp.TotalMilliseconds}ms ({TimeSpan.FromMilliseconds(bulkOp.TotalMilliseconds):mm\\:ss})");
+            report.AppendLine();
+            report.AppendLine($"TOTAL PLACEMENT TIME: {totalPlacementMs}ms ({TimeSpan.FromMilliseconds(totalPlacementMs):mm\\:ss})  ← single wall-clock (one filter batch)");
             report.AppendLine($"Total Individual Sleeves: {totalIndividualSleeves}");
             report.AppendLine($"Total Clusters: {totalClusters}");
             report.AppendLine();
@@ -168,16 +237,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             
             report.AppendLine();
             report.AppendLine($"=== END OF REPORT ===");
-            
-            // ✅ CRITICAL: Write report using SafeAppendTextAlways (ALWAYS log, even in deployment mode)
-            SafeFileLogger.SafeAppendTextAlways($"performance_{_logFileName}", report.ToString());
-            
-            if (!DeploymentConfiguration.DeploymentMode)
-            {
-                string reportPath = SafeFileLogger.GetLogFilePath($"performance_{_logFileName}");
-                SafeFileLogger.SafeAppendText("placement_performance.log", 
-                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Performance report written to: {reportPath}\n");
-            }
+            report.AppendLine();
+            report.AppendLine($"📁 Log file: {GetLastPerformanceLogPath()}");
+            WritePerformanceLogDirect(report.ToString());
         }
         
         /// <summary>
@@ -203,47 +265,60 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 return;
             }
             
-            // Calculate total time for individual operations
-            long totalIndividualTime = individualOps.Sum(op => op.TotalMilliseconds);
-            
-            // Summary table
+            // Total = wall-clock of "Bulk Individual Sleeve Placement" when present (it contains all other listed ops; do not sum)
+            var bulkOpForTotal = individualOps.FirstOrDefault(op => op.Name != null && op.Name.Contains("Bulk Individual Sleeve Placement"));
+            long totalIndividualTime = bulkOpForTotal != null && bulkOpForTotal.TotalMilliseconds > 0
+                ? bulkOpForTotal.TotalMilliseconds
+                : individualOps.Sum(op => op.TotalMilliseconds);
+
+            // Summary: one total, then rate; breakdown follows
             report.AppendLine($"=== INDIVIDUAL PLACEMENT SUMMARY ===");
             report.AppendLine($"{"Metric",-30} {"Value",20}");
             report.AppendLine(new string('-', 52));
             report.AppendLine($"{"Total Sleeves Placed",-30} {totalIndividualSleeves,20}");
-            report.AppendLine($"{"Total Time",-30} {totalIndividualTime,19}ms ({TimeSpan.FromMilliseconds(totalIndividualTime):mm\\:ss})");
-            
+            report.AppendLine($"{"Total Time (wall-clock)",-30} {totalIndividualTime,19}ms ({TimeSpan.FromMilliseconds(totalIndividualTime):mm\\:ss})");
             if (totalIndividualSleeves > 0 && totalIndividualTime > 0)
             {
                 double sleevesPerSec = (double)totalIndividualSleeves / totalIndividualTime * 1000;
                 double avgTimePerSleeve = (double)totalIndividualTime / totalIndividualSleeves;
                 report.AppendLine($"{"Sleeves/Second",-30} {sleevesPerSec,19:F0}");
                 report.AppendLine($"{"Avg Time per Sleeve",-30} {avgTimePerSleeve,19:F1}ms");
-                
                 bool meetsTarget = sleevesPerSec >= 50;
                 report.AppendLine($"{"Performance Status",-30} {(meetsTarget ? "✅ MEETS TARGET (50+/s)" : "⚠️ BELOW TARGET (<50/s)"),20}");
             }
             report.AppendLine();
-            
-            // Operation breakdown table
-            report.AppendLine($"=== INDIVIDUAL PLACEMENT OPERATION BREAKDOWN ===");
-            report.AppendLine($"{"Operation",-45} {"Calls",8} {"Total",12} {"Avg",10} {"Min",10} {"Max",10} {"Items",10} {"Items/s",10} {"%",6}");
-            report.AppendLine(new string('-', 120));
-            
-            foreach (var op in individualOps)
+            report.AppendLine("Steps (by time; % of total):");
+            report.AppendLine(new string('-', 72));
+
+            // Exclude "Bulk Individual Sleeve Placement" from rows — it is the total, not a step
+            var stepsOnlyOps = individualOps.Where(op => op.Name == null || !op.Name.Contains("Bulk Individual Sleeve Placement")).ToList();
+            var bulkSubOpsRaw = _subOpsForReport.Where(s => s.ParentName != null && s.ParentName.Contains("Bulk Individual Sleeve Placement")).ToList();
+
+            // Exclude redundant wrapper trackers and optional steps from breakdown (cleaner report)
+            bool IsRedundantOrOptionalStep(string name)
             {
-                double avgMs = op.CallCount > 0 ? (double)op.TotalMilliseconds / op.CallCount : 0;
-                double avgItemsPerSec = op.TotalMilliseconds > 0 
-                    ? (double)op.TotalItemCount / op.TotalMilliseconds * 1000 
-                    : 0;
-                double percentage = totalIndividualTime > 0 
-                    ? (double)op.TotalMilliseconds / totalIndividualTime * 100 
-                    : 0;
-                
-                report.AppendLine($"{op.Name,-45} {op.CallCount,8} {op.TotalMilliseconds,12}ms {avgMs,9:F1}ms {op.MinMilliseconds,9}ms {op.MaxMilliseconds,9}ms {op.TotalItemCount,10} {avgItemsPerSec,9:F0}/s {percentage,5:F1}%");
+                if (string.IsNullOrEmpty(name)) return false;
+                var n = name.Trim();
+                return n.IndexOf("Operation 2", StringComparison.OrdinalIgnoreCase) >= 0
+                    || n.IndexOf("ExecuteBulkPlacement", StringComparison.OrdinalIgnoreCase) >= 0
+                    || n.IndexOf("Regenerate", StringComparison.OrdinalIgnoreCase) >= 0;
             }
-            
-            report.AppendLine();
+            var bulkSubOps = bulkSubOpsRaw.Where(s => !IsRedundantOrOptionalStep(s.OpName)).OrderByDescending(s => s.Ms).ToList();
+
+            // Single list: top-level steps + sub-steps (excluding redundant/optional), sorted by time descending
+            var allSteps = new List<(string Name, long Ms)>();
+            foreach (var op in stepsOnlyOps)
+            {
+                if (!IsRedundantOrOptionalStep(op.Name))
+                    allSteps.Add((op.Name, op.TotalMilliseconds));
+            }
+            foreach (var sub in bulkSubOps)
+                allSteps.Add((sub.OpName, sub.Ms));
+            foreach (var step in allSteps.OrderByDescending(x => x.Ms))
+            {
+                double pct = totalIndividualTime > 0 ? (double)step.Ms / totalIndividualTime * 100 : 0;
+                report.AppendLine($"{step.Name,-50} {step.Ms,10}ms {pct,5:F1}%");
+            }
         }
         
         /// <summary>
@@ -442,20 +517,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 long memoryDelta = endMemory - _startMemory;
                 
                 _monitor.RecordOperation(_operationName, _timer.ElapsedMilliseconds, memoryDelta, _itemCount);
+                _monitor.RecordSubOperationsForReport(_operationName, _subOperations.Values.Select(m => (m.Name, m.TotalMilliseconds)));
                 
-                // ✅ LOG OPERATION COMPLETION: Log each operation completion (ALWAYS log, even in deployment mode)
-                SafeFileLogger.SafeAppendTextAlways($"performance_{_monitor._logFileName}",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] {_operationName}: {_timer.ElapsedMilliseconds}ms, Memory: {memoryDelta / 1024.0:F2} KB, Items: {_itemCount}\n");
-                
-                // Log sub-operations (ALWAYS log, even in deployment mode)
-                SafeFileLogger.SafeAppendTextAlways($"performance_{_monitor._logFileName}",
-                     $"[{DateTime.Now:HH:mm:ss.fff}] DEBUG: Disposing OperationTracker '{_operationName}'. SubOpCount: {_subOperations.Count}\n");
-
-                foreach (var subOp in _subOperations.Values.OrderByDescending(o => o.TotalMilliseconds))
+                // ✅ Write directly so performance log always appears
+                WritePerformanceLogDirect($"[{DateTime.Now:HH:mm:ss.fff}] {_operationName}: {_timer.ElapsedMilliseconds}ms, Memory: {memoryDelta / 1024.0:F2} KB, Items: {_itemCount}\n");
+                bool isRedundantOrOptional(string name)
+                {
+                    if (string.IsNullOrEmpty(name)) return false;
+                    var n = name.Trim();
+                    return n.IndexOf("Operation 2", StringComparison.OrdinalIgnoreCase) >= 0
+                        || n.IndexOf("ExecuteBulkPlacement", StringComparison.OrdinalIgnoreCase) >= 0
+                        || n.IndexOf("Regenerate", StringComparison.OrdinalIgnoreCase) >= 0;
+                }
+                var subOpsToLog = _subOperations.Values.Where(o => !isRedundantOrOptional(o.Name)).OrderByDescending(o => o.TotalMilliseconds).ToList();
+                WritePerformanceLogDirect($"[{DateTime.Now:HH:mm:ss.fff}] DEBUG: Disposing OperationTracker '{_operationName}'. SubOpCount: {subOpsToLog.Count}\n");
+                foreach (var subOp in subOpsToLog)
                 {
                     double avgMs = subOp.CallCount > 0 ? (double)subOp.TotalMilliseconds / subOp.CallCount : 0;
-                    SafeFileLogger.SafeAppendTextAlways($"performance_{_monitor._logFileName}",
-                        $"[{DateTime.Now:HH:mm:ss.fff}]   (Sub) {subOp.Name}: {subOp.TotalMilliseconds}ms (avg: {avgMs:F1}ms, calls: {subOp.CallCount}, items: {subOp.TotalItemCount})\n");
+                    WritePerformanceLogDirect($"[{DateTime.Now:HH:mm:ss.fff}]   (Sub) {subOp.Name}: {subOp.TotalMilliseconds}ms (avg: {avgMs:F1}ms, calls: {subOp.CallCount}, items: {subOp.TotalItemCount})\n");
                 }
             }
             

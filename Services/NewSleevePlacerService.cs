@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
@@ -550,7 +550,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (clashZone.ClusterSleeveInstanceId > 0) skipReason += $"ClusterId={clashZone.ClusterSleeveInstanceId}, ";
                         skipReason = skipReason.TrimEnd(',', ' ');
                         
-                        SafeFileLogger.SafeAppendTextAlways("placement_debug.log",
+                        SafeFileLogger.SafeAppendText("placement_debug.log",
                             $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ?? SKIP Zone {clashZone.Id}: {skipReason}\n");
                         skipped++;
                         continue;
@@ -650,7 +650,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                              SafeFileLogger.SafeAppendTextAlways("batch_mode_entry.log",
                              $"[{DateTime.Now:HH:mm:ss}] ❌ CHECKPOINT 2 FAILED: PlaceSleeveNormal returned null for Zone {clashZone.Id}\n");
                              
-                             SafeFileLogger.SafeAppendTextAlways("placement_debug.log",
+                             SafeFileLogger.SafeAppendText("placement_debug.log",
                                 $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ❌ PLACEMENT FAILED: Zone {clashZone.Id}, PlaceSleeveNormal returned null\n");
                              
                              errors++; // Mark as error if normal placement failed
@@ -1315,6 +1315,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 placementPoint = _placementPointAdjustmentService.AdjustPlacementPoint(zone, placementPoint, null);
             }
             
+            // ? DIAGNOSTIC: Capture base point BEFORE any damper offset (sequential path proof)
+            XYZ basePointBeforeDamperOffset = placementPoint;
+            
             // ? CRITICAL FIX: Apply connector-side offset for dampers with MEP connector
             // The offset shifts the sleeve toward the connector side to achieve:
             // - 100mm clearance on connector side (MEP clearance)
@@ -1328,16 +1331,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
+                    // Sequential path proof:
+                    // BasePoint = intersection / DB placement BEFORE offset
+                    // AfterOffset = point we send to Revit (NewFamilyInstance)
                     SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ? APPLIED DAMPER OFFSET: Zone {zone.Id}, " +
-                        $"Offset=({damperOffsetVector.X*304.8:F1}, {damperOffsetVector.Y*304.8:F1}, {damperOffsetVector.Z*304.8:F1})mm, " +
-                        $"AfterOffset=({placementPoint.X:F3}, {placementPoint.Y:F3}, {placementPoint.Z:F3})\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ✅ SEQ DAMPER OFFSET: Zone {zone.Id}, " +
+                        $"BasePoint=({basePointBeforeDamperOffset.X:F6}, {basePointBeforeDamperOffset.Y:F6}, {basePointBeforeDamperOffset.Z:F6}), " +
+                        $"Offset=({damperOffsetVector.X*304.8:F2}, {damperOffsetVector.Y*304.8:F2}, {damperOffsetVector.Z*304.8:F2})mm, " +
+                        $"AfterOffset=({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6})\n");
                 }
             }
                     
-                    // ? DIAGNOSTIC: Log placement point
-                    SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ?? PLACEMENT POINT: Zone {zone.Id}, Point=({placementPoint.X:F3}, {placementPoint.Y:F3}, {placementPoint.Z:F3})\n");
+            // ? DIAGNOSTIC: Log final placement point we actually use to place the sleeve (sequential path)
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                SafeFileLogger.SafeAppendText("placement_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ✅ SEQ PLACEMENT POINT: Zone {zone.Id}, Point=({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6})\n");
+            }
             
             // ? SRP: Use rotation service to determine correct rotation for host type
             // Γ£à DB-FIRST: Use saved rotation angle if available (faster than Revit query)

@@ -1397,7 +1397,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         int markedCount = sessionContext.UpdateSessionFlags(
                             context.SelectedFilterNames ?? new List<string>(),
                             context.SelectedMepCategories ?? new List<string>(),
-                            sectionBoxNullable);
+                            sectionBoxNullable,
+                            context.SelectedHostTypes);
 
                         if (!context.IsDeploymentMode)
                         {

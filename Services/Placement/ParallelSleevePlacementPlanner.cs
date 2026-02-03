@@ -84,6 +84,260 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             return new SleevePlacementPlanningResult(ordered, skippedCount, highRisk, criticalRisk, sw.ElapsedMilliseconds);
         }
 
+        /// <summary>
+        /// ✅ FIX #1: Calculate damper connector-side offset vector for asymmetric clearance.
+        /// EXACTLY REPLICATES DamperPlacementStrategy.GetDamperPlacementAdjustment() logic.
+        /// Uses DB properties: HasMepConnector, DamperConnectorSide, HostOrientation, StructuralElementType
+        /// 
+        /// Offset = (MEP Clearance - Other Clearance) / 2
+        /// For 100mm MEP, 50mm Other: (100 - 50) / 2 = 25mm toward connector side
+        /// </summary>
+        private XYZ CalculateDamperOffsetVector(ClashZone zone)
+        {
+            if (zone == null) return XYZ.Zero;
+            
+            // ✅ CHECK: Does this damper have a MEP connector? (DB property)
+            if (!zone.HasMepConnector || string.IsNullOrEmpty(zone.DamperConnectorSide))
+            {
+                // No connector = symmetric clearance = no offset
+                return XYZ.Zero;
+            }
+            
+            // ✅ GET CLEARANCES: From conditions (same as DamperPlacementStrategy)
+            double mepClearanceMm = _conditions?.ClearanceSettings?.DuctAccessoryMepNormal ?? 100.0;
+            double otherClearanceMm = _conditions?.ClearanceSettings?.DuctAccessoryOtherNormal ?? 50.0;
+            
+            // Note: DamperPlacementStrategy forces isInsulated=false for dampers
+            // So we don't check zone.IsInsulated here
+            
+            // ✅ CALCULATE OFFSET: (MEP - Other) / 2
+            double offsetAmountMm = (mepClearanceMm - otherClearanceMm) / 2.0;
+            double offsetAmountFt = offsetAmountMm / 304.8;
+            
+            // If clearances are equal, no offset needed
+            if (Math.Abs(offsetAmountFt) < 0.0001)
+                return XYZ.Zero;
+            
+            // ✅ GET WALL ORIENTATION: From DB (same as DamperPlacementStrategy)
+            string hostOrientation = zone.HostOrientation ?? string.Empty;
+            bool isXWall = string.Equals(hostOrientation, "X", StringComparison.OrdinalIgnoreCase);
+            bool isYWall = string.Equals(hostOrientation, "Y", StringComparison.OrdinalIgnoreCase);
+            
+            // ✅ GET CONNECTOR DIRECTION: From DB (world coordinate: "+X", "-X", "+Y", "-Y", "+Z", "-Z")
+            string connectorDir = zone.DamperConnectorSide ?? string.Empty;
+            
+            // ✅ CHECK: Only apply offset for walls (not floors/framing) - same as DamperPlacementStrategy
+            bool isWallHost = string.Equals(zone.StructuralElementType, "Wall", StringComparison.OrdinalIgnoreCase) ||
+                              string.Equals(zone.StructuralElementType, "Walls", StringComparison.OrdinalIgnoreCase);
+            
+            XYZ offsetVector = XYZ.Zero;
+            
+            if (isWallHost && offsetAmountFt > 0.0001)
+            {
+                // ✅ EXACT COPY OF DamperPlacementStrategy SWITCH STATEMENT:
+                switch (connectorDir)
+                {
+                    case "+X":
+                        if (isXWall)
+                            offsetVector = new XYZ(offsetAmountFt, 0, 0);
+                        else if (isYWall)
+                            offsetVector = new XYZ(0, offsetAmountFt, 0);
+                        break;
+                    
+                    case "-X":
+                        if (isXWall)
+                            offsetVector = new XYZ(-offsetAmountFt, 0, 0);
+                        else if (isYWall)
+                            offsetVector = new XYZ(0, -offsetAmountFt, 0);
+                        break;
+                    
+                    case "+Y":
+                        if (isYWall)
+                            offsetVector = new XYZ(0, offsetAmountFt, 0);
+                        else if (isXWall)
+                            offsetVector = new XYZ(offsetAmountFt, 0, 0);
+                        break;
+                    
+                    case "-Y":
+                        if (isYWall)
+                            offsetVector = new XYZ(0, -offsetAmountFt, 0);
+                        else if (isXWall)
+                            offsetVector = new XYZ(-offsetAmountFt, 0, 0);
+                        break;
+                    
+                    case "+Z":
+                        offsetVector = new XYZ(0, 0, offsetAmountFt);
+                        break;
+                    
+                    case "-Z":
+                        offsetVector = new XYZ(0, 0, -offsetAmountFt);
+                        break;
+                    
+                    default:
+                        // Backward compatibility for old format ("Left", "Right", etc.)
+                        bool isLeftRight = connectorDir == "Left" || connectorDir == "Right";
+                        bool isTopBottom = connectorDir == "Top" || connectorDir == "Bottom";
+                        bool offsetPositive = connectorDir == "Right" || connectorDir == "Top";
+                        
+                        if (isLeftRight)
+                        {
+                            if (isXWall)
+                                offsetVector = offsetPositive ? new XYZ(offsetAmountFt, 0, 0) : new XYZ(-offsetAmountFt, 0, 0);
+                            else if (isYWall)
+                                offsetVector = offsetPositive ? new XYZ(0, offsetAmountFt, 0) : new XYZ(0, -offsetAmountFt, 0);
+                        }
+                        else if (isTopBottom)
+                        {
+                            offsetVector = offsetPositive ? new XYZ(0, 0, offsetAmountFt) : new XYZ(0, 0, -offsetAmountFt);
+                        }
+                        break;
+                }
+            }
+            
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                SafeFileLogger.SafeAppendText("planner_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [PLANNER] ✅ DAMPER OFFSET: Zone {zone.Id}, " +
+                    $"HasMepConnector={zone.HasMepConnector}, ConnectorDir='{connectorDir}', " +
+                    $"HostOrientation='{hostOrientation}', IsWallHost={isWallHost}, " +
+                    $"MEP={mepClearanceMm:F1}mm, Other={otherClearanceMm:F1}mm, " +
+                    $"OffsetAmount={offsetAmountMm:F2}mm, " +
+                    $"OffsetVector=({offsetVector.X*304.8:F2}, {offsetVector.Y*304.8:F2}, {offsetVector.Z*304.8:F2})mm\n");
+            }
+            
+            return offsetVector;
+        }
+
+        /// <summary>
+        /// ✅ FIX #2: Calculate damper dimensions with asymmetric clearance.
+        /// EXACTLY REPLICATES DamperPlacementStrategy.GetDamperPlacementAdjustment() logic.
+        /// Uses DB properties: HasMepConnector, DamperConnectorSide, HostOrientation
+        /// 
+        /// For MSFD (with connector): MEP clearance on connector side, Other clearance on other sides
+        /// For Standard (no connector): Other clearance on all sides (symmetric)
+        /// Then applies rounding using RoundAlwaysUp setting (like NewSleevePlacerService)
+        /// </summary>
+        private (double finalWidth, double finalHeight) CalculateDamperDimensionsWithAsymmetricClearance(ClashZone zone)
+        {
+            double damperWidth = zone.MepElementWidth;
+            double damperHeight = zone.MepElementHeight;
+            
+            // ✅ GET CLEARANCES: From conditions (same as DamperPlacementStrategy)
+            double mepClearanceMm = _conditions?.ClearanceSettings?.DuctAccessoryMepNormal ?? 100.0;
+            double otherClearanceMm = _conditions?.ClearanceSettings?.DuctAccessoryOtherNormal ?? 50.0;
+            
+            // Convert to feet
+            double mepClearanceFt = mepClearanceMm / 304.8;
+            double otherClearanceFt = otherClearanceMm / 304.8;
+            
+            // DamperPlacementStrategy forces insulation to false for dampers
+            double insulationContribution = 0.0;
+            
+            double finalWidth, finalHeight;
+            
+            // ✅ CHECK: Does this damper have a MEP connector? (DB property)
+            if (zone.HasMepConnector && !string.IsNullOrEmpty(zone.DamperConnectorSide))
+            {
+                // MSFD Damper: Asymmetric clearance
+                double left = otherClearanceFt, right = otherClearanceFt;
+                double top = otherClearanceFt, bottom = otherClearanceFt;
+                
+                string connectorDir = zone.DamperConnectorSide ?? string.Empty;
+                string hostOrientation = zone.HostOrientation ?? string.Empty;
+                bool isXWall = string.Equals(hostOrientation, "X", StringComparison.OrdinalIgnoreCase);
+                bool isYWall = string.Equals(hostOrientation, "Y", StringComparison.OrdinalIgnoreCase);
+                bool isWallHost = string.Equals(zone.StructuralElementType, "Wall", StringComparison.OrdinalIgnoreCase) ||
+                                  string.Equals(zone.StructuralElementType, "Walls", StringComparison.OrdinalIgnoreCase);
+                
+                // ✅ WALL Z-CONNECTOR FIX: Swap base dimensions for vertical connector (same as DamperPlacementStrategy)
+                if (isWallHost && (connectorDir == "+Z" || connectorDir == "-Z"))
+                {
+                    double originalWidth = damperWidth;
+                    damperWidth = damperHeight;
+                    damperHeight = originalWidth;
+                }
+                
+                // ✅ MAP CONNECTOR DIRECTION TO CLEARANCE SIDE (exact copy of DamperPlacementStrategy)
+                switch (connectorDir)
+                {
+                    case "+X":
+                        right = mepClearanceFt;
+                        break;
+                    case "-X":
+                        left = mepClearanceFt;
+                        break;
+                    case "+Y":
+                        right = mepClearanceFt;
+                        break;
+                    case "-Y":
+                        left = mepClearanceFt;
+                        break;
+                    case "+Z":
+                        top = mepClearanceFt;
+                        break;
+                    case "-Z":
+                        bottom = mepClearanceFt;
+                        break;
+                    // Backward compatibility
+                    case "Right":
+                        right = mepClearanceFt;
+                        break;
+                    case "Left":
+                        left = mepClearanceFt;
+                        break;
+                    case "Top":
+                        top = mepClearanceFt;
+                        break;
+                    case "Bottom":
+                        bottom = mepClearanceFt;
+                        break;
+                }
+                
+                // ✅ CALCULATE FINAL DIMENSIONS (same formula as DamperPlacementStrategy line 616-617)
+                finalWidth = damperWidth + insulationContribution + left + right;
+                finalHeight = damperHeight + insulationContribution + top + bottom;
+            }
+            else
+            {
+                // Standard Damper: Symmetric clearance (Other clearance on all sides)
+                finalWidth = damperWidth + insulationContribution + (2 * otherClearanceFt);
+                finalHeight = damperHeight + insulationContribution + (2 * otherClearanceFt);
+            }
+            
+            // ✅ APPLY ROUNDING: Same as NewSleevePlacerService lines 1595-1597
+            // Uses RoundAlwaysUp setting for consistent behavior
+            var roundingSettings = JSE_RevitAddin_MEP_OPENINGS.Services.ApplicationProfileService.Instance.GetCurrentSettings();
+            double roundingValueMm = roundingSettings.RoundingValue;
+            bool roundAlwaysUp = roundingSettings.RoundAlwaysUp;
+            double roundingValueFt = roundingValueMm / 304.8;
+            
+            double roundedWidth, roundedHeight;
+            if (roundAlwaysUp)
+            {
+                roundedWidth = Math.Ceiling(finalWidth / roundingValueFt) * roundingValueFt;
+                roundedHeight = Math.Ceiling(finalHeight / roundingValueFt) * roundingValueFt;
+            }
+            else
+            {
+                roundedWidth = Math.Round(finalWidth / roundingValueFt) * roundingValueFt;
+                roundedHeight = Math.Round(finalHeight / roundingValueFt) * roundingValueFt;
+            }
+            
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                SafeFileLogger.SafeAppendText("planner_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [PLANNER] ✅ DAMPER DIMS: Zone {zone.Id}, " +
+                    $"HasMepConnector={zone.HasMepConnector}, ConnectorDir='{zone.DamperConnectorSide}', " +
+                    $"Raw=({damperWidth*304.8:F1}, {damperHeight*304.8:F1})mm, " +
+                    $"MEP={mepClearanceMm:F1}mm, Other={otherClearanceMm:F1}mm, " +
+                    $"PreRound=({finalWidth*304.8:F1}, {finalHeight*304.8:F1})mm, " +
+                    $"RoundingValue={roundingValueMm}mm, RoundAlwaysUp={roundAlwaysUp}, " +
+                    $"Rounded=({roundedWidth*304.8:F1}, {roundedHeight*304.8:F1})mm\n");
+            }
+            
+            return (roundedWidth, roundedHeight);
+        }
+
         public SleevePlacementPlanningDto PlanSingle(ClashZone zone)
         {
             try
@@ -102,6 +356,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 string hostType = zone.StructuralElementType ?? "Wall";
                 bool isPipesCategory = string.Equals(mepCategory, "Pipes", StringComparison.OrdinalIgnoreCase);
                 bool isDuctsCategory = string.Equals(mepCategory, "Ducts", StringComparison.OrdinalIgnoreCase);
+                
+                // ✅ FIX: Detect damper category
+                bool isDamperCategory = string.Equals(mepCategory, "Duct Accessories", StringComparison.OrdinalIgnoreCase);
 
                 double rawWidth = zone.MepElementOuterDiameter > 0 ? zone.MepElementOuterDiameter : zone.MepElementWidth;
                 double rawHeight = zone.MepElementHeight > 0 ? zone.MepElementHeight : rawWidth;
@@ -162,12 +419,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 
                 bool isCircular = string.Equals(resolvedType, "Circular", StringComparison.OrdinalIgnoreCase);
 
-                // 4. Resolve Dimensions - CENTRALIZED SIZING
-                // ✅ REUSE: InsulationAwareSizingService handles insulation + clearance + rounding
-                double clearance = GetClearanceFromConditions(mepCategory, rawDiameter * 304.8);
+                // 4. Resolve Dimensions - CENTRALIZED SIZING (with rounding per user settings)
+                double targetW, targetH;
+                double clearance;
                 
-                var (targetW, targetH, _) = _sizingService.CalculateFinalDimensionsFromClashZone(
-                    rawWidth, rawHeight, rawDiameter, zone, clearance);
+                // ✅ FIX: Special handling for dampers with asymmetric clearance
+                if (isDamperCategory)
+                {
+                    // Use asymmetric clearance calculation for dampers
+                    var (damperWidth, damperHeight) = CalculateDamperDimensionsWithAsymmetricClearance(zone);
+                    targetW = damperWidth;
+                    targetH = damperHeight;
+                    
+                    // Get average clearance for risk classification
+                    double mepClearanceMm = _conditions?.ClearanceSettings?.DuctAccessoryMepNormal ?? 100.0;
+                    double otherClearanceMm = _conditions?.ClearanceSettings?.DuctAccessoryOtherNormal ?? 50.0;
+                    clearance = ((mepClearanceMm + otherClearanceMm) / 2.0) / 304.8; // Average clearance in feet
+                }
+                else
+                {
+                    // Standard sizing for non-dampers
+                    clearance = GetClearanceFromConditions(mepCategory, rawDiameter * 304.8);
+                    var roundingSettings = JSE_RevitAddin_MEP_OPENINGS.Services.ApplicationProfileService.Instance.GetCurrentSettings();
+                    var dims = _sizingService.CalculateFinalDimensionsFromClashZoneRounded(
+                        rawWidth, rawHeight, rawDiameter, zone, clearance, roundingSettings.RoundingValue, roundingSettings.RoundAlwaysUp);
+                    targetW = dims.Item1;
+                    targetH = dims.Item2;
+                }
 
                 // 5. Resolve Family Name - CENTRALIZED MAPPING
                 // ✅ REUSE: FamilyManager maps host+shape to the core 4 families
@@ -178,16 +456,53 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 double rotationRad = _rotationService.DetermineRotation(zone);
 
                 // 7. Resolve Placement Point - CENTRALIZED COORDINATES
-                // ✅ REUSE: Prioritize SleevePlacementPoint (set during refresh/adjustment) over IntersectionPoint
+                // ✅ FIX #1: For dampers, apply connector-side offset to placement point.
+                // ✅ FIX #2: Do NOT double-apply offset when re-using a DB-saved placement point.
+                //
+                // RULE:
+                // - If SleevePlacementPoint* is zero → we are planning from the raw intersection → apply damper offset.
+                // - If SleevePlacementPoint* is non-zero → it already includes any previous offset → DO NOT add it again.
+                bool hasSavedPlacementPoint =
+                    Math.Abs(zone.SleevePlacementPointX) > 1e-6 ||
+                    Math.Abs(zone.SleevePlacementPointY) > 1e-6 ||
+                    Math.Abs(zone.SleevePlacementPointZ) > 1e-6;
+
                 XYZ placementPoint = new XYZ(
-                    zone.SleevePlacementPointX != 0 ? zone.SleevePlacementPointX : zone.IntersectionPointX,
-                    zone.SleevePlacementPointY != 0 ? zone.SleevePlacementPointY : zone.IntersectionPointY,
-                    zone.SleevePlacementPointZ != 0 ? zone.SleevePlacementPointZ : zone.IntersectionPointZ);
+                    hasSavedPlacementPoint ? zone.SleevePlacementPointX : zone.IntersectionPointX,
+                    hasSavedPlacementPoint ? zone.SleevePlacementPointY : zone.IntersectionPointY,
+                    hasSavedPlacementPoint ? zone.SleevePlacementPointZ : zone.IntersectionPointZ);
+                
+                // ✅ CRITICAL FIX: Apply damper offset for asymmetric clearance ONLY once (on fresh points).
+                if (isDamperCategory && !hasSavedPlacementPoint)
+                {
+                    XYZ damperOffset = CalculateDamperOffsetVector(zone);
+                    if (damperOffset.GetLength() > 0.0001) // Only apply if significant
+                    {
+                        placementPoint = placementPoint + damperOffset;
+                        
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("planner_debug.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [PLANNER] ✅ APPLIED DAMPER OFFSET: Zone {zone.Id}, " +
+                                $"Offset=({damperOffset.X*304.8:F2}, {damperOffset.Y*304.8:F2}, {damperOffset.Z*304.8:F2})mm, " +
+                                $"Final=({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6}) (fresh intersection point)\n");
+                        }
+                    }
+                }
 
                 // 8. Host Thickness & Depth
                 double hostThickness = zone.StructuralElementThickness;
                 if (hostThickness <= 0) hostThickness = 0.5; // Fallback 6"
-                double requiredDepth = hostThickness + (clearance * 2); // Internal units (feet)
+                // Sleeve depth = host thickness only (wall/framing/structural). BulkPlacementService uses this for the Depth parameter.
+                bool isWallHost = string.Equals(hostType, "Wall", StringComparison.OrdinalIgnoreCase) || string.Equals(hostType, "Walls", StringComparison.OrdinalIgnoreCase);
+                bool isFramingHost = string.Equals(hostType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
+                double sleeveDepthFt = hostThickness;
+                if (isWallHost && zone.WallThickness > 0.001)
+                    sleeveDepthFt = zone.WallThickness;
+                else if (isFramingHost && zone.FramingThickness > 0.001)
+                    sleeveDepthFt = zone.FramingThickness;
+                else if (zone.StructuralElementThickness > 0.001)
+                    sleeveDepthFt = zone.StructuralElementThickness;
 
                 // 9. Risk assessment
                 var risk = ClassifyRisk(hostThickness, clearance, rawDiameter);
@@ -202,7 +517,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     targetW,
                     targetH,
                     clearance,
-                    requiredDepth,
+                    sleeveDepthFt,
                     rotationRad,
                     risk,
                     shouldSkip,
@@ -513,8 +828,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     }
                     else if (string.Equals(category, "Duct Accessories", StringComparison.OrdinalIgnoreCase))
                     {
-                        // ✅ FIX: Duct Accessories (dampers) should use DuctAccessoryOtherNormal clearance
-                        clearanceMm = _conditions.ClearanceSettings.DuctAccessoryOtherNormal;
+                        // ✅ FIX: Duct Accessories (dampers) should use average of MEP and Other clearance
+                        double mepClearance = _conditions.ClearanceSettings.DuctAccessoryMepNormal;
+                        double otherClearance = _conditions.ClearanceSettings.DuctAccessoryOtherNormal;
+                        clearanceMm = (mepClearance + otherClearance) / 2.0;
                     }
                     
                     // Convert mm to feet

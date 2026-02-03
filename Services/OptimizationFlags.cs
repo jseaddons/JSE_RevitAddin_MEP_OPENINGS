@@ -207,10 +207,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Enable detailed timing diagnostics for Flag Reset operation during refresh
         /// When true: Logs breakdown of DB query, Revit API checks, and batch update times
         /// When false: Standard logging only
-        /// Default: true (helps identify specific bottleneck in 817ms Flag Reset time)
-        /// Location: Services/FlagManager_Legacy.cs (ResetFlagsForDeletedSleeves)
+        /// Default: false (no extra logging; set true only when debugging flag reset timing)
+        /// Location: Services/FlagManager_Legacy.cs (ResetFlagsForDeletedSleeves) — not currently referenced
         /// </summary>
-        public static bool LogFlagResetDiagnostics { get; set; } = true;
+        public static bool LogFlagResetDiagnostics { get; set; } = false;
+
+        /// <summary>
+        /// When false: placement_debug.log is not written (reduces thousands of log lines during placement).
+        /// When true: placement_debug.log is written (for debugging placement only).
+        /// Default: false (suppressed).
+        /// </summary>
+        public static bool EnablePlacementDebugLog { get; set; } = false;
 
         /// <summary>
         /// Use streamlined clash zone creation path when intersections come from optimized MepIntersectionService
@@ -445,7 +452,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Enable diagnostic mode for performance monitoring
         /// Default: false (disabled - causes 2.6x slowdown due to logging overhead)
         /// </summary>
-        public static bool UseDiagnosticMode { get; set; } = false; // ✅ DISABLED for performance - was causing 2.6x slowdown
+        public static bool UseDiagnosticMode { get; set; } = true; // ✅ DISABLED for performance - was causing 2.6x slowdown
         
         /// <summary>
         /// Enable batch clash zone creation (pre-calculate common data once)

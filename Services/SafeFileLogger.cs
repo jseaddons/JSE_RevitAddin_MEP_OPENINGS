@@ -331,17 +331,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 return; // Skip all file writes in deployment mode
             }
-            
+            // ✅ Suppress placement_debug.log unless explicitly enabled (writes too many lines)
+            if (string.Equals(fileName, "placement_debug.log", StringComparison.OrdinalIgnoreCase)
+                && !OptimizationFlags.EnablePlacementDebugLog)
+                return;
             SafeAppendTextAlways(fileName, message);
         }
 
         /// <summary>
-        /// Safely append text to a log file ALWAYS (even in deployment mode). 
-        /// Use for critical logs like performance reports that should never be suppressed.
+        /// Safely append text to a log file. When DeploymentMode is true, skips writing except for placement_performance.log (so you can still see placement timing).
         /// </summary>
         public static void SafeAppendTextAlways(string fileName, string message)
         {
-            // ✅ DIAGNOSTIC: Log every attempt to write (helps debug missing logs)
+            // ✅ DEPLOYMENT: In production, skip most logging — but always write placement performance log so you can see timing
+            if (DeploymentConfiguration.DeploymentMode &&
+                !string.Equals(fileName, "placement_performance.log", StringComparison.OrdinalIgnoreCase))
+                return;
+            // ✅ Suppress placement_debug.log unless explicitly enabled (writes too many lines)
+            if (string.Equals(fileName, "placement_debug.log", StringComparison.OrdinalIgnoreCase)
+                && !OptimizationFlags.EnablePlacementDebugLog)
+                return;
+
             string logPathFinal = null;
             bool writeSuccess = false;
                 

@@ -30,7 +30,7 @@
           "build/ILRepack.props": {}
         }
       },
-      "JetBrains.Annotations/2022.3.1": {
+      "JetBrains.Annotations/2024.3.0": {
         "type": "package",
         "compile": {
           "lib/net20/JetBrains.Annotations.dll": {
@@ -62,7 +62,7 @@
           "buildTransitive/net462/_._": {}
         }
       },
-      "Nice3point.Revit.Api.RevitAPI/2023.1.1": {
+      "Nice3point.Revit.Api.RevitAPI/2023.1.80": {
         "type": "package",
         "compile": {
           "ref/net48/RevitAPI.dll": {
@@ -70,7 +70,7 @@
           }
         }
       },
-      "Nice3point.Revit.Api.RevitAPIUI/2023.1.1": {
+      "Nice3point.Revit.Api.RevitAPIUI/2023.1.80": {
         "type": "package",
         "compile": {
           "ref/net48/RevitAPIUI.dll": {
@@ -85,10 +85,10 @@
           "build/Nice3point.Revit.Build.Tasks.targets": {}
         }
       },
-      "Nice3point.Revit.Extensions/2023.1.0": {
+      "Nice3point.Revit.Extensions/2023.4.1": {
         "type": "package",
         "dependencies": {
-          "JetBrains.Annotations": "2021.3.0"
+          "JetBrains.Annotations": "2024.3.0"
         },
         "compile": {
           "lib/net48/Nice3point.Revit.Extensions.dll": {
@@ -101,11 +101,8 @@
           }
         }
       },
-      "Nice3point.Revit.Toolkit/2023.1.0": {
+      "Nice3point.Revit.Toolkit/2023.3.0": {
         "type": "package",
-        "dependencies": {
-          "JetBrains.Annotations": "2022.3.1"
-        },
         "compile": {
           "lib/net48/Nice3point.Revit.Toolkit.dll": {
             "related": ".xml"
@@ -430,15 +427,15 @@
         "tools/ILRepack.runtimeconfig.json"
       ]
     },
-    "JetBrains.Annotations/2022.3.1": {
-      "sha512": "11nsS3+lFICGkztVs9PP2NRItxf9fF+qD6xEW/T0YGto52zj07wseUeBdMAU1ah9HNVTDZyRC1u4NWdtJScwhw==",
+    "JetBrains.Annotations/2024.3.0": {
+      "sha512": "ox5pkeLQXjvJdyAB4b2sBYAlqZGLh3PjSnP1bQNVx72ONuTJ9+34/+Rq91Fc0dG29XG9RgZur9+NcP4riihTug==",
       "type": "package",
-      "path": "jetbrains.annotations/2022.3.1",
+      "path": "jetbrains.annotations/2024.3.0",
       "files": [
         ".nupkg.metadata",
         ".signature.p7s",
         "icon.png",
-        "jetbrains.annotations.2022.3.1.nupkg.sha512",
+        "jetbrains.annotations.2024.3.0.nupkg.sha512",
         "jetbrains.annotations.nuspec",
         "lib/net20/JetBrains.Annotations.dll",
         "lib/net20/JetBrains.Annotations.xml",
@@ -449,7 +446,8 @@
         "lib/netstandard2.0/JetBrains.Annotations.dll",
         "lib/netstandard2.0/JetBrains.Annotations.xml",
         "lib/portable40-net40+sl5+win8+wp8+wpa81/JetBrains.Annotations.dll",
-        "lib/portable40-net40+sl5+win8+wp8+wpa81/JetBrains.Annotations.xml"
+        "lib/portable40-net40+sl5+win8+wp8+wpa81/JetBrains.Annotations.xml",
+        "readme.md"
       ]
     },
     "Microsoft.Bcl.AsyncInterfaces/7.0.0": {
@@ -475,31 +473,33 @@
         "useSharedDesignerContext.txt"
       ]
     },
-    "Nice3point.Revit.Api.RevitAPI/2023.1.1": {
-      "sha512": "VAYOKJf11EawE1ttMyLDuemlkRBx2TCQFVM6+EYYcPO/3wbIqligTxPwWzpc70bfVtyPY58I+3h6Idnp2T2NmQ==",
+    "Nice3point.Revit.Api.RevitAPI/2023.1.80": {
+      "sha512": "EzqgUgk6SJahagxCzwSnKBZn4T9f99KIyuDpwYsBceQeBKYh7/HFm4fCOKrbimUnoqw8FnhtblEUSyTjX+OhvQ==",
       "type": "package",
-      "path": "nice3point.revit.api.revitapi/2023.1.1",
+      "path": "nice3point.revit.api.revitapi/2023.1.80",
       "files": [
         ".nupkg.metadata",
         ".signature.p7s",
         "License.md",
+        "Readme.md",
         "images/PackageIcon.png",
-        "nice3point.revit.api.revitapi.2023.1.1.nupkg.sha512",
+        "nice3point.revit.api.revitapi.2023.1.80.nupkg.sha512",
         "nice3point.revit.api.revitapi.nuspec",
         "ref/net48/RevitAPI.dll",
         "ref/net48/RevitAPI.xml"
       ]
     },
-    "Nice3point.Revit.Api.RevitAPIUI/2023.1.1": {
-      "sha512": "KHTUISsEfvrcDdpg36wJCezqP7B4uwH9R3mLOM0K9MBT+PNV5wLSnrhi5vuPHx8kcIQKoNdLbQljh16/hSJz/A==",
+    "Nice3point.Revit.Api.RevitAPIUI/2023.1.80": {
+      "sha512": "vEEiQcQePogrpjxzzLCTGEwWTV+L34rXhJ3m18oY+Tza+ywueyR/AyYvRZS11Fvbab80P3QuHXIJjhUq2LTf8w==",
       "type": "package",
-      "path": "nice3point.revit.api.revitapiui/2023.1.1",
+      "path": "nice3point.revit.api.revitapiui/2023.1.80",
       "files": [
         ".nupkg.metadata",
         ".signature.p7s",
         "License.md",
+        "Readme.md",
         "images/PackageIcon.png",
-        "nice3point.revit.api.revitapiui.2023.1.1.nupkg.sha512",
+        "nice3point.revit.api.revitapiui.2023.1.80.nupkg.sha512",
         "nice3point.revit.api.revitapiui.nuspec",
         "ref/net48/RevitAPIUI.dll",
         "ref/net48/RevitAPIUI.xml"
@@ -529,33 +529,35 @@
         "tasks/net8.0/Nice3point.Revit.Build.Tasks.dll"
       ]
     },
-    "Nice3point.Revit.Extensions/2023.1.0": {
-      "sha512": "OH9zamGHg1Rs4LEK9CwKfocCsX9UzX6VXGq0r+m4eqYpS1Mufn90DlMERe9LwbU0t0xKAqEW+mhMWnTaFqg2/A==",
+    "Nice3point.Revit.Extensions/2023.4.1": {
+      "sha512": "8vcgPh2ODotCLNDL6zPSo8hT7A+nnRlVuw19E6eFPaeYrcV4NgHeud3NuZ57IiyVifAi1Ndti1yODVmRvhYVJA==",
       "type": "package",
-      "path": "nice3point.revit.extensions/2023.1.0",
+      "path": "nice3point.revit.extensions/2023.4.1",
       "files": [
         ".nupkg.metadata",
         ".signature.p7s",
         "License.md",
+        "Readme.md",
         "images/PackageIcon.png",
         "lib/net48/Nice3point.Revit.Extensions.dll",
         "lib/net48/Nice3point.Revit.Extensions.xml",
-        "nice3point.revit.extensions.2023.1.0.nupkg.sha512",
+        "nice3point.revit.extensions.2023.4.1.nupkg.sha512",
         "nice3point.revit.extensions.nuspec"
       ]
     },
-    "Nice3point.Revit.Toolkit/2023.1.0": {
-      "sha512": "LTko2MSQvOpYFI1sJm3mLOPbc6VwXsNVkgrG77geClGHD3KdF+RRMlByEHaslkESmCXoBtpILBr2zwldohwYyw==",
+    "Nice3point.Revit.Toolkit/2023.3.0": {
+      "sha512": "S1BriOVLBy0nYmxXk+ORO2oQ0+jX8KwlHN4bDE1Z8V1LkDqq0U6b0OqguojGUdKG4XwBMFfqb446hTajUBItcw==",
       "type": "package",
-      "path": "nice3point.revit.toolkit/2023.1.0",
+      "path": "nice3point.revit.toolkit/2023.3.0",
       "files": [
         ".nupkg.metadata",
         ".signature.p7s",
         "License.md",
+        "Readme.md",
         "images/PackageIcon.png",
         "lib/net48/Nice3point.Revit.Toolkit.dll",
         "lib/net48/Nice3point.Revit.Toolkit.xml",
-        "nice3point.revit.toolkit.2023.1.0.nupkg.sha512",
+        "nice3point.revit.toolkit.2023.3.0.nupkg.sha512",
         "nice3point.revit.toolkit.nuspec"
       ]
     },
@@ -1108,11 +1110,11 @@
     ".NETFramework,Version=v4.8": [
       "CommunityToolkit.Mvvm >= 8.2.2",
       "ILRepack >= 2.0.41",
-      "Nice3point.Revit.Api.RevitAPI >= 2023.1.1",
-      "Nice3point.Revit.Api.RevitAPIUI >= 2023.1.1",
-      "Nice3point.Revit.Build.Tasks >= 3.0.1",
-      "Nice3point.Revit.Extensions >= 2023.1.0",
-      "Nice3point.Revit.Toolkit >= 2023.1.0",
+      "Nice3point.Revit.Api.RevitAPI >= 2023.*",
+      "Nice3point.Revit.Api.RevitAPIUI >= 2023.*",
+      "Nice3point.Revit.Build.Tasks >= 3.*",
+      "Nice3point.Revit.Extensions >= 2023.*",
+      "Nice3point.Revit.Toolkit >= 2023.*",
       "Serilog >= 4.2.0",
       "Serilog.Sinks.Debug >= 3.0.0",
       "System.Data.SQLite.Core >= 1.0.118",
@@ -1125,11 +1127,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj",
+      "projectUniqueName": "C:\\Jse_Developments\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj",
       "projectName": "JSE_RevitAddin_MEP_OPENINGS",
-      "projectPath": "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj",
+      "projectPath": "C:\\Jse_Developments\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj",
       "packagesPath": "C:\\Users\\jse2084\\.nuget\\packages\\",
-      "outputPath": "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\obj\\",
+      "outputPath": "C:\\Jse_Developments\\JSE_MEPOPENING_23\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\jse2084\\AppData\\Roaming\\NuGet\\NuGet.Config",
@@ -1158,7 +1160,7 @@
         "auditLevel": "low",
         "auditMode": "direct"
       },
-      "SdkAnalysisLevel": "9.0.300"
+      "SdkAnalysisLevel": "10.0.100"
     },
     "frameworks": {
       "net48": {
@@ -1174,23 +1176,23 @@
           },
           "Nice3point.Revit.Api.RevitAPI": {
             "target": "Package",
-            "version": "[2023.1.1, )"
+            "version": "[2023.*, )"
           },
           "Nice3point.Revit.Api.RevitAPIUI": {
             "target": "Package",
-            "version": "[2023.1.1, )"
+            "version": "[2023.*, )"
           },
           "Nice3point.Revit.Build.Tasks": {
             "target": "Package",
-            "version": "[3.0.1, )"
+            "version": "[3.*, )"
           },
           "Nice3point.Revit.Extensions": {
             "target": "Package",
-            "version": "[2023.1.0, )"
+            "version": "[2023.*, )"
           },
           "Nice3point.Revit.Toolkit": {
             "target": "Package",
-            "version": "[2023.1.0, )"
+            "version": "[2023.*, )"
           },
           "Serilog": {
             "target": "Package",
@@ -1209,7 +1211,7 @@
             "version": "[6.0.11, )"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.302\\RuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.102\\RuntimeIdentifierGraph.json"
       }
     }
   }

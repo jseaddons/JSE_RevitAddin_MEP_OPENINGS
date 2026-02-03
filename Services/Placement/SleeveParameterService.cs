@@ -223,17 +223,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 
                 var currentSleeveId = instance.Id;
 
-                // ✅ CRITICAL FIX: Rounding is now done in NewSleevePlacerService BEFORE calling SetSleeveParameters
-                // This prevents double rounding. Values passed here are already rounded.
-                // Use values as-is (they're already rounded by NewSleevePlacerService)
-                double roundedWidth = width;
-                double roundedHeight = height;
-                double roundedDiameter = diameter;
+                // ✅ Always apply rounding here so dampers and every path get RoundAlwaysUp/RoundingValue (e.g. 710 → 750).
+                // Rounding idempotent when values already rounded upstream.
+                var (roundedWidth, roundedHeight, roundedDiameter) = zone != null
+                    ? ApplyRounding(width, height, diameter, zone)
+                    : (width, height, diameter);
 
                 // ✅ PERFORMANCE OPTIMIZATION: Minimal logging only in development mode
                 if (!DeploymentConfiguration.DeploymentMode && !OptimizationFlags.DisableVerboseLogging)
                 {
-                    SafeFileLogger.SafeAppendTextAlways("placement_debug.log",
+                    SafeFileLogger.SafeAppendText("placement_debug.log",
                         $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [PARAMETERS] Zone={zone?.Id}, Sleeve={instance?.Id}, IsCluster={isCluster}, " +
                         $"Width={roundedWidth * 304.8:F1}mm, Height={roundedHeight * 304.8:F1}mm, Diameter={roundedDiameter * 304.8:F1}mm, " + 
                         $"DepthOverride={(depthOverride.HasValue ? (depthOverride.Value * 304.8).ToString("F1") + "mm" : "None")}\n");

@@ -1247,12 +1247,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     var clashZoneId = existingMap[zone.Id];
                     var comboId = comboMap[zone.Id];
 
-                    // Extract values
+                    // Extract values (intersection X/Y/Z not updated in bulk – keep MepIntersectionService value)
                     var mepId = zone.MepElementId?.IntegerValue ?? zone.MepElementIdValue;
                     var hostId = zone.StructuralElementId?.IntegerValue ?? zone.StructuralElementIdValue;
-                    var interX = zone.IntersectionPoint?.X ?? zone.IntersectionPointX;
-                    var interY = zone.IntersectionPoint?.Y ?? zone.IntersectionPointY;
-                    var interZ = zone.IntersectionPoint?.Z ?? zone.IntersectionPointZ;
 
                     // Determine flags (preserve database resets)
                     bool finalIsResolved = zone.IsResolved;
@@ -1328,13 +1325,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         }
                     }
 
-                    // Add parameters
+                    // Add parameters (do not add InterX/InterY/InterZ – intersection point is not updated in bulk)
                     cmd.Parameters.AddWithValue($"@ComboId{i}", comboId);
                     cmd.Parameters.AddWithValue($"@MepId{i}", mepId);
                     cmd.Parameters.AddWithValue($"@HostId{i}", hostId);
-                    cmd.Parameters.AddWithValue($"@InterX{i}", interX);
-                    cmd.Parameters.AddWithValue($"@InterY{i}", interY);
-                    cmd.Parameters.AddWithValue($"@InterZ{i}", interZ);
                     cmd.Parameters.AddWithValue($"@IsResolved{i}", finalIsResolved ? 1 : 0);
                     cmd.Parameters.AddWithValue($"@IsClusterResolved{i}", finalIsClusterResolved ? 1 : 0);
                     cmd.Parameters.AddWithValue($"@IsCombinedResolved{i}", finalIsCombinedResolved ? 1 : 0);
@@ -1429,26 +1423,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 }
                 sql.AppendLine("    ELSE HostElementId END,");
 
-                sql.AppendLine("  IntersectionX = CASE ClashZoneId");
-                for (int i = 0; i < validZones.Count; i++)
-                {
-                    sql.AppendLine($"    WHEN @ZoneId{i} THEN @InterX{i}");
-                }
-                sql.AppendLine("    ELSE IntersectionX END,");
-
-                sql.AppendLine("  IntersectionY = CASE ClashZoneId");
-                for (int i = 0; i < validZones.Count; i++)
-                {
-                    sql.AppendLine($"    WHEN @ZoneId{i} THEN @InterY{i}");
-                }
-                sql.AppendLine("    ELSE IntersectionY END,");
-
-                sql.AppendLine("  IntersectionZ = CASE ClashZoneId");
-                for (int i = 0; i < validZones.Count; i++)
-                {
-                    sql.AppendLine($"    WHEN @ZoneId{i} THEN @InterZ{i}");
-                }
-                sql.AppendLine("    ELSE IntersectionZ END,");
+                // ✅ Do NOT update IntersectionX/Y/Z – keep MepIntersectionService value for all categories
 
                 // ✅ WALL CENTERLINE POINT: Pre-calculated during refresh (enables multi-threaded placement)
                 sql.AppendLine("  WallCenterlinePointX = CASE ClashZoneId");
@@ -6833,15 +6808,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         {
             using (var command = _context.Connection.CreateCommand())
             {
+                // ✅ Do NOT update IntersectionX/Y/Z from placement – keep MepIntersectionService value for all categories
                 command.CommandText = @"
                     UPDATE ClashZones 
                     SET SleeveInstanceId = @SleeveInstanceId,
                         SleeveWidth = @Width,
                         SleeveHeight = @Height,
                         SleeveDiameter = @Diameter,
-                        IntersectionX = @PlacementX,
-                        IntersectionY = @PlacementY,
-                        IntersectionZ = @PlacementZ,
                         WallCenterlinePointX = @PlacementActiveX,
                         WallCenterlinePointY = @PlacementActiveY,
                         WallCenterlinePointZ = @PlacementActiveZ,
@@ -6855,9 +6828,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 command.Parameters.AddWithValue("@Width", width);
                 command.Parameters.AddWithValue("@Height", height);
                 command.Parameters.AddWithValue("@Diameter", diameter);
-                command.Parameters.AddWithValue("@PlacementX", placementX);
-                command.Parameters.AddWithValue("@PlacementY", placementY);
-                command.Parameters.AddWithValue("@PlacementZ", placementZ);
                 command.Parameters.AddWithValue("@PlacementActiveX", placementActiveX);
                 command.Parameters.AddWithValue("@PlacementActiveY", placementActiveY);
                 command.Parameters.AddWithValue("@PlacementActiveZ", placementActiveZ);
@@ -8994,11 +8964,11 @@ public void BatchUpdateSleevePlacementData(IEnumerable<ClashZone> placedZones)
     
     if (!zonesList.Any()) 
     {
-        SafeFileLogger.SafeAppendTextAlways("bulk_placement_trace.log", $"[REPO-FAIL] BatchUpdateSleevePlacementData: No valid zones found (Guid != Empty). Total input: {placedZones?.Count() ?? 0}\n");
+        SafeFileLogger.SafeAppendText("bulk_placement_trace.log", $"[REPO-FAIL] BatchUpdateSleevePlacementData: No valid zones found (Guid != Empty). Total input: {placedZones?.Count() ?? 0}\n");
         return;
     }
     
-    SafeFileLogger.SafeAppendTextAlways("bulk_placement_trace.log", $"[REPO-ENTRY] BatchUpdateSleevePlacementData: Updating {zonesList.Count} zones. Sample Zone 0: ID={zonesList[0].SleeveInstanceId} W={zonesList[0].SleeveWidth} GUID={zonesList[0].ClashZoneGuid}\n");
+    SafeFileLogger.SafeAppendText("bulk_placement_trace.log", $"[REPO-ENTRY] BatchUpdateSleevePlacementData: Updating {zonesList.Count} zones. Sample Zone 0: ID={zonesList[0].SleeveInstanceId} W={zonesList[0].SleeveWidth} GUID={zonesList[0].ClashZoneGuid}\n");
 
     if (!DeploymentConfiguration.DeploymentMode)
     {
@@ -9046,7 +9016,15 @@ public void BatchUpdateSleevePlacementData(IEnumerable<ClashZone> placedZones)
                         RotatedBoundingBoxMaxY = @RotatedBoundingBoxMaxY,
                         RotatedBoundingBoxMaxZ = @RotatedBoundingBoxMaxZ,
                         
-                        -- ✅ ADDED: Persist Family Name and Calculated Data
+                        -- ✅ Persist sleeve corners (for clustering)
+                        SleeveCorner1X = @SleeveCorner1X, SleeveCorner1Y = @SleeveCorner1Y, SleeveCorner1Z = @SleeveCorner1Z,
+                        SleeveCorner2X = @SleeveCorner2X, SleeveCorner2Y = @SleeveCorner2Y, SleeveCorner2Z = @SleeveCorner2Z,
+                        SleeveCorner3X = @SleeveCorner3X, SleeveCorner3Y = @SleeveCorner3Y, SleeveCorner3Z = @SleeveCorner3Z,
+                        SleeveCorner4X = @SleeveCorner4X, SleeveCorner4Y = @SleeveCorner4Y, SleeveCorner4Z = @SleeveCorner4Z,
+                        
+                        -- ✅ Persist flags after placement
+                        IsResolvedFlag = @IsResolvedFlag,
+                        
                         SleeveFamilyName = @SleeveFamilyName,
                         CalculatedSleeveWidth = @CalculatedSleeveWidth,
                         CalculatedSleeveHeight = @CalculatedSleeveHeight,
@@ -9087,7 +9065,20 @@ public void BatchUpdateSleevePlacementData(IEnumerable<ClashZone> placedZones)
                 var pRCSMaxY = cmd.Parameters.AddWithValue("@RotatedBoundingBoxMaxY", DBNull.Value);
                 var pRCSMaxZ = cmd.Parameters.AddWithValue("@RotatedBoundingBoxMaxZ", DBNull.Value);
 
-                // Added Parameters
+                var pC1X = cmd.Parameters.AddWithValue("@SleeveCorner1X", DBNull.Value);
+                var pC1Y = cmd.Parameters.AddWithValue("@SleeveCorner1Y", DBNull.Value);
+                var pC1Z = cmd.Parameters.AddWithValue("@SleeveCorner1Z", DBNull.Value);
+                var pC2X = cmd.Parameters.AddWithValue("@SleeveCorner2X", DBNull.Value);
+                var pC2Y = cmd.Parameters.AddWithValue("@SleeveCorner2Y", DBNull.Value);
+                var pC2Z = cmd.Parameters.AddWithValue("@SleeveCorner2Z", DBNull.Value);
+                var pC3X = cmd.Parameters.AddWithValue("@SleeveCorner3X", DBNull.Value);
+                var pC3Y = cmd.Parameters.AddWithValue("@SleeveCorner3Y", DBNull.Value);
+                var pC3Z = cmd.Parameters.AddWithValue("@SleeveCorner3Z", DBNull.Value);
+                var pC4X = cmd.Parameters.AddWithValue("@SleeveCorner4X", DBNull.Value);
+                var pC4Y = cmd.Parameters.AddWithValue("@SleeveCorner4Y", DBNull.Value);
+                var pC4Z = cmd.Parameters.AddWithValue("@SleeveCorner4Z", DBNull.Value);
+                var pIsResolved = cmd.Parameters.AddWithValue("@IsResolvedFlag", DBNull.Value);
+
                 var pFamily = cmd.Parameters.AddWithValue("@SleeveFamilyName", DBNull.Value);
                 var pCalcWidth = cmd.Parameters.AddWithValue("@CalculatedSleeveWidth", DBNull.Value);
                 var pCalcHeight = cmd.Parameters.AddWithValue("@CalculatedSleeveHeight", DBNull.Value);
@@ -9118,7 +9109,30 @@ public void BatchUpdateSleevePlacementData(IEnumerable<ClashZone> placedZones)
                     pBBMaxY.Value = zone.BoundingBoxMaxY;
                     pBBMaxZ.Value = zone.BoundingBoxMaxZ;
 
-                    // Set Added Parameters
+                    pCos.Value = zone.MepRotationCos ?? (object)DBNull.Value;
+                    pSin.Value = zone.MepRotationSin ?? (object)DBNull.Value;
+
+                    pRCSMinX.Value = zone.RotatedBoundingBoxMinX ?? (object)DBNull.Value;
+                    pRCSMinY.Value = zone.RotatedBoundingBoxMinY ?? (object)DBNull.Value;
+                    pRCSMinZ.Value = zone.RotatedBoundingBoxMinZ ?? (object)DBNull.Value;
+                    pRCSMaxX.Value = zone.RotatedBoundingBoxMaxX ?? (object)DBNull.Value;
+                    pRCSMaxY.Value = zone.RotatedBoundingBoxMaxY ?? (object)DBNull.Value;
+                    pRCSMaxZ.Value = zone.RotatedBoundingBoxMaxZ ?? (object)DBNull.Value;
+
+                    pC1X.Value = zone.SleeveCorner1X ?? (object)DBNull.Value;
+                    pC1Y.Value = zone.SleeveCorner1Y ?? (object)DBNull.Value;
+                    pC1Z.Value = zone.SleeveCorner1Z ?? (object)DBNull.Value;
+                    pC2X.Value = zone.SleeveCorner2X ?? (object)DBNull.Value;
+                    pC2Y.Value = zone.SleeveCorner2Y ?? (object)DBNull.Value;
+                    pC2Z.Value = zone.SleeveCorner2Z ?? (object)DBNull.Value;
+                    pC3X.Value = zone.SleeveCorner3X ?? (object)DBNull.Value;
+                    pC3Y.Value = zone.SleeveCorner3Y ?? (object)DBNull.Value;
+                    pC3Z.Value = zone.SleeveCorner3Z ?? (object)DBNull.Value;
+                    pC4X.Value = zone.SleeveCorner4X ?? (object)DBNull.Value;
+                    pC4Y.Value = zone.SleeveCorner4Y ?? (object)DBNull.Value;
+                    pC4Z.Value = zone.SleeveCorner4Z ?? (object)DBNull.Value;
+                    pIsResolved.Value = zone.IsResolvedFlag ? 1 : 0;
+
                     pFamily.Value = zone.SleeveFamilyName ?? (object)DBNull.Value;
                     pCalcWidth.Value = zone.CalculatedSleeveWidth;
                     pCalcHeight.Value = zone.CalculatedSleeveHeight;
@@ -9130,17 +9144,19 @@ public void BatchUpdateSleevePlacementData(IEnumerable<ClashZone> placedZones)
                     int rows = cmd.ExecuteNonQuery();
                     if (rows == 0)
                     {
-                        SafeFileLogger.SafeAppendTextAlways("bulk_placement_trace.log", $"[REPO-UPDATE-FAIL] ❌ No row found for Guid={zone.ClashZoneGuid}. DB Update Failed.\n");
+                        SafeFileLogger.SafeAppendText("bulk_placement_trace.log", $"[REPO-UPDATE-FAIL] ❌ No row found for Guid={zone.ClashZoneGuid}. DB Update Failed.\n");
                     }
                     else if (rows > 0 && !DeploymentConfiguration.DeploymentMode)
                     {
                         // ✅ DIAGNOSTIC: Log SleeveInstanceId and bounding box values being saved
-                        SafeFileLogger.SafeAppendTextAlways("bulk_placement_trace.log", 
+                        SafeFileLogger.SafeAppendText("bulk_placement_trace.log", 
                             $"[REPO-UPDATE-SUCCESS] ✅ Updated Guid={zone.ClashZoneGuid}, SleeveInstanceId={zone.SleeveInstanceId}, BBox=({zone.BoundingBoxMinX:F2},{zone.BoundingBoxMinY:F2},{zone.BoundingBoxMinZ:F2}) to ({zone.BoundingBoxMaxX:F2},{zone.BoundingBoxMaxY:F2},{zone.BoundingBoxMaxZ:F2})\n");
                     }
                     totalRowsAffected += rows;
                 }
                 
+                SafeFileLogger.SafeAppendText("placement_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [BULK-PERSIST] BatchUpdateSleevePlacementData: {totalRowsAffected}/{zonesList.Count} rows updated in ClashZones. {(totalRowsAffected < zonesList.Count ? "Some rows may have failed (check GUID match)." : "")}\n");
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     DebugLogger.Info($"[ClashZoneRepository] [BATCH-UPDATE-FULL] Updated {totalRowsAffected}/{zonesList.Count} rows in ClashZones.");
@@ -9798,7 +9814,7 @@ public void BatchUpdateSleevePlacementData(IEnumerable<ClashZone> placedZones)
 
                         // ✅ Always log to placement_debug.log so user can verify even when DebugLogger is off
                         var sample = zonesList.FirstOrDefault();
-                        SafeFileLogger.SafeAppendTextAlways("placement_debug.log",
+                        SafeFileLogger.SafeAppendText("placement_debug.log",
                             $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-PRE-SAVE] Updated {totalRowsAffected}/{zonesList.Count} rows (skipped ClashZoneId<=0: {skippedNoId}). Sample: ClashZoneId={sample?.ClashZoneId}, W={sample?.SleeveWidth}\n");
                         if (!DeploymentConfiguration.DeploymentMode)
                         {

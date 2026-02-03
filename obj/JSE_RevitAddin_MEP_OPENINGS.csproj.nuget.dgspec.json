@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj": {}
+    "C:\\Jse_Developments\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj": {}
   },
   "projects": {
-    "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj": {
+    "C:\\Jse_Developments\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj",
+        "projectUniqueName": "C:\\Jse_Developments\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj",
         "projectName": "JSE_RevitAddin_MEP_OPENINGS",
-        "projectPath": "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj",
+        "projectPath": "C:\\Jse_Developments\\JSE_MEPOPENING_23\\JSE_RevitAddin_MEP_OPENINGS.csproj",
         "packagesPath": "C:\\Users\\jse2084\\.nuget\\packages\\",
-        "outputPath": "C:\\JSE_CSharp_Projects\\JSE_MEPOPENING_23\\obj\\",
+        "outputPath": "C:\\Jse_Developments\\JSE_MEPOPENING_23\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\jse2084\\AppData\\Roaming\\NuGet\\NuGet.Config",
@@ -40,7 +40,7 @@
           "auditLevel": "low",
           "auditMode": "direct"
         },
-        "SdkAnalysisLevel": "9.0.300"
+        "SdkAnalysisLevel": "10.0.100"
       },
       "frameworks": {
         "net48": {
@@ -56,23 +56,23 @@
             },
             "Nice3point.Revit.Api.RevitAPI": {
               "target": "Package",
-              "version": "[2023.1.1, )"
+              "version": "[2023.*, )"
             },
             "Nice3point.Revit.Api.RevitAPIUI": {
               "target": "Package",
-              "version": "[2023.1.1, )"
+              "version": "[2023.*, )"
             },
             "Nice3point.Revit.Build.Tasks": {
               "target": "Package",
-              "version": "[3.0.1, )"
+              "version": "[3.*, )"
             },
             "Nice3point.Revit.Extensions": {
               "target": "Package",
-              "version": "[2023.1.0, )"
+              "version": "[2023.*, )"
             },
             "Nice3point.Revit.Toolkit": {
               "target": "Package",
-              "version": "[2023.1.0, )"
+              "version": "[2023.*, )"
             },
             "Serilog": {
               "target": "Package",
@@ -91,7 +91,7 @@
               "version": "[6.0.11, )"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.302\\RuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.102\\RuntimeIdentifierGraph.json"
         }
       }
     }

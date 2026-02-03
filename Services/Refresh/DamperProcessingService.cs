@@ -1041,10 +1041,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     Max = intersectionMax
                 };
 
-                // ✅ DAMPER CLUSTER FIX: Use geometric center (bbox center) for IntersectionPoint
-                // This ensures cluster centroid is offset-free ("simple centroid like other cats")
-                // while preserving the connector offset in SleevePlacementPoint for individual sleeves.
-                XYZ intersectionPoint = BoundingBoxService.GetBoundingBoxCenter(intersectionBbox);
+                // ✅ FIX: For dampers, use the damper family's insertion point as IntersectionPoint
+                // (same idea as sequential/NewSleevePlacer/MepIntersectionService).
+                // Fallback to bbox center ONLY if we cannot get a LocationPoint.
+                XYZ intersectionPoint;
+                XYZ? damperInsertionPoint = null;
+                if (damper is FamilyInstance damperFi && damperFi.Location is LocationPoint damperLoc)
+                {
+                    // LocationPoint is in the same coordinate system as damperBbox and transformed wall bbox
+                    damperInsertionPoint = damperLoc.Point;
+                    intersectionPoint = damperInsertionPoint;
+                }
+                else
+                {
+                    // Fallback: geometric center of damper–wall intersection bbox
+                    intersectionPoint = BoundingBoxService.GetBoundingBoxCenter(intersectionBbox);
+                }
+
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    _logger($"[DamperProcessing] INTERSECTION_DEBUG: Damper {damper.Id}, " +
+                            $"InsertionPoint=({(damperInsertionPoint?.X ?? double.NaN):F6}, {(damperInsertionPoint?.Y ?? double.NaN):F6}, {(damperInsertionPoint?.Z ?? double.NaN):F6}), " +
+                            $"FinalIntersection=({intersectionPoint.X:F6}, {intersectionPoint.Y:F6}, {intersectionPoint.Z:F6})");
+                }
 
                 // ✅ TIMING: Track element key extraction
                 // var swKeys = System.Diagnostics.Stopwatch.StartNew();

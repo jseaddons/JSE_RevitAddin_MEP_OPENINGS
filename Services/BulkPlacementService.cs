@@ -29,13 +29,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     /// <summary>
     /// PURE REVIT API SERVICE: Handles batch placement of families.
     /// Does NOT interact with the database or XML files.
+    /// 
+    /// ✅ SIMPLIFIED: Uses plan.PlacementPoint directly from ParallelSleevePlacementPlanner.
+    /// The planner calculates all placement points including damper offsets and rounding.
     /// </summary>
     public class BulkPlacementService : IBulkPlacementService
     {
         private readonly Action<string>? _logger;
         private readonly SleeveParameterService _parameterService;
         private readonly JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IPerformanceMonitor? _performanceMonitor;
-
+        
         public BulkPlacementService(
             Document doc, 
             Action<string>? logger = null,
@@ -68,11 +71,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     _logger?.Invoke($"[BulkPlacement] Activated {symbolCache.Count} unique symbols");
                 }
 
-                // Step 2: Build Creation Data (with safety dedupe by location to avoid Revit "identical instances in the same place" warning)
+                // Step 2: Build Creation Data (with safety dedupe by location)
                 var creationDataList = new List<Autodesk.Revit.Creation.FamilyInstanceCreationData>();
                 var itemMap = new List<(ClashZone Zone, SleevePlacementPlanningDto Plan)>();
 
-                const double locationToleranceFt = 0.00656; // ~2mm - same as orchestrator
+                const double locationToleranceFt = 0.00656; // ~2mm
                 double RoundLoc(double v) => Math.Round(v / locationToleranceFt) * locationToleranceFt;
                 var seenLocations = new HashSet<(string fam, double x, double y, double z)>();
 
@@ -87,13 +90,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                         if (symbolCache.TryGetValue(plan.SleeveFamilyName, out var symbol))
                         {
-                            // ✅ UNIFIED ARCHITECTURE: Use planned placement point
-                            XYZ point = plan.PlacementPoint ?? new XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ);
+                            // ✅ SIMPLIFIED: Use plan.PlacementPoint directly!
+                            // ParallelSleevePlacementPlanner calculates the correct point including:
+                            // - Damper connector-side offset: (MEP Clearance - Other Clearance) / 2 = 25mm for 100/50
+                            // - Wall centerline adjustment
+                            // - All other adjustments
+                            XYZ point = plan.PlacementPoint;
+                            
+                            // Fallback only if PlacementPoint is null (should not happen with proper planning)
+                            if (point == null)
+                            {
+                                point = new XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ);
+                                _logger?.Invoke($"[BulkPlacement] ⚠️ WARNING: plan.PlacementPoint was null for zone {zone.Id}, using intersection point");
+                            }
 
                             var key = (plan.SleeveFamilyName ?? zone.SleeveFamilyName ?? "", RoundLoc(point.X), RoundLoc(point.Y), RoundLoc(point.Z));
                             if (seenLocations.Contains(key))
                             {
-                                // Skip second (or more) at same location - prevents "identical instances in the same place" / double Family2 warning
                                 if (!DeploymentConfiguration.DeploymentMode)
                                     _logger?.Invoke($"[BulkPlacement] Skipped duplicate location for zone {zone.Id} at ({point.X:F4}, {point.Y:F4}, {point.Z:F4})");
                                 continue;
@@ -122,9 +135,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         createdIds = doc.Create.NewFamilyInstances2(creationDataList);
                         
-                        // ✅ DIAGNOSTIC: Log actual Revit creation count (User Request)
                         var idListDiag = createdIds.ToList();
-                        SafeFileLogger.SafeAppendTextAlways("placement_debug.log", 
+                        SafeFileLogger.SafeAppendText("placement_debug.log", 
                             $"[{DateTime.Now:HH:mm:ss}] [BULK-PLACEMENT-RESULT] createdIds.Count = {idListDiag.Count}\n");
                     }
                     var idList = createdIds.ToList();
@@ -141,13 +153,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                             if (instance != null)
                             {
-                                // ✅ UNIFIED ARCHITECTURE: Use planned rotation
                                 ApplyRotation(doc, instance, item.Plan.RotationRadians);
                                 
-                                // ✅ UNIFIED ARCHITECTURE: Use planned dimensions
+                                // ✅ SIMPLIFIED: Use plan dimensions directly (already rounded by planner)
                                 SetSleeveParameters(instance, item.Zone, item.Plan);
 
-                                // ✅ DUPLICATE FIX: Set parameter on REVIT ELEMENT so it's recognized in future runs
                                 _parameterService.SetSleeveInstanceId(instance, elementId.IntegerValue); 
                                 
                                 item.Zone.SleeveInstanceId = elementId.IntegerValue;
@@ -162,10 +172,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                         }
                     }
-                    
-                    // ✅ CRITICAL FIX: Removed FlushDeferredParameters from here.
-                    // This is now decoupled and called from the orchestrator in a separate transaction
-                    // after Transaction 1 (Placement) is committed and the document is regenerated.
 
                     result.OverallSuccess = true;
                     result.ElapsedTime = DateTime.Now - startTime;
@@ -228,22 +234,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                        // ✅ UNIFIED ARCHITECTURE: Apply all parameters using the main service method
-                // This ensures Elevation, Bottom of Opening, Schedule Level, and MEP Metadata are all set correctly.
+                // ✅ SIMPLIFIED: Use plan dimensions directly!
+                // ParallelSleevePlacementPlanner already calculates correct dimensions with:
+                // - Asymmetric clearance for dampers (MEP + Other clearance)
+                // - Rounding applied (OpeningSettingsHelper.RoundDimensionsToNearest5mm)
+                double width = plan.TargetWidthFt;
+                double height = plan.TargetHeightFt;
+
+                // Update zone for DB persistence
+                if (zone != null)
+                {
+                    zone.SleeveWidth = width;
+                    zone.SleeveHeight = height;
+                }
+
                 _parameterService.SetSleeveParameters(
                     instance, 
-                    plan.TargetWidthFt, 
-                    plan.TargetHeightFt, 
+                    width, 
+                    height, 
                     plan.TargetDiameterFt, 
                     plan.IsCircular, 
                     zone,
                     plan.RequiredDepthFt);
                 
-                _logger?.Invoke($"[BulkPlacement] Set parameters for {instance.Id}: W={plan.TargetWidthFt*304.8:F0}mm, H={plan.TargetHeightFt*304.8:F0}mm, Circ={plan.IsCircular}, ID={instance.Id}");
+                _logger?.Invoke($"[BulkPlacement] Set parameters for {instance.Id}: W={width*304.8:F0}mm, H={height*304.8:F0}mm, Circ={plan.IsCircular}");
             }
             catch (Exception ex)
             {
-                _logger?.Invoke($"[BulkPlacement] Failed to set parameters for zone {zone.Id}: {ex.Message}");
+                _logger?.Invoke($"[BulkPlacement] Failed to set parameters for zone {zone?.Id}: {ex.Message}");
             }
         }
 
@@ -265,10 +283,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var element = doc.GetElement(elementId);
                     if (element == null) continue;
 
-                    // Update from actual element geometry
                     UpdateZoneGeometry(zone, element);
                     
-                    // Log success for verification
                     _logger?.Invoke($"[BulkPlacement] Updated Zone {zone.Id} from Element {element.Id}: W={zone.SleeveWidth:F3}, H={zone.SleeveHeight:F3}, Pt={zone.SleevePlacementPoint}");
                 }
                 catch (Exception ex)
@@ -283,10 +299,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var bbox = element.get_BoundingBox(null);
             if (bbox != null)
             {
-                // 1. Calculate Center from BBox
                 var center = (bbox.Min + bbox.Max) * 0.5;
                 
-                // Update Placement Points (Both Standard and Active)
                 zone.SleevePlacementPointX = center.X;
                 zone.SleevePlacementPointY = center.Y;
                 zone.SleevePlacementPointZ = center.Z;
@@ -298,28 +312,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 zone.SleevePlacementPoint = center;
                 zone.SleevePlacementPointActiveDocument = center;
 
-                // 2. Update Dimensions (Approximate from BBox for verification)
-                // Note: We trust the Parameters more for Width/Height, but BBox gives physical extent
                 double width = bbox.Max.X - bbox.Min.X;
                 double height = bbox.Max.Y - bbox.Min.Y; 
-                double depth = bbox.Max.Z - bbox.Min.Z;
-
-                // Simple heuristic: if it looks rotated 90 degrees, swap X/Y dimensions
-                // But generally, we stick to the parameter values we just set.
-                // However, the user REQUESTED extraction.
-                // Let's trust the parameters we set (which matched the plan) for "SleeveWidth/Height" 
-                // as BBox includes flanges/connectors/rotation which might be confusing.
-                // BUT, we MUST update the location.
-                
-                // User said: "SLEEVE DIMENSION AND PALCMENT POINT ALSO NEED TO BE EXTRACTED"
-                // If we extract BBox Dims, we might get weird values if rotated.
-                // Let's stick to Placement Point for now, and rely on the mapped Plan dimensions for W/H 
-                // UNLESS they are zero.
                 
                 if (zone.SleeveWidth <= 0) zone.SleeveWidth = width;
                 if (zone.SleeveHeight <= 0) zone.SleeveHeight = height;
 
-                // 2b. Extract Bounding Box for Persistence (User Request)
                 zone.BoundingBoxMinX = bbox.Min.X;
                 zone.BoundingBoxMinY = bbox.Min.Y;
                 zone.BoundingBoxMinZ = bbox.Min.Z;
@@ -327,23 +325,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 zone.BoundingBoxMaxY = bbox.Max.Y;
                 zone.BoundingBoxMaxZ = bbox.Max.Z;
 
-                // 2c. Extract Rotation & RCS (Rotated Coordinate System)
-                // Critical for Floor Clusters to avoid "Oversized" Axis-Aligned BBox
                 if (element is FamilyInstance fi)
                 {
                     Transform t = fi.GetTransform();
-                    // Rotation angle around Z axis (BasisX angle to Global X)
                     double rotation = t.BasisX.AngleTo(XYZ.BasisX);
-                    // Check sign
                     if (t.BasisX.Y < 0) rotation = -rotation;
 
                     zone.CalculatedRotation = rotation;
                     zone.MepRotationCos = Math.Cos(rotation);
                     zone.MepRotationSin = Math.Sin(rotation);
 
-                    // Extract Dimensions in LOCAL space (Geometry BBox is usually AABB)
-                    // Synthesize RCS from Dimensions (assuming centered)
-                    // This gives the "Tight" local bounding box
                     double halfW = zone.SleeveWidth / 2.0;
                     double halfH = zone.SleeveHeight / 2.0;
                     double halfD = (zone.SleeveDepth > 0 ? zone.SleeveDepth : (bbox.Max.Z - bbox.Min.Z)) / 2.0;
@@ -355,24 +346,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     zone.RotatedBoundingBoxMaxY = halfH;
                     zone.RotatedBoundingBoxMaxZ = halfD;
 
-                    // ✅ ADDED: Calculate Corners (OBB) for Clustering Accuracy
-                    // The clustering service prioritizes corners. We calculate them from the Transform + Dimensions
-                    // to ensure "Tight" fit matching the OBB, not the AABB.
-                    
-                    // Local corners (bottom face usually, or center-Z plane)
-                    // Converting to Global using Transform
-                    XYZ centerLoc = XYZ.Zero; // Local center
-                    
-                    // We need to respect the element's placement point (often center)
-                    // The Transform origin is the placement point.
-                    
-                    // C1: Min X, Min Y
                     XYZ p1Local = new XYZ(-halfW, -halfH, 0); 
-                    // C2: Max X, Min Y
                     XYZ p2Local = new XYZ(halfW, -halfH, 0);
-                    // C3: Max X, Max Y
                     XYZ p3Local = new XYZ(halfW, halfH, 0);
-                    // C4: Min X, Max Y
                     XYZ p4Local = new XYZ(-halfW, halfH, 0);
 
                     XYZ p1Global = t.OfPoint(p1Local);
@@ -398,15 +374,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 else
                 {
-                    // Fallback for non-FamilyInstances (unexpected) -> Use BBox Corners
                     zone.RotatedBoundingBoxMinX = bbox.Min.X - zone.SleevePlacementPointX;
                     zone.RotatedBoundingBoxMaxX = bbox.Max.X - zone.SleevePlacementPointX;
-                    // ... (simplified)
                 }
 
-
-
-                // 3. Ensure SleeveInstanceId is set (redundant check)
                 if (zone.SleeveInstanceId == 0) zone.SleeveInstanceId = element.Id.IntegerValue;
             }
         }

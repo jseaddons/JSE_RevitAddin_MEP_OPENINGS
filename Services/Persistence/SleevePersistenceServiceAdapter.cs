@@ -104,7 +104,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                     zone.SleeveInstanceId = instance.Id.IntegerValue;
                     zone.IsResolved = true;
                     
-                    // Update database using existing repository
+                    // Update database using existing repository (intersection point is no longer touched in repository)
                     _repository.UpdateSleevePlacement(
                         zone.Id,
                         zone.SleeveInstanceId,

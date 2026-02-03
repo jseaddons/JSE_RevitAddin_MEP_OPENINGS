@@ -679,9 +679,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                     clashZone.ClearanceTop = otherClearance;
                     clashZone.ClearanceBottom = otherClearance;
                     
-                    // ✅ OOP METHOD: Use sizing service for symmetric clearance case (SOLID principles)
-                    (double finalW, double finalH, _) = _sizingService.CalculateFinalDimensionsFromClashZone(
-                        damperWidth, damperHeight, 0, clashZone, otherClearance);
+                    // ✅ OOP METHOD: Use sizing service with rounding (RoundAlwaysUp, RoundingValue) for symmetric clearance case
+                    var settings = JSE_RevitAddin_MEP_OPENINGS.Services.ApplicationProfileService.Instance.GetCurrentSettings();
+                    (double finalW, double finalH, _) = _sizingService.CalculateFinalDimensionsFromClashZoneRounded(
+                        damperWidth, damperHeight, 0, clashZone, otherClearance, settings.RoundingValue, settings.RoundAlwaysUp);
                     double finalWidth = finalW;
                     double finalHeight = finalH;
                     
