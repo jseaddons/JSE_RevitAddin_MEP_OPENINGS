@@ -212,6 +212,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             try
             {
                 SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🚀 ORCHESTRATOR V2 START: Category={targetCategory}, Zones={clashZones.Count}, Mode={(useSingleTransaction ? "Bulk" : "Sequential")}, SkipPlacement={skipPlacement}, doc.IsModifiable={doc.IsModifiable}\n");
+                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] [BATCH FLOW] category={targetCategory} | STEP 1 INPUT: zones={clashZones?.Count ?? 0}\n");
+                if (clashZones != null && clashZones.Count > 0)
+                {
+                    for (int i = 0; i < Math.Min(3, clashZones.Count); i++)
+                    {
+                        var z = clashZones[i];
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] [BATCH FLOW]   zone[{i}]: SleeveId={z.SleeveInstanceId}, IsClusterResolved={z.IsClusterResolved}, MarkedForClusterProcess={z.MarkedForClusterProcess?.ToString() ?? "NULL"}\n");
+                    }
+                    foreach (var z in clashZones)
+                    {
+                        if (OptimizationFlags.ShouldTraceSleeve(z.SleeveInstanceId))
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] [TRACE SLEEVE] SleeveId={z.SleeveInstanceId} in clustering input: Category={targetCategory}, Guid={z.Id}, IsClusterResolved={z.IsClusterResolved}, MarkedForClusterProcess={z.MarkedForClusterProcess}\n");
+                            SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] [TRACE SLEEVE] {z.SleeveInstanceId} in input for {targetCategory}\n");
+                        }
+                    }
+                }
 
                 // ✅ CRITICAL: Populate ClashZone cache BEFORE calculation so ClusterRotationService can look up by SleeveInstanceId
                 // Required for Wall/Framing detection, correct dimensions (Width/Height), and orientation
@@ -222,6 +239,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🟡 BEFORE CalculateAndSave...\n");
                 string batchId = _batchCalculationService.CalculateAndSave(clashZones, targetCategory, comboId, filterId, doc);
                 SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🟢 AFTER CalculateAndSave, batchId={batchId}\n");
+                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] [BATCH FLOW] category={targetCategory} | STEP 2: CalculateAndSave done, batchId={batchId}\n");
 
                 // Phase 2: Placement (Sequential / Bulk Transaction) - SKIP if consolidating
                 if (!skipPlacement)
@@ -229,11 +247,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🟡 BEFORE PlaceFromDatabase, doc.IsModifiable={doc.IsModifiable}...\n");
                     var result = _batchPlacementService.PlaceFromDatabase(doc, batchId, useSingleTransaction);
                     SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🟢 AFTER PlaceFromDatabase, placed={result.placed}, failed={result.failed}\n");
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] [BATCH FLOW] category={targetCategory} | STEP 3: PlaceFromDatabase done. placed={result.placed}, failed={result.failed}\n");
                     return result;
                 }
                 else
                 {
                     SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ⏭️ SKIPPING placement (will be consolidated for all categories)\n");
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] [BATCH FLOW] category={targetCategory} | STEP 3: skipped (consolidated placement)\n");
                     return (0, 0); // Return 0,0 to indicate calculation only
                 }
             }
@@ -575,47 +595,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     }
 
                     SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 FILTERING: {withSleeveId.Count} zones with SleeveInstanceId > 0\n");
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] [FLOW] STEP 1: allClashZones={allClashZones?.Count ?? 0} | STEP 2: withSleeveId={withSleeveId.Count} (SleeveInstanceId>0)\n");
 
                     // Filter by not cluster resolved
                     var notClusterResolved = withSleeveId.Where(cz => !cz.IsClusterResolved).ToList();
                     SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🔍 FILTERING: {notClusterResolved.Count} zones not cluster resolved (or reset for re-clustering)\n");
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] [FLOW] STEP 3: notClusterResolved={notClusterResolved.Count} (!IsClusterResolved)\n");
 
+                    // ✅ Include zones where MarkedForClusterProcess is TRUE or NULL (only exclude explicitly FALSE).
+                    // This allows dampers / Duct Accessories (and any zone never explicitly set) to be clustered.
                     filteredClashZones = notClusterResolved
                         .Where(cz => (string.IsNullOrEmpty(targetCategory) || string.Equals(cz.MepElementCategory, targetCategory, StringComparison.OrdinalIgnoreCase)) 
-                                      && (cz.MarkedForClusterProcess.GetValueOrDefault() == true)) // ✅ CRITICAL FIX: Explicitly handle nullable bool
+                                      && (cz.MarkedForClusterProcess != false)) // Include true and null; exclude only explicit false
                         .ToList();
+                    
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] [FLOW] STEP 4: filteredClashZones={filteredClashZones.Count} (category='{targetCategory}', MarkedForClusterProcess!=false). Dropped={notClusterResolved.Count - filteredClashZones.Count}\n");
                     
                     if (notClusterResolved.Count > filteredClashZones.Count)
                     {
                         var diffCount = notClusterResolved.Count - filteredClashZones.Count;
                         SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ FILTERED OUT {diffCount} zones because MarkedForClusterProcess=FALSE/NULL\n");
+                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ FILTERED OUT {diffCount} zones because MarkedForClusterProcess=FALSE (explicit)\n");
                         
-                        // Log a sample of filtered out zones to prove why
-                        var sampleFiltered = notClusterResolved.Where(cz => cz.MarkedForClusterProcess.GetValueOrDefault() != true).Take(5).ToList();
+                        var sampleFiltered = notClusterResolved.Where(cz => cz.MarkedForClusterProcess == false).Take(5).ToList();
                         foreach(var s in sampleFiltered)
                         {
                              SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                                 $"[{DateTime.Now:HH:mm:ss}]    ↳ Filtered Out Zone {s.Id}: MarkedForClusterProcess={s.MarkedForClusterProcess?.ToString() ?? "NULL"}\n");
+                                 $"[{DateTime.Now:HH:mm:ss}]    ↳ Filtered Out Zone {s.Id}: MarkedForClusterProcess=False\n");
                         }
                     }
                     else
                     {
                         SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                             $"[{DateTime.Now:HH:mm:ss}] ✅ All {filteredClashZones.Count} zones are MarkedForClusterProcess=TRUE\n");
+                             $"[{DateTime.Now:HH:mm:ss}] ✅ All {filteredClashZones.Count} zones eligible for clustering (MarkedForClusterProcess != false)\n");
                     }
                     
                     // ✅ AGGRO LOGGING: Detailed breakdown of MarkedForClusterProcess states
                     var total = notClusterResolved.Count;
-                    var markedTrue = notClusterResolved.Count(cz => cz.MarkedForClusterProcess.GetValueOrDefault() == true);
-                    var markedFalse = notClusterResolved.Count(cz => cz.MarkedForClusterProcess.GetValueOrDefault() == false);
+                    var markedTrue = notClusterResolved.Count(cz => cz.MarkedForClusterProcess == true);
+                    var markedFalse = notClusterResolved.Count(cz => cz.MarkedForClusterProcess == false);
                     var markedNull = notClusterResolved.Count(cz => !cz.MarkedForClusterProcess.HasValue);
                     SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss}] 📊 POPULATION CHECK: Total={total}, True={markedTrue}, False={markedFalse}, Null={markedNull}\n");
+                        $"[{DateTime.Now:HH:mm:ss}] 📊 POPULATION CHECK: Total={total}, True={markedTrue}, False={markedFalse}, Null={markedNull} (NULL/True included for clustering)\n");
                     if (markedNull > 0)
                     {
                          SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] 🚨 WARNING: Found {markedNull} zones with NULL MarkedForClusterProcess. These should have been fixed by BulkUpdate!\n");
+                            $"[{DateTime.Now:HH:mm:ss}] ℹ️ {markedNull} zones with NULL MarkedForClusterProcess included for clustering (e.g. Duct Accessories/dampers).\n");
                     }
 
                     filterTracker.SetItemCount(filteredClashZones.Count);
@@ -712,6 +737,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     {
                         string logPath = SafeFileLogger.GetLogFilePath("cluster_debug.log");
                         File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ EXIT: No sleeves to cluster after filtering - RETURNING (0, 0)\n");
+                        File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] [FLOW] EXIT: filteredClashZones=0 (check STEP 1-4 above for category='{targetCategory}')\n");
                     }
                     catch { }
                     SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ❌ EXIT: No sleeves to cluster after filtering\n");
@@ -740,6 +766,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     // ✅ STEP 7: Prepare sleeve data (create dynamic objects with ClashZone references)
                     rawSleeves = PrepareSleeveData(filteredClashZones, allClashZones);
                     SafeFileLogger.SafeAppendText("cluster_debug.log", $"Prepared {rawSleeves?.Count ?? 0} sleeve data objects\n");
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] [FLOW] STEP 5: rawSleeves={rawSleeves?.Count ?? 0} (after PrepareSleeveData; skipped if bbox null)\n");
                     prepareTracker.SetItemCount(rawSleeves?.Count ?? 0);
                 }
 
@@ -773,6 +800,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         );
                     }).ToArray();
                     groupTracker.SetItemCount(sleeveGroups.Length);
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] [FLOW] STEP 6: sleeveGroups={sleeveGroups.Length} (Host/Category/Orientation/bucket)\n");
                 }
 
                 // ✅ STEP 9: Start timeout protection (Phase 10: Timeout Service)
@@ -884,6 +912,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     int totalClusters = clustersByGroup?.Sum(g => g.Value?.Count ?? 0) ?? 0;
                     int totalClustersWithMultipleSleeves = clustersByGroup?.Sum(g => g.Value?.Count(c => c.Count > 1) ?? 0) ?? 0;
                     SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅ CLUSTERING: Formed {clustersByGroup?.Count ?? 0} cluster groups, {totalClusters} total clusters, {totalClustersWithMultipleSleeves} clusters with >1 sleeve\n");
+                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] [FLOW] STEP 7: clusters (after validation): total={totalClusters}, multi-sleeve (placeable)={totalClustersWithMultipleSleeves}\n");
                     formTracker.SetItemCount(totalClusters);
 
                     // ✅ Mark zones in multi-sleeve clusters with MarkedForClusterProcess = true
@@ -1611,6 +1640,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         catch { }
                         SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] \n========== REFACTORED CLUSTER SERVICE COMPLETED ==========\n");
                         SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅ Placed {placedCount} clusters, Deleted {deletedCount} individual sleeves\n");
+                        SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] [FLOW] STEP 8: placement done. placed={placedCount}, deleted={deletedCount}\n");
 
                         // ✅ DIAGNOSTIC: Verify sleeves are visible in Revit after placement
                         if (placedClusters.Count > 0)
@@ -1828,7 +1858,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         ClashZone = cz,
                         // ✅ FIX: Populate properties expected by ProximityCheckerFactory
                         SystemType = cz.MepElementCategory, 
-                        IsCircular = !string.IsNullOrEmpty(cz.DuctShape) && (cz.DuctShape.IndexOf("Round", StringComparison.OrdinalIgnoreCase) >= 0 || cz.DuctShape.IndexOf("Circular", StringComparison.OrdinalIgnoreCase) >= 0) || (cz.MepElementCategory != null && cz.MepElementCategory.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0)
+                        IsCircular = (!string.IsNullOrEmpty(cz.DuctShape) && (cz.DuctShape.IndexOf("Round", StringComparison.OrdinalIgnoreCase) >= 0 || cz.DuctShape.IndexOf("Circular", StringComparison.OrdinalIgnoreCase) >= 0))
+                            || (cz.MepElementCategory != null && cz.MepElementCategory.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0)
+                            || (cz.MepElementCategory != null && cz.MepElementCategory.IndexOf("Duct", StringComparison.OrdinalIgnoreCase) >= 0 && (cz.SleeveDiameter > 0 || (cz.CalculatedSleeveDiameter > 0)))
                     };
                     
                     rawSleeves.Add(sleeveData);
@@ -4180,6 +4212,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             Enabled = true
                         };
                     }
+                }
+
+                // ✅ FALLBACK 2: Round ducts with rectangular sleeves may have no corners in DB but have width/height and intersection — build bbox for clustering
+                double ix = cz.IntersectionPointX;
+                double iy = cz.IntersectionPointY;
+                double iz = cz.IntersectionPointZ;
+                bool hasIntersection = (ix != 0 || iy != 0 || iz != 0) && !double.IsNaN(ix) && !double.IsInfinity(ix);
+                double w = cz.CalculatedSleeveWidth > 0 ? cz.CalculatedSleeveWidth : cz.SleeveWidth;
+                double h = cz.CalculatedSleeveHeight > 0 ? cz.CalculatedSleeveHeight : cz.SleeveHeight;
+                if (hasIntersection && w > 0 && h > 0)
+                {
+                    double halfW = w / 2.0;
+                    double halfH = h / 2.0;
+                    string orientation = (cz.HostOrientation ?? "").ToUpper();
+                    if (orientation.Contains("X"))
+                    {
+                        // X-wall: extent in X and Z
+                        return new BoundingBoxXYZ
+                        {
+                            Min = new XYZ(ix - halfW, iy, iz - halfH),
+                            Max = new XYZ(ix + halfW, iy, iz + halfH),
+                            Enabled = true
+                        };
+                    }
+                    if (orientation.Contains("Y"))
+                    {
+                        // Y-wall: extent in Y and Z
+                        return new BoundingBoxXYZ
+                        {
+                            Min = new XYZ(ix, iy - halfW, iz - halfH),
+                            Max = new XYZ(ix, iy + halfW, iz + halfH),
+                            Enabled = true
+                        };
+                    }
+                    // Floor or unknown: extent in X and Y
+                    return new BoundingBoxXYZ
+                    {
+                        Min = new XYZ(ix - halfW, iy - halfH, iz),
+                        Max = new XYZ(ix + halfW, iy + halfH, iz),
+                        Enabled = true
+                    };
                 }
                 
                 return null;

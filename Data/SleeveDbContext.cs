@@ -1213,6 +1213,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
             AddColumnIfMissing("ClusterSleeves", "MepSystemNames", "TEXT", transaction);
             AddColumnIfMissing("ClusterSleeves", "MepServiceTypes", "TEXT", transaction); // ✅ ADDED: MepServiceTypes
             AddColumnIfMissing("ClusterSleeves", "MepElementIds", "TEXT", transaction);
+            AddColumnIfMissing("ClusterSleeves", "SleeveFamilyName", "TEXT", transaction);
             
             // ✅ MIGRATION: Add Corner columns if they don't exist (Phase 3 Persistence)
             AddColumnIfMissing("ClusterSleeves", "Corner1X", "REAL DEFAULT 0.0", transaction);

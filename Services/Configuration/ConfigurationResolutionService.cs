@@ -12,7 +12,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Configuration
     /// </summary>
     public class ConfigurationResolutionService
     {
-        private static ConfigurationResolutionService _instance;
+        private static ConfigurationResolutionService? _instance;
         private static readonly object _lock = new object();
         
         private readonly GlobalConfigurationService _globalConfigService;
@@ -62,13 +62,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Configuration
 
                 if (isCircularElement)
                 {
-                    // CRITICAL FIX: Round elements intersecting structural framing should ALWAYS be circular
-                    if (hostType != null && (hostType.Contains("Structural Framing", StringComparison.OrdinalIgnoreCase) || 
-                                           hostType.Contains("Framing", StringComparison.OrdinalIgnoreCase)))
-                    {
-                        DebugLogger.Info($"[ConfigResolution] {category} intersecting {hostType} → Circular (structural framing rule overrides size threshold)");
-                        return "Circular"; // Always circular for structural framing intersections
-                    }
+                    /* 
+                     * CRITICAL REMOVAL: 
+                     * Previously, structural framing was forced to "Circular" here.
+                     * Per user request, it should follow the same 200mm threshold as walls.
+                     */
                     
                     var processingLimits = _globalConfigService.GetProcessingLimits();
                     var diameterThreshold = processingLimits.RoundOpeningsBecomeRectangularIfDiameterGreaterThan; // 200mm
@@ -207,7 +205,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Configuration
             return new ResolvedConfiguration
             {
                 Category = category,
-                OpeningType = ResolveOpeningType(category, elementProps, uiPreferences.OpeningType, hostType),
+                OpeningType = ResolveOpeningType(category, elementProps, uiPreferences.OpeningType, hostType, uiPreferences.Clearance),
                 Clearance = ResolveClearance(category, uiPreferences.Clearance),
                 ShouldProcess = ShouldProcessElement(category, elementProps),
                 ElementProperties = elementProps,
@@ -226,7 +224,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Configuration
         public double Width { get; set; }
         public double Height { get; set; }
         public double Angle { get; set; }
-        public string Shape { get; set; }
+        public string Shape { get; set; } = string.Empty;
         public bool IsInsulated { get; set; }
         public double InsulationThickness { get; set; }
     }
@@ -236,9 +234,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Configuration
     /// </summary>
     public class UIUserPreferences
     {
-        public string OpeningType { get; set; }
+        public string OpeningType { get; set; } = string.Empty;
         public double Clearance { get; set; }
-        public Dictionary<string, double> CategorySpecificClearances { get; set; }
+        public Dictionary<string, double> CategorySpecificClearances { get; set; } = new Dictionary<string, double>();
     }
     
     /// <summary>
@@ -246,12 +244,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Configuration
     /// </summary>
     public class ResolvedConfiguration
     {
-        public string Category { get; set; }
-        public string OpeningType { get; set; }
+        public string Category { get; set; } = string.Empty;
+        public string OpeningType { get; set; } = string.Empty;
         public double Clearance { get; set; }
         public bool ShouldProcess { get; set; }
-        public ElementProperties ElementProperties { get; set; }
-        public UIUserPreferences UIPreferences { get; set; }
+        public ElementProperties ElementProperties { get; set; } = null!;
+        public UIUserPreferences UIPreferences { get; set; } = null!;
         public DateTime ResolutionTimestamp { get; set; }
         
         public override string ToString()

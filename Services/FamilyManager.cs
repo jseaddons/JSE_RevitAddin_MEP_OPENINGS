@@ -29,11 +29,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static string SelectUniversalFamily(string hostType, string mepShape)
         {
-            bool isWall = hostType.IndexOf("Wall", StringComparison.OrdinalIgnoreCase) >= 0;
+            // Treat Structural Framing the same as Walls for opening families.
+            // For both Walls and Structural Framing we want vertical-host openings (OnWall),
+            // and only use slab openings for floors/slabs.
+            bool isWallLikeHost =
+                hostType.IndexOf("Wall", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                hostType.IndexOf("Framing", StringComparison.OrdinalIgnoreCase) >= 0;
+
             bool isRound = mepShape.IndexOf("Round", StringComparison.OrdinalIgnoreCase) >= 0 || 
                           mepShape.IndexOf("Circular", StringComparison.OrdinalIgnoreCase) >= 0;
 
-            if (isWall)
+            if (isWallLikeHost)
             {
                 return isRound ? "CircularOpeningOnWall" : "RectangularOpeningOnWall";
             }

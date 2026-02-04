@@ -41,7 +41,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 _logger($"[SessionContext] 0. Cleared ReadyForPlacement for {resetReady} zones in selected scope.");
             }
 
-            // STEP 1: RESET
+            // STEP 1: RESET — all zones (flag management independent of filters; e.g. Electrical can have Ducts)
             _logger("[SessionContext] 1. Resetting IsCurrentClashFlag for all zones...");
             _repository.ResetIsCurrentClashFlag();
 
@@ -57,10 +57,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                  _logger("[SessionContext] ⚠️ No Section Box active. IsCurrentClashFlag will be 0 for all zones (Safety Default).");
             }
 
-            // STEP 3: SET READY (Current + Unresolved)
+            // STEP 3: SET READY (Current + Unresolved) — flag management independent of filters
             _logger("[SessionContext] 3. Setting ReadyForPlacement for Unresolved Current zones...");
-            int readyCount = _repository.SetReadyForPlacementForUnresolvedZonesInSectionBox(null, null, null); 
-            // Note: We pass nulls because the repository method now relies purely on IsCurrentClashFlag=1
+            int readyCount = _repository.SetReadyForPlacementForUnresolvedZonesInSectionBox(null, null, null);
             
             _logger($"[SessionContext]    -> Marked {readyCount} zones as Ready for Placement.");
             return readyCount;

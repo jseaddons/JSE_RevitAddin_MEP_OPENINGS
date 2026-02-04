@@ -816,6 +816,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                     SleeveCorner4X = @C4X, SleeveCorner4Y = @C4Y, SleeveCorner4Z = @C4Z,
                                     PlacedAt = CURRENT_TIMESTAMP,
                                     PlacementStatus = 'Placed',
+                                    SleeveInstanceId = -1,
                                     ClusterInstanceId = @ClusterInstanceId,
                                     IsClusterResolvedFlag = 1,
                                     SleeveState = 2,
@@ -1124,15 +1125,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     }
                 }
 
-                // B. Determine Level
-                Element host = null;
-                Level level = null;
-                if (cluster.HostElementId > 0)
-                {
-                    try { host = doc.GetElement(new ElementId((int)cluster.HostElementId)); } catch { }
-                    if (host != null) level = doc.GetElement(host.LevelId) as Level;
-                }
-                if (level == null) level = new FilteredElementCollector(doc).OfClass(typeof(Level)).FirstOrDefault() as Level;
+                // B. Determine Level (Not used for placement, but kept for cache/context if needed)
+                Level level = new FilteredElementCollector(doc).OfClass(typeof(Level)).FirstOrDefault() as Level;
 
                 // C. Create Instance
                 XYZ location = new XYZ(cluster.PlacementX, cluster.PlacementY, cluster.PlacementZ);
@@ -1189,8 +1183,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
                 using (parentTracker != null ? parentTracker.TrackSubOperation("Revit Create Cluster Instance") : _performanceMonitor?.TrackOperation("Revit Create Cluster Instance"))
                 {
-                    if (host != null) instance = doc.Create.NewFamilyInstance(location, symbol, host, level, structuralType);
-                    else instance = doc.Create.NewFamilyInstance(location, symbol, structuralType);
+                    instance = doc.Create.NewFamilyInstance(location, symbol, structuralType);
                 }
 
                 if (instance != null)
@@ -1259,6 +1252,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             
                             // ✅ NEW: Set Cluster Sleeve Instance ID (Explicit Parameter)
                             _parameterService.SetClusterSleeveInstanceId(instance, clusterInstanceId);
+                            // ✅ Cluster sleeves: SleeveInstanceId parameter on Revit element = -1 (not an individual)
+                            _parameterService.SetSleeveInstanceId(instance, -1);
                         }
                         catch (Exception ex)
                         {
@@ -1459,43 +1454,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     continue;
                 }
                 
-                // ✅ DEDUPLICATION: Check if cluster already exists at this location (when DB is not cleared)
-                var existingClusters = new FilteredElementCollector(doc)
-                    .OfClass(typeof(FamilyInstance))
-                    .Cast<FamilyInstance>()
-                    .Where(fi => 
-                        fi.Symbol?.Family?.Name == cluster.FamilyName &&
-                        fi.Location is LocationPoint lp &&
-                        Math.Abs(lp.Point.X - location.X) < tolerance &&
-                        Math.Abs(lp.Point.Y - location.Y) < tolerance &&
-                        Math.Abs(lp.Point.Z - location.Z) < tolerance)
-                    .ToList();
-                
-                if (existingClusters.Any())
-                {
-                    skippedExistingCount++;
-                    var existingId = existingClusters.First().Id.IntegerValue;
-                    SafeFileLogger.SafeAppendText("batch_v2.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ SKIPPING CLUSTER - already exists at location: ClusterGUID={cluster.ClusterGUID}, ExistingId={existingId}, Location=({cluster.PlacementX:F6}, {cluster.PlacementY:F6}, {cluster.PlacementZ:F6})\n");
-                    continue;
-                }
-                
                 // Note: NewFamilyInstances2 doesn't always handle hosts perfectly for all family types,
                 // but we'll try to use the host and level if available.
-                Element host = null;
-                Level level = null;
-                if (cluster.HostElementId > 0)
-                {
-                    try { host = doc.GetElement(new ElementId((int)cluster.HostElementId)); } catch { }
-                    if (host != null) level = doc.GetElement(host.LevelId) as Level;
-                }
-                if (level == null) level = new FilteredElementCollector(doc).OfClass(typeof(Level)).FirstOrDefault() as Level;
-
-                Autodesk.Revit.Creation.FamilyInstanceCreationData data = null;
-                if (host != null && level != null)
-                    data = new Autodesk.Revit.Creation.FamilyInstanceCreationData(location, symbol, host, level, StructuralType.NonStructural);
-                else
-                    data = new Autodesk.Revit.Creation.FamilyInstanceCreationData(location, symbol, StructuralType.NonStructural);
+                Autodesk.Revit.Creation.FamilyInstanceCreationData data = new Autodesk.Revit.Creation.FamilyInstanceCreationData(location, symbol, StructuralType.NonStructural);
 
                     creationDataList.Add(data);
                     clusterMap.Add(cluster);
@@ -1648,6 +1609,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             isCircular ? (double?)null : cluster.ClusterDepth);
                         
                         _parameterService.SetClusterSleeveInstanceId(instance, clusterInstanceId);
+                        _parameterService.SetSleeveInstanceId(instance, -1);
                     }
                     catch (Exception ex)
                     {

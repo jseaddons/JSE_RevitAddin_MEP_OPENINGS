@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models;
@@ -219,6 +220,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                     _logger($"[CombinedSleevePlacement] ⚠️ Database save failed: {ex.Message}");
                     // Don't throw - Revit placement succeeded, database is secondary
                 }
+            }
+
+            // Step 3: OPTIONAL CLEANUP – remove constituent sleeves that are now covered by combined sleeves
+            // NOTE: This uses CombinedSleeveConstituents as the single source of truth, instead of
+            // geometric point-in-box checks. It is intentionally separate from cluster cleanup.
+            try
+            {
+                CleanupConstituentSleevesForCombined(placedCombinedSleeves);
+            }
+            catch (Exception ex)
+            {
+                _logger($"[CombinedSleevePlacement] ⚠️ Combined cleanup failed: {ex.Message}");
+                // Do not throw – placement and DB save already succeeded.
             }
             
             return placedCombinedSleeves;
@@ -575,6 +589,151 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
             }
             
             return combinedSleeve;
+        }
+
+        /// <summary>
+        /// Deletes constituent sleeves (individual + cluster) whose IDs are recorded in
+        /// CombinedSleeveConstituents for the given combined sleeves.
+        /// This mirrors cluster cleanup intent but uses explicit constituent mapping instead
+        /// of geometry-based point-in-box.
+        /// </summary>
+        /// <remarks>
+        /// - Only runs when OptimizationFlags.UseCombinedClustering is true.
+        /// - Never deletes the combined sleeves themselves – only their recorded constituents.
+        /// - Safe to call even if Constituents collection is empty or not loaded; it will
+        ///   re-read from the repository by CombinedSleeveId.
+        /// </remarks>
+        private void CleanupConstituentSleevesForCombined(List<CombinedSleeve> placedCombinedSleeves)
+        {
+            if (!OptimizationFlags.UseCombinedClustering)
+            {
+                _logger("[CombinedSleevePlacement] 🧹 Combined cleanup skipped (UseCombinedClustering=false)");
+                return;
+            }
+
+            if (placedCombinedSleeves == null || placedCombinedSleeves.Count == 0)
+            {
+                return;
+            }
+
+            // Collect all Revit element IDs to delete from constituents
+            var elementIdsToDelete = new HashSet<int>();
+            var individualClashZoneIds = new HashSet<int>();
+
+            foreach (var cs in placedCombinedSleeves)
+            {
+                if (cs == null) continue;
+
+                // Ensure we have constituen ts – reload from repo if needed
+                var constituents = cs.Constituents;
+                if (constituents == null || constituents.Count == 0)
+                {
+                    if (cs.CombinedSleeveId > 0)
+                    {
+                        constituents = _repository.GetConstituents(cs.CombinedSleeveId);
+                    }
+                }
+
+                if (constituents == null || constituents.Count == 0)
+                    continue;
+
+                foreach (var c in constituents)
+                {
+                    if (c == null) continue;
+
+                    // Individual sleeves: record ClashZoneIds – we'll resolve SleeveInstanceId via DB
+                    if (c.Type == ConstituentType.Individual && c.ClashZoneId.HasValue)
+                    {
+                        if (c.ClashZoneId.Value > 0)
+                        {
+                            individualClashZoneIds.Add(c.ClashZoneId.Value);
+                        }
+                    }
+
+                    // Cluster sleeves: we have ClusterInstanceId (Revit family instance id)
+                    if (c.Type == ConstituentType.Cluster && c.ClusterInstanceId.HasValue)
+                    {
+                        var id = c.ClusterInstanceId.Value;
+                        if (id > 0)
+                        {
+                            elementIdsToDelete.Add(id);
+                        }
+                    }
+                }
+            }
+
+            // Resolve individual ClashZoneIds -> SleeveInstanceId (Revit element ids)
+            if (individualClashZoneIds.Count > 0)
+            {
+                try
+                {
+                    using (var context = new SleeveDbContext(_doc))
+                    {
+                        using (var cmd = context.Connection.CreateCommand())
+                        {
+                            var idPlaceholders = string.Join(",", individualClashZoneIds.Select((_, i) => $"@cz{i}"));
+                            cmd.CommandText = $@"
+                                SELECT ClashZoneId, SleeveInstanceId 
+                                FROM ClashZones 
+                                WHERE SleeveInstanceId > 0 AND ClashZoneId IN ({idPlaceholders})";
+
+                            int idx = 0;
+                            foreach (var czId in individualClashZoneIds)
+                            {
+                                cmd.Parameters.AddWithValue($"@cz{idx++}", czId);
+                            }
+
+                            using (var reader = cmd.ExecuteReader())
+                            {
+                                while (reader.Read())
+                                {
+                                    int sleeveId = reader.GetInt32(reader.GetOrdinal("SleeveInstanceId"));
+                                    if (sleeveId > 0)
+                                    {
+                                        elementIdsToDelete.Add(sleeveId);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger($"[CombinedSleevePlacement] ⚠️ Failed to resolve individual constituents for cleanup: {ex.Message}");
+                }
+            }
+
+            if (elementIdsToDelete.Count == 0)
+            {
+                _logger("[CombinedSleevePlacement] 🧹 Combined cleanup: no constituent sleeves to delete");
+                return;
+            }
+
+            _logger($"[CombinedSleevePlacement] 🧹 Combined cleanup: deleting {elementIdsToDelete.Count} constituent sleeves");
+
+            using (var tx = new Transaction(_doc, "Combined Sleeves Cleanup"))
+            {
+                tx.Start();
+                try
+                {
+                    var revitIds = elementIdsToDelete
+                        .Where(id => id > 0)
+                        .Select(id => new ElementId(id))
+                        .ToList();
+
+                    if (revitIds.Count > 0)
+                    {
+                        _doc.Delete(revitIds);
+                    }
+
+                    tx.Commit();
+                }
+                catch (Exception ex)
+                {
+                    _logger($"[CombinedSleevePlacement] ⚠️ Combined cleanup transaction failed: {ex.Message}");
+                    tx.RollBack();
+                }
+            }
         }
         
         /// <summary>

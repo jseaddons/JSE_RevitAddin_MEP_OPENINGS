@@ -1192,17 +1192,26 @@ Refactoring Flags: SleeveRepository={UseNewSleeveRepository}, ZoneFilter={UseNew
         /// Fixes lateral shifts in rotated clusters and walls when sleeves are unbalanced.
         /// Default: false (safety flag per user request)
         /// </summary>
-        public static bool UseGeometricCenterForClustering { get; set; } = true;
+        public static bool UseGeometricCenterForClustering { get; set; } = false;
 
-        public static bool UseGeometricCenterForWalls { get; set; } = true;
-        public static bool UseGeometricCenterForFloors { get; set; } = true;
+        /// <summary>When false: use intersection centroid for wall cluster placement (e.g. 0.72). When true: use geometric center of corners (e.g. 1.05).</summary>
+        public static bool UseGeometricCenterForWalls { get; set; } = false;
+        public static bool UseGeometricCenterForFloors { get; set; } = false;
 
         /// <summary>
         /// Enable the post-placement clustering workflow (Phase 2-4).
         /// When false: Skips corner extraction and clustering, only places individual sleeves.
         /// Default: true
         /// </summary>
-        public static bool EnableClusteringWorkflow { get; set; } = false;
+        public static bool EnableClusteringWorkflow { get; set; } = true;
+
+        /// <summary>
+        /// Sleeve InstanceIds to trace in cluster_debug.log and batch_v2.log (e.g. 1436672, 1436679, 1436686).
+        /// When a zone or cluster contains one of these IDs, a dedicated [TRACE SLEEVE] line is written.
+        /// </summary>
+        public static readonly System.Collections.Generic.HashSet<int> TraceSleeveIds = new System.Collections.Generic.HashSet<int> { 1436672, 1436679, 1436686 };
+
+        public static bool ShouldTraceSleeve(int sleeveInstanceId) => sleeveInstanceId > 0 && TraceSleeveIds.Contains(sleeveInstanceId);
 
     }
 }

@@ -7,6 +7,7 @@ using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation;
@@ -76,17 +77,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             {
                 SleeveInstanceId = z.SleeveInstanceId,
                 Category = z.MepElementCategory,
-                ClashZone = z
+                ClashZone = z,
+                // ✅ FIX: Provide BoundingBox property for fallback ProximityCheckers (BoundingBoxProximityChecker)
+                // This mimics Revit's BoundingBoxXYZ structure for dynamic access
+                BoundingBox = new
+                {
+                    Min = new { X = z.SleeveBoundingBoxMinX, Y = z.SleeveBoundingBoxMinY, Z = z.SleeveBoundingBoxMinZ },
+                    Max = new { X = z.SleeveBoundingBoxMaxX, Y = z.SleeveBoundingBoxMaxY, Z = z.SleeveBoundingBoxMaxZ }
+                }
             });
             
             // Group the wrapped zones
             var groupedZones = wrappedZones.GroupBy(w => new SleeveGroupKey(
-                w.ClashZone.StructuralElementType ?? "Unknown",
+                w.ClashZone.StructuralElementIdValue.ToString(), // ✅ FIX: Group by Host ID (stringified) to prevent over-clustering
                 w.ClashZone.MepElementCategory ?? "Unknown", 
                 w.ClashZone.HostOrientation ?? "Unknown",
-                (int)(w.ClashZone.IntersectionPointX / 100000), // ✅ FIX: Disable Bucketing (Large value effectively puts all in same bucket)
-                (int)(w.ClashZone.IntersectionPointY / 100000), 
-                (int)(w.ClashZone.IntersectionPointZ / 100000)));
+                0, 0, 0)); // ✅ FIX: Disable spatial bucketing as requested
             
             var clustersByGroup = _algorithmService.FormClusters(groupedZones, toleranceDist, doc, enableParallel: true);
 
@@ -98,14 +104,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             {
                 foreach (var clusterList in kvp.Value)
                 {
-                    // ✅ FIX: Filter out single-item "clusters"
-                    // If Count < 2, no clustering happened (proximity failed).
-                    // These should remain as individual sleeves.
                     if (clusterList == null || clusterList.Count < 2) continue;
                     
                     try
                     {
-                        var result = CalculateCluster(clusterList, batchId, comboId, filterId);
+                        // ✅ PHASE 2: Branch logic by Host Type EARLY
+                        var first = (clusterList[0] is ClashZone z) ? z : (ClashZone)clusterList[0].ClashZone;
+                        bool isFloor = (first.StructuralElementType ?? "").IndexOf("Floor", StringComparison.OrdinalIgnoreCase) >= 0;
+
+                        BatchClusterCalculationResult result;
+                        if (isFloor)
+                        {
+                            result = CalculateFloorCluster(clusterList, batchId, comboId, filterId);
+                        }
+                        else
+                        {
+                            result = CalculateWallFramingCluster(clusterList, batchId, comboId, filterId);
+                        }
+
                         if (result != null)
                         {
                             validClusters.Add(result);
@@ -326,16 +342,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             return zones
                 .GroupBy(z =>
                 {
-                    int bucketX = (int)Math.Floor(z.IntersectionPointX / 32.8); // 10m
-                    int bucketY = (int)Math.Floor(z.IntersectionPointY / 32.8);
-                    int bucketZ = (int)Math.Floor(z.IntersectionPointZ / 32.8);
-                    
-                    // HostType/Category logic simplified
+                    // ✅ FIX: Disable spatial bucketing as requested
                     return new SleeveGroupKey(
-                        z.StructuralElementDocumentTitle ?? "Unknown", 
+                        z.StructuralElementIdValue.ToString(), 
                         z.MepElementCategory ?? "Unknown", 
                         z.HostOrientation ?? "Unknown",
-                        bucketX, bucketY, bucketZ);
+                        0, 0, 0);
                 })
                 .Select(g => 
                 {
@@ -348,166 +360,93 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 .ToArray();
         }
 
-        private BatchClusterCalculationResult CalculateCluster(List<dynamic> clusterItems, string batchId, int comboId, int filterId)
+        /// <summary>
+        /// ✅ SPECIALIZED FLOOR CALCULATION: Strictly separated from wall logic.
+        /// </summary>
+        private BatchClusterCalculationResult CalculateFloorCluster(List<dynamic> clusterItems, string batchId, int comboId, int filterId)
         {
-            // 1. Extract ClashZones
-            // Ensure correct cast from dynamic
-            var zones = clusterItems.Select(x => 
-            {
-                 if (x is ClashZone z) return z;
-                 try { return (ClashZone)x.ClashZone; } catch { return (ClashZone)x; }
-            }).ToList();
-
+            var zones = clusterItems.Select(x => (x is ClashZone z) ? z : (ClashZone)x.ClashZone).ToList();
             if (zones.Count == 0) return null;
 
-            // 2. Identify "Reference" Zone (First one) for Host info
             var first = zones[0];
-            
-            // ✅ DIAGNOSTIC: Log thickness values from first ClashZone to trace data flow
-            SafeFileLogger.SafeAppendText("batch_v2.log", 
-                $"[{DateTime.Now:HH:mm:ss}] 📊 CLUSTER ZONE DATA (First Zone):\n" +
-                $"    - ClashZoneGuid: {first.ClashZoneGuid}\n" +
-                $"    - StructuralElementType: '{first.StructuralElementType}'\n" +
-                $"    - StructuralElementThickness: {first.StructuralElementThickness * 304.8:F1}mm ({first.StructuralElementThickness:F6}ft)\n" +
-                $"    - WallThickness: {first.WallThickness * 304.8:F1}mm ({first.WallThickness:F6}ft)\n" +
-                $"    - FramingThickness: {first.FramingThickness * 304.8:F1}mm ({first.FramingThickness:F6}ft)\n" +
-                $"    - HostOrientation: '{first.HostOrientation}'\n" +
-                $"    - MepElementCategory: '{first.MepElementCategory}'\n" +
-                $"    - Constituent Systems: {string.Join(", ", zones.Select(z => z.MepElementSystemAbbreviation).Distinct())}\n" +
-                $"    - Zones in cluster: {zones.Count}\n");
+            double rotationAngle = 0; // Floors usually have 0 rotation or are handled by instance placement
 
-            // 3. Calculate Geometry (Bounding Box, Rotation)
-            // A. Calculate Rotation Angle
-            // Logic: Use the shared Rotation Service to determine the authoritative rotation angle
-            // This reuses the logic handling X-Wall, Y-Wall, and MEP Element Rotation from DB properties.
-            double rotationAngle = _rotationService.DetermineRotationAngle(clusterItems);
-            
-            // B. Calculate Rotated Bounding Box
-            // ✅ CRITICAL FIX: Use ClusterRotationService instead of RotatedBoundingBoxCalculator
-            // ClusterRotationService can calculate dimensions from ClashZone data (no FamilyInstance needed)
-            var bboxResult = _rotationService.CalculateRotatedBoundingBox(
-                clusterItems, 
-                null, // No actual sleeves in batch mode - will use ClashZone data
-                rotationAngle
-            );
+            var bboxResult = _rotationService.CalculateRotatedBoundingBox(clusterItems, null, rotationAngle);
+            double depth = first.StructuralElementThickness > 0.001 ? first.StructuralElementThickness : bboxResult.depth;
 
-            // Extract results
-            double width = bboxResult.width;
-            double height = bboxResult.height;
-            double depth = bboxResult.depth;
-            
-            // ✅ CRITICAL FIX: Override depth with host thickness (SAME LOGIC AS INDIVIDUAL SLEEVES)
-            // Bounding box depth is not reliable - use actual wall/floor thickness from ClashZone
-            // MUST match SleeveParameterService.GetThickness() priority order!
-            bool isWallHost = first.StructuralElementType == "Wall" || first.StructuralElementType == "Walls";
-            bool isFramingHost = string.Equals(first.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
-            
-            // Priority 1: Host-type specific thickness (same as individual sleeves)
-            if (isWallHost && first.WallThickness > 0.001)
-            {
-                depth = first.WallThickness;
-                SafeFileLogger.SafeAppendText("batch_v2.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 📐 DEPTH FROM WallThickness: {depth * 304.8:F1}mm (HostType=Wall)\n");
-            }
-            else if (isFramingHost && first.FramingThickness > 0.001)
-            {
-                depth = first.FramingThickness;
-                SafeFileLogger.SafeAppendText("batch_v2.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 📐 DEPTH FROM FramingThickness: {depth * 304.8:F1}mm (HostType=Structural Framing)\n");
-            }
-            // Priority 2: General structural thickness (fallback)
-            else if (first.StructuralElementThickness > 0.001)
-            {
-                depth = first.StructuralElementThickness;
-                SafeFileLogger.SafeAppendText("batch_v2.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 📐 DEPTH FROM StructuralElementThickness: {depth * 304.8:F1}mm (Fallback)\n");
-            }
-            else
-            {
-                // ⚠️ No valid thickness found - log warning but keep bounding box depth as last resort
-                SafeFileLogger.SafeAppendText("batch_v2.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ NO THICKNESS DATA: WallThickness={first.WallThickness * 304.8:F1}mm, " +
-                    $"FramingThickness={first.FramingThickness * 304.8:F1}mm, " +
-                    $"StructuralElementThickness={first.StructuralElementThickness * 304.8:F1}mm, " +
-                    $"HostType='{first.StructuralElementType}', Using BBox depth={depth * 304.8:F1}mm\n");
-            }
-            
-            // ✅ FINAL DIAGNOSTIC: Log the final depth value being saved to DB
-            SafeFileLogger.SafeAppendText("batch_v2.log", 
-                $"[{DateTime.Now:HH:mm:ss}] 💾 FINAL CLUSTER DEPTH: {depth * 304.8:F1}mm (saved to ClusterSleeves_v2.ClusterDepth)\n");
-            
-            var center = bboxResult.mid;
-            
-            // If center is zero/null, fallback to intersection centroid
-            if (center == null || center.IsZeroLength())
-            {
-                // Fallback: Intersection Centroid
-                double avgX = zones.Average(z => z.IntersectionPointX);
-                double avgY = zones.Average(z => z.IntersectionPointY);
-                double avgZ = zones.Average(z => z.IntersectionPointZ);
-                center = new XYZ(avgX, avgY, avgZ);
-            }
-
-            // 3. Placement Calculation (Reuse ClusterPlacementCalculationService)
-            // ✅ FIX: Use shared service for consistent logic (Damper Lateral Shift, etc.)
-            // We create a local instance since we have the list of ClashZones here.
-            
             var placementService = new JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement.ClusterPlacementCalculationService(
-                (id, path) => zones.FirstOrDefault(z => z.SleeveInstanceId == id) ?? zones.FirstOrDefault(), // Simple lookup
-                null // No existing cluster placement lookup needed for new batch
+                (id, _) => zones.FirstOrDefault(z => z.SleeveInstanceId == id) ?? zones.FirstOrDefault()
             );
 
-            // Wrap zones into dynamic list for the service signature
-            var dynamicCluster = zones.Cast<dynamic>().ToList();
-
-            // Construct Min/Max from tuple (handling nulls)
             XYZ bboxMin = new XYZ(bboxResult.rotatedMinX ?? 0, bboxResult.rotatedMinY ?? 0, bboxResult.rotatedMinZ ?? 0);
             XYZ bboxMax = new XYZ(bboxResult.rotatedMaxX ?? 0, bboxResult.rotatedMaxY ?? 0, bboxResult.rotatedMaxZ ?? 0);
 
-            // Calculate Placement Point (Handles Dampers, Walls, Centroids)
-            XYZ placementPoint = placementService.CalculatePlacementPoint(
-                dynamicCluster, 
-                width, 
-                height, 
-                depth,
-                bboxMin, 
-                bboxMax,
-                bboxResult.mid // ✅ Pass Geometric Center from Rotation Service
-            );
-            
-            // Declare and assign properly (removed duplicate declaration above)
-            double cX = placementPoint.X;
-            double cY = placementPoint.Y;
-            double cZ = placementPoint.Z;
+            XYZ placementPoint = placementService.CalculatePlacementPoint(clusterItems, bboxResult.width, bboxResult.height, depth, bboxMin, bboxMax, bboxResult.mid);
 
-            // 4. DEDUPLICATION (Location Based)
-            string locKey = $"{batchId}_{cX:F1}_{cY:F1}_{cZ:F1}";
-            if (!_placedLocations.TryAdd(locKey, 0))
-            {
-                if (!batchId.Contains("Test"))
-                     SafeFileLogger.SafeAppendText("batch_v2.log", $"⚠️ SKIPPING DUPLICATE at ({cX:F1}, {cY:F1}, {cZ:F1})\n");
-                return null;
-            }
+            if (!IsUniqueLocation(batchId, placementPoint)) return null;
+
+            return CreateResult(zones, batchId, comboId, filterId, placementPoint, bboxResult.width, bboxResult.height, depth, rotationAngle);
+        }
+
+        /// <summary>
+        /// ✅ SPECIALIZED WALL/FRAMING CALCULATION: Strictly separated from floor logic.
+        /// </summary>
+        private BatchClusterCalculationResult CalculateWallFramingCluster(List<dynamic> clusterItems, string batchId, int comboId, int filterId)
+        {
+            var zones = clusterItems.Select(x => (x is ClashZone z) ? z : (ClashZone)x.ClashZone).ToList();
+            if (zones.Count == 0) return null;
+
+            var first = zones[0];
+            double rotationAngle = _rotationService.DetermineRotationAngle(clusterItems);
+
+            var bboxResult = _rotationService.CalculateRotatedBoundingBox(clusterItems, null, rotationAngle);
             
-            // ... (GUID generation call above)
+            // Wall/Framing Depth Logic (Authoritative)
+            double depth = bboxResult.depth;
+            bool isWall = first.StructuralElementType == "Wall" || first.StructuralElementType == "Walls";
+            if (isWall && first.WallThickness > 0.001) depth = first.WallThickness;
+            else if (!isWall && first.FramingThickness > 0.001) depth = first.FramingThickness;
+            else if (first.StructuralElementThickness > 0.001) depth = first.StructuralElementThickness;
+
+            var placementService = new JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement.ClusterPlacementCalculationService(
+                (id, _) => zones.FirstOrDefault(z => z.SleeveInstanceId == id) ?? zones.FirstOrDefault()
+            );
+
+            XYZ bboxMin = new XYZ(bboxResult.rotatedMinX ?? 0, bboxResult.rotatedMinY ?? 0, bboxResult.rotatedMinZ ?? 0);
+            XYZ bboxMax = new XYZ(bboxResult.rotatedMaxX ?? 0, bboxResult.rotatedMaxY ?? 0, bboxResult.rotatedMaxZ ?? 0);
+
+            XYZ placementPoint = placementService.CalculatePlacementPoint(clusterItems, bboxResult.width, bboxResult.height, depth, bboxMin, bboxMax, bboxResult.mid);
+
+            if (!IsUniqueLocation(batchId, placementPoint)) return null;
+
+            return CreateResult(zones, batchId, comboId, filterId, placementPoint, bboxResult.width, bboxResult.height, depth, rotationAngle);
+        }
+
+        private bool IsUniqueLocation(string batchId, XYZ pt)
+        {
+            string locKey = $"{batchId}_{pt.X:F1}_{pt.Y:F1}_{pt.Z:F1}";
+            return _placedLocations.TryAdd(locKey, 0);
+        }
+
+        private BatchClusterCalculationResult CreateResult(List<ClashZone> zones, string batchId, int comboId, int filterId, XYZ pt, double w, double h, double d, double rot)
+        {
+            var first = zones[0];
             return new BatchClusterCalculationResult
             {
-                // ... (object initializer above)
                 ClusterGUID = Guid.NewGuid().ToString(),
                 ClusterBatchId = batchId,
-                PlacementX = cX, PlacementY = cY, PlacementZ = cZ,
-                ClusterWidth = width, ClusterHeight = height, ClusterDepth = depth,
-                RotationAngleRad = rotationAngle, // ✅ FIX: Assign calculated rotation angle
+                PlacementX = pt.X, PlacementY = pt.Y, PlacementZ = pt.Z,
+                ClusterWidth = w, ClusterHeight = h, ClusterDepth = d,
+                RotationAngleRad = rot,
                 HostElementId = first.StructuralElementIdValue,
-                // ✅ CRITICAL FIX: Use StructuralElementType (Wall/Floor) not DocumentTitle (empty for local elements)
                 HostType = first.StructuralElementType,
                 HostOrientation = first.HostOrientation,
                 Category = first.MepElementCategory,
                 FamilyName = JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement.ClusterPlacementService.GetFamilyName(
                     first.StructuralElementType ?? "Unknown", 
                     first.MepElementCategory ?? "Unknown", 
-                    Math.Max(width, height), 
-                    zones.Count > 1), // isCluster = true ONLY if multiple items. Single items behave like individual sleeves.
+                    Math.Max(w, h), 
+                    zones.Count > 1),
                 ConstituentZoneGuids = string.Join(",", zones.Select(z => z.ClashZoneGuid)),
                 ComboId = comboId, FilterId = filterId, Status = "Pending", ValidationStatus = "Valid"
             };
@@ -599,8 +538,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
     public class BatchClusterCalculationResult
     {
-        public string ClusterGUID { get; set; }
-        public string ClusterBatchId { get; set; }
+        public string ClusterGUID { get; set; } = string.Empty;
+        public string ClusterBatchId { get; set; } = string.Empty;
         public double PlacementX { get; set; }
         public double PlacementY { get; set; }
         public double PlacementZ { get; set; }
@@ -609,14 +548,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         public double ClusterDepth { get; set; }
         public double RotationAngleRad { get; set; }
         public long HostElementId { get; set; }
-        public string HostType { get; set; }
-        public string HostOrientation { get; set; }
-        public string Category { get; set; }
-        public string FamilyName { get; set; }
-        public string ConstituentZoneGuids { get; set; } // JSON or csv
+        public string? HostType { get; set; }
+        public string? HostOrientation { get; set; }
+        public string? Category { get; set; }
+        public string? FamilyName { get; set; }
+        public string? ConstituentZoneGuids { get; set; } // JSON or csv
         public int ComboId { get; set; }
         public int FilterId { get; set; }
-        public string Status { get; set; }
-        public string ValidationStatus { get; set; }
+        public string? Status { get; set; }
+        public string? ValidationStatus { get; set; }
     }
 }

@@ -9,14 +9,9 @@ using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
 {
     /// <summary>
-    /// âœ… BATCH CORNER EXTRACTOR: Extracts actual corner coordinates from placed Revit sleeves.
-    /// NO CALCULATION - Pure extraction from Revit geometry after placement + regeneration.
-    /// 
-    /// Usage:
-    /// 1. Place sleeves in Revit
-    /// 2. Call doc.Regenerate()
-    /// 3. Call ExtractCorners() to get corner data
-    /// 4. Save to database using Repository
+    /// BATCH CORNER EXTRACTOR: Only allowed source for persisting SleeveCorner1-4 X/Y/Z (no calculation).
+    /// Extracts corners from placed Revit sleeve geometry via CalculateCornersFromInstance.
+    /// See REVIT_GEOMETRY_RULES.md. Usage: Place sleeves, Regenerate(), ExtractCorners(), then Repository.BatchUpdateSleeveCorners.
     /// </summary>
     public class BatchSleeveCornerExtractor
     {

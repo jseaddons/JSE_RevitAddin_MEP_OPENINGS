@@ -50,97 +50,104 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
             if (cluster == null || cluster.Count == 0)
                 return XYZ.Zero;
 
-            XYZ? placementPoint = null;
-
             // ✅ PHASE 1: Try DB Lookup (Authoritative Source of Truth)
-            // ✅ FIX: Skip DB lookup when calculating NEW clusters (when DB is not cleared)
-            // DB lookup should only be used when REPLACING existing clusters, not for new calculations
-            // When DB is not cleared, we want fresh calculation, not stale DB data
-            bool skipDbLookup = false; // Can be set to true if we detect we're in "new calculation" mode
-            
-            if (!skipDbLookup && _getClusterPlacementFunc != null && cluster[0] != null)
-            {
-                try
-                {
-                    int clusterId = GetClusterInstanceId(cluster[0], xmlFilePath);
-                    
-                    if (clusterId > 0)
-                    {
-                        // Deduplication: Only use DB placement once per run
-                        if (_processedClusterIds.TryAdd(clusterId, 0))
-                        {
-                            var dbPlacement = _getClusterPlacementFunc(clusterId);
-                            if (dbPlacement != null)
-                            {
-                                if (!DeploymentConfiguration.DeploymentMode)
-                                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                        $"[{DateTime.Now:HH:mm:ss}] 🎯 DB SOURCE OF TRUTH: Using stored placement for Cluster {clusterId}: ({dbPlacement.X:F4}, {dbPlacement.Y:F4}, {dbPlacement.Z:F4})\n");
-                                return dbPlacement;
-                            }
-                        }
-                        else
-                        {
-                            // ✅ DUPLICATE DETECTION: If clusterId already processed, skip DB lookup to force fresh calculation
-                            // This prevents using stale placement points when DB is not cleared
-                            if (!DeploymentConfiguration.DeploymentMode)
-                                SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ DUPLICATE DETECTED: Cluster {clusterId} already processed, skipping DB lookup to force fresh calculation\n");
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        SafeFileLogger.SafeAppendText("cluster_errors.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ DB Lookup Failed: {ex.Message}\n");
-                }
-            }
+            var dbPoint = TryGetDatabasePlacement(cluster, xmlFilePath);
+            if (dbPoint != null) return dbPoint;
 
-            // ✅ PHASE 2: Determine Placement Point
-            // FIXED: Prioritize explicitCenter (Geometric Center of Union) to avoid "average of centers" error (Z-shift)
-            if (explicitCenter != null)
+            // ✅ PHASE 2: Dispatch by Host Type
+            var firstCz = GetFirstClashZone(cluster, xmlFilePath);
+            if (firstCz == null) return explicitCenter ?? CalculateFromIntersections(cluster, xmlFilePath);
+
+            bool isFloor = (firstCz.StructuralElementType ?? "").IndexOf("Floor", StringComparison.OrdinalIgnoreCase) >= 0;
+
+            if (isFloor)
             {
-                placementPoint = explicitCenter;
-                 if (!DeploymentConfiguration.DeploymentMode)
-                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                            $"[{DateTime.Now:HH:mm:ss}] 🎯 PLACEMENT: Using Geometric Center (Union of BBoxes): ({placementPoint.X:F4}, {placementPoint.Y:F4}, {placementPoint.Z:F4})\n");
+                return CalculateFloorPlacementPoint(cluster, explicitCenter, xmlFilePath);
             }
             else
             {
-                // Fallback to intersection averaging only if no geometric center provided
-                placementPoint = CalculateFromIntersections(cluster, xmlFilePath);
+                // Wall or Structural Framing
+                return CalculateWallFramingPlacementPoint(cluster, firstCz, explicitCenter, xmlFilePath);
             }
+        }
 
-            // ✅ PHASE 2b: Apply Alignment Constraints (Lateral Shift Fix / Wall Centerline)
-            placementPoint = ApplyDamperAlignment(placementPoint, cluster, xmlFilePath);
+        private XYZ? TryGetDatabasePlacement(List<dynamic> cluster, string? xmlFilePath)
+        {
+            if (_getClusterPlacementFunc == null || cluster[0] == null) return null;
 
-            // ✅ PHASE 3: Re-centering / Geometric Fallback (Category Dependent)
-            // For circular elements or mixed sizes, adjusting the point based on the bounding box range.
-            // DO NOT OVERWRITE if explicitCenter was provided (it is the authoritative Geometric Center).
-            if (explicitCenter == null && rotatedMin != null && rotatedMax != null)
+            try
             {
-                bool isDamper = CheckIfDamperCluster(cluster, xmlFilePath);
-                
-                if (!isDamper)
+                int clusterId = GetClusterInstanceId(cluster[0], xmlFilePath);
+                if (clusterId > 0 && _processedClusterIds.TryAdd(clusterId, 0))
                 {
-                    // For non-dampers (Pipes/Ducts), we restore geometric center centering
-                    // NOTE: If explicitCenter (Geometric Center) was passed, this might be redundant or slightly different?
-                    // But for consistency with legacy flow, we keep this re-centering logic for non-dampers.
-                    placementPoint = new XYZ(
-                        (rotatedMin.X + rotatedMax.X) / 2.0,
-                        (rotatedMin.Y + rotatedMax.Y) / 2.0,
-                        (rotatedMin.Z + rotatedMax.Z) / 2.0
-                    );
-                    
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                            $"[{DateTime.Now:HH:mm:ss}] 🎯 PLACEMENT (DEFAULT): Using geometric center (re-centered): ({placementPoint.X:F2}, {placementPoint.Y:F2}, {placementPoint.Z:F2})\n");
+                    var dbPlacement = _getClusterPlacementFunc(clusterId);
+                    if (dbPlacement != null)
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                $"[{DateTime.Now:HH:mm:ss}] 🎯 DB SOURCE OF TRUTH: Using stored placement for Cluster {clusterId}: ({dbPlacement.X:F4}, {dbPlacement.Y:F4}, {dbPlacement.Z:F4})\n");
+                        return dbPlacement;
+                    }
                 }
             }
- 
-            XYZ finalPoint = placementPoint ?? XYZ.Zero;
-            SafeFileLogger.SafeAppendText("cluster_sizing.log", 
-                $"    🏁 FINAL PLACEMENT POINT: ({finalPoint.X:F6}, {finalPoint.Y:F6}, {finalPoint.Z:F6})\n\n");
-            return finalPoint;
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    SafeFileLogger.SafeAppendText("cluster_errors.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ DB Lookup Failed: {ex.Message}\n");
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// ✅ SPECIALIZED FLOOR LOGIC: Strictly separated from wall logic.
+        /// Floors use Centroid or Explicit Center (BBox Geometric Center). No corner-based logic.
+        /// </summary>
+        private XYZ CalculateFloorPlacementPoint(List<dynamic> cluster, XYZ? explicitCenter, string? xmlFilePath)
+        {
+            XYZ result = explicitCenter ?? CalculateFromIntersections(cluster, xmlFilePath);
+            
+            if (!DeploymentConfiguration.DeploymentMode)
+                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                    $"[{DateTime.Now:HH:mm:ss}] 🎯 FLOOR PLACEMENT: Using {(explicitCenter != null ? "Geometric Center" : "Centroid")}: ({result.X:F4}, {result.Y:F4}, {result.Z:F4})\n");
+            
+            return result;
+        }
+
+        /// <summary>
+        /// ✅ SPECIALIZED WALL/FRAMING LOGIC: Strictly separated from floor logic.
+        /// Uses Corners for non-dampers, and Centroid + WallAlignment for dampers.
+        /// </summary>
+        private XYZ CalculateWallFramingPlacementPoint(List<dynamic> cluster, ClashZone firstCz, XYZ? explicitCenter, string? xmlFilePath)
+        {
+            XYZ placementPoint;
+            bool isDamperCluster = CheckIfDamperCluster(cluster, xmlFilePath);
+
+            // ✅ HYBRID LOGIC: 
+            // 1. Width/Height axes = Midpoint of all instances (explicitCenter or corners).
+            // 2. Thickness axis = Host Centerline of first instance.
+            
+            if (isDamperCluster)
+            {
+                // Dampers: Centroid + alignment constraints (lateral shift fix)
+                placementPoint = CalculateFromIntersections(cluster, xmlFilePath);
+                placementPoint = ApplyDamperAlignment(placementPoint, cluster, xmlFilePath);
+            }
+            else
+            {
+                // Non-damper Wall/Framing: Hybrid Logic
+                // Use corners directly - it now implements the hybrid host-snap internally
+                placementPoint = CalculateFromCornersForWallCluster(cluster, firstCz, xmlFilePath);
+                
+                // If we had a high-quality explicit center, we could use its width/height axes 
+                // but snapping to Host centerline is mandatory for the thickness axis.
+                // Since CalculateFromCornersForWallCluster already does this, we prefer it.
+            }
+
+            if (!DeploymentConfiguration.DeploymentMode)
+                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                    $"[{DateTime.Now:HH:mm:ss}] 🎯 WALL/FRAMING PLACEMENT (Damper={isDamperCluster}, Hybrid=True): ({placementPoint.X:F4}, {placementPoint.Y:F4}, {placementPoint.Z:F4})\n");
+
+            return placementPoint;
         }
 
         private XYZ ApplyDamperAlignment(XYZ currentPoint, List<dynamic> cluster, string? xmlFilePath)
@@ -151,6 +158,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
             if (!isDamper) return currentPoint;
             if (cluster == null || cluster.Count == 0) return currentPoint;
 
+            // ✅ Duct Accessories on walls now use same corner-based placement as Ducts (Phase 2); do not overwrite with WallCenterline snap
             ClashZone firstCz = null;
             var firstItem = cluster[0];
             
@@ -170,35 +178,134 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 }
             }
             
+            // ✅ Skip WallCenterline snap for wall-hosted Duct Accessories: they now use same corner-based placement as Ducts (Phase 2)
             if (firstCz != null && IsDamperCategory(firstCz.MepElementCategory) && IsWallHosted(firstCz))
             {
-                double cX = currentPoint.X;
-                double cY = currentPoint.Y;
-                double cZ = currentPoint.Z;
-
-                string orientation = (firstCz.HostOrientation ?? "").ToUpper();
-                
-                if (orientation.Contains("Y")) // Normal along X, Thickness along X
-                {
-                    double oldX = cX;
-                    cX = firstCz.WallCenterlinePointX;
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        SafeFileLogger.SafeAppendText("cluster_sizing.log", 
-                            $"    🔄 SHIFT REASON (DAMPER/WALL): Smapped X to Wall Core. Changed {oldX:F4} -> {cX:F4} (Orientation=Y-Wall)\n");
-                }
-                else if (orientation.Contains("X")) // Normal along Y, Thickness along Y
-                {
-                    double oldY = cY;
-                    cY = firstCz.WallCenterlinePointY;
-                    if (!DeploymentConfiguration.DeploymentMode)
-                        SafeFileLogger.SafeAppendText("cluster_sizing.log", 
-                            $"    🔄 SHIFT REASON (DAMPER/WALL): Snapped Y to Wall Core. Changed {oldY:F4} -> {cY:F4} (Orientation=X-Wall)\n");
-                }
-                
-                return new XYZ(cX, cY, cZ);
+                return currentPoint;
             }
             
             return currentPoint;
+        }
+
+        /// <summary>
+        /// ✅ USER-REQUESTED WALL LOGIC:
+        /// Use ONLY sleeve corners to compute cluster placement for wall-hosted, non-damper clusters.
+        /// - Width  axis: extreme left/right corners of all sleeves (along wall length).
+        /// - Height axis: extreme top/bottom corners of all sleeves (Z).
+        /// - Thickness axis: first sleeve's wall centerline / intersection (keeps opening in wall core).
+        /// </summary>
+        private XYZ CalculateFromCornersForWallCluster(List<dynamic> cluster, ClashZone firstCz, string? xmlFilePath)
+        {
+            if (cluster == null || cluster.Count == 0 || firstCz == null)
+                return XYZ.Zero;
+
+            double minX = double.PositiveInfinity, maxX = double.NegativeInfinity;
+            double minY = double.PositiveInfinity, maxY = double.NegativeInfinity;
+            double minZ = double.PositiveInfinity, maxZ = double.NegativeInfinity;
+            bool hasCorner = false;
+
+            int sleeveIdx = 0;
+            foreach (var sleeve in cluster)
+            {
+                sleeveIdx++;
+                ClashZone cz = null;
+
+                if (sleeve is ClashZone directCz)
+                    cz = directCz;
+                else
+                {
+                    try { cz = sleeve.ClashZone; } catch { }
+                }
+
+                if (cz == null)
+                {
+                    int id = GetSleeveId(sleeve);
+                    if (id > 0)
+                    {
+                        cz = _getClashZoneFunc(id, xmlFilePath);
+                    }
+                }
+
+                if (cz == null)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                            $"    [{sleeveIdx}] ⚠️ CORNERS: ClashZone is NULL, skipping.\n");
+                    continue;
+                }
+
+                double[] xs = { cz.SleeveCorner1X ?? 0, cz.SleeveCorner2X ?? 0, cz.SleeveCorner3X ?? 0, cz.SleeveCorner4X ?? 0 };
+                double[] ys = { cz.SleeveCorner1Y ?? 0, cz.SleeveCorner2Y ?? 0, cz.SleeveCorner3Y ?? 0, cz.SleeveCorner4Y ?? 0 };
+                double[] zs = { cz.SleeveCorner1Z ?? 0, cz.SleeveCorner2Z ?? 0, cz.SleeveCorner3Z ?? 0, cz.SleeveCorner4Z ?? 0 };
+
+                // Consider corners invalid only if *all* coordinates are zero
+                bool allZero = xs.All(v => v == 0) && ys.All(v => v == 0) && zs.All(v => v == 0);
+                if (allZero)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                            $"    [{sleeveIdx}] ⚠️ CORNERS: All corner coordinates are zero, skipping.\n");
+                    continue;
+                }
+
+                hasCorner = true;
+
+                minX = Math.Min(minX, xs.Min());
+                maxX = Math.Max(maxX, xs.Max());
+                minY = Math.Min(minY, ys.Min());
+                maxY = Math.Max(maxY, ys.Max());
+                minZ = Math.Min(minZ, zs.Min());
+                maxZ = Math.Max(maxZ, zs.Max());
+            }
+
+            if (!hasCorner || double.IsInfinity(minX) || double.IsInfinity(minZ))
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                        $"    ⚠️ CORNERS: No valid corners found, falling back to intersection centroid.\n");
+                return CalculateFromIntersections(cluster, xmlFilePath);
+            }
+
+            string orientation = (firstCz.HostOrientation ?? "").ToUpper();
+
+            // Midpoints from corner extents
+            double centerX = (minX + maxX) / 2.0;
+            double centerY = (minY + maxY) / 2.0;
+            double centerZ = (minZ + maxZ) / 2.0;
+
+            XYZ result;
+
+            if (orientation.Contains("X"))
+            {
+                // X-wall: Length along X, thickness along Y.
+                // - Width  (X) and Height (Z) from cluster corner midpoints.
+                // - Thickness (Y) locked to first instance's wall centerline point.
+                double yCenterline = firstCz.WallCenterlinePointY != 0 ? firstCz.WallCenterlinePointY : firstCz.IntersectionPointY;
+                result = new XYZ(centerX, yCenterline, centerZ);
+            }
+            else if (orientation.Contains("Y"))
+            {
+                // Y-wall: Length along Y, thickness along X.
+                // - Width  (Y) and Height (Z) from cluster corner midpoints.
+                // - Thickness (X) locked to first instance's wall centerline point.
+                double xCenterline = firstCz.WallCenterlinePointX != 0 ? firstCz.WallCenterlinePointX : firstCz.IntersectionPointX;
+                result = new XYZ(xCenterline, centerY, centerZ);
+            }
+            else
+            {
+                // Fallback: use full 3D midpoint if orientation is unknown
+                result = new XYZ(centerX, centerY, centerZ);
+            }
+
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                    $"    🎯 CORNER-BASED PLACEMENT (WALL): " +
+                    $"X=[{minX:F6},{maxX:F6}], Y=[{minY:F6},{maxY:F6}], Z=[{minZ:F6},{maxZ:F6}] -> " +
+                    $"Center=({result.X:F6}, {result.Y:F6}, {result.Z:F6})\n");
+            }
+
+            return result;
         }
 
         private XYZ CalculateFromIntersections(List<dynamic> cluster, string? xmlFilePath)
@@ -328,6 +435,33 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
         private int GetSleeveId(dynamic sleeve)
         {
             try { return sleeve.SleeveInstanceId; } catch { return 0; }
+        }
+
+        private ClashZone? GetFirstClashZone(List<dynamic> cluster, string? xmlPath)
+        {
+            if (cluster == null || cluster.Count == 0)
+                return null;
+
+            var firstItem = cluster[0];
+            ClashZone cz = null;
+
+            if (firstItem is ClashZone directCz)
+                cz = directCz;
+            else
+            {
+                try { cz = firstItem.ClashZone; } catch { }
+            }
+
+            if (cz != null)
+                return cz;
+
+            int id = GetSleeveId(firstItem);
+            if (id > 0)
+            {
+                return _getClashZoneFunc(id, xmlPath);
+            }
+
+            return null;
         }
 
         private int GetClusterInstanceId(dynamic sleeve, string? xmlPath)

@@ -194,6 +194,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data
                         
                         SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅ DATABASE: Filtered to {placedZones.Count} zones with SleeveInstanceId>0 and not cluster resolved\n");
                         
+                        // Step-by-step: MarkedForClusterProcess breakdown for this category
+                        int mfcpTrue = placedZones.Count(z => z.MarkedForClusterProcess == true);
+                        int mfcpFalse = placedZones.Count(z => z.MarkedForClusterProcess == false);
+                        int mfcpNull = placedZones.Count(z => !z.MarkedForClusterProcess.HasValue);
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[{DateTime.Now:HH:mm:ss}] [FLOW] category={targetCategory} | DB->placed: {dbZones.Count} -> {placedZones.Count} (SleeveId>0, !IsClusterResolved) | MarkedForClusterProcess: True={mfcpTrue}, False={mfcpFalse}, Null={mfcpNull}\n");
+                        
                         foreach (var cz in placedZones)
                         {
                             // ✅ CRITICAL: Reconstruct SleevePlacementPoint from database properties

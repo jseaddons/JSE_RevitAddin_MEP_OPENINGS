@@ -703,6 +703,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var settings = ApplicationProfileService.Instance.GetCurrentSettings();
                     double minWallThicknessMm = settings.MinWallThickness;
                     bool ignoreArchFloors = settings.IgnoreArchitecturalFloors;
+                    var linkType = LinkedFileDetectionService.DetectFileType(linkDoc.Title);
+                    // When "Ignore architectural floors" is selected: do not process architecture link with floor (skip floors from this link)
+                    bool skipFloorsFromThisLink = ignoreArchFloors && linkType == LinkedFileType.Architectural;
                     
                     // ✅ FIX: Only collect structural categories that are selected in UI
                     if (allowedHostElementTypes == null || allowedHostElementTypes.Count == 0)
@@ -719,12 +722,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             .ToElements();
                         wallElements.AddRange(ElementPropertyFilters.FilterWallsByThickness(walls, minWallThicknessMm));
                         
-                        var floors = new FilteredElementCollector(linkDoc)
-                            .OfCategory(BuiltInCategory.OST_Floors)
-                            .WhereElementIsNotElementType()
-                            .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
-                            .ToElements();
-                        wallElements.AddRange(ElementPropertyFilters.FilterStructuralFloors(floors, ignoreArchFloors));
+                        if (!skipFloorsFromThisLink)
+                        {
+                            var floors = new FilteredElementCollector(linkDoc)
+                                .OfCategory(BuiltInCategory.OST_Floors)
+                                .WhereElementIsNotElementType()
+                                .WherePasses(new BoundingBoxIntersectsFilter(linkOutline))
+                                .ToElements();
+                            wallElements.AddRange(ElementPropertyFilters.FilterStructuralFloors(floors, ignoreArchFloors));
+                        }
+                        else
+                            _logger($"Ignore architectural floors: skipping floor collection from architecture link '{linkDoc.Title}'");
                         
                         wallElements.AddRange(
                             new FilteredElementCollector(linkDoc)
@@ -751,7 +759,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             _logger("UI Selection: Including Walls");
                         }
 
-                        if (allowedHostElementTypes.Any(ht => ht.Equals("Floors", StringComparison.OrdinalIgnoreCase)))
+                        if (allowedHostElementTypes.Any(ht => ht.Equals("Floors", StringComparison.OrdinalIgnoreCase)) && !skipFloorsFromThisLink)
                         {
                             // ✅ OPTIMIZATION: Apply category + bounding box at collector level, property filter after
                             var floors = new FilteredElementCollector(linkDoc)
@@ -762,6 +770,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             wallElements.AddRange(ElementPropertyFilters.FilterStructuralFloors(floors, ignoreArchFloors));
                             _logger("UI Selection: Including Floors");
                         }
+                        else if (allowedHostElementTypes.Any(ht => ht.Equals("Floors", StringComparison.OrdinalIgnoreCase)) && skipFloorsFromThisLink)
+                            _logger($"Ignore architectural floors: skipping floor collection from architecture link '{linkDoc.Title}'");
 
                         if (allowedHostElementTypes.Any(ht => ht.Equals("Structural Framing", StringComparison.OrdinalIgnoreCase)))
                         {

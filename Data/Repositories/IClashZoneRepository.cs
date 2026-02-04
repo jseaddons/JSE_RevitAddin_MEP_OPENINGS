@@ -293,5 +293,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Critical for Self-Healing Persistence.
         /// </summary>
         void SaveSleeveSnapshotsForPlacedSleeves(int filterId, List<ClashZone> placedZones);
+
+        /// <summary>
+        /// Get placed cluster sleeves (ClusterInstanceId and HostOrientation) for corner extraction.
+        /// From ClusterSleeves_v2 (Status='Placed', ClusterInstanceId > 0) and ClusterSleeves (ClusterInstanceId > 0).
+        /// </summary>
+        List<(int ClusterInstanceId, string HostOrientation)> GetPlacedClusterSleeves();
+
+        /// <summary>
+        /// Update corner coordinates for cluster sleeves in both ClusterSleeves and ClusterSleeves_v2 tables.
+        /// </summary>
+        void BatchUpdateClusterSleeveCorners(IEnumerable<(int ClusterInstanceId, double c1x, double c1y, double c1z, double c2x, double c2y, double c2z, double c3x, double c3y, double c3z, double c4x, double c4y, double c4z)> updates);
     }
 }

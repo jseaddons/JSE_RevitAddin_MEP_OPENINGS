@@ -253,6 +253,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
         }
 
         /// <summary>
+        /// Sleeve shape only (no MEP element shape): rectangular opening = has corner geometry from Revit.
+        /// Use this for proximity checker selection.
+        /// </summary>
+        public bool HasRectangularSleeveShape(ClashZone cz)
+        {
+            if (cz == null) return false;
+
+            // If this sleeve is circular (has a diameter), it should NOT be treated as rectangular
+            // even if corners exist in the DB (from extraction). Circular sleeves must go through
+            // edge-to-edge logic only.
+            bool isCircular = (cz.SleeveDiameter > 0) || (cz.CalculatedSleeveDiameter > 0);
+            if (isCircular) return false;
+
+            // Non-circular + has corners → rectangular opening
+            return HasValidSleeveCorners(cz);
+        }
+
+        /// <summary>
+        /// Sleeve shape only (no MEP element shape): circular opening = has diameter and no corner geometry.
+        /// Use this for proximity checker selection (edge-to-edge).
+        /// </summary>
+        public bool HasCircularSleeveShape(ClashZone cz)
+        {
+            if (cz == null) return false;
+
+            // NEW RULE: Circular detection is based purely on diameter.
+            // If it has a diameter, it is circular and MUST go to edge-to-edge,
+            // regardless of whether corners were extracted.
+            return (cz.SleeveDiameter > 0) || (cz.CalculatedSleeveDiameter > 0);
+        }
+
+        /// <summary>
         /// Check if ClashZone has valid sleeve corners (not all zeros).
         /// </summary>
         public bool HasValidSleeveCorners(ClashZone cz)

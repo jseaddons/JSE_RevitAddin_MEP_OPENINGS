@@ -119,12 +119,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
 
                     if (cluster.Count > 0 && allCircular)
                     {
-                        if (!DeploymentConfiguration.DeploymentMode)
+                        // For floors (and non wall/framing hosts) we keep the old rule:
+                        // all-circular clusters get 0° rotation.
+                        // For walls / structural framing we MUST still respect HostOrientation
+                        // (X → 90°, Y → 0°) so that cluster orientation matches individual sleeves.
+                        string hostType = firstClashZone.StructuralElementType ?? "";
+                        bool isWallOrFraming =
+                            hostType.StartsWith("Wall", StringComparison.OrdinalIgnoreCase) ||
+                            hostType.Equals("Structural Framing", StringComparison.OrdinalIgnoreCase);
+
+                        if (!isWallOrFraming)
                         {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] ✅ ALL-CIRCULAR CLUSTER: Skipping rotation (0.0°)\n");
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] ✅ ALL-CIRCULAR NON-WALL CLUSTER: Skipping rotation (0.0°)\n");
+                            }
+                            return 0.0;
                         }
-                        return 0.0;
+                        // Wall / framing + all circular: fall through and use HostOrientation logic below
                     }
 
                     // Normalize HostOrientation string

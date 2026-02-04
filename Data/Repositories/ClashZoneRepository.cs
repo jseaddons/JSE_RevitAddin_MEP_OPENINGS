@@ -5228,17 +5228,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// <param name="sectionBox">Section box bounds (null if no section box active)</param>
         /// <returns>Number of zones marked as ready</returns>
         /// <summary>
-        /// Update ReadyForPlacementFlag based *solely* on IsCurrentClashFlag (set by SessionContextService).
-        /// This method no longer performs spatial or category filtering itself.
+        /// Update ReadyForPlacementFlag based on IsCurrentClashFlag (set by SessionContextService).
+        /// Flag management is independent of filters (e.g. Electrical can have Ducts); no filter scoping.
         /// </summary>
         public int SetReadyForPlacementForUnresolvedZonesInSectionBox(
             List<string> ignoredData1 = null,
             List<string> ignoredData2 = null,
             BoundingBoxXYZ ignoredData3 = null)
         {
-            // ✅ SIMPLIFIED: Pure SQL update based on IsCurrentClashFlag.
-            // Logic moved to SessionContextService to adhere to SOLID / User Request.
-
             int updatedCount = 0;
             try
             {
@@ -5257,7 +5254,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                     if (!DeploymentConfiguration.DeploymentMode && updatedCount > 0)
                     {
-                        _logger($"[SQLite] ✅ SetReadyForPlacement (SQL): Marked {updatedCount} zones based on IsCurrentClashFlag=1.");
+                        _logger($"[SQLite] ✅ SetReadyForPlacement (SQL): Marked {updatedCount} zones (filter-independent).");
                     }
                 }
             }
@@ -5948,8 +5945,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 using (var cmd = _context.Connection.CreateCommand())
                 {
                     // ⚠️⚠️⚠️ PROTECTED SQL QUERY - MODIFICATION CONSENT REQUIRED ⚠️⚠️⚠️
-                    // This query structure is required for proper data loading
-                    // To modify: Get explicit consent from project owner
+                    // Match by zone's MepCategory so Pipes/Cable Trays cluster when filter has all 4 cats (zones may be under one filter row).
                     cmd.CommandText = @"
                         SELECT 
                             cz.*,
@@ -5959,7 +5955,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         FROM Filters f
                         INNER JOIN FileCombos fc ON f.FilterId = fc.FilterId
                         INNER JOIN ClashZones cz ON fc.ComboId = cz.ComboId
-                        WHERE f.Category = @Category
+                        WHERE (f.Category = @Category OR LOWER(TRIM(COALESCE(cz.MepCategory,''))) = LOWER(TRIM(@Category)))
                           AND cz.IsCombinedResolved = 0";
 
                     cmd.Parameters.AddWithValue("@Category", category);
@@ -7320,6 +7316,114 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             {
                 _logger($"[SQLite] ❌ Error updating corners for ClusterSleeve {clusterInstanceId}: {ex.Message}");
                 DatabaseOperationLogger.LogOperation("UPDATE", "ClusterSleeves", null, 0, $"❌ Error: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Get placed cluster sleeves (ClusterInstanceId, HostOrientation) for corner extraction.
+        /// Returns rows from ClusterSleeves_v2 (Status='Placed') and ClusterSleeves (legacy), merged by ClusterInstanceId.
+        /// </summary>
+        public List<(int ClusterInstanceId, string HostOrientation)> GetPlacedClusterSleeves()
+        {
+            var list = new List<(int, string)>();
+            var seen = new HashSet<int>();
+            try
+            {
+                // ClusterSleeves_v2: placed clusters
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = @"SELECT ClusterInstanceId, COALESCE(HostOrientation,'') FROM ClusterSleeves_v2 
+                                        WHERE Status = 'Placed' AND ClusterInstanceId IS NOT NULL AND ClusterInstanceId > 0";
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            int id = reader.GetInt32(0);
+                            if (seen.Add(id))
+                                list.Add((id, reader.IsDBNull(1) ? "" : reader.GetString(1)));
+                        }
+                    }
+                }
+                // ClusterSleeves (legacy): add any not already in list
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = @"SELECT ClusterInstanceId, COALESCE(HostOrientation,'') FROM ClusterSleeves 
+                                        WHERE ClusterInstanceId IS NOT NULL AND ClusterInstanceId > 0";
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            int id = reader.GetInt32(0);
+                            if (seen.Add(id))
+                                list.Add((id, reader.IsDBNull(1) ? "" : reader.GetString(1)));
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ❌ GetPlacedClusterSleeves: {ex.Message}");
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// Update corner coordinates for cluster sleeves in both ClusterSleeves and ClusterSleeves_v2 tables.
+        /// </summary>
+        public void BatchUpdateClusterSleeveCorners(IEnumerable<(int ClusterInstanceId, double c1x, double c1y, double c1z, double c2x, double c2y, double c2z, double c3x, double c3y, double c3z, double c4x, double c4y, double c4z)> updates)
+        {
+            if (updates == null) return;
+            var list = updates.ToList();
+            if (list.Count == 0) return;
+            try
+            {
+                using (var transaction = _context.Connection.BeginTransaction())
+                {
+                    foreach (var u in list)
+                    {
+                        int id = u.ClusterInstanceId;
+                        // ClusterSleeves (legacy)
+                        using (var cmd = _context.Connection.CreateCommand())
+                        {
+                            cmd.Transaction = transaction;
+                            cmd.CommandText = @"UPDATE ClusterSleeves SET
+                                Corner1X=@c1x, Corner1Y=@c1y, Corner1Z=@c1z,
+                                Corner2X=@c2x, Corner2Y=@c2y, Corner2Z=@c2z,
+                                Corner3X=@c3x, Corner3Y=@c3y, Corner3Z=@c3z,
+                                Corner4X=@c4x, Corner4Y=@c4y, Corner4Z=@c4z,
+                                UpdatedAt = CURRENT_TIMESTAMP
+                                WHERE ClusterInstanceId = @id";
+                            cmd.Parameters.AddWithValue("@id", id);
+                            cmd.Parameters.AddWithValue("@c1x", u.c1x); cmd.Parameters.AddWithValue("@c1y", u.c1y); cmd.Parameters.AddWithValue("@c1z", u.c1z);
+                            cmd.Parameters.AddWithValue("@c2x", u.c2x); cmd.Parameters.AddWithValue("@c2y", u.c2y); cmd.Parameters.AddWithValue("@c2z", u.c2z);
+                            cmd.Parameters.AddWithValue("@c3x", u.c3x); cmd.Parameters.AddWithValue("@c3y", u.c3y); cmd.Parameters.AddWithValue("@c3z", u.c3z);
+                            cmd.Parameters.AddWithValue("@c4x", u.c4x); cmd.Parameters.AddWithValue("@c4y", u.c4y); cmd.Parameters.AddWithValue("@c4z", u.c4z);
+                            cmd.ExecuteNonQuery();
+                        }
+                        // ClusterSleeves_v2
+                        using (var cmd2 = _context.Connection.CreateCommand())
+                        {
+                            cmd2.Transaction = transaction;
+                            cmd2.CommandText = @"UPDATE ClusterSleeves_v2 SET
+                                Corner1X=@c1x, Corner1Y=@c1y, Corner1Z=@c1z,
+                                Corner2X=@c2x, Corner2Y=@c2y, Corner2Z=@c2z,
+                                Corner3X=@c3x, Corner3Y=@c3y, Corner3Z=@c3z,
+                                Corner4X=@c4x, Corner4Y=@c4y, Corner4Z=@c4z
+                                WHERE ClusterInstanceId = @id";
+                            cmd2.Parameters.AddWithValue("@id", id);
+                            cmd2.Parameters.AddWithValue("@c1x", u.c1x); cmd2.Parameters.AddWithValue("@c1y", u.c1y); cmd2.Parameters.AddWithValue("@c1z", u.c1z);
+                            cmd2.Parameters.AddWithValue("@c2x", u.c2x); cmd2.Parameters.AddWithValue("@c2y", u.c2y); cmd2.Parameters.AddWithValue("@c2z", u.c2z);
+                            cmd2.Parameters.AddWithValue("@c3x", u.c3x); cmd2.Parameters.AddWithValue("@c3y", u.c3y); cmd2.Parameters.AddWithValue("@c3z", u.c3z);
+                            cmd2.Parameters.AddWithValue("@c4x", u.c4x); cmd2.Parameters.AddWithValue("@c4y", u.c4y); cmd2.Parameters.AddWithValue("@c4z", u.c4z);
+                            cmd2.ExecuteNonQuery();
+                        }
+                    }
+                    transaction.Commit();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ❌ BatchUpdateClusterSleeveCorners failed: {ex.Message}");
             }
         }
 

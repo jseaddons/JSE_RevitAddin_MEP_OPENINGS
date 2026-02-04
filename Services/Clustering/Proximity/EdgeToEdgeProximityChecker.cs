@@ -82,8 +82,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                     return null;
                 }
 
-                string hostType = sleeve1.HostType ?? "Unknown";
-                string orientation = sleeve1.Orientation ?? "Unknown";
+                // ✅ HOST METADATA FROM CLASH ZONE ONLY
+                // The dynamic objects passed into this checker are often anonymous types like:
+                //   new { SleeveId, SomeLabel, ClashZone = cz }
+                // which DO NOT expose HostType / Orientation directly. Accessing sleeve1.HostType
+                // caused runtime exceptions and made every proximity check return false.
+                //
+                // To avoid that, we now read StructuralElementType + HostOrientation from the
+                // underlying ClashZone model, which is the single source of truth for host info.
+                var czMeta = sleeve1.ClashZone as ClashZone;
+                string hostType = czMeta?.StructuralElementType ?? "Unknown";
+                string orientation = czMeta?.HostOrientation ?? "Unknown";
 
                 double centerToCenterDistance;
 

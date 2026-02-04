@@ -263,10 +263,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public double SleeveBoundingBoxRCS_MaxZ { get; set; } = 0.0;
         
         /// <summary>
-        /// ✅ ROTATED BBOX: Rotated bounding box coordinates for non-axis-aligned sleeves
-        /// These are calculated and saved when MepElementRotationAngle is non-zero
-        /// For axis-aligned sleeves, these remain NULL
-        /// Used by cluster service to calculate cluster bounding boxes in rotated coordinate system
+        /// ✅ ROTATED BBOX: From Revit only. Element bbox in element-local coordinates.
+        /// DO NOT calculate from half-width/half-height. See REVIT_GEOMETRY_RULES.md.
         /// </summary>
         public double? RotatedBoundingBoxMinX { get; set; }
         public double? RotatedBoundingBoxMinY { get; set; }
@@ -276,9 +274,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public double? RotatedBoundingBoxMaxZ { get; set; }
         
         /// <summary>
-        /// ✅ SLEEVE CORNERS: Pre-calculated 4 corner coordinates in world space (for clustering optimization)
-        /// Calculated once during individual sleeve placement, stored for reuse during clustering
-        /// Corner order: 1=Bottom-left, 2=Bottom-right, 3=Top-left, 4=Top-right (in local space, then rotated to world)
+        /// ✅ SLEEVE CORNERS: From Revit only (placed sleeve geometry). DO NOT calculate from placement + dimensions.
+        /// Source: BatchSleeveCornerExtractor / CalculateCornersFromInstance. See REVIT_GEOMETRY_RULES.md.
         /// </summary>
         public double? SleeveCorner1X { get; set; }
         public double? SleeveCorner1Y { get; set; }

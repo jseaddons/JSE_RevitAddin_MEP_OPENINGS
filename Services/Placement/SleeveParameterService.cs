@@ -86,23 +86,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         /// <summary>
         /// ✅ DUPLICATE FIX: Set SleeveInstanceId on Revit element.
         /// Use this to mark the element as "placed" so future runs can identify it.
+        /// Sets both "SleeveInstanceId" and "Sleeve Instance ID" so cluster sleeves (-1) are correct
+        /// regardless of which name the family uses (SetSleeveParameters uses ElementId overload and sets "Sleeve Instance ID").
         /// </summary>
         public void SetSleeveInstanceId(FamilyInstance instance, int elementId)
         {
             try
             {
+                // Set both possible parameter names so cluster sleeves get -1 on the parameter downstream code reads
                 var param = instance.LookupParameter("SleeveInstanceId");
                 if (param != null && !param.IsReadOnly)
-                {
-                    // Direct set (no batching) to ensure ID is always on the element
                     param.Set(elementId);
-                }
-                else
+                var paramSpaced = instance.LookupParameter("Sleeve Instance ID");
+                if (paramSpaced != null && !paramSpaced.IsReadOnly)
+                    paramSpaced.Set(elementId);
+                // If this is a cluster sleeve (-1), ensure batch dictionary has -1 so a later flush does not overwrite
+                if (elementId == -1 && instance != null)
                 {
-                    // Some families might not have this parameter, which is fine, but log valid warning
-                     if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Warning($"SleeveInstanceId parameter not found or read-only on instance {instance.Id}");
+                    var targetDict = ActiveBatchDictionary;
+                    var eid = instance.Id;
+                    if (targetDict.ContainsKey(eid))
+                        targetDict[eid]["Sleeve Instance ID"] = -1;
                 }
+                if ((param == null || param.IsReadOnly) && (paramSpaced == null || paramSpaced.IsReadOnly) && !DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"SleeveInstanceId / Sleeve Instance ID not found or read-only on instance {instance.Id}");
             }
             catch (Exception ex)
             {

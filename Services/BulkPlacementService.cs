@@ -37,16 +37,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     {
         private readonly Action<string>? _logger;
         private readonly SleeveParameterService _parameterService;
+        private readonly SleeveRotationService _rotationService;
         private readonly JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IPerformanceMonitor? _performanceMonitor;
-        
+
         public BulkPlacementService(
-            Document doc, 
+            Document doc,
             Action<string>? logger = null,
             JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IPerformanceMonitor? performanceMonitor = null,
-            SleeveParameterService? parameterService = null)
+            SleeveParameterService? parameterService = null,
+            SleeveRotationService? rotationService = null)
         {
             _logger = logger ?? (msg => DebugLogger.Info(msg));
             _parameterService = parameterService ?? new SleeveParameterService(doc);
+            _rotationService = rotationService ?? new SleeveRotationService();
             _performanceMonitor = performanceMonitor;
         }
 
@@ -153,10 +156,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                             if (instance != null)
                             {
-                                ApplyRotation(doc, instance, item.Plan.RotationRadians);
-                                
-                                // ✅ SIMPLIFIED: Use plan dimensions directly (already rounded by planner)
-                                SetSleeveParameters(instance, item.Zone, item.Plan);
+                                bool isWallOrFraming = IsWallOrFraming(item.Zone);
+
+                                if (isWallOrFraming)
+                                {
+                                    // WALL/FRAMING PATH: Rotation from RotationService
+                                    double rotationRad = _rotationService.DetermineRotation(item.Zone);
+                                    ApplyRotation(doc, instance, rotationRad);
+                                    SetWallFramingParameters(instance, item.Zone, item.Plan);
+                                }
+                                else
+                                {
+                                    // FLOOR PATH: Rotation from Plan directly
+                                    ApplyRotation(doc, instance, item.Plan.RotationRadians);
+                                    SetFloorParameters(instance, item.Zone, item.Plan);
+                                }
 
                                 _parameterService.SetSleeveInstanceId(instance, elementId.IntegerValue); 
                                 
@@ -210,6 +224,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             return cache;
         }
 
+        private static bool IsWallOrFraming(ClashZone zone)
+        {
+            if (zone?.StructuralElementType == null) return false;
+            var t = zone.StructuralElementType.Trim();
+            return t.IndexOf("Wall", StringComparison.OrdinalIgnoreCase) >= 0
+                || t.IndexOf("Framing", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
         private void ApplyRotation(Document doc, FamilyInstance instance, double rotationRad)
         {
             if (Math.Abs(rotationRad) < 0.001) return;
@@ -230,38 +252,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
-        private void SetSleeveParameters(FamilyInstance instance, ClashZone zone, SleevePlacementPlanningDto plan)
+        private void SetWallFramingParameters(FamilyInstance instance, ClashZone zone, SleevePlacementPlanningDto plan)
         {
             try
             {
-                // ✅ SIMPLIFIED: Use plan dimensions directly!
-                // ParallelSleevePlacementPlanner already calculates correct dimensions with:
-                // - Asymmetric clearance for dampers (MEP + Other clearance)
-                // - Rounding applied (OpeningSettingsHelper.RoundDimensionsToNearest5mm)
                 double width = plan.TargetWidthFt;
                 double height = plan.TargetHeightFt;
 
-                // Update zone for DB persistence
                 if (zone != null)
                 {
                     zone.SleeveWidth = width;
                     zone.SleeveHeight = height;
                 }
 
-                _parameterService.SetSleeveParameters(
-                    instance, 
-                    width, 
-                    height, 
-                    plan.TargetDiameterFt, 
-                    plan.IsCircular, 
-                    zone,
-                    plan.RequiredDepthFt);
-                
-                _logger?.Invoke($"[BulkPlacement] Set parameters for {instance.Id}: W={width*304.8:F0}mm, H={height*304.8:F0}mm, Circ={plan.IsCircular}");
+                _parameterService.SetSleeveParameters(instance, width, height, plan.TargetDiameterFt, plan.IsCircular, zone, plan.RequiredDepthFt);
+                _logger?.Invoke($"[BulkPlacement] [WALL/FRAMING] Set parameters for {instance.Id}: W={width*304.8:F0}mm, H={height*304.8:F0}mm, Circ={plan.IsCircular}");
             }
             catch (Exception ex)
             {
-                _logger?.Invoke($"[BulkPlacement] Failed to set parameters for zone {zone?.Id}: {ex.Message}");
+                _logger?.Invoke($"[BulkPlacement] [WALL/FRAMING] Failed for zone {zone?.Id}: {ex.Message}");
+            }
+        }
+
+        private void SetFloorParameters(FamilyInstance instance, ClashZone zone, SleevePlacementPlanningDto plan)
+        {
+            try
+            {
+                double width = plan.TargetWidthFt;
+                double height = plan.TargetHeightFt;
+
+                if (zone != null)
+                {
+                    zone.SleeveWidth = width;
+                    zone.SleeveHeight = height;
+                }
+
+                _parameterService.SetSleeveParameters(instance, width, height, plan.TargetDiameterFt, plan.IsCircular, zone, plan.RequiredDepthFt);
+                _logger?.Invoke($"[BulkPlacement] [FLOOR] Set parameters for {instance.Id}: W={width*304.8:F0}mm, H={height*304.8:F0}mm, Circ={plan.IsCircular}");
+            }
+            catch (Exception ex)
+            {
+                _logger?.Invoke($"[BulkPlacement] [FLOOR] Failed for zone {zone?.Id}: {ex.Message}");
             }
         }
 
@@ -294,6 +325,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
         }
 
+        /// <summary>Updates zone from Revit element only. Bounding box and corners: from Revit, never calculated. See REVIT_GEOMETRY_RULES.md.</summary>
         private void UpdateZoneGeometry(ClashZone zone, Element element)
         {
             var bbox = element.get_BoundingBox(null);
@@ -335,47 +367,45 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     zone.MepRotationCos = Math.Cos(rotation);
                     zone.MepRotationSin = Math.Sin(rotation);
 
-                    double halfW = zone.SleeveWidth / 2.0;
-                    double halfH = zone.SleeveHeight / 2.0;
-                    double halfD = (zone.SleeveDepth > 0 ? zone.SleeveDepth : (bbox.Max.Z - bbox.Min.Z)) / 2.0;
+                    // Rotated bounding box: from Revit bbox in element-local coordinates (no calculation from dimensions).
+                    Transform ti = t.Inverse;
+                    var corners = new[]
+                    {
+                        ti.OfPoint(bbox.Min),
+                        ti.OfPoint(new XYZ(bbox.Max.X, bbox.Min.Y, bbox.Min.Z)),
+                        ti.OfPoint(new XYZ(bbox.Max.X, bbox.Max.Y, bbox.Min.Z)),
+                        ti.OfPoint(new XYZ(bbox.Min.X, bbox.Max.Y, bbox.Min.Z)),
+                        ti.OfPoint(new XYZ(bbox.Min.X, bbox.Min.Y, bbox.Max.Z)),
+                        ti.OfPoint(new XYZ(bbox.Max.X, bbox.Min.Y, bbox.Max.Z)),
+                        ti.OfPoint(bbox.Max),
+                        ti.OfPoint(new XYZ(bbox.Min.X, bbox.Max.Y, bbox.Max.Z))
+                    };
+                    double lx0 = corners[0].X, lx1 = corners[0].X, ly0 = corners[0].Y, ly1 = corners[0].Y, lz0 = corners[0].Z, lz1 = corners[0].Z;
+                    for (int i = 1; i < corners.Length; i++)
+                    {
+                        var c = corners[i];
+                        if (c.X < lx0) lx0 = c.X; if (c.X > lx1) lx1 = c.X;
+                        if (c.Y < ly0) ly0 = c.Y; if (c.Y > ly1) ly1 = c.Y;
+                        if (c.Z < lz0) lz0 = c.Z; if (c.Z > lz1) lz1 = c.Z;
+                    }
+                    zone.RotatedBoundingBoxMinX = lx0;
+                    zone.RotatedBoundingBoxMinY = ly0;
+                    zone.RotatedBoundingBoxMinZ = lz0;
+                    zone.RotatedBoundingBoxMaxX = lx1;
+                    zone.RotatedBoundingBoxMaxY = ly1;
+                    zone.RotatedBoundingBoxMaxZ = lz1;
 
-                    zone.RotatedBoundingBoxMinX = -halfW;
-                    zone.RotatedBoundingBoxMinY = -halfH;
-                    zone.RotatedBoundingBoxMinZ = -halfD;
-                    zone.RotatedBoundingBoxMaxX = halfW;
-                    zone.RotatedBoundingBoxMaxY = halfH;
-                    zone.RotatedBoundingBoxMaxZ = halfD;
-
-                    XYZ p1Local = new XYZ(-halfW, -halfH, 0); 
-                    XYZ p2Local = new XYZ(halfW, -halfH, 0);
-                    XYZ p3Local = new XYZ(halfW, halfH, 0);
-                    XYZ p4Local = new XYZ(-halfW, halfH, 0);
-
-                    XYZ p1Global = t.OfPoint(p1Local);
-                    XYZ p2Global = t.OfPoint(p2Local);
-                    XYZ p3Global = t.OfPoint(p3Local);
-                    XYZ p4Global = t.OfPoint(p4Local);
-
-                    zone.SleeveCorner1X = p1Global.X;
-                    zone.SleeveCorner1Y = p1Global.Y;
-                    zone.SleeveCorner1Z = p1Global.Z;
-
-                    zone.SleeveCorner2X = p2Global.X;
-                    zone.SleeveCorner2Y = p2Global.Y;
-                    zone.SleeveCorner2Z = p2Global.Z;
-
-                    zone.SleeveCorner3X = p3Global.X;
-                    zone.SleeveCorner3Y = p3Global.Y;
-                    zone.SleeveCorner3Z = p3Global.Z;
-
-                    zone.SleeveCorner4X = p4Global.X;
-                    zone.SleeveCorner4Y = p4Global.Y;
-                    zone.SleeveCorner4Z = p4Global.Z;
+                    // Sleeve corners: do NOT calculate here. Only persist from Revit (BatchSleeveCornerExtractor after placement).
                 }
                 else
                 {
+                    // Non-FamilyInstance: still use Revit bbox relative to placement point.
                     zone.RotatedBoundingBoxMinX = bbox.Min.X - zone.SleevePlacementPointX;
+                    zone.RotatedBoundingBoxMinY = bbox.Min.Y - zone.SleevePlacementPointY;
+                    zone.RotatedBoundingBoxMinZ = bbox.Min.Z - zone.SleevePlacementPointZ;
                     zone.RotatedBoundingBoxMaxX = bbox.Max.X - zone.SleevePlacementPointX;
+                    zone.RotatedBoundingBoxMaxY = bbox.Max.Y - zone.SleevePlacementPointY;
+                    zone.RotatedBoundingBoxMaxZ = bbox.Max.Z - zone.SleevePlacementPointZ;
                 }
 
                 if (zone.SleeveInstanceId == 0) zone.SleeveInstanceId = element.Id.IntegerValue;

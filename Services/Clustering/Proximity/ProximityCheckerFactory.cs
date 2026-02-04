@@ -31,45 +31,49 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                     return new BoundingBoxProximityChecker(); // Default fallback
                 }
 
-                // ✅ DECISION 1: Check for rectangular sleeves (all categories) → use corner-based proximity
-                // This is the most accurate for any rectangular geometry where Revit BBoxes are erratic
+                // ✅ Based on SLEEVE SHAPE only (opening in wall/floor), not MEP element shape.
                 var helper = new SleeveCornerProximityHelper();
                 var cz1 = sleeve1.ClashZone as Models.ClashZone;
-                
-                if (cz1 != null && helper.IsRectangularSleeve(cz1))
+                var cz2 = sleeve2.ClashZone as Models.ClashZone;
+
+                // DECISION 1: Both sleeves have rectangular opening (corner geometry) → corner-based proximity
+                if (cz1 != null && cz2 != null && helper.HasRectangularSleeveShape(cz1) && helper.HasRectangularSleeveShape(cz2))
                 {
                     return new CornerProximityChecker();
                 }
 
-                // ✅ DECISION 2: Check for round pipes/ducts → use edge-to-edge distance
-                string systemType = sleeve1.SystemType ?? "";
-                bool isRoundPipeOrDuct = (systemType.IndexOf("Pipe", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         systemType.IndexOf("Duct", StringComparison.OrdinalIgnoreCase) >= 0) &&
-                                        (sleeve1.IsCircular == true || sleeve2.IsCircular == true);
-
-                if (isRoundPipeOrDuct)
+                // DECISION 2: Both sleeves have circular opening (diameter, no corners) → edge-to-edge
+                if (cz1 != null && cz2 != null && helper.HasCircularSleeveShape(cz1) && helper.HasCircularSleeveShape(cz2))
                 {
-                    // Round pipes/ducts: Use edge-to-edge distance (accounts for sleeve diameter)
                     return new EdgeToEdgeProximityChecker();
                 }
 
-                // ✅ DECISION 3: Check for rotated sleeves → use rotated proximity checker
+                // ✅ DECISION 3: Mixed types (one rectangular, one circular) → use robust MixedTypeProximityChecker
+                // This is specifically for the user's issue with bounding boxes on angled walls.
+                if (cz1 != null && cz2 != null && 
+                    ((helper.HasRectangularSleeveShape(cz1) && helper.HasCircularSleeveShape(cz2)) ||
+                     (helper.HasCircularSleeveShape(cz1) && helper.HasRectangularSleeveShape(cz2))))
+                {
+                    return new MixedTypeProximityChecker();
+                }
+
+                // ✅ DECISION 4: Check for rotated sleeves → use rotated proximity checker
                 if (isRotated && Math.Abs(rotationAngle) > 1e-6)
                 {
                     // Rotated sleeves: Use rotated proximity checker with rotation angle
                     return new RotatedProximityChecker(rotationAngle);
                 }
 
-                // ✅ DECISION 4: Default fallback → use bounding box proximity checker
-                // This handles axis-aligned rectangular sleeves on floors, walls, etc.
-                return new BoundingBoxProximityChecker();
+                // ✅ DECISION 5: Default fallback → use robust MixedTypeProximityChecker
+                // It handles Floors (WCS) and Walls (RCS) more safely than the basic BoundingBox checker.
+                return new MixedTypeProximityChecker();
             }
             catch (Exception ex)
             {
                 // ✅ CRASH-SAFE: Return safe default on exception
                 SafeFileLogger.SafeAppendText("geometry_errors.log",
                     $"[ProximityCheckerFactory] Exception in CreateChecker: {ex.Message}, StackTrace: {ex.StackTrace}");
-                return new CornerProximityChecker(); // 🏆 Preferred fallback now is Corners if possible
+                return new MixedTypeProximityChecker(); // 🏆 Preferred fallback is now MixedType (RCS-aware)
             }
         }
     }

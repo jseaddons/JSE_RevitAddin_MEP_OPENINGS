@@ -240,6 +240,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
+        /// Returns the category strings selected for this filter (one or many). Only these categories get placement/clustering; if not selected, no process.
+        /// </summary>
+        private static List<string> GetSelectedCategoryStringsForFilter(OpeningFilter filter)
+        {
+            if (filter == null) return new List<string>();
+            if (filter.SelectedMepCategoryNames != null && filter.SelectedMepCategoryNames.Count > 0)
+            {
+                return filter.SelectedMepCategoryNames
+                    .Select(c => Models.MepCategoryConstants.Normalize(c))
+                    .Distinct()
+                    .ToList();
+            }
+            string single = filter.Category switch
+            {
+                Models.MepCategory.Ducts => "Ducts",
+                Models.MepCategory.DuctAccessories => "Duct Accessories",
+                Models.MepCategory.Pipes => "Pipes",
+                Models.MepCategory.CableTrays => "Cable Trays",
+                _ => Models.MepCategoryConstants.Normalize(filter.Category.ToString())
+            };
+            return new List<string> { single };
+        }
+
+        /// <summary>
         /// Execute all filters for a discipline with memory management
         /// </summary>
         private void ExecuteDisciplineWithMemoryManagement(string discipline, List<OpeningFilter> filters, bool showProgress)
@@ -398,44 +422,45 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // This follows the architecture: Place sleeves → Cluster sleeves → Mark sleeves
                     // Use UniversalClusterService directly (faster than old RectangularSleeveClusterCommandV2)
 
-                    // ✅ RESTORED & MOVED: Trigger V2 Clustering (Calculate -> Place)
-                    // MOVED OUTSIDE _path3Flags CHECK to ensure it always runs!
+                    // ✅ Clustering for all clusterable categories (Ducts, Duct Accessories, Pipes, Cable Trays) so Pipes/Cable Trays cluster when they have zones.
                     try
                     {
-                        // Pass existing performance monitor to unify logging
+                        var clusterableCategories = new[] { "Ducts", "Duct Accessories", "Pipes", "Cable Trays" };
                         var clusterService = ClusterServiceFactory.CreateRefactored(_document, performanceMonitor: performanceMonitor);
-
-                        // Load zones for V2 clustering (Database Only)
                         var dataService = new JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Data.ClusterDataService(_document);
-                        var v2Zones = dataService.LoadClashZonesFromRegularXml(null, categoryString, _document);
-
-                        if (v2Zones != null && v2Zones.Count > 0)
+                        foreach (var cat in clusterableCategories)
                         {
-                            // Execute V2 Clustering (Calculation + Placement)
-                            // Passing 0 for comboId/filterId as per plan default
-                            var clusterResult = clusterService.ClusterSleevesV2(
-                                _document,
-                                v2Zones,
-                                categoryString,
-                                comboId: 0,
-                                filterId: 0
-                            );
+                            try
+                            {
+                                var zones = dataService.LoadClashZonesFromRegularXml(null, cat, _document);
+                                if (zones == null || zones.Count == 0)
+                                {
+                                    SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] [ORCHESTRATOR] Skipping clustering for category={cat} (LoadClashZones returned {zones?.Count ?? 0} zones)\n");
+                                    continue;
+                                }
 
-                            totalClusters = clusterResult.placedCount;
-
-                            SafeFileLogger.SafeAppendText("orchestrator_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] ✅ V2 CLUSTERING TRIGGERED for {categoryString}: Placed {totalClusters} clusters.\n");
-                        }
-                        else
-                        {
-                            SafeFileLogger.SafeAppendText("orchestrator_debug.log",
-                               $"[{DateTime.Now:HH:mm:ss}] ⚠️ V2 CLUSTERING SKIPPED for {categoryString}: No zones loaded.\n");
+                                var clusterResult = clusterService.ClusterSleevesV2(
+                                    _document,
+                                    zones,
+                                    cat,
+                                    comboId: 0,
+                                    filterId: 0
+                                );
+                                totalClusters += clusterResult.placedCount;
+                                SafeFileLogger.SafeAppendText("orchestrator_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] ✅ V2 CLUSTERING ({cat}): Placed {clusterResult.placedCount} clusters.\n");
+                            }
+                            catch (Exception catEx)
+                            {
+                                SafeFileLogger.SafeAppendText("orchestrator_debug.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] ❌ V2 CLUSTERING FAILED for {cat}: {catEx.Message}\n");
+                            }
                         }
                     }
                     catch (Exception clusterEx)
                     {
                         SafeFileLogger.SafeAppendText("orchestrator_debug.log",
-                              $"[{DateTime.Now:HH:mm:ss}] ❌ V2 CLUSTERING FAILED for {categoryString}: {clusterEx.Message}\n");
+                              $"[{DateTime.Now:HH:mm:ss}] ❌ V2 CLUSTERING FAILED: {clusterEx.Message}\n");
                     }
                     } // end if EnableClusteringWorkflow
 
@@ -1906,6 +1931,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             cornerTracker?.SetItemCount(extractedCount);
                        }
                     }
+
+                    // ✅ Batch corner extraction for ALL placed sleeves in DB (always run): saves corners for every placed rectangular sleeve (and bbox-derived for round)
+                    using (var dbContext2 = new SleeveDbContext(_document))
+                    {
+                        var repo2 = new ClashZoneRepository(dbContext2);
+                        var extractorAll = new BatchSleeveCornerExtractor(repo2);
+                        extractorAll.ExtractAndSaveCorners(_document);
+                        // ✅ Cluster sleeves: extract corners from Revit and save to ClusterSleeves + ClusterSleeves_v2
+                        extractorAll.ExtractAndSaveCornersForClusters(_document);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -1934,57 +1969,74 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     SafeFileLogger.SafeAppendText("placement_debug.log", $"[{DateTime.Now:HH:mm:ss}] 🚀 STARTING PHASE 2-4: Hybrid Cluster Workflow\n");
                 }
 
-                // 3. CLUSTER & SWAP (Phase 3 & 4)
+                // 3. CLUSTER & SWAP (Phase 3 & 4) — all clusterable categories (Ducts, Duct Accessories, Pipes, Cable Trays)
                 try
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Phase 3/4: Clustering & Swapping...\n");
 
-                    // Parameters for ClusterSleevesV2
-                    List<ClashZone> clashZones;
-                    // FIX: Use current filter category instead of "All" to prevent "Zombie" placement of unselected categories
-                    string categoryString = Models.MepCategoryConstants.Normalize(filter.Category.ToString());
-                    
-                    SafeFileLogger.SafeAppendText("batch_v2.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] 🔍 CLUSTERING: Processing category={categoryString}\n");
+                    var clusterableCategories = new[] { "Ducts", "Duct Accessories", "Pipes", "Cable Trays" };
+                    int filterId = 0;
+                    int comboId = 0;
+                    var clusterService = ClusterServiceFactory.CreateWithAllServices(_document);
 
                     using (var ctx = new SleeveDbContext(_document))
                     {
                         var repo = new ClashZoneRepository(ctx);
-                        // Fetch only zones for the current category
-                        clashZones = repo.GetAllClashZones()
-                                         .Where(z => !z.IsClusterResolved && string.Equals(z.MepElementCategory, categoryString, StringComparison.OrdinalIgnoreCase))
-                                         .ToList();
+                        var allZones = repo.GetAllClashZones().Where(z => !z.IsClusterResolved).ToList();
+
+                        // Log zone counts per category so we can see why a category is skipped (e.g. Duct Accessories 0)
+                        foreach (var cat in clusterableCategories)
+                        {
+                            int count = allZones.Count(z => string.Equals(z.MepElementCategory, cat, StringComparison.OrdinalIgnoreCase));
+                            SafeFileLogger.SafeAppendText("batch_v2.log",
+                                $"[{DateTime.Now:HH:mm:ss}] 🔍 CLUSTERING INPUT: category={cat}, unresolved zones={count}\n");
+                        }
+
+                        foreach (var categoryString in clusterableCategories)
+                        {
+                            var clashZones = allZones.Where(z => string.Equals(z.MepElementCategory, categoryString, StringComparison.OrdinalIgnoreCase)).ToList();
+                            if (clashZones.Count == 0)
+                            {
+                                SafeFileLogger.SafeAppendText("batch_v2.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] 🔍 CLUSTERING: Skipping category={categoryString} (0 zones, nothing to cluster)\n");
+                                continue;
+                            }
+
+                            SafeFileLogger.SafeAppendText("batch_v2.log",
+                                $"[{DateTime.Now:HH:mm:ss}] 🔍 CLUSTERING: Processing category={categoryString} ({clashZones.Count} zones)\n");
+
+                            SafeFileLogger.SafeAppendText("batch_v2.log",
+                                $"[{DateTime.Now:HH:mm:ss}] 🔍 CLUSTERING: Calling ClusterSleevesV2 with skipPlacement=TRUE (will consolidate)\n");
+
+                            try
+                            {
+                                var clusterResult = clusterService.ClusterSleevesV2(
+                                    _document,
+                                    clashZones,
+                                    categoryString,
+                                    comboId,
+                                    filterId,
+                                    useSingleTransaction: true,
+                                    skipPlacement: true
+                                );
+                                SafeFileLogger.SafeAppendText("batch_v2.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] 🔍 CLUSTERING: {categoryString} returned placed={clusterResult.placedCount}, failed={clusterResult.failedCount}\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[HybridBatch] Clustering Calculation Complete for {categoryString} (placement will be consolidated)");
+                                    SafeFileLogger.SafeAppendText("placement_debug.log", $"[{DateTime.Now:HH:mm:ss}] [HybridBatch] Clustering Calculation Complete for {categoryString} (placement will be consolidated)\n");
+                                }
+                            }
+                            catch (Exception catEx)
+                            {
+                                SafeFileLogger.SafeAppendText("batch_v2.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] ❌ CLUSTERING ERROR for {categoryString}: {catEx.Message}\n");
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Error($"[HybridBatch] Error in Clustering for {categoryString}: {catEx.Message}");
+                            }
+                        }
                     }
-                    int filterId = 0; 
-                    int comboId = 0; 
-                    
-                    // Instantiate using Factory
-                    var clusterService = ClusterServiceFactory.CreateWithAllServices(_document);
-
-                     // ✅ CONSOLIDATED CLUSTERING: Calculate only (skip placement for consolidation)
-                     // Placement and cleanup will be done once for all categories after all clustering completes
-                     SafeFileLogger.SafeAppendText("batch_v2.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] 🔍 CLUSTERING: Calling ClusterSleevesV2 with skipPlacement=TRUE (will consolidate)\n");
-                     
-                     var clusterResult = clusterService.ClusterSleevesV2(
-                        _document, 
-                        clashZones, // Uses filtered zones from earlier in method
-                        categoryString, 
-                        comboId, 
-                        filterId, 
-                        useSingleTransaction: true,
-                        skipPlacement: true // ✅ Skip placement - will be consolidated
-                     );
-                     
-                     SafeFileLogger.SafeAppendText("batch_v2.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] 🔍 CLUSTERING: ClusterSleevesV2 returned placed={clusterResult.placedCount}, failed={clusterResult.failedCount}\n");
-
-                     if (!DeploymentConfiguration.DeploymentMode)
-                     {
-                        DebugLogger.Info($"[HybridBatch] Clustering Calculation Complete for {categoryString} (placement will be consolidated)");
-                        SafeFileLogger.SafeAppendText("placement_debug.log", $"[{DateTime.Now:HH:mm:ss}] [HybridBatch] Clustering Calculation Complete for {categoryString} (placement will be consolidated)\n");
-                     }
                 }
                 catch (Exception ex)
                 {
@@ -2054,6 +2106,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         DebugLogger.Info($"[HybridBatch] CONSOLIDATED PLACEMENT Complete: {placed} placed, {failed} failed, {cleanedUp} cleaned up");
                         SafeFileLogger.SafeAppendText("placement_debug.log", $"[{DateTime.Now:HH:mm:ss}] [HybridBatch] CONSOLIDATED PLACEMENT Complete: {placed} placed, {failed} failed, {cleanedUp} cleaned up\n");
                     }
+                    // ✅ Clear one-line result so user can see why "clusters not seen"
+                    SafeFileLogger.SafeAppendText("batch_v2.log",
+                        $"[{DateTime.Now:HH:mm:ss}] 📌 CLUSTER RESULT: placed={placed}, failed={failed}, cleanedUp={cleanedUp}. If placed=0: check earlier in this log for 'Calculated 0 candidate clusters' (no clusters formed) or 'GetPendingClusters returned 0' (none to place).\n");
                 }
                 catch (Exception ex)
                 {
@@ -2061,12 +2116,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         DebugLogger.Error($"[HybridBatch] Error in Consolidated Placement: {ex.Message}");
                     SafeFileLogger.SafeAppendText("placement_errors.log", 
                         $"[{DateTime.Now:HH:mm:ss}] ⚠️ CONSOLIDATED PLACEMENT FAILED: {ex.Message}\n{ex.StackTrace}\n");
+                    SafeFileLogger.SafeAppendText("batch_v2.log",
+                        $"[{DateTime.Now:HH:mm:ss}] ❌ CLUSTER PLACEMENT ERROR: {ex.Message}\n");
                 }
             }
             else
             {
                 SafeFileLogger.SafeAppendText("batch_v2.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ CLUSTERING DISABLED: EnableClusteringWorkflow=false, skipping cluster workflow\n");
+                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ CLUSTERING DISABLED: EnableClusteringWorkflow=false — no cluster sleeves will be placed. Set OptimizationFlags.EnableClusteringWorkflow=true to see clusters.\n");
             }
 
             // ✅ PERFORMANCE: Return counts AFTER saving bounding boxes to database
@@ -2197,13 +2254,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var failures = fa.GetFailureMessages();
             const string logFile = "failure_suppression_debug.log";
 
-            SafeFileLogger.SafeAppendTextAlways(logFile,
-                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [NestedFamilyClashWarningSuppressor] PreprocessFailures INVOKED (context={_context}). Failure count = {failures?.Count ?? 0}\n");
-
+            // ✅ FAST PATH: nothing to do
             if (failures == null || failures.Count == 0)
             {
-                SafeFileLogger.SafeAppendTextAlways(logFile, $"[{DateTime.Now:HH:mm:ss.fff}] No failures to process.\n");
                 return FailureProcessingResult.Continue;
+            }
+
+            // ✅ PERFORMANCE: batch logging in non-deployment mode; no disk I/O in deployment mode
+            System.Text.StringBuilder? sb = null;
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                sb = new System.Text.StringBuilder();
+                sb.AppendLine(
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [NestedFamilyClashWarningSuppressor] PreprocessFailures INVOKED (context={_context}). Failure count = {failures.Count}");
             }
 
             foreach (var f in failures)
@@ -2211,8 +2274,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var severity = f.GetSeverity();
                 var desc = f.GetDescriptionText() ?? string.Empty;
 
-                SafeFileLogger.SafeAppendTextAlways(logFile,
-                    $"[{DateTime.Now:HH:mm:ss.fff}] Failure: Severity={severity}, Description=\"{desc}\"\n");
+                if (sb != null)
+                {
+                    sb.AppendLine(
+                        $"[{DateTime.Now:HH:mm:ss.fff}] Failure: Severity={severity}, Description=\"{desc}\"");
+                }
 
                 // Match "identical instances in the same place" / "double counting" (allow slight wording differences)
                 bool hasIdentical = desc.IndexOf("identical", StringComparison.OrdinalIgnoreCase) >= 0;
@@ -2224,28 +2290,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (!isIdenticalInstances)
                 {
-                    SafeFileLogger.SafeAppendTextAlways(logFile,
-                        $"[{DateTime.Now:HH:mm:ss.fff}]   -> SKIP (not identical-instances match). hasIdentical={hasIdentical}, hasSamePlace={hasSamePlace}, hasInstance={hasInstance}, hasDoubleCounting={hasDoubleCounting}\n");
+                    if (sb != null)
+                    {
+                        sb.AppendLine(
+                            $"[{DateTime.Now:HH:mm:ss.fff}]   -> SKIP (not identical-instances match). hasIdentical={hasIdentical}, hasSamePlace={hasSamePlace}, hasInstance={hasInstance}, hasDoubleCounting={hasDoubleCounting}");
+                    }
                     continue;
                 }
 
-                SafeFileLogger.SafeAppendTextAlways(logFile,
-                    $"[{DateTime.Now:HH:mm:ss.fff}]   -> MATCH identical-instances. Attempting suppress...\n");
+                if (sb != null)
+                {
+                    sb.AppendLine(
+                        $"[{DateTime.Now:HH:mm:ss.fff}]   -> MATCH identical-instances. Attempting suppress...");
+                }
 
                 if (severity == FailureSeverity.Warning)
                 {
                     try
                     {
                         fa.DeleteWarning(f);
-                        SafeFileLogger.SafeAppendTextAlways(logFile,
-                            $"[{DateTime.Now:HH:mm:ss.fff}]   -> DeleteWarning SUCCESS.\n");
+                        if (sb != null)
+                        {
+                            sb.AppendLine(
+                                $"[{DateTime.Now:HH:mm:ss.fff}]   -> DeleteWarning SUCCESS.");
+                        }
                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[NestedFamilyClashWarningSuppressor] Suppressed (Family2): {desc}");
                     }
                     catch (Exception ex)
                     {
-                        SafeFileLogger.SafeAppendTextAlways(logFile,
-                            $"[{DateTime.Now:HH:mm:ss.fff}]   -> DeleteWarning EXCEPTION: {ex.GetType().Name}: {ex.Message}\n");
+                        if (sb != null)
+                        {
+                            sb.AppendLine(
+                                $"[{DateTime.Now:HH:mm:ss.fff}]   -> DeleteWarning EXCEPTION: {ex.GetType().Name}: {ex.Message}");
+                        }
                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Warning($"[NestedFamilyClashWarningSuppressor] DeleteWarning failed: {ex.Message}");
                     }
@@ -2255,8 +2333,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     try
                     {
                         int numRes = f.GetNumberOfResolutions();
-                        SafeFileLogger.SafeAppendTextAlways(logFile,
-                            $"[{DateTime.Now:HH:mm:ss.fff}]   -> Error path: GetNumberOfResolutions={numRes}\n");
+                        if (sb != null)
+                        {
+                            sb.AppendLine(
+                                $"[{DateTime.Now:HH:mm:ss.fff}]   -> Error path: GetNumberOfResolutions={numRes}");
+                        }
                         if (numRes > 0)
                         {
                             bool resolved = false;
@@ -2265,36 +2346,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 if (f.HasResolutionOfType(resolutionType))
                                 {
                                     f.SetCurrentResolutionType(resolutionType);
-                                    SafeFileLogger.SafeAppendTextAlways(logFile,
-                                        $"[{DateTime.Now:HH:mm:ss.fff}]   -> SetCurrentResolutionType({resolutionType}) SUCCESS.\n");
+                                    if (sb != null)
+                                    {
+                                        sb.AppendLine(
+                                            $"[{DateTime.Now:HH:mm:ss.fff}]   -> SetCurrentResolutionType({resolutionType}) SUCCESS.");
+                                    }
                                     resolved = true;
                                     if (!DeploymentConfiguration.DeploymentMode)
                                         DebugLogger.Info($"[NestedFamilyClashWarningSuppressor] Resolved Error (Family2): {desc}");
                                     break;
                                 }
                             }
-                            if (!resolved)
-                                SafeFileLogger.SafeAppendTextAlways(logFile,
-                                    $"[{DateTime.Now:HH:mm:ss.fff}]   -> No resolution type matched (HasResolutionOfType false for all).\n");
+                            if (!resolved && sb != null)
+                            {
+                                sb.AppendLine(
+                                    $"[{DateTime.Now:HH:mm:ss.fff}]   -> No resolution type matched (HasResolutionOfType false for all).");
+                            }
                         }
                     }
                     catch (Exception ex)
                     {
-                        SafeFileLogger.SafeAppendTextAlways(logFile,
-                            $"[{DateTime.Now:HH:mm:ss.fff}]   -> Error resolution EXCEPTION: {ex.GetType().Name}: {ex.Message}\n");
+                        if (sb != null)
+                        {
+                            sb.AppendLine(
+                                $"[{DateTime.Now:HH:mm:ss.fff}]   -> Error resolution EXCEPTION: {ex.GetType().Name}: {ex.Message}");
+                        }
                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Warning($"[NestedFamilyClashWarningSuppressor] Could not resolve Error: {ex.Message}");
                     }
                 }
                 else
                 {
-                    SafeFileLogger.SafeAppendTextAlways(logFile,
-                        $"[{DateTime.Now:HH:mm:ss.fff}]   -> SKIP (severity not Warning or Error: {severity}).\n");
+                    if (sb != null)
+                    {
+                        sb.AppendLine(
+                            $"[{DateTime.Now:HH:mm:ss.fff}]   -> SKIP (severity not Warning or Error: {severity}).");
+                    }
                 }
             }
 
-            SafeFileLogger.SafeAppendTextAlways(logFile,
-                $"[{DateTime.Now:HH:mm:ss.fff}] PreprocessFailures DONE. Returning Continue.\n");
+            if (sb != null && sb.Length > 0)
+            {
+                SafeFileLogger.SafeAppendText("failure_suppression_debug.log", sb.ToString());
+            }
+
             return FailureProcessingResult.Continue;
         }
 

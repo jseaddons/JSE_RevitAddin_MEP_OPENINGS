@@ -241,8 +241,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
                          }
                     }
 
-                    // 2. Check MEP Category
-                    // "MUST match: MEP Category"
+                    // 2. Check MEP Category - MUST match: ducts with ducts only, duct accessories with duct accessories only, pipes with pipes only
                     if (cz1.MepElementCategory != cz2.MepElementCategory)
                     {
                         SafeFileLogger.SafeAppendText("cluster_debug.log",

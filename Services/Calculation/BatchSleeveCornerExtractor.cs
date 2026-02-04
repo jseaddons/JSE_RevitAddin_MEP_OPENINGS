@@ -28,6 +28,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
         public void ExtractAndSaveCorners(Document doc)
         {
             SafeFileLogger.SafeAppendTextAlways("geometry_extraction.log", "Starting Batch Corner Extraction...\n");
+            SafeFileLogger.SafeAppendText("corner_extraction.log", $"[{DateTime.Now:HH:mm:ss}] [START] BATCH EXTRACTION (GetPlacedClashZones)...\n");
 
             // 1. Get all known placed sleeves from DB EFFICIENTLY in a single query
             var placedZones = _repository.GetPlacedClashZones();
@@ -35,6 +36,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
             if (placedZones == null || !placedZones.Any())
             {
                 SafeFileLogger.SafeAppendText("geometry_extraction.log", "No placed sleeves found in database.\n");
+                SafeFileLogger.SafeAppendText("corner_extraction.log", $"[{DateTime.Now:HH:mm:ss}] [WARN] No placed sleeves found in database.\n");
                 return;
             }
 
@@ -50,17 +52,124 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
             var zonesList = placedZones?.ToList() ?? new List<ClashZone>();
             SafeFileLogger.SafeAppendTextAlways("geometry_extraction.log", 
                 $"Starting Batch Corner Extraction for {zonesList.Count} specific zones (using saved orientation)...\n");
+            SafeFileLogger.SafeAppendText("corner_extraction.log",
+                $"[{DateTime.Now:HH:mm:ss}] [START] BATCH EXTRACTION: Processing {zonesList.Count} zones...\n");
 
             if (!zonesList.Any())
             {
                 SafeFileLogger.SafeAppendTextAlways("geometry_extraction.log", "No zones provided for extraction.\n");
+                SafeFileLogger.SafeAppendText("corner_extraction.log", $"[{DateTime.Now:HH:mm:ss}] [WARN] No zones provided for extraction.\n");
                 return 0;
             }
 
             return ExtractAndSaveCornersInternal(doc, zonesList);
         }
 
+        /// <summary>
+        /// Extract corners from placed cluster sleeves in Revit and save to both ClusterSleeves and ClusterSleeves_v2 tables.
+        /// </summary>
+        public int ExtractAndSaveCornersForClusters(Document doc)
+        {
+            var clusters = _repository.GetPlacedClusterSleeves();
+            if (clusters == null || !clusters.Any())
+            {
+                SafeFileLogger.SafeAppendText("corner_extraction.log", $"[{DateTime.Now:HH:mm:ss}] [CLUSTER] No placed cluster sleeves in DB.\n");
+                return 0;
+            }
+            SafeFileLogger.SafeAppendText("corner_extraction.log", $"[{DateTime.Now:HH:mm:ss}] [CLUSTER] Extracting corners for {clusters.Count} cluster sleeves...\n");
+            var updates = new List<(int ClusterInstanceId, double c1x, double c1y, double c1z, double c2x, double c2y, double c2z, double c3x, double c3y, double c3z, double c4x, double c4y, double c4z)>();
+            foreach (var (clusterInstanceId, hostOrientation) in clusters)
+            {
+                try
+                {
+                    Element elem = doc.GetElement(new ElementId(clusterInstanceId));
+                    if (elem == null || !(elem is FamilyInstance))
+                    {
+                        SafeFileLogger.SafeAppendText("corner_extraction.log", $"[{DateTime.Now:HH:mm:ss}] [CLUSTER] Cluster {clusterInstanceId} not found in Revit\n");
+                        continue;
+                    }
 
+                    List<XYZ> corners = null;
+
+                    // Same rule as individual sleeves: for HostOrientation X/Y (walls + framing),
+                    // always use bbox-based WCS corners; do not depend on solid face selection.
+                    if (!string.IsNullOrEmpty(hostOrientation) &&
+                        (hostOrientation.Equals("X", StringComparison.OrdinalIgnoreCase) ||
+                         hostOrientation.Equals("Y", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        var bbox = elem.get_BoundingBox(null);
+                        if (bbox != null)
+                        {
+                            if (hostOrientation.Equals("X", StringComparison.OrdinalIgnoreCase))
+                            {
+                                double yMid = (bbox.Min.Y + bbox.Max.Y) / 2.0;
+                                corners = new List<XYZ>
+                                {
+                                    new XYZ(bbox.Min.X, yMid, bbox.Min.Z),
+                                    new XYZ(bbox.Max.X, yMid, bbox.Min.Z),
+                                    new XYZ(bbox.Max.X, yMid, bbox.Max.Z),
+                                    new XYZ(bbox.Min.X, yMid, bbox.Max.Z)
+                                };
+                            }
+                            else // "Y"
+                            {
+                                double xMid = (bbox.Min.X + bbox.Max.X) / 2.0;
+                                corners = new List<XYZ>
+                                {
+                                    new XYZ(xMid, bbox.Min.Y, bbox.Min.Z),
+                                    new XYZ(xMid, bbox.Max.Y, bbox.Min.Z),
+                                    new XYZ(xMid, bbox.Max.Y, bbox.Max.Z),
+                                    new XYZ(xMid, bbox.Min.Y, bbox.Max.Z)
+                                };
+                            }
+                        }
+                        else
+                        {
+                            SafeFileLogger.SafeAppendText("corner_extraction.log",
+                                $"[{DateTime.Now:HH:mm:ss}] [CLUSTER] ERROR: No bbox for cluster {clusterInstanceId} (HostOrientation={hostOrientation})\n");
+                        }
+                    }
+                    else
+                    {
+                        corners = ExtractCornersFromSolid(elem, doc, hostOrientation);
+                        if (corners == null || corners.Count != 4)
+                        {
+                            var bbox = elem.get_BoundingBox(null);
+                            if (bbox != null)
+                            {
+                                double z = bbox.Min.Z;
+                                corners = new List<XYZ>
+                                {
+                                    new XYZ(bbox.Min.X, bbox.Min.Y, z),
+                                    new XYZ(bbox.Max.X, bbox.Min.Y, z),
+                                    new XYZ(bbox.Max.X, bbox.Max.Y, z),
+                                    new XYZ(bbox.Min.X, bbox.Max.Y, z)
+                                };
+                            }
+                        }
+                    }
+
+                    if (corners != null && corners.Count == 4)
+                    {
+                        updates.Add((clusterInstanceId,
+                            corners[0].X, corners[0].Y, corners[0].Z,
+                            corners[1].X, corners[1].Y, corners[1].Z,
+                            corners[2].X, corners[2].Y, corners[2].Z,
+                            corners[3].X, corners[3].Y, corners[3].Z));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SafeFileLogger.SafeAppendText("corner_extraction.log", $"[{DateTime.Now:HH:mm:ss}] [CLUSTER] Error cluster {clusterInstanceId}: {ex.Message}\n");
+                }
+            }
+            if (updates.Any())
+            {
+                _repository.BatchUpdateClusterSleeveCorners(updates);
+                SafeFileLogger.SafeAppendText("corner_extraction.log", $"[{DateTime.Now:HH:mm:ss}] [CLUSTER] Saved corners for {updates.Count} cluster sleeves (ClusterSleeves + ClusterSleeves_v2).\n");
+            }
+            return updates.Count;
+        }
 
         /// <summary>
         /// Internal method that does the actual extraction work
@@ -74,49 +183,65 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
                 try
                 {
                     Element elem = doc.GetElement(new ElementId(zone.SleeveInstanceId));
-                    if (elem == null || !(elem is FamilyInstance)) continue;
+                    if (elem == null || !(elem is FamilyInstance))
+                    {
+                        SafeFileLogger.SafeAppendText("corner_extraction.log", $"[{DateTime.Now:HH:mm:ss}] [WARN] Sleeve {zone.SleeveInstanceId} not found in Revit\n");
+                        continue;
+                    }
 
                     string hostOrientation = zone.HostOrientation;
 
-                    // Extract Corners
-                    var corners = ExtractCornersFromSolid(elem, doc, hostOrientation);
-                    
-                    // ✅ FALLBACK: If solid extraction fails, use BoundingBox corners
-                    if (corners == null || corners.Count != 4)
+                    List<XYZ> corners = null;
+
+                    // ✅ SINGLE SOURCE OF TRUTH FOR WALL/FRAMING:
+                    // If HostOrientation is X/Y, always compute corners from the element's bounding box in WCS,
+                    // just like walls, and do NOT rely on solid face selection (which can pick horizontal faces).
+                    if (!string.IsNullOrEmpty(hostOrientation) &&
+                        (hostOrientation.Equals("X", StringComparison.OrdinalIgnoreCase) ||
+                         hostOrientation.Equals("Y", StringComparison.OrdinalIgnoreCase)))
                     {
                         var bbox = elem.get_BoundingBox(null);
                         if (bbox != null)
                         {
-                            if (!string.IsNullOrEmpty(hostOrientation))
+                            if (hostOrientation.Equals("X", StringComparison.OrdinalIgnoreCase))
                             {
-                                if (hostOrientation.Equals("X", StringComparison.OrdinalIgnoreCase))
+                                // X-wall / X-framing: opening in XZ plane → Y constant, X/Z vary
+                                double yMid = (bbox.Min.Y + bbox.Max.Y) / 2.0;
+                                corners = new List<XYZ>
                                 {
-                                    // X-Wall (Face is XZ plane) - Preserve Z-height
-                                    double yMid = (bbox.Min.Y + bbox.Max.Y) / 2.0;
-                                    corners = new List<XYZ>
-                                    {
-                                        new XYZ(bbox.Min.X, yMid, bbox.Min.Z),
-                                        new XYZ(bbox.Max.X, yMid, bbox.Min.Z),
-                                        new XYZ(bbox.Max.X, yMid, bbox.Max.Z),
-                                        new XYZ(bbox.Min.X, yMid, bbox.Max.Z)
-                                    };
-                                }
-                                else if (hostOrientation.Equals("Y", StringComparison.OrdinalIgnoreCase))
-                                {
-                                    // Y-Wall (Face is YZ plane) - Preserve Z-height
-                                    double xMid = (bbox.Min.X + bbox.Max.X) / 2.0;
-                                    corners = new List<XYZ>
-                                    {
-                                        new XYZ(xMid, bbox.Min.Y, bbox.Min.Z),
-                                        new XYZ(xMid, bbox.Max.Y, bbox.Min.Z),
-                                        new XYZ(xMid, bbox.Max.Y, bbox.Max.Z),
-                                        new XYZ(xMid, bbox.Min.Y, bbox.Max.Z)
-                                    };
-                                }
+                                    new XYZ(bbox.Min.X, yMid, bbox.Min.Z),
+                                    new XYZ(bbox.Max.X, yMid, bbox.Min.Z),
+                                    new XYZ(bbox.Max.X, yMid, bbox.Max.Z),
+                                    new XYZ(bbox.Min.X, yMid, bbox.Max.Z)
+                                };
                             }
-                            
-                            // Default Fallback (Floor or unknown) - Preserve Area
-                            if (corners == null)
+                            else // hostOrientation == "Y"
+                            {
+                                // Y-wall / Y-framing: opening in YZ plane → X constant, Y/Z vary
+                                double xMid = (bbox.Min.X + bbox.Max.X) / 2.0;
+                                corners = new List<XYZ>
+                                {
+                                    new XYZ(xMid, bbox.Min.Y, bbox.Min.Z),
+                                    new XYZ(xMid, bbox.Max.Y, bbox.Min.Z),
+                                    new XYZ(xMid, bbox.Max.Y, bbox.Max.Z),
+                                    new XYZ(xMid, bbox.Min.Y, bbox.Max.Z)
+                                };
+                            }
+                        }
+                        else
+                        {
+                            SafeFileLogger.SafeAppendText("corner_extraction.log", $"[{DateTime.Now:HH:mm:ss}] [ERROR] Failed to extract corners for sleeve {zone.SleeveInstanceId}\n");
+                        }
+                    }
+                    else
+                    {
+                        // Floor / unknown: keep existing solid-based logic + XY fallback
+                        corners = ExtractCornersFromSolid(elem, doc, hostOrientation);
+
+                        if (corners == null || corners.Count != 4)
+                        {
+                            var bbox = elem.get_BoundingBox(null);
+                            if (bbox != null)
                             {
                                 double z = bbox.Min.Z;
                                 corners = new List<XYZ>
@@ -126,8 +251,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
                                     new XYZ(bbox.Max.X, bbox.Max.Y, z),
                                     new XYZ(bbox.Min.X, bbox.Max.Y, z)
                                 };
+
+                                SafeFileLogger.SafeAppendTextAlways("geometry_extraction.log",
+                                    $"[FALLBACK] Using BoundingBox corners (Orientation: {hostOrientation ?? "Floor"}) for sleeve {zone.SleeveInstanceId} (Solid extraction failed)\n");
+                                SafeFileLogger.SafeAppendText("corner_extraction.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] [WARN] Sleeve {zone.SleeveInstanceId}: Solid extraction failed, used BoundingBox fallback\n");
                             }
-                            SafeFileLogger.SafeAppendTextAlways("geometry_extraction.log", $"[FALLBACK] Using BoundingBox corners (Orientation: {hostOrientation ?? "Floor"}) for sleeve {zone.SleeveInstanceId} (Solid extraction failed)\n");
+                            else
+                            {
+                                SafeFileLogger.SafeAppendText("corner_extraction.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] [ERROR] Failed to extract corners for sleeve {zone.SleeveInstanceId}\n");
+                            }
                         }
                     }
 
@@ -146,18 +280,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
                 catch (Exception ex)
                 {
                     SafeFileLogger.SafeAppendTextAlways("geometry_extraction_errors.log", $"Error extracting {zone.SleeveInstanceId}: {ex.Message}\n");
+                    SafeFileLogger.SafeAppendText("corner_extraction.log", $"[{DateTime.Now:HH:mm:ss}] [ERROR] Exception for sleeve {zone.SleeveInstanceId}: {ex.Message}\n");
                 }
             }
 
             // 2. Batch Save
+            int failedCount = zones.Count - updates.Count;
             if (updates.Any())
             {
                 _repository.BatchUpdateSleeveCorners(updates);
                 SafeFileLogger.SafeAppendTextAlways("geometry_extraction.log", $"Extracted and saved corners for {updates.Count} sleeves.\n");
+                SafeFileLogger.SafeAppendText("corner_extraction.log",
+                    $"[{DateTime.Now:HH:mm:ss}] [SUCCESS] BATCH EXTRACTION FINISHED: {updates.Count} extracted, {failedCount} failed\n");
             }
             else
             {
                 SafeFileLogger.SafeAppendTextAlways("geometry_extraction.log", "No sleeves found/extracted.\n");
+                SafeFileLogger.SafeAppendText("corner_extraction.log",
+                    $"[{DateTime.Now:HH:mm:ss}] [SUCCESS] BATCH EXTRACTION FINISHED: 0 extracted, {zones.Count} failed\n");
             }
 
             return updates.Count;

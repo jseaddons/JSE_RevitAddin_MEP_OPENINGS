@@ -518,71 +518,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
         }
 
         /// <summary>
-        /// ✅ SRP: Calculates and saves 4 corner coordinates in WORLD space (delegates to corner calculation service).
-        /// ✅ CRITICAL FIX: For Y-wall sleeves, use width for Y-axis (along wall direction).
-        /// Corner calculation service maps: width→X-axis, height→Y-axis.
-        /// For Y-wall: Width (along wall) should map to Y-axis, so pass width as height parameter.
+        /// Saves 4 corner coordinates in WORLD space only from Revit geometry extraction.
+        /// No fallback: corners are persisted only when CalculateCornersFromInstance succeeds. See REVIT_GEOMETRY_RULES.md.
         /// </summary>
-        private void SaveSleeveCorners(ClashZone zone, FamilyInstance sleeve, ClashZoneRepository repository, 
+        private void SaveSleeveCorners(ClashZone zone, FamilyInstance sleeve, ClashZoneRepository repository,
             double rotationAngleRad, double width, double height)
         {
-            // ✅ CRITICAL FIX: For Y-wall, use width for Y-axis (along wall)
-            // Corner service maps: width→X, height→Y
-            // For Y-wall: width (along wall) → Y-axis, so pass width as height parameter
-            double cornerWidth = width;
-            double cornerHeight = height;
-            
-            bool isYWall = IsWallOrFramingHost(zone) && 
-                          (zone.HostOrientation == "Y" || 
-                           (zone.WallDirection != null && Math.Abs(zone.WallDirection.Y) > Math.Abs(zone.WallDirection.X)));
-            
-            if (isYWall)
-            {
-                // ✅ Y-WALL: Use width for Y-axis (along wall direction)
-                cornerWidth = height;  // Height (vertical) → X-axis
-                cornerHeight = width;  // Width (along wall) → Y-axis ✅
-            }
-            
-            // ✅ SRP: Delegate corner calculation to specialized service
-            // ✅ IMPROVEMENT (User Request): "Read corners from Revit"
-            // prioritized: Extract exact corners from placed element geometry (Solids)
-            // Fallback: Calculate from parameters (original logic)
-            
             (XYZ corner1, XYZ corner2, XYZ corner3, XYZ corner4)? corners = null;
-            
-            // 1. Try extracting from geometry (Most trusted source)
+
             if (sleeve != null && sleeve.IsValidObject)
             {
-               try 
-               {
-                   // ✅ CRITICAL UPDATE: Pass HostOrientation and StructuralType from DB for robust strategy selection
-                   corners = _cornerCalculationService.CalculateCornersFromInstance(sleeve, zone.HostOrientation, zone.StructuralElementType);
-                   if (corners.HasValue && !DeploymentConfiguration.DeploymentMode)
-                   {
-                         // Optional: Log success
-                         DebugLogger.Info($"[SaveSleeveCorners] ✅ Sleeve {sleeve.Id} GEOMETRY extraction success. C1=({corners.Value.corner1.X:F4},{corners.Value.corner1.Y:F4},{corners.Value.corner1.Z:F4})...");
-                   }
-               }
-               catch (Exception ex)
-               {
-                   if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Warning($"[SaveSleeveCorners] ⚠️ Sleeve {sleeve.Id} GEOMETRY extraction failed: {ex.Message}");
-               }
+                try
+                {
+                    corners = _cornerCalculationService.CalculateCornersFromInstance(sleeve, zone.HostOrientation, zone.StructuralElementType);
+                    if (corners.HasValue && !DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[SaveSleeveCorners] ✅ Sleeve {sleeve.Id} GEOMETRY extraction success. C1=({corners.Value.corner1.X:F4},{corners.Value.corner1.Y:F4},{corners.Value.corner1.Z:F4})...");
+                }
+                catch (Exception ex)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning($"[SaveSleeveCorners] ⚠️ Sleeve {sleeve.Id} GEOMETRY extraction failed: {ex.Message}. Corners not persisted (no fallback).");
+                }
             }
-            
-            // 2. Fallback to math calculation if geometry failed
-            if (!corners.HasValue)
-            {
-                if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Warning($"[SaveSleeveCorners] ⚠️ Sleeve {sleeve.Id} - Falling back to MATH calculation.");
-                
-                corners = _cornerCalculationService.CalculateCorners(
-                    zone.SleevePlacementPoint,
-                    cornerWidth,
-                    cornerHeight,
-                    rotationAngleRad);
-            }
-                
+
             if (corners.HasValue)
             {
                 repository.UpdateSleeveCorners(
