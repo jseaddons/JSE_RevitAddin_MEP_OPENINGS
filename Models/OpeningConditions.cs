@@ -55,6 +55,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// Settings for sleeve sizing (rounding, thresholds)
         /// </summary>
         public SizingSettings SizingSettings { get; set; } = new SizingSettings();
+
+        /// <summary>
+        /// Per-filter / per-category join openings distance in millimeters.
+        /// This mirrors the UI "Join openings if distance &lt;= (mm)" setting, but
+        /// is stored alongside the conditions row so cluster/tolerance logic can
+        /// be driven purely from the Conditions table.
+        /// </summary>
+        public double JoinOpeningsDistanceMm { get; set; } = 200.0;
+
+        /// <summary>
+        /// Whether architectural floors should be skipped for this filter/category.
+        /// Mirrors the global IgnoreArchitecturalFloors flag, but persisted in
+        /// the Conditions table to allow DB-driven behavior.
+        /// </summary>
+        public bool IgnoreArchitecturalFloors { get; set; } = false;
+
+        /// <summary>
+        /// Threshold diameter in millimeters above which circular openings
+        /// should be converted to rectangular. This is persisted per filter/
+        /// category so both individual and clustered placement can share one
+        /// source of truth.
+        /// </summary>
+        public double CircularToRectangularThresholdMm { get; set; } = 0.0;
     }
     
     /// <summary>

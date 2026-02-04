@@ -85,6 +85,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 var xmlKey = customKey ?? resolvedFilterName;
 
+                // Sync core behavioral settings from the current profile into the conditions
+                // object so they can be persisted in the Conditions table and reused by
+                // clustering / placement purely from DB.
+                try
+                {
+                    var settings = ApplicationProfileService.Instance.GetCurrentSettings();
+                    if (settings != null)
+                    {
+                        conditions.JoinOpeningsDistanceMm = settings.JoinOpeningsDistance;
+                        conditions.IgnoreArchitecturalFloors = settings.IgnoreArchitecturalFloors;
+
+                        // Circular-to-rectangular threshold: prefer profile value, but
+                        // also mirror into SizingSettings so sizing logic can read it.
+                        conditions.CircularToRectangularThresholdMm = settings.CircularToRectangularThresholdMm;
+                        if (conditions.SizingSettings == null)
+                        {
+                            conditions.SizingSettings = new SizingSettings();
+                        }
+                        conditions.SizingSettings.CircularToRectangularThresholdMm = settings.CircularToRectangularThresholdMm;
+                    }
+                }
+                catch
+                {
+                    // If settings cannot be loaded, leave existing condition values as-is.
+                }
+
                 conditions.FilterName = resolvedFilterName;
                 conditions.Category = resolvedCategory;
                 conditions.LastModified = DateTime.Now;

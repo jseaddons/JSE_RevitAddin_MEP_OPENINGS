@@ -122,26 +122,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
             XYZ placementPoint;
             bool isDamperCluster = CheckIfDamperCluster(cluster, xmlFilePath);
 
-            // ✅ HYBRID LOGIC: 
-            // 1. Width/Height axes = Midpoint of all instances (explicitCenter or corners).
-            // 2. Thickness axis = Host Centerline of first instance.
-            
-            if (isDamperCluster)
-            {
-                // Dampers: Centroid + alignment constraints (lateral shift fix)
-                placementPoint = CalculateFromIntersections(cluster, xmlFilePath);
-                placementPoint = ApplyDamperAlignment(placementPoint, cluster, xmlFilePath);
-            }
-            else
-            {
-                // Non-damper Wall/Framing: Hybrid Logic
-                // Use corners directly - it now implements the hybrid host-snap internally
-                placementPoint = CalculateFromCornersForWallCluster(cluster, firstCz, xmlFilePath);
-                
-                // If we had a high-quality explicit center, we could use its width/height axes 
-                // but snapping to Host centerline is mandatory for the thickness axis.
-                // Since CalculateFromCornersForWallCluster already does this, we prefer it.
-            }
+            // ✅ USER RULE (2026-02-04):
+            // For ALL wall / structural framing clusters (including dampers), placement must be
+            // driven purely by sleeve corners:
+            // - Width: extreme left/right corners along wall axis (Y for Y‑wall, X for X‑wall)
+            // - Height: extreme top/bottom corners (Z)
+            // - Placement point: midpoint of those extremes, with thickness axis snapped to
+            //   the first sleeve's wall centerline.
+            //
+            // Centroid-based placement is NO LONGER used on walls/framing, even for dampers.
+            // That is exactly what CalculateFromCornersForWallCluster already implements.
+            placementPoint = CalculateFromCornersForWallCluster(cluster, firstCz, xmlFilePath);
 
             if (!DeploymentConfiguration.DeploymentMode)
                 SafeFileLogger.SafeAppendText("cluster_sizing.log",

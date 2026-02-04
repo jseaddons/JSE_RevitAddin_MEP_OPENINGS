@@ -155,9 +155,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
 
         /// <summary>
         /// Check if two ClashZones are within proximity using their sleeve corners.
-        /// For wall-hosted sleeves, ignores the wall depth axis:
-        /// - X-wall: Check Y and Z overlap (ignore X)
-        /// - Y-wall: Check X and Z overlap (ignore Y)
+        /// 
+        /// OLD BEHAVIOUR (axis overlap):
+        /// - Expanded one bbox by tolerance and required axis-wise overlap (e.g. Y && Z for Y‑wall).
+        /// - This meant a sleeve could pass if |ΔY| &lt; tol and |ΔZ| &lt; tol even when the true
+        ///   diagonal distance &gt; tol.
+        /// 
+        /// NEW BEHAVIOUR (user-requested):
+        /// - Use the **actual Euclidean edge‑to‑edge distance** between the 2D rectangles:
+        ///   - X‑wall: distance in X–Z plane
+        ///   - Y‑wall: distance in Y–Z plane
+        /// - Compare that distance directly with the tolerance.
+        /// - This prevents “diagonal chaining” where a visually far sleeve is clustered only
+        ///   because each axis delta is just under the threshold.
         /// </summary>
         public bool AreWithinProximity(ClashZone cz1, ClashZone cz2, double toleranceDist)
         {
@@ -171,24 +181,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                 var bbox1 = GetBoundingBoxFromCorners(cz1);
                 var bbox2 = GetBoundingBoxFromCorners(cz2);
 
-                // ✅ FIX: Use ceiling on tolerance to be more forgiving at boundary values
-                // If user sets 100mm tolerance, distances up to 100.999mm will be treated as 100mm
-                // This handles both floating-point precision AND slight measurement variations
-                // Example: 100.9mm distance with 100mm tolerance → Math.Ceiling(100.9) = 101mm tolerance → clusters ✅
-                var expandedTolerance = Math.Ceiling(toleranceDist * 304.8) / 304.8; // Convert to mm, ceiling, back to feet
+                // ✅ FIX: Use ceiling on tolerance to be slightly forgiving at boundary values.
+                // We still apply this, but now against the *Euclidean* distance rather than
+                // axis-wise overlaps.
+                var effectiveTolerance = Math.Ceiling(toleranceDist * 304.8) / 304.8; // feet
 
-                // Expand bbox1 by tolerance
-                var min1X = bbox1.minX - expandedTolerance;
-                var max1X = bbox1.maxX + expandedTolerance;
-                var min1Y = bbox1.minY - expandedTolerance;
-                var max1Y = bbox1.maxY + expandedTolerance;
-                var min1Z = bbox1.minZ - expandedTolerance;
-                var max1Z = bbox1.maxZ + expandedTolerance;
-
-                // Check overlap
-                bool overlapX = bbox2.maxX >= min1X && bbox2.minX <= max1X;
-                bool overlapY = bbox2.maxY >= min1Y && bbox2.minY <= max1Y;
-                bool overlapZ = bbox2.maxZ >= min1Z && bbox2.minZ <= max1Z;
+                // Helper to compute 1D gap between two intervals (0 if overlapping)
+                double Gap(double min1, double max1, double min2, double max2)
+                {
+                    if (max1 < min2) return min2 - max1;
+                    if (max2 < min1) return min1 - max2;
+                    return 0.0;
+                }
 
                 // ✅ DIAGNOSTIC LOGGING: Show why proximity check fails
                 string category = cz1.MepElementCategory ?? "";
@@ -199,14 +203,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                         $"[ProximityCheck] 🔍 DETAILED CHECK for {category}:\n" +
                         $"  Tolerance: {toleranceMM:F1}mm ({toleranceDist:F6}ft)\n" +
                         $"  Sleeve1 BBox: X=[{bbox1.minX:F3}, {bbox1.maxX:F3}], Y=[{bbox1.minY:F3}, {bbox1.maxY:F3}], Z=[{bbox1.minZ:F3}, {bbox1.maxZ:F3}]\n" +
-                        $"  Sleeve2 BBox: X=[{bbox2.minX:F3}, {bbox2.maxX:F3}], Y=[{bbox2.minY:F3}, {bbox2.maxY:F3}], Z=[{bbox2.minZ:F3}, {bbox2.maxZ:F3}]\n" +
-                        $"  Expanded1:    X=[{min1X:F3}, {max1X:F3}], Y=[{min1Y:F3}, {max1Y:F3}], Z=[{min1Z:F3}, {max1Z:F3}]\n" +
-                        $"  Overlap: X={overlapX}, Y={overlapY}, Z={overlapZ}\n");
+                        $"  Sleeve2 BBox: X=[{bbox2.minX:F3}, {bbox2.maxX:F3}], Y=[{bbox2.minY:F3}, {bbox2.maxY:F3}], Z=[{bbox2.minZ:F3}, {bbox2.maxZ:F3}]\n");
                 }
 
-                // ✅ FIX: For wall-hosted sleeves, ignore the wall depth axis
-                // X-wall (wall running along X): ignore Y (depth), check X and Z
-                // Y-wall (wall running along Y): ignore X (depth), check Y and Z
+                // ✅ FIX: For wall-hosted sleeves, compute TRUE 2D edge‑to‑edge distance in the wall plane.
+                // X‑wall (wall running along X): distance in X–Z, ignore Y (depth)
+                // Y‑wall (wall running along Y): distance in Y–Z, ignore X (depth)
                 string hostOrientation1 = cz1.HostOrientation ?? "";
                 string hostOrientation2 = cz2.HostOrientation ?? "";
                 
@@ -215,34 +217,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                 {
                     if (hostOrientation1.Equals("X", StringComparison.OrdinalIgnoreCase))
                     {
-                        // X-wall: ignore Y, check X and Z overlap
-                        bool result = overlapX && overlapZ;
+                        // X‑wall: distance in X–Z plane
+                        double gapX = Gap(bbox1.minX, bbox1.maxX, bbox2.minX, bbox2.maxX);
+                        double gapZ = Gap(bbox1.minZ, bbox1.maxZ, bbox2.minZ, bbox2.maxZ);
+                        double dist = Math.Sqrt(gapX * gapX + gapZ * gapZ);
+                        bool result = dist <= effectiveTolerance;
+
                         if (category.Contains("Duct") || category.Contains("Damper") || category.Contains("Tray"))
                         {
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"  HostOrientation: X-wall → Check X && Z: {overlapX} && {overlapZ} = {result}\n");
+                                $"  HostOrientation: X-wall → dXZ={dist * 304.8:F1}mm (tol={effectiveTolerance * 304.8:F1}mm) => {result}\n");
                         }
                         return result;
                     }
                     else if (hostOrientation1.Equals("Y", StringComparison.OrdinalIgnoreCase))
                     {
-                        // Y-wall: ignore X, check Y and Z overlap
-                        bool result = overlapY && overlapZ;
+                        // Y‑wall: distance in Y–Z plane
+                        double gapY = Gap(bbox1.minY, bbox1.maxY, bbox2.minY, bbox2.maxY);
+                        double gapZ = Gap(bbox1.minZ, bbox1.maxZ, bbox2.minZ, bbox2.maxZ);
+                        double dist = Math.Sqrt(gapY * gapY + gapZ * gapZ);
+                        bool result = dist <= effectiveTolerance;
+
                         if (category.Contains("Duct") || category.Contains("Damper") || category.Contains("Tray"))
                         {
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"  HostOrientation: Y-wall → Check Y && Z: {overlapY} && {overlapZ} = {result}\n");
+                                $"  HostOrientation: Y-wall → dYZ={dist * 304.8:F1}mm (tol={effectiveTolerance * 304.8:F1}mm) => {result}\n");
                         }
                         return result;
                     }
                 }
                 
-                // Default: require all 3 axes to overlap
-                bool finalResult = overlapX && overlapY && overlapZ;
+                // Default: compute full 3D distance between the two corner bounding boxes
+                double gapX3 = Gap(bbox1.minX, bbox1.maxX, bbox2.minX, bbox2.maxX);
+                double gapY3 = Gap(bbox1.minY, bbox1.maxY, bbox2.minY, bbox2.maxY);
+                double gapZ3 = Gap(bbox1.minZ, bbox1.maxZ, bbox2.minZ, bbox2.maxZ);
+                double dist3D = Math.Sqrt(gapX3 * gapX3 + gapY3 * gapY3 + gapZ3 * gapZ3);
+                bool finalResult = dist3D <= effectiveTolerance;
+
                 if (category.Contains("Duct") || category.Contains("Damper") || category.Contains("Tray"))
                 {
                     SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        $"  Default (all axes): {overlapX} && {overlapY} && {overlapZ} = {finalResult}\n");
+                        $"  Default 3D distance={dist3D * 304.8:F1}mm (tol={effectiveTolerance * 304.8:F1}mm) => {finalResult}\n");
                 }
                 return finalResult;
             }

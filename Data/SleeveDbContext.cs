@@ -395,25 +395,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     // Create Conditions table
                     ExecuteCommand(@"
                         CREATE TABLE IF NOT EXISTS Conditions (
-                            ConditionId   INTEGER PRIMARY KEY AUTOINCREMENT,
-                            FilterId      INTEGER NOT NULL,
-                            Category      TEXT NOT NULL,
-                            RectNormal    REAL,
-                            RectInsulated REAL,
-                            RoundNormal   REAL,
-                            RoundInsulated REAL,
-                            PipesNormal   REAL,
-                            PipesInsulated REAL,
-                            CableTrayTop  REAL,
-                            CableTrayTopInsulated REAL,
-                            CableTrayOther REAL,
-                            CableTrayOtherInsulated REAL,
-                            DuctAccessoryMepNormal REAL,
-                            DuctAccessoryMepInsulated REAL,
-                            DuctAccessoryOtherNormal REAL,
-                            DuctAccessoryOtherInsulated REAL,
-                            OpeningPrefs  TEXT,
-                            UpdatedAt     DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
+                            ConditionId                       INTEGER PRIMARY KEY AUTOINCREMENT,
+                            FilterId                          INTEGER NOT NULL,
+                            Category                          TEXT NOT NULL,
+                            RectNormal                        REAL,
+                            RectInsulated                     REAL,
+                            RoundNormal                       REAL,
+                            RoundInsulated                    REAL,
+                            PipesNormal                       REAL,
+                            PipesInsulated                    REAL,
+                            CableTrayTop                      REAL,
+                            CableTrayTopInsulated             REAL,
+                            CableTrayOther                    REAL,
+                            CableTrayOtherInsulated           REAL,
+                            DuctAccessoryMepNormal            REAL,
+                            DuctAccessoryMepInsulated         REAL,
+                            DuctAccessoryOtherNormal          REAL,
+                            DuctAccessoryOtherInsulated       REAL,
+                            OpeningPrefs                      TEXT,
+                            -- Per-filter/category behavioral settings
+                            JoinOpeningsDistanceMm            REAL,
+                            IgnoreArchitecturalFloors         INTEGER,
+                            CircularToRectangularThresholdMm  REAL,
+                            UpdatedAt                         DATETIME NOT NULL DEFAULT (datetime('now', '+5 hours', '+30 minutes')),
                             FOREIGN KEY(FilterId) REFERENCES Filters(FilterId) ON DELETE CASCADE,
                             UNIQUE(FilterId, Category)
                         )", transaction);
@@ -837,6 +841,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     AddColumnIfMissing("Conditions", "HorizontalLevel", "TEXT", transaction);
                     AddColumnIfMissing("Conditions", "VerticalLevel", "TEXT", transaction);
                     AddColumnIfMissing("Conditions", "CreationMode", "TEXT", transaction);
+                    AddColumnIfMissing("Conditions", "JoinOpeningsDistanceMm", "REAL", transaction);
+                    AddColumnIfMissing("Conditions", "IgnoreArchitecturalFloors", "INTEGER", transaction);
+                    AddColumnIfMissing("Conditions", "CircularToRectangularThresholdMm", "REAL", transaction);
 
                     AddColumnIfMissing("SleeveSnapshots", "SourceType", "TEXT NOT NULL DEFAULT 'Individual'", transaction);
                     AddColumnIfMissing("SleeveSnapshots", "FilterId", "INTEGER", transaction);

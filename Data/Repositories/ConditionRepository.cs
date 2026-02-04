@@ -163,6 +163,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         HorizontalLevel,
                         VerticalLevel,
                         CreationMode,
+                        JoinOpeningsDistanceMm,
+                        IgnoreArchitecturalFloors,
+                        CircularToRectangularThresholdMm,
                         UpdatedAt
                     ) VALUES (
                         @FilterId,
@@ -186,6 +189,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         @HorizontalLevel,
                         @VerticalLevel,
                         @CreationMode,
+                        @JoinOpeningsDistanceMm,
+                        @IgnoreArchitecturalFloors,
+                        @CircularToRectangularThresholdMm,
                         CURRENT_TIMESTAMP
                     )";
 
@@ -235,6 +241,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         HorizontalLevel = @HorizontalLevel,
                         VerticalLevel = @VerticalLevel,
                         CreationMode = @CreationMode,
+                        JoinOpeningsDistanceMm = @JoinOpeningsDistanceMm,
+                        IgnoreArchitecturalFloors = @IgnoreArchitecturalFloors,
+                        CircularToRectangularThresholdMm = @CircularToRectangularThresholdMm,
                         UpdatedAt = CURRENT_TIMESTAMP
                     WHERE ConditionId = @ConditionId";
 
@@ -309,6 +318,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             cmd.Parameters.AddWithValue("@VerticalLevel", levelConstraints.VerticalLevel ?? string.Empty);
 
             cmd.Parameters.AddWithValue("@CreationMode", conditions.CreationMode ?? string.Empty);
+
+            // Per-filter/category behavioral settings (backed primarily by Conditions table)
+            // Join distance: millimeters, mirrors SettingsModel.JoinOpeningsDistance but stored per filter/category.
+            cmd.Parameters.AddWithValue("@JoinOpeningsDistanceMm", conditions.JoinOpeningsDistanceMm);
+            // Ignore architectural floors flag: stored as integer 0/1.
+            cmd.Parameters.AddWithValue("@IgnoreArchitecturalFloors", conditions.IgnoreArchitecturalFloors ? 1 : 0);
+            // Circular-to-rectangular threshold: prefer explicit property, fall back to sizing settings if set.
+            double thresholdMm = conditions.CircularToRectangularThresholdMm;
+            if (thresholdMm <= 0 && conditions.SizingSettings != null)
+            {
+                thresholdMm = conditions.SizingSettings.CircularToRectangularThresholdMm;
+            }
+            cmd.Parameters.AddWithValue("@CircularToRectangularThresholdMm", thresholdMm);
         }
 
         public OpeningConditions GetConditions(string combinedKey)
@@ -321,7 +343,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
             using (var cmd = _context.Connection.CreateCommand())
             {
-                cmd.CommandText = @"
+                    cmd.CommandText = @"
                     SELECT 
                         c.FilterId,
                         c.CombinedKey,
@@ -344,6 +366,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         c.HorizontalLevel,
                         c.VerticalLevel,
                         c.CreationMode,
+                        c.JoinOpeningsDistanceMm,
+                        c.IgnoreArchitecturalFloors,
+                        c.CircularToRectangularThresholdMm,
                         f.FilterName,
                         f.Category AS FilterCategory,
                         c.UpdatedAt
@@ -381,8 +406,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             DuctAccessoryMepInsulated = GetDouble(reader, "DuctAccessoryMepInsulated"),
                             DuctAccessoryOtherNormal = GetDouble(reader, "DuctAccessoryOtherNormal"),
                             DuctAccessoryOtherInsulated = GetDouble(reader, "DuctAccessoryOtherInsulated")
-                        }
+                        },
+                        JoinOpeningsDistanceMm = GetDouble(reader, "JoinOpeningsDistanceMm"),
+                        IgnoreArchitecturalFloors = (reader["IgnoreArchitecturalFloors"] is DBNull
+                            ? 0
+                            : Convert.ToInt32(reader["IgnoreArchitecturalFloors"])) != 0,
+                        CircularToRectangularThresholdMm = GetDouble(reader, "CircularToRectangularThresholdMm")
                     };
+
+                    // Also hydrate SizingSettings from the stored threshold so sizing/planning
+                    // code that only looks at SizingSettings still sees the correct value.
+                    conditions.SizingSettings = conditions.SizingSettings ?? new SizingSettings();
+                    conditions.SizingSettings.CircularToRectangularThresholdMm = conditions.CircularToRectangularThresholdMm;
 
                     var openingPrefsJson = reader["OpeningPrefs"]?.ToString()?.Trim();
                     if (!string.IsNullOrWhiteSpace(openingPrefsJson))
