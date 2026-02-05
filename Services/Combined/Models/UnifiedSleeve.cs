@@ -230,15 +230,48 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
                 new XYZ(clusterSleeve.Corner4X, clusterSleeve.Corner4Y, clusterSleeve.Corner4Z)
             };
             
-            var bbox = new BoundingBoxXYZ
+            // ✅ IMPROVED LOGIC: Respect "High Quality" stored BBox if it has volume
+            double dbMinZ = clusterSleeve.BoundingBoxMinZ;
+            double dbMaxZ = clusterSleeve.BoundingBoxMaxZ;
+            bool dbHasVolume = Math.Abs(dbMaxZ - dbMinZ) > 0.001;
+
+            BoundingBoxXYZ bbox;
+
+            if (dbHasVolume)
             {
-                Min = new XYZ(clusterSleeve.BoundingBoxMinX, clusterSleeve.BoundingBoxMinY, clusterSleeve.BoundingBoxMinZ),
-                Max = new XYZ(clusterSleeve.BoundingBoxMaxX, clusterSleeve.BoundingBoxMaxY, clusterSleeve.BoundingBoxMaxZ)
-            };
-            
+                // Trusted Source: Database has valid 3D volume (e.g. User's Duct scenario)
+                bbox = new BoundingBoxXYZ
+                {
+                    Min = new XYZ(clusterSleeve.BoundingBoxMinX, clusterSleeve.BoundingBoxMinY, clusterSleeve.BoundingBoxMinZ),
+                    Max = new XYZ(clusterSleeve.BoundingBoxMaxX, clusterSleeve.BoundingBoxMaxY, clusterSleeve.BoundingBoxMaxZ)
+                };
+            }
+            else
+            {
+                // Fallback: DB BBox is flat (Symbolic lines). Derive from Corners + Inflate.
+                double minX = corners.Min(c => c.X);
+                double minY = corners.Min(c => c.Y);
+                double minZ = corners.Min(c => c.Z);
+                double maxX = corners.Max(c => c.X);
+                double maxY = corners.Max(c => c.Y);
+                double maxZ = corners.Max(c => c.Z);
+
+                // Derived is likely flat (since corners are planar), so we inflate
+                double height = clusterSleeve.ClusterDepth > 0 ? clusterSleeve.ClusterDepth : 
+                               (clusterSleeve.ClusterHeight > 0 ? clusterSleeve.ClusterHeight : 1.0); // 1.0 ft default
+                
+                maxZ += height; // Inflate upwards
+
+                bbox = new BoundingBoxXYZ
+                {
+                    Min = new XYZ(minX, minY, minZ),
+                    Max = new XYZ(maxX, maxY, maxZ)
+                };
+            }
+
             var placementPoint = new XYZ(clusterSleeve.PlacementX, clusterSleeve.PlacementY, clusterSleeve.PlacementZ);
             
-            return new UnifiedSleeve
+            var result = new UnifiedSleeve
             {
                 Id = clusterSleeve.ClusterInstanceId.ToString(),
                 Type = SleeveType.Cluster,
@@ -246,11 +279,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
                 BoundingBox = bbox,
                 PlacementPoint = placementPoint,
                 Corners = corners,
-                HostType = clusterSleeve.HostType,
                 HostOrientation = clusterSleeve.HostOrientation,
                 RotationAngleDeg = clusterSleeve.RotationAngleDeg,
                 SourceData = clusterSleeve
             };
+
+            return result;
         }
 
         /// <summary>
@@ -271,8 +305,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
                 new XYZ(clusterSleeve.Corner4X ?? 0.0, clusterSleeve.Corner4Y ?? 0.0, clusterSleeve.Corner4Z ?? 0.0)
             };
             
-            // Model doesn't store BBox explicitly (wait, does it?)
-            // Checking Model definition: No BBox properties.
+            // Model doesn't store BBox explicitly.
             // So we must derive BBox from Corners.
             
             double minX = corners.Min(c => c.X);
@@ -288,13 +321,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
                 Max = new XYZ(maxX, maxY, maxZ)
             };
             
-            // Placement Point ?? Model doesn't seem to store it explicitly either based on my view?
-            // Wait, let me check Model again.
-            // Model has corners + rotation + host info. No PlacementX/Y/Z.
-            // Use Center of BBox.
+            // ✅ CRITICAL FIX: Inflate flat bounding boxes (e.g. Floors) for Cluster Sleeves (Model overload)
+            double zDiff = bbox.Max.Z - bbox.Min.Z;
+            if (Math.Abs(zDiff) < 0.001)
+            {
+                // Model doesn't have dimensions easily accessible here, use default 1.0 ft
+                double height = 1.0; 
+                var newMax = new XYZ(bbox.Max.X, bbox.Max.Y, bbox.Max.Z + height);
+                bbox.Max = newMax;
+            }
+
+            // Global Center
             var placementPoint = (bbox.Min + bbox.Max) / 2.0;
             
-            return new UnifiedSleeve
+            var result = new UnifiedSleeve
             {
                 Id = clusterSleeve.ClusterInstanceId.ToString(),
                 Type = SleeveType.Cluster,
@@ -307,6 +347,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
                 RotationAngleDeg = clusterSleeve.RotationAngleDeg ?? 0.0,
                 SourceData = clusterSleeve
             };
+
+            return result;
         }
     }
     

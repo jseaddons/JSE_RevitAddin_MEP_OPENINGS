@@ -108,6 +108,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                 UpdateClusterBoundingBoxesAfterPlacement(doc, instancesForBbox);
                                 SafeFileLogger.SafeAppendText("batch_v2.log", 
                                     $"[{DateTime.Now:HH:mm:ss}] 🧹 STAGE 2: Ensured {instancesForBbox.Count} cluster bboxes in DB before cleanup\n");
+
+                                // ✅ CRITICAL FIX: Extract and save corners for Cluster Sleeves
+                                // This ensures that cluster sleeves have valid 3D geometry (corners) for the proximity check
+                                try
+                                {
+                                    SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 📐 STAGE 2: Extracting corners for cluster sleeves...\n");
+                                    var cornerExtractor = new JSE_RevitAddin_MEP_OPENINGS.Services.Calculation.BatchSleeveCornerExtractor(_repository);
+                                    int cornersExtracted = cornerExtractor.ExtractAndSaveCornersForClusters(doc);
+                                    SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 📐 STAGE 2: Extracted corners for {cornersExtracted} cluster sleeves.\n");
+                                }
+                                catch (Exception cornerEx)
+                                {
+                                    SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ STAGE 2 cluster corner extraction failed (continuing): {cornerEx.Message}\n");
+                                }
                             }
                             catch (Exception bboxEx)
                             {

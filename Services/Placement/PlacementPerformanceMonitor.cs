@@ -22,7 +22,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         private static string _lastWrittenLogPath;
 
         /// <summary>Write to AppData\Roaming\JSE_MEP_Openings\Logs\R2023\placement_performance.log. No dependency on SafeFileLogger (root cause fix: GetLogDirectory can throw or not be ready).</summary>
-        private static void WritePerformanceLogDirect(string content)
+        private static void WritePerformanceLogDirect(string content, bool overwrite = false)
         {
             if (string.IsNullOrEmpty(content)) return;
             string path = null;
@@ -35,7 +35,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 if (!Directory.Exists(logDir))
                     Directory.CreateDirectory(logDir);
                 path = Path.Combine(logDir, PlacementPerformanceLogFile);
-                File.AppendAllText(path, content);
+                
+                // ✅ USER REQUEST: Overwrite log instead of appending
+                if (overwrite)
+                    File.WriteAllText(path, content);
+                else
+                    File.AppendAllText(path, content);
+                    
                 _lastWrittenLogPath = path;
                 return;
             }
@@ -43,8 +49,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             try
             {
                 path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), PlacementPerformanceLogFile);
-                File.AppendAllText(path, content);
+                
+                // ✅ USER REQUEST: Overwrite log instead of appending
+                if (overwrite)
+                    File.WriteAllText(path, content);
+                else
+                    File.AppendAllText(path, content);
+                    
                 _lastWrittenLogPath = path;
+            }
+            catch (Exception) { }
+        }
+
+        /// <summary>Clear the performance log file at the start of a new run.</summary>
+        private static void ClearPerformanceLog()
+        {
+            try
+            {
+                string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                string baseFolder = Path.Combine(appData, "JSE_MEP_Openings");
+                string versionTag = VersionInfo.VersionTag;
+                string logDir = Path.Combine(baseFolder, "Logs", versionTag);
+                string path = Path.Combine(logDir, PlacementPerformanceLogFile);
+                
+                if (File.Exists(path))
+                    File.Delete(path);
             }
             catch (Exception) { }
         }
@@ -79,6 +108,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             _subOpsForReport = new List<SubOpRecord>();
             _startMemoryBytes = GC.GetTotalMemory(false);
             _activeTrackers = new Dictionary<string, JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IOperationTracker>();
+            
+            // ✅ USER REQUEST: Clear log file at start of each run (overwrite instead of append)
+            ClearPerformanceLog();
             
             // ✅ Write directly so performance log always appears (no DeploymentMode / SafeFileLogger dependency)
             WritePerformanceLogDirect(

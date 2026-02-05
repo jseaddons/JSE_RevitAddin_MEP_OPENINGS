@@ -38,7 +38,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         public string HostType { get; set; }
         public string HostOrientation { get; set; }
         public List<Guid> ClashZoneIds { get; set; }
-        
+
         // ✅ PERSISTENCE FIX: Save Family Name for validation
         public string SleeveFamilyName { get; set; }
 
@@ -261,8 +261,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             var result = GetClusterSleevesByInstanceIds(new[] { clusterInstanceId });
             return result.FirstOrDefault();
         }
-            // ...existing code...
-        
+        // ...existing code...
+
 
 
         /// <summary>
@@ -281,22 +281,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         {
             // This is a bridge method for callers who only have the high-level Task or Data
             // We'll extract what we need and call the primitive version
-            
+
             double width = 0, height = 0, depth = 0, rot = 0;
             double px = 0, py = 0, pz = 0;
             List<Guid> zoneGuids = new List<Guid>();
-            
+
             // Use cluster/ClashZone angle when provided so we don't overwrite with instance rotation (often 0 at save time)
             if (rotationAngleRadOverride.HasValue)
                 rot = rotationAngleRadOverride.Value;
-            
+
             // Extract from actualInstance if possible for MAX ACCURACY
             if (actualInstance != null && actualInstance.IsValidObject)
             {
                 width = (actualInstance.LookupParameter("Width") ?? actualInstance.LookupParameter("Element Width"))?.AsDouble() ?? 0;
                 height = (actualInstance.LookupParameter("Height") ?? actualInstance.LookupParameter("Element Height"))?.AsDouble() ?? 0;
                 depth = (actualInstance.LookupParameter("Depth") ?? actualInstance.LookupParameter("Element Depth") ?? actualInstance.LookupParameter("Wall Width"))?.AsDouble() ?? 0;
-                
+
                 var loc = actualInstance.Location as LocationPoint;
                 if (loc != null && !rotationAngleRadOverride.HasValue)
                 {
@@ -311,11 +311,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     py = loc.Point.Y;
                     pz = loc.Point.Z;
                 }
-                
+
                 // Extract high-accuracy corners
                 var cornerService = new SleeveCornerCalculationService();
                 var corners = cornerService.CalculateCornersFromInstance(actualInstance);
-                
+
                 if (corners.HasValue)
                 {
                     SaveClusterSleeve(
@@ -337,7 +337,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     return;
                 }
             }
-            
+
             // Fallback: If no corners extracted, this method is incomplete for this specific call pattern.
             // But let's assume for now the primitive version is called directly if actualInstance is null.
         }
@@ -568,7 +568,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                                 // ✅ DIAGNOSTIC: Log after INSERT execution
                                 _logger($"[{DateTime.Now:HH:mm:ss}]           ✅ INSERT executed: {rowsAffected} row(s) affected\n");
-                                
+
                                 if (rowsAffected == 0)
                                 {
                                     _logger($"[{DateTime.Now:HH:mm:ss}]           ⚠️ WARNING: No rows inserted!\n");
@@ -894,7 +894,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                             // ✅ BATCH ID: Generate one per save operation (or use existing if available)
                             var clusterBatchId = Guid.NewGuid().ToString().ToUpperInvariant();
-                            
+
                             // (Per-row DELETE removed - handled by Scoped Delete above)
 
                             // Now INSERT new record
@@ -971,7 +971,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             cmd.Parameters.AddWithValue("@Corner4X", cluster.Corner4X);
                             cmd.Parameters.AddWithValue("@Corner4Y", cluster.Corner4Y);
                             cmd.Parameters.AddWithValue("@Corner4Z", cluster.Corner4Z);
-                            
+
                             // ✅ FAMILY NAME: Add family name explicitly
                             cmd.Parameters.AddWithValue("@SleeveFamilyName", cluster.SleeveFamilyName ?? (object)DBNull.Value);
 
@@ -1420,7 +1420,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             cmd.Parameters.AddWithValue("@HostType", hostType ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue("@HostOrientation", hostOrientation ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue("@SleeveFamilyName", sleeveFamilyName ?? (object)DBNull.Value);
-            
+
             // Serialize ClashZoneIds to JSON
             var clashZoneIdsJson = clashZoneIds != null && clashZoneIds.Count > 0
                 ? JsonSerializer.Serialize(clashZoneIds.Select(g => g.ToString()).ToList())
@@ -1893,8 +1893,121 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             var ordinal = reader.GetOrdinal(columnName);
             return !reader.IsDBNull(ordinal) && reader.GetInt32(ordinal) != 0;
         }
-    } 
+        /// <summary>
+        /// ✅ BATCH UPDATE: Update corner coordinates for multiple cluster sleeves
+        /// Updates BOTH ClusterSleeves (legacy) and ClusterSleeves_v2 (new)
+        /// </summary>
+        public void BatchUpdateClusterSleeveCorners(List<(int InstanceId, double c1x, double c1y, double c1z, double c2x, double c2y, double c2z, double c3x, double c3y, double c3z, double c4x, double c4y, double c4z)> updates)
+        {
+            if (updates == null || updates.Count == 0) return;
 
+            using (var transaction = _context.Connection.BeginTransaction())
+            {
+                try
+                {
+                    using (var cmd = _context.Connection.CreateCommand())
+                    {
+                        cmd.Transaction = transaction;
+                        var sql = new System.Text.StringBuilder();
+
+                        // 1. Update Legacy Table
+                        sql.AppendLine("UPDATE ClusterSleeves SET");
+                        sql.AppendLine("  Corner1X = CASE ClusterInstanceId");
+                        foreach (var u in updates) sql.AppendLine($"    WHEN {u.InstanceId} THEN {u.c1x}");
+                        sql.AppendLine("  END,");
+                        sql.AppendLine("  Corner1Y = CASE ClusterInstanceId");
+                        foreach (var u in updates) sql.AppendLine($"    WHEN {u.InstanceId} THEN {u.c1y}");
+                        sql.AppendLine("  END,");
+                        sql.AppendLine("  Corner1Z = CASE ClusterInstanceId");
+                        foreach (var u in updates) sql.AppendLine($"    WHEN {u.InstanceId} THEN {u.c1z}");
+                        sql.AppendLine("  END,");
+                        sql.AppendLine("  Corner2X = CASE ClusterInstanceId");
+                        foreach (var u in updates) sql.AppendLine($"    WHEN {u.InstanceId} THEN {u.c2x}");
+                        sql.AppendLine("  END,");
+                        sql.AppendLine("  Corner2Y = CASE ClusterInstanceId");
+                        foreach (var u in updates) sql.AppendLine($"    WHEN {u.InstanceId} THEN {u.c2y}");
+                        sql.AppendLine("  END,");
+                        sql.AppendLine("  Corner2Z = CASE ClusterInstanceId");
+                        foreach (var u in updates) sql.AppendLine($"    WHEN {u.InstanceId} THEN {u.c2z}");
+                        sql.AppendLine("  END,");
+                        sql.AppendLine("  Corner3X = CASE ClusterInstanceId");
+                        foreach (var u in updates) sql.AppendLine($"    WHEN {u.InstanceId} THEN {u.c3x}");
+                        sql.AppendLine("  END,");
+                        sql.AppendLine("  Corner3Y = CASE ClusterInstanceId");
+                        foreach (var u in updates) sql.AppendLine($"    WHEN {u.InstanceId} THEN {u.c3y}");
+                        sql.AppendLine("  END,");
+                        sql.AppendLine("  Corner3Z = CASE ClusterInstanceId");
+                        foreach (var u in updates) sql.AppendLine($"    WHEN {u.InstanceId} THEN {u.c3z}");
+                        sql.AppendLine("  END,");
+                        sql.AppendLine("  Corner4X = CASE ClusterInstanceId");
+                        foreach (var u in updates) sql.AppendLine($"    WHEN {u.InstanceId} THEN {u.c4x}");
+                        sql.AppendLine("  END,");
+                        sql.AppendLine("  Corner4Y = CASE ClusterInstanceId");
+                        foreach (var u in updates) sql.AppendLine($"    WHEN {u.InstanceId} THEN {u.c4y}");
+                        sql.AppendLine("  END,");
+                        sql.AppendLine("  Corner4Z = CASE ClusterInstanceId");
+                        foreach (var u in updates) sql.AppendLine($"    WHEN {u.InstanceId} THEN {u.c4z}");
+                        sql.AppendLine("  END,");
+                        sql.AppendLine("  UpdatedAt = CURRENT_TIMESTAMP");
+                        sql.AppendLine($"WHERE ClusterInstanceId IN ({string.Join(",", updates.Select(u => u.InstanceId))});");
+
+                        // 2. Update New V2 Table
+                        // Note: ClusterSleeves_v2 also has ClusterInstanceId populated after placement
+                        sql.AppendLine("UPDATE ClusterSleeves_v2 SET");
+                        sql.AppendLine("  Corner1X = CASE ClusterInstanceId");
+                        foreach (var u in updates) sql.AppendLine($"    WHEN {u.InstanceId} THEN {u.c1x}");
+                        sql.AppendLine("  END,");
+                        sql.AppendLine("  Corner1Y = CASE ClusterInstanceId");
+                        foreach (var u in updates) sql.AppendLine($"    WHEN {u.InstanceId} THEN {u.c1y}");
+                        sql.AppendLine("  END,");
+                        sql.AppendLine("  Corner1Z = CASE ClusterInstanceId");
+                        foreach (var u in updates) sql.AppendLine($"    WHEN {u.InstanceId} THEN {u.c1z}");
+                        sql.AppendLine("  END,");
+                        sql.AppendLine("  Corner2X = CASE ClusterInstanceId");
+                        foreach (var u in updates) sql.AppendLine($"    WHEN {u.InstanceId} THEN {u.c2x}");
+                        sql.AppendLine("  END,");
+                        sql.AppendLine("  Corner2Y = CASE ClusterInstanceId");
+                        foreach (var u in updates) sql.AppendLine($"    WHEN {u.InstanceId} THEN {u.c2y}");
+                        sql.AppendLine("  END,");
+                        sql.AppendLine("  Corner2Z = CASE ClusterInstanceId");
+                        foreach (var u in updates) sql.AppendLine($"    WHEN {u.InstanceId} THEN {u.c2z}");
+                        sql.AppendLine("  END,");
+                        sql.AppendLine("  Corner3X = CASE ClusterInstanceId");
+                        foreach (var u in updates) sql.AppendLine($"    WHEN {u.InstanceId} THEN {u.c3x}");
+                        sql.AppendLine("  END,");
+                        sql.AppendLine("  Corner3Y = CASE ClusterInstanceId");
+                        foreach (var u in updates) sql.AppendLine($"    WHEN {u.InstanceId} THEN {u.c3y}");
+                        sql.AppendLine("  END,");
+                        sql.AppendLine("  Corner3Z = CASE ClusterInstanceId");
+                        foreach (var u in updates) sql.AppendLine($"    WHEN {u.InstanceId} THEN {u.c3z}");
+                        sql.AppendLine("  END,");
+                        sql.AppendLine("  Corner4X = CASE ClusterInstanceId");
+                        foreach (var u in updates) sql.AppendLine($"    WHEN {u.InstanceId} THEN {u.c4x}");
+                        sql.AppendLine("  END,");
+                        sql.AppendLine("  Corner4Y = CASE ClusterInstanceId");
+                        foreach (var u in updates) sql.AppendLine($"    WHEN {u.InstanceId} THEN {u.c4y}");
+                        sql.AppendLine("  END,");
+                        sql.AppendLine("  Corner4Z = CASE ClusterInstanceId");
+                        foreach (var u in updates) sql.AppendLine($"    WHEN {u.InstanceId} THEN {u.c4z}");
+                        sql.AppendLine("  END");
+                        // Only update V2 where InstanceId matches
+                        sql.AppendLine($"WHERE ClusterInstanceId IN ({string.Join(",", updates.Select(u => u.InstanceId))});");
+
+                        cmd.CommandText = sql.ToString();
+                        int rows = cmd.ExecuteNonQuery();
+                        _logger($"[SQLite] ✅ Batch updated corners for {updates.Count} clusters (Legacy + V2). Rows affected: {rows}");
+                    }
+                    transaction.Commit();
+                }
+                catch (Exception ex)
+                {
+                    transaction.Rollback();
+                    _logger($"[SQLite] ❌ Error batch updating cluster corners: {ex.Message}");
+                    throw;
+                }
+            }
+        }
+    }
 
     /// <summary>
     /// Data transfer object for cluster sleeve data
@@ -1922,7 +2035,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         public string HostType { get; set; } = string.Empty;
         public string HostOrientation { get; set; } = string.Empty;
         public List<Guid> ClashZoneIds { get; set; } = new List<Guid>();
-        
+
         // Corner coordinates for precise geometric proximity checks
         public double Corner1X { get; set; }
         public double Corner1Y { get; set; }

@@ -250,7 +250,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             string typeLog = string.IsNullOrEmpty(hostOrientation) ? "Unknown/Floor" : hostOrientation;
                             string pathLog = foundNonOrthogonal ? "NON-ORTHOGONAL" : "ORTHOGONAL-MIX (Default to 0)";
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] ✅ ORIENTATION (FLOOR): {typeLog} → {rotationAngle * 180 / Math.PI:F1}° rotation ({pathLog})\n");
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ ORIENTATION (OTHER): {typeLog} → {rotationAngle * 180 / Math.PI:F1}° rotation ({pathLog})\n");
                         }
                         return rotationAngle;
                     }

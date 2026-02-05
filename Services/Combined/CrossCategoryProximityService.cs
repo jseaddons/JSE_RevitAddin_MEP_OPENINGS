@@ -38,6 +38,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
             _logger($"[CrossCategoryProximity] Starting detection for {sleeves.Count} sleeves, threshold={proximityThreshold:F2} ft");
             
             // 1. Build spatial index
+            
+            // 🔥 DIAGNOSTIC DUMP: Prove BBox dimensions to user
+            int dumpCount = 0;
+            foreach(var s in sleeves) 
+            {
+                if (dumpCount++ > 5) break; 
+                double h = s.BoundingBox.Max.Z - s.BoundingBox.Min.Z;
+                _logger($"[BBOX-VERIFY] Sleeve {s.Id} ({s.Type}): Z-Min={s.BoundingBox.Min.Z:F4}, Z-Max={s.BoundingBox.Max.Z:F4}, HEIGHT={h:F4}");
+            }
+
             var spatialIndex = BuildSpatialIndex(sleeves);
             
             // 2. Find proximity relationships
@@ -98,10 +108,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
             SimplifiedSpatialIndex spatialIndex,
             double proximityThreshold)
         {
-            var pairs = new List<(string, string)>();
-            var processed = new HashSet<string>();
+            // ✅ MULTI-THREADING: Use concurrent collection for thread-safe pair storage
+            var pairs = new System.Collections.Concurrent.ConcurrentBag<(string, string)>();
+            var processed = new System.Collections.Concurrent.ConcurrentDictionary<string, byte>();
             
-            foreach (var sleeve in sleeves)
+            // ✅ MULTI-THREADING: Process sleeves in parallel for faster proximity detection
+            System.Threading.Tasks.Parallel.ForEach(sleeves, sleeve =>
             {
                 // Expand bounding box by threshold for search
                 var searchMin = sleeve.BoundingBox.Min - new XYZ(proximityThreshold, proximityThreshold, proximityThreshold);
@@ -124,7 +136,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                     
                     // Skip if already processed this pair
                     var pairKey = GetPairKey(sleeve.Id, nearbyId);
-                    if (processed.Contains(pairKey))
+                    if (processed.ContainsKey(pairKey))
                         continue;
                     
                     // Get the nearby sleeve
@@ -149,13 +161,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                     if (intersects)
                     {
                         pairs.Add((sleeve.Id, nearbyId));
-                        processed.Add(pairKey);
+                        processed.TryAdd(pairKey, 0);
                         _logger($"[ProximityMatch] FOUND PAIR: {sleeve.Id} ({sleeve.Category}) <-> {nearbySleeve.Id} ({nearbySleeve.Category})");
                     }
                 }
-            }
+            });
             
-            return pairs;
+            return pairs.ToList();
         }
         
         /// <summary>

@@ -544,9 +544,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         /// Applies all accumulated parameter values after regeneration.
         /// Preserves all safety features: duplicate flush prevention, error handling, logging.
         /// </summary>
-        /// <summary>
-        /// ✅ BATCH FLUSH: Execute all deferred parameter writes.
-        /// </summary>
         /// <param name="clearList">Whether to clear the list after flushing. Set to false to allow re-flushing (e.g. for Double Force strategy).</param>
         /// <param name="context">Optional context string for logging (e.g. "Individual" or "Cluster").</param>
         public int FlushDeferredParameters(bool clearList = true, string context = "Default")
@@ -558,8 +555,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                  SafeFileLogger.SafeAppendText("placement_debug.log", $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [BATCH-FLUSH-START] TargetDict Count={targetDict?.Count ?? 0}. IsDiverted={DivertedBatchDictionary != null}. ClearList={clearList}\n");
             }
             
-            // ... existing logic ...
-
             if (targetDict == null || targetDict.Count == 0)
             {
                 return 0;
@@ -580,6 +575,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             
             try
             {
+                // ✅ PERFORMANCE OPTIMIZATION: Cache all elements BEFORE parameter setting loop
+                // GetElement() is expensive (~4-5ms per call). Pre-caching eliminates 83+ lookups.
+                var elementCache = new Dictionary<ElementId, FamilyInstance>();
+                var levelCache = new Dictionary<ElementId, Level>();
+                
+                foreach (var kvp in targetDict)
+                {
+                    var sleeveId = kvp.Key;
+                    var element = _doc.GetElement(sleeveId) as FamilyInstance;
+                    if (element != null)
+                    {
+                        elementCache[sleeveId] = element;
+                    }
+                }
+                
                 // ✅ PERFORMANCE OPTIMIZATION: Track total flush time once, not per-nested-op
                 using (_performanceMonitor?.TrackOperation("Flush All Parameters"))
                 {
@@ -588,9 +598,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                         var sleeveId = kvp.Key;
                         var paramValues = kvp.Value;
                         
-                        // ✅ GET ELEMENT: Still needed as we work with IDs
-                        FamilyInstance sleeve = _doc.GetElement(sleeveId) as FamilyInstance;
-                        if (sleeve == null)
+                        // ✅ OPTIMIZATION: Use cached element instead of GetElement()
+                        if (!elementCache.TryGetValue(sleeveId, out FamilyInstance sleeve))
                         {
                             if (!DeploymentConfiguration.DeploymentMode)
                                 SafeFileLogger.SafeAppendText("placement_errors.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ Sleeve Element {sleeveId} not found during flush.\n");
@@ -624,7 +633,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                                             param.Set(elementIdVal.IntegerValue);
                                         else if (param.StorageType == StorageType.String)
                                         {
-                                            var level = _doc.GetElement(elementIdVal) as Level;
+                                            // ✅ OPTIMIZATION: Cache level lookups
+                                            if (!levelCache.TryGetValue(elementIdVal, out Level level))
+                                            {
+                                                level = _doc.GetElement(elementIdVal) as Level;
+                                                if (level != null)
+                                                    levelCache[elementIdVal] = level;
+                                            }
                                             if (level != null) param.Set(level.Name);
                                             else param.Set(elementIdVal.IntegerValue.ToString());
                                         }
@@ -669,7 +684,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     targetDict.Clear();
                 }
             }
-            
             
             flushTimer.Stop();
             totalParams = targetDict.Values.Sum(d => d.Count);

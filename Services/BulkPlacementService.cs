@@ -99,7 +99,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             // - Wall centerline adjustment
                             // - All other adjustments
                             XYZ point = plan.PlacementPoint;
-                            
+
                             // Fallback only if PlacementPoint is null (should not happen with proper planning)
                             if (point == null)
                             {
@@ -137,13 +137,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     using (_performanceMonitor?.TrackOperation("Revit NewFamilyInstances2"))
                     {
                         createdIds = doc.Create.NewFamilyInstances2(creationDataList);
-                        
+
                         var idListDiag = createdIds.ToList();
-                        SafeFileLogger.SafeAppendText("placement_debug.log", 
+                        SafeFileLogger.SafeAppendText("placement_debug.log",
                             $"[{DateTime.Now:HH:mm:ss}] [BULK-PLACEMENT-RESULT] createdIds.Count = {idListDiag.Count}\n");
                     }
                     var idList = createdIds.ToList();
                     _logger?.Invoke($"[BulkPlacement] Created {idList.Count} family instances");
+
+                    // ✅ PERFORMANCE OPTIMIZATION: Cache all elements before the loop to avoid repeated GetElement() calls
+                    var elementCache = new Dictionary<ElementId, FamilyInstance>(idList.Count);
+                    using (_performanceMonitor?.TrackOperation("Cache Elements for Parameter Setting"))
+                    {
+                        foreach (var elementId in idList)
+                        {
+                            try
+                            {
+                                var instance = doc.GetElement(elementId) as FamilyInstance;
+                                if (instance != null)
+                                    elementCache[elementId] = instance;
+                            }
+                            catch { }
+                        }
+                    }
+                    _logger?.Invoke($"[BulkPlacement] Cached {elementCache.Count}/{idList.Count} elements");
 
                     // Step 4: Finalize (Rotation and Parameters)
                     using (_performanceMonitor?.TrackOperation("Apply Rotation & Parameters"))
@@ -152,30 +169,43 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             var elementId = idList[i];
                             var item = itemMap[i];
-                            var instance = doc.GetElement(elementId) as FamilyInstance;
+                            
+                            // ✅ OPTIMIZATION: Use cached element instead of GetElement()
+                            if (!elementCache.TryGetValue(elementId, out var instance))
+                            {
+                                result.Failures.Add((item.Zone.Id, "Element not found in cache"));
+                                result.FailedCount++;
+                                continue;
+                            }
 
                             if (instance != null)
                             {
                                 bool isWallOrFraming = IsWallOrFraming(item.Zone);
 
+                                // Apply rotation
+                                double rotationRad = isWallOrFraming 
+                                    ? _rotationService.DetermineRotation(item.Zone)
+                                    : item.Plan.RotationRadians;
+
+                                if (Math.Abs(rotationRad) > 0.001)
+                                {
+                                    ApplyRotation(doc, instance, rotationRad);
+                                }
+
+                                // Apply parameters (queued to deferred parameter service)
                                 if (isWallOrFraming)
                                 {
-                                    // WALL/FRAMING PATH: Rotation from RotationService
-                                    double rotationRad = _rotationService.DetermineRotation(item.Zone);
-                                    ApplyRotation(doc, instance, rotationRad);
                                     SetWallFramingParameters(instance, item.Zone, item.Plan);
                                 }
                                 else
                                 {
-                                    // FLOOR PATH: Rotation from Plan directly
-                                    ApplyRotation(doc, instance, item.Plan.RotationRadians);
                                     SetFloorParameters(instance, item.Zone, item.Plan);
                                 }
 
-                                _parameterService.SetSleeveInstanceId(instance, elementId.IntegerValue); 
-                                
+                                _parameterService.SetSleeveInstanceId(instance, elementId.IntegerValue);
+
                                 item.Zone.SleeveInstanceId = elementId.IntegerValue;
-                                
+
                                 result.PlacedItems.Add((item.Zone, elementId));
                                 result.PlacedCount++;
                             }
@@ -240,8 +270,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 XYZ axisPoint1 = (instance.Location as LocationPoint)?.Point;
                 if (axisPoint1 == null) return;
-                
-                XYZ axisDirection = XYZ.BasisZ; 
+
+                XYZ axisDirection = XYZ.BasisZ;
                 XYZ axisPoint2 = axisPoint1 + axisDirection;
                 Line axis = Line.CreateBound(axisPoint1, axisPoint2);
                 instance.Location.Rotate(axis, rotationRad);
@@ -266,7 +296,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 _parameterService.SetSleeveParameters(instance, width, height, plan.TargetDiameterFt, plan.IsCircular, zone, plan.RequiredDepthFt);
-                _logger?.Invoke($"[BulkPlacement] [WALL/FRAMING] Set parameters for {instance.Id}: W={width*304.8:F0}mm, H={height*304.8:F0}mm, Circ={plan.IsCircular}");
+                _logger?.Invoke($"[BulkPlacement] [WALL/FRAMING] Set parameters for {instance.Id}: W={width * 304.8:F0}mm, H={height * 304.8:F0}mm, Circ={plan.IsCircular}");
             }
             catch (Exception ex)
             {
@@ -288,7 +318,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                 _parameterService.SetSleeveParameters(instance, width, height, plan.TargetDiameterFt, plan.IsCircular, zone, plan.RequiredDepthFt);
-                _logger?.Invoke($"[BulkPlacement] [FLOOR] Set parameters for {instance.Id}: W={width*304.8:F0}mm, H={height*304.8:F0}mm, Circ={plan.IsCircular}");
+                _logger?.Invoke($"[BulkPlacement] [FLOOR] Set parameters for {instance.Id}: W={width * 304.8:F0}mm, H={height * 304.8:F0}mm, Circ={plan.IsCircular}");
             }
             catch (Exception ex)
             {
@@ -315,7 +345,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (element == null) continue;
 
                     UpdateZoneGeometry(zone, element);
-                    
+
                     _logger?.Invoke($"[BulkPlacement] Updated Zone {zone.Id} from Element {element.Id}: W={zone.SleeveWidth:F3}, H={zone.SleeveHeight:F3}, Pt={zone.SleevePlacementPoint}");
                 }
                 catch (Exception ex)
@@ -332,21 +362,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (bbox != null)
             {
                 var center = (bbox.Min + bbox.Max) * 0.5;
-                
+
                 zone.SleevePlacementPointX = center.X;
                 zone.SleevePlacementPointY = center.Y;
                 zone.SleevePlacementPointZ = center.Z;
-                
+
                 zone.SleevePlacementActiveX = center.X;
                 zone.SleevePlacementActiveY = center.Y;
                 zone.SleevePlacementActiveZ = center.Z;
-                
+
                 zone.SleevePlacementPoint = center;
                 zone.SleevePlacementPointActiveDocument = center;
 
                 double width = bbox.Max.X - bbox.Min.X;
-                double height = bbox.Max.Y - bbox.Min.Y; 
-                
+                double height = bbox.Max.Y - bbox.Min.Y;
+
                 if (zone.SleeveWidth <= 0) zone.SleeveWidth = width;
                 if (zone.SleeveHeight <= 0) zone.SleeveHeight = height;
 
@@ -411,5 +441,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (zone.SleeveInstanceId == 0) zone.SleeveInstanceId = element.Id.IntegerValue;
             }
         }
+
     }
 }
+

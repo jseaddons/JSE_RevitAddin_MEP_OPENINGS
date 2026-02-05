@@ -176,6 +176,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
             _executor.ExecuteWithTimeout(() =>
             {
                 DebugLogger.SetCombinedSleeveLogFile();
+                // ✅ USER REQUEST: Overwrite log instead of appending
+                DebugLogger.InitLogFile("combinesleeveplacer");
                 DebugLogger.SetServiceContext("CombinedSleeveAuto");
                 DebugLogger.IsEnabled = true;
                 StatusMessage = "Running Auto-Clustering...";
@@ -389,6 +391,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
             {
                 // Configure Wrapper Logger
                 DebugLogger.SetCombinedSleeveLogFile();
+                // ✅ USER REQUEST: Overwrite log instead of appending
+                DebugLogger.InitLogFile("combinesleeveplacer");
                 DebugLogger.SetServiceContext("CombinedSleeveManual");
                 DebugLogger.IsEnabled = true;
                 

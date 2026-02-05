@@ -224,12 +224,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
             // For Floors or slanted walls, we might want to respect the sleeve's rotation
             if (string.Equals(GetHostType(), "Floor", StringComparison.OrdinalIgnoreCase))
             {
-               // Use rotation of first sleeve if available
-               var first = Sleeves.FirstOrDefault();
-               if (first != null && Math.Abs(first.RotationAngleDeg) > 0.1)
-               {
-                   return first.RotationAngleDeg * (Math.PI / 180.0);
-               }
+               // ✅ USER REQUEST (2026-02-05): "for floor no rotation needed"
+               // Even if constituent sleeves are rotated (e.g. 45 deg duct), the combined opening should be axis-aligned (0 deg).
+               // The bounding box calculation already accounts for the rotated geometry (AABB), so the hole matches the full extent.
+               return 0.0;
             }
             
             // Default / X-Wall -> Rotate 90 degrees

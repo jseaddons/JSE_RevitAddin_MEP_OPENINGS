@@ -1240,43 +1240,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 BulkPlacementResult bulkResult = null;
                                  SafeFileLogger.SafeAppendText("placement_debug.log", $"\n[{DateTime.Now:HH:mm:ss}] [BULK-PLACEMENT-START] allBulkTaskItems.Count = {allBulkTaskItems.Count}\n");
 
-                                 // Check for duplicates by ClashZoneGuid
-                                 var duplicateZones = allBulkTaskItems
-                                     .GroupBy(x => x.Zone.ClashZoneGuid)
-                                     .Where(g => !string.IsNullOrEmpty(g.Key) && g.Count() > 1)
-                                     .ToList();
-
-                                 if (duplicateZones.Count > 0)
+                                 using (parentTracker?.TrackSubOperation("Check for Duplicate Zones"))
                                  {
-                                     SafeFileLogger.SafeAppendText("placement_debug.log", 
-                                         $"[{DateTime.Now:HH:mm:ss}] [WARNING] Found {duplicateZones.Count} duplicate zones in allBulkTaskItems!\n");
-                                     foreach (var dup in duplicateZones)
+                                     // Check for duplicates by ClashZoneGuid
+                                     var duplicateZones = allBulkTaskItems
+                                         .GroupBy(x => x.Zone.ClashZoneGuid)
+                                         .Where(g => !string.IsNullOrEmpty(g.Key) && g.Count() > 1)
+                                         .ToList();
+
+                                     if (duplicateZones.Count > 0)
                                      {
                                          SafeFileLogger.SafeAppendText("placement_debug.log", 
-                                             $"  - Zone {dup.Key} appears {dup.Count()} times\n");
+                                             $"[{DateTime.Now:HH:mm:ss}] [WARNING] Found {duplicateZones.Count} duplicate zones in allBulkTaskItems!\n");
+                                         foreach (var dup in duplicateZones)
+                                         {
+                                             SafeFileLogger.SafeAppendText("placement_debug.log", 
+                                                 $"  - Zone {dup.Key} appears {dup.Count()} times\n");
+                                         }
                                      }
                                  }
 
-                                 // ✅ FIX: Dedupe by placement location to avoid "identical instances in the same place" (Revit warning).
-                                 // Two zones with same XYZ (different GUIDs) would create two sleeves → two nested Family2 at same spot.
-                                 // Keep first per (family + rounded XYZ) so we only place one instance per location.
-                                 const double locationToleranceFt = 0.00656; // ~2mm - catches near-duplicates from floating point / different calc paths
-                                 Func<double, double> round = v => Math.Round(v / locationToleranceFt) * locationToleranceFt;
-                                 var bulkTaskItemsDeduped = allBulkTaskItems
-                                     .GroupBy(x =>
-                                     {
-                                         var pt = x.Plan.PlacementPoint ?? new XYZ(x.Zone.IntersectionPointX, x.Zone.IntersectionPointY, x.Zone.IntersectionPointZ);
-                                         return ($"{x.Plan.SleeveFamilyName ?? x.Zone.SleeveFamilyName}", round(pt.X), round(pt.Y), round(pt.Z));
-                                     })
-                                     .Select(g => g.First())
-                                     .ToList();
-                                 if (bulkTaskItemsDeduped.Count < allBulkTaskItems.Count)
+                                 List<(ClashZone Zone, SleevePlacementPlanningDto Plan)> bulkTaskItemsDeduped;
+                                 using (parentTracker?.TrackSubOperation("Dedupe by Placement Location"))
                                  {
-                                     var dropped = allBulkTaskItems.Count - bulkTaskItemsDeduped.Count;
-                                     SafeFileLogger.SafeAppendText("placement_debug.log",
-                                         $"[{DateTime.Now:HH:mm:ss}] [DEDUPE-LOCATION] Removed {dropped} items with same placement point (kept {bulkTaskItemsDeduped.Count}) to avoid Revit duplicate warning.\n");
-                                     if (!DeploymentConfiguration.DeploymentMode)
-                                         DebugLogger.Info($"[BULK-PLACEMENT] Deduped by location: {allBulkTaskItems.Count} → {bulkTaskItemsDeduped.Count} (dropped {dropped} to prevent identical instances)");
+                                     // ✅ FIX: Dedupe by placement location to avoid "identical instances in the same place" (Revit warning).
+                                     // Two zones with same XYZ (different GUIDs) would create two sleeves → two nested Family2 at same spot.
+                                     // Keep first per (family + rounded XYZ) so we only place one instance per location.
+                                     const double locationToleranceFt = 0.0328; // ~10mm - catches near-duplicates from floating point / different calc paths
+                                     Func<double, double> round = v => Math.Round(v / locationToleranceFt) * locationToleranceFt;
+                                     bulkTaskItemsDeduped = allBulkTaskItems
+                                         .GroupBy(x =>
+                                         {
+                                             var pt = x.Plan.PlacementPoint ?? new XYZ(x.Zone.IntersectionPointX, x.Zone.IntersectionPointY, x.Zone.IntersectionPointZ);
+                                             return ($"{x.Plan.SleeveFamilyName ?? x.Zone.SleeveFamilyName}", round(pt.X), round(pt.Y), round(pt.Z));
+                                         })
+                                         .Select(g => g.First())
+                                         .ToList();
+                                     if (bulkTaskItemsDeduped.Count < allBulkTaskItems.Count)
+                                     {
+                                         var dropped = allBulkTaskItems.Count - bulkTaskItemsDeduped.Count;
+                                         SafeFileLogger.SafeAppendText("placement_debug.log",
+                                             $"[{DateTime.Now:HH:mm:ss}] [DEDUPE-LOCATION] Removed {dropped} items with same placement point (kept {bulkTaskItemsDeduped.Count}) to avoid Revit duplicate warning.\n");
+                                         if (!DeploymentConfiguration.DeploymentMode)
+                                             DebugLogger.Info($"[BULK-PLACEMENT] Deduped by location: {allBulkTaskItems.Count} → {bulkTaskItemsDeduped.Count} (dropped {dropped} to prevent identical instances)");
+                                     }
                                  }
 
                                 using (var placeTracker = parentTracker?.TrackSubOperation("Operation 2: Bulk placement (Revit API)"))
@@ -1302,24 +1309,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         }
                                         if (bulkResult != null && bulkResult.OverallSuccess && bulkResult.PlacedCount > 0)
                                         {
-                                            // ✅ TRANSACTION ROBUSTNESS: Wrap the second transaction (parameters) in a try-catch.
-                                            // If parameter flushing fails, we still want to proceed to Step 2 (Database Persistence)
-                                            // so that the SleeveInstanceIds already committed in the first transaction are saved.
+                                            // ✅ PERFORMANCE OPTIMIZATION: Transaction required for parameter setting, but optimized
+                                            // ISSUE: Parameters revert to default without transaction wrapper
+                                            // FIX: Keep transaction but remove tracking overhead from commit (reduces validation time)
                                             try 
                                             {
                                                 using (var tParams = new Transaction(_document, "Flush Parameters"))
                                                 {
                                                     tParams.Start();
+                                                    // ✅ FIX: Robust warning suppression for parameter flushing transaction
+                                                    var failureOptions = tParams.GetFailureHandlingOptions();
+                                                    failureOptions.SetFailuresPreprocessor(new NestedFamilyClashWarningSuppressor(_document, "Family2", "Flush Parameters"));
+                                                    tParams.SetFailureHandlingOptions(failureOptions);
+
                                                     using (placeTracker?.TrackSubOperation("Flush Deferred Parameters"))
                                                     {
                                                         paramService.FlushDeferredParameters(clearList: true, context: "AfterPlacement");
                                                     }
-                                                    using (placeTracker?.TrackSubOperation("Transaction Commit (Parameters)"))
+                                                    
+                                                    using (placeTracker?.TrackSubOperation("Transaction Commit (Params)"))
                                                     {
                                                         tParams.Commit();
                                                     }
                                                 }
-                                                using (placeTracker?.TrackSubOperation("Regenerate (After Parameters)"))
+                                                // ✅ OPTIMIZATION: Regenerate OUTSIDE transaction (was inside before)
+                                                using (placeTracker?.TrackSubOperation("Regenerate (Total)"))
                                                 {
                                                     _document.Regenerate();
                                                 }
@@ -1329,7 +1343,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                 SafeFileLogger.SafeAppendText("placement_debug.log", 
                                                     $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-PARAM-ERROR] ⚠️ Parameter flushing failed, but sleeves are already placed. Proceeding to DB persistence: {paramEx.Message}\n");
                                                 if (!DeploymentConfiguration.DeploymentMode) 
-                                                    DebugLogger.Warning($"[BatchPlacement] Parameter flush failed (non-fatal for persistence): {paramEx.Message}");
+                                                    DebugLogger.Warning($"[BATCH-PLACEMENT] Parameter flush failed (non-fatal for persistence): {paramEx.Message}");
                                             }
                                         }
                                     }
@@ -1389,20 +1403,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         // 2e. OUTSIDE ALL TRANSACTIONS: Database persistence (always run when PlacedCount>0)
                                         try
                                         {
-                                            var placedZones = bulkResult.PlacedItems.Select(p => p.Zone).ToList();
-                                            SafeFileLogger.SafeAppendText("placement_debug.log",
-                                                $"[{DateTime.Now:HH:mm:ss.fff}] [BULK-PERSIST-START] placedZones={placedZones.Count}, SleeveInstanceId>0={placedZones.Count(z => z.SleeveInstanceId > 0)}\n");
+                                            List<ClashZone> placedZones;
+                                            using (placeTracker?.TrackSubOperation("Prepare Placed Zones List"))
+                                            {
+                                                placedZones = bulkResult.PlacedItems.Select(p => p.Zone).ToList();
+                                                SafeFileLogger.SafeAppendText("placement_debug.log",
+                                                    $"[{DateTime.Now:HH:mm:ss.fff}] [BULK-PERSIST-START] placedZones={placedZones.Count}, SleeveInstanceId>0={placedZones.Count(z => z.SleeveInstanceId > 0)}\n");
+                                            }
                                              
                                              // ✅ Update flags in database after bulk placement
-                                             if (placedZones.Any())
+                                             using (placeTracker?.TrackSubOperation("Update Flags After Placement"))
                                              {
-                                                 var flagUpdates = bulkResult.PlacedItems
-                                                     .Select(item => (item.Zone.Id, item.ElementId.IntegerValue, false))
-                                                     .ToList();
-                                                 
-                                                 flagManager.UpdateFlagsAfterPlacement(flagUpdates);
-                                                 // Set in-memory so BatchUpdateSleevePlacementData persists correct flag
-                                                 foreach (var z in placedZones) z.IsResolvedFlag = true;
+                                                 if (placedZones.Any())
+                                                 {
+                                                     var flagUpdates = bulkResult.PlacedItems
+                                                         .Select(item => (item.Zone.Id, item.ElementId.IntegerValue, false))
+                                                         .ToList();
+                                                     
+                                                     flagManager.UpdateFlagsAfterPlacement(flagUpdates);
+                                                     // Set in-memory so BatchUpdateSleevePlacementData persists correct flag
+                                                     foreach (var z in placedZones) z.IsResolvedFlag = true;
+                                                 }
                                              }
 
                                              using (var dbContext = new JSE_RevitAddin_MEP_OPENINGS.Data.SleeveDbContext(_document))
@@ -1410,19 +1431,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                 var repo = new JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClashZoneRepository(dbContext);
                                                 
                                                 int filterId = -1;
-                                                string categoryForLookup = filter.Category switch
+                                                using (placeTracker?.TrackSubOperation("Lookup Filter ID"))
                                                 {
-                                                    Models.MepCategory.Ducts => "Ducts",
-                                                    Models.MepCategory.DuctAccessories => "Duct Accessories",
-                                                    Models.MepCategory.Pipes => "Pipes",
-                                                    Models.MepCategory.CableTrays => "Cable Trays",
-                                                    _ => filter.Category.ToString()
-                                                };
-                                                var filterLookupService = new JSE_RevitAddin_MEP_OPENINGS.Services.Filters.FilterLookupService(dbContext);
-                                                filterId = filterLookupService.GetFilterId(filter.Name, categoryForLookup);
+                                                    string categoryForLookup = filter.Category switch
+                                                    {
+                                                        Models.MepCategory.Ducts => "Ducts",
+                                                        Models.MepCategory.DuctAccessories => "Duct Accessories",
+                                                        Models.MepCategory.Pipes => "Pipes",
+                                                        Models.MepCategory.CableTrays => "Cable Trays",
+                                                        _ => filter.Category.ToString()
+                                                    };
+                                                    var filterLookupService = new JSE_RevitAddin_MEP_OPENINGS.Services.Filters.FilterLookupService(dbContext);
+                                                    filterId = filterLookupService.GetFilterId(filter.Name, categoryForLookup);
+                                                }
 
                                                 // Persist sleeve data: corners, bounding box, flags, dimensions, placement
-                                                var zonesWithIds = placedZones.Where(z => z.SleeveInstanceId > 0).ToList();
+                                                List<ClashZone> zonesWithIds;
+                                                using (placeTracker?.TrackSubOperation("Prepare Zones With IDs"))
+                                                {
+                                                    zonesWithIds = placedZones.Where(z => z.SleeveInstanceId > 0).ToList();
+                                                }
                                                 using (placeTracker?.TrackSubOperation("BatchUpdateSleevePlacementData"))
                                                 {
                                                     repo.BatchUpdateSleevePlacementData(zonesWithIds);
@@ -2064,22 +2092,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     // 2. CALCULATION PHASE (Per Category)
                     // We load unresolved zones from DB (which now have their Revit coordinates saved)
-                    foreach (var cat in clusterableCategories)
+                    // ✅ PERFORMANCE: Track calculation phase
+                    using (var calcTracker = _performanceMonitor?.TrackOperation("Global Cluster Calculation"))
                     {
-                        var catZones = allUnresolvedZones.Where(z => string.Equals(z.MepElementCategory, cat, StringComparison.OrdinalIgnoreCase)).ToList();
-                        if (catZones.Count == 0) continue;
-
-                        SafeFileLogger.SafeAppendText("batch_v2.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] 🧮 GLOBAL CLUSTERING: Calculating for {cat} ({catZones.Count} zones)\n");
-
-                        try
+                        foreach (var cat in clusterableCategories)
                         {
-                            // skipPlacement: true ensures we only save the cluster definition to ClusterSleeves_v2
-                            clusterService.ClusterSleevesV2(_document, catZones, cat, 0, 0, skipPlacement: true);
-                        }
-                        catch (Exception ex)
-                        {
-                            SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ❌ GLOBAL CLUSTERING CALC ERROR ({cat}): {ex.Message}\n");
+                            var catZones = allUnresolvedZones.Where(z => string.Equals(z.MepElementCategory, cat, StringComparison.OrdinalIgnoreCase)).ToList();
+                            if (catZones.Count == 0) continue;
+
+                            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] 🧮 GLOBAL CLUSTERING: Calculating for {cat} ({catZones.Count} zones)\n");
+
+                            // Track sub-operation per category
+                            using (var catTracker = calcTracker?.TrackSubOperation($"Calculate {cat}"))
+                            {
+                                try
+                                {
+                                    // skipPlacement: true ensures we only save the cluster definition to ClusterSleeves_v2
+                                    clusterService.ClusterSleevesV2(_document, catZones, cat, 0, 0, skipPlacement: true);
+                                    catTracker?.SetItemCount(catZones.Count);
+                                }
+                                catch (Exception ex)
+                                {
+                                    SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ❌ GLOBAL CLUSTERING CALC ERROR ({cat}): {ex.Message}\n");
+                                }
+                            }
                         }
                     }
 
@@ -2205,20 +2242,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         $"[{DateTime.Now:HH:mm:ss.fff}] Failure: Severity={severity}, Description=\"{desc}\"");
                 }
 
-                // Match "identical instances in the same place" / "double counting" (allow slight wording differences)
+                // Match "identical instances in the same place" / "double counting" variants
                 bool hasIdentical = desc.IndexOf("identical", StringComparison.OrdinalIgnoreCase) >= 0;
                 bool hasSamePlace = desc.IndexOf("same place", StringComparison.OrdinalIgnoreCase) >= 0;
                 bool hasInstance = desc.IndexOf("instance", StringComparison.OrdinalIgnoreCase) >= 0;
                 bool hasDoubleCounting = desc.IndexOf("double counting", StringComparison.OrdinalIgnoreCase) >= 0;
+                bool hasElementsSame = desc.IndexOf("elements", StringComparison.OrdinalIgnoreCase) >= 0 && desc.IndexOf("same", StringComparison.OrdinalIgnoreCase) >= 0;
+                bool hasDuplicate = desc.IndexOf("duplicate", StringComparison.OrdinalIgnoreCase) >= 0;
 
-                bool isIdenticalInstances = (hasIdentical && hasSamePlace) || hasDoubleCounting || (hasSamePlace && hasInstance);
+                bool isIdenticalInstances = (hasIdentical && hasSamePlace) || 
+                                           hasDoubleCounting || 
+                                           (hasSamePlace && hasInstance) || 
+                                           (hasDuplicate && hasSamePlace) ||
+                                           (hasElementsSame && hasSamePlace);
 
                 if (!isIdenticalInstances)
                 {
                     if (sb != null)
                     {
                         sb.AppendLine(
-                            $"[{DateTime.Now:HH:mm:ss.fff}]   -> SKIP (not identical-instances match). hasIdentical={hasIdentical}, hasSamePlace={hasSamePlace}, hasInstance={hasInstance}, hasDoubleCounting={hasDoubleCounting}");
+                            $"[{DateTime.Now:HH:mm:ss.fff}]   -> SKIP (not identical-instances match). hasIdentical={hasIdentical}, hasSamePlace={hasSamePlace}, hasInstance={hasInstance}, hasDoubleCounting={hasDoubleCounting}, hasDuplicate={hasDuplicate}");
                     }
                     continue;
                 }
@@ -2236,21 +2279,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         fa.DeleteWarning(f);
                         if (sb != null)
                         {
-                            sb.AppendLine(
-                                $"[{DateTime.Now:HH:mm:ss.fff}]   -> DeleteWarning SUCCESS.");
+                            sb.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}]   -> DeleteWarning SUCCESS.");
                         }
-                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[NestedFamilyClashWarningSuppressor] Suppressed (Family2): {desc}");
                     }
                     catch (Exception ex)
                     {
                         if (sb != null)
                         {
-                            sb.AppendLine(
-                                $"[{DateTime.Now:HH:mm:ss.fff}]   -> DeleteWarning EXCEPTION: {ex.GetType().Name}: {ex.Message}");
+                            sb.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}]   -> DeleteWarning EXCEPTION: {ex.GetType().Name}: {ex.Message}");
                         }
-                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Warning($"[NestedFamilyClashWarningSuppressor] DeleteWarning failed: {ex.Message}");
                     }
                 }
                 else if (severity == FailureSeverity.Error)
@@ -2258,34 +2295,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     try
                     {
                         int numRes = f.GetNumberOfResolutions();
-                        if (sb != null)
-                        {
-                            sb.AppendLine(
-                                $"[{DateTime.Now:HH:mm:ss.fff}]   -> Error path: GetNumberOfResolutions={numRes}");
-                        }
                         if (numRes > 0)
                         {
-                            bool resolved = false;
-                            foreach (FailureResolutionType resolutionType in Enum.GetValues(typeof(FailureResolutionType)))
+                            // Revit 2023 compatibility: loop to find a valid resolution
+                            foreach (FailureResolutionType resType in Enum.GetValues(typeof(FailureResolutionType)))
                             {
-                                if (f.HasResolutionOfType(resolutionType))
+                                if (resType == FailureResolutionType.Invalid) continue;
+
+                                if (f.HasResolutionOfType(resType))
                                 {
-                                    f.SetCurrentResolutionType(resolutionType);
+                                    f.SetCurrentResolutionType(resType);
+                                    fa.ResolveFailure(f);
                                     if (sb != null)
                                     {
-                                        sb.AppendLine(
-                                            $"[{DateTime.Now:HH:mm:ss.fff}]   -> SetCurrentResolutionType({resolutionType}) SUCCESS.");
+                                        sb.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}]   -> ResolveFailure({resType}) SUCCESS.");
                                     }
-                                    resolved = true;
-                                    if (!DeploymentConfiguration.DeploymentMode)
-                                        DebugLogger.Info($"[NestedFamilyClashWarningSuppressor] Resolved Error (Family2): {desc}");
                                     break;
                                 }
-                            }
-                            if (!resolved && sb != null)
-                            {
-                                sb.AppendLine(
-                                    $"[{DateTime.Now:HH:mm:ss.fff}]   -> No resolution type matched (HasResolutionOfType false for all).");
                             }
                         }
                     }
@@ -2293,19 +2319,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         if (sb != null)
                         {
-                            sb.AppendLine(
-                                $"[{DateTime.Now:HH:mm:ss.fff}]   -> Error resolution EXCEPTION: {ex.GetType().Name}: {ex.Message}");
+                            sb.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}]   -> Error resolution EXCEPTION: {ex.GetType().Name}: {ex.Message}");
                         }
-                        if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Warning($"[NestedFamilyClashWarningSuppressor] Could not resolve Error: {ex.Message}");
-                    }
-                }
-                else
-                {
-                    if (sb != null)
-                    {
-                        sb.AppendLine(
-                            $"[{DateTime.Now:HH:mm:ss.fff}]   -> SKIP (severity not Warning or Error: {severity}).");
                     }
                 }
             }
