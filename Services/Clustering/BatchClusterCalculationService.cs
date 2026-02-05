@@ -87,12 +87,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 }
             });
             
-            // Group the wrapped zones
+            // Group the wrapped zones: host type + host ID so Floor is strictly separate from Wall/Framing (editing floor won't affect wall)
             var groupedZones = wrappedZones.GroupBy(w => new SleeveGroupKey(
-                w.ClashZone.StructuralElementIdValue.ToString(), // ✅ FIX: Group by Host ID (stringified) to prevent over-clustering
+                GetBatchHostType(w.ClashZone) + "_" + w.ClashZone.StructuralElementIdValue.ToString(),
                 w.ClashZone.MepElementCategory ?? "Unknown", 
                 w.ClashZone.HostOrientation ?? "Unknown",
-                0, 0, 0)); // ✅ FIX: Disable spatial bucketing as requested
+                0, 0, 0));
             
             var clustersByGroup = _algorithmService.FormClusters(groupedZones, toleranceDist, doc, enableParallel: true);
 
@@ -362,6 +362,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
         /// <summary>
         /// ✅ SPECIALIZED FLOOR CALCULATION: Strictly separated from wall logic.
+        /// Floor rotation uses same DetermineRotationAngle as RefactoredClusterService (MepElementRotationAngle for rectangular, 0 for circular).
         /// </summary>
         private BatchClusterCalculationResult CalculateFloorCluster(List<dynamic> clusterItems, string batchId, int comboId, int filterId)
         {
@@ -369,7 +370,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             if (zones.Count == 0) return null;
 
             var first = zones[0];
-            double rotationAngle = 0; // Floors usually have 0 rotation or are handled by instance placement
+            // ✅ FLOOR ROTATION: Use ClusterRotationService so rotated MEP on floors gets correct bbox (same path as individual sleeves)
+            double rotationAngle = _rotationService.DetermineRotationAngle(clusterItems);
 
             var bboxResult = _rotationService.CalculateRotatedBoundingBox(clusterItems, null, rotationAngle);
             double depth = first.StructuralElementThickness > 0.001 ? first.StructuralElementThickness : bboxResult.depth;
@@ -426,6 +428,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         {
             string locKey = $"{batchId}_{pt.X:F1}_{pt.Y:F1}_{pt.Z:F1}";
             return _placedLocations.TryAdd(locKey, 0);
+        }
+
+        /// <summary>Returns "Floor", "Wall", or "Structural Framing" so batch grouping keeps floor strictly separate from wall/framing.</summary>
+        private static string GetBatchHostType(ClashZone cz)
+        {
+            if (cz?.StructuralElementType == null) return "Other";
+            var t = cz.StructuralElementType.Trim();
+            if (t.IndexOf("Floor", StringComparison.OrdinalIgnoreCase) >= 0) return "Floor";
+            if (t.IndexOf("Wall", StringComparison.OrdinalIgnoreCase) >= 0) return "Wall";
+            if (t.Equals("Structural Framing", StringComparison.OrdinalIgnoreCase)) return "Structural Framing";
+            return "Other";
         }
 
         private BatchClusterCalculationResult CreateResult(List<ClashZone> zones, string batchId, int comboId, int filterId, XYZ pt, double w, double h, double d, double rot)

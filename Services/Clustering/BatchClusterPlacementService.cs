@@ -93,6 +93,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         SafeFileLogger.SafeAppendText("batch_v2.log", 
                             $"[{DateTime.Now:HH:mm:ss}] 🧹 CONSOLIDATED CLEANUP: Found {clusterInstanceIds.Count} placed clusters from all categories\n");
                         
+                        // ✅ STAGE 2 CLEANUP FIX: Ensure ClusterSleeves (legacy) has bounding boxes before point-in-box query
+                        // Cleanup requires ClusterSleeves.BoundingBox* != 0; if in-placement bbox update was skipped/failed, do it now
+                        var instancesForBbox = new List<FamilyInstance>();
+                        foreach (int id in clusterInstanceIds)
+                        {
+                            var elem = doc.GetElement(new Autodesk.Revit.DB.ElementId(id)) as FamilyInstance;
+                            if (elem != null && elem.IsValidObject) instancesForBbox.Add(elem);
+                        }
+                        if (instancesForBbox.Count > 0)
+                        {
+                            try
+                            {
+                                UpdateClusterBoundingBoxesAfterPlacement(doc, instancesForBbox);
+                                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] 🧹 STAGE 2: Ensured {instancesForBbox.Count} cluster bboxes in DB before cleanup\n");
+                            }
+                            catch (Exception bboxEx)
+                            {
+                                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ STAGE 2 bbox pre-cleanup failed (continuing): {bboxEx.Message}\n");
+                            }
+                        }
+                        
                         // ✅ CLEANUP ALL CATEGORIES: No category filter - check all individual sleeves against all cluster bboxes
                         cleanedUp = cleanupService.CleanupSleevesWithinClustersFromDatabase(
                             doc, 
@@ -1053,8 +1076,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                     comboId,
                                     filterId,
                                     category,
-                                    sleeveFamilyName: cluster.FamilyName,
-                                    actualInstance: actualInstance
+                                    cluster.FamilyName,
+                                    actualInstance,
+                                    rotationAngleRadOverride: cluster.RotationAngleRad
                                 );
 
                                 // ✅ DIAGNOSTIC: Log after SaveClusterSleeve returns

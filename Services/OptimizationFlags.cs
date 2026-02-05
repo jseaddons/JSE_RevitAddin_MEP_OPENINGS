@@ -334,7 +334,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Use in production/deployment mode for maximum performance.
         /// Location: DebugLogger.cs (all Log calls check this flag)
         /// </summary>
-        public static bool DisableVerboseLogging { get; set; } = true; // ✅ ENABLED for performance - reduces overhead
+        public static bool DisableVerboseLogging { get; set; } = false  ; // ✅ ENABLED for performance - reduces overhead
 
         /// <summary>
         /// Skip synchronous parameter capture for existing zones in ClashZoneService.
@@ -351,6 +351,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Default: false (safe rollout)
         /// </summary>
         public static bool UseBulkIndividualSleevePlacement { get; set; } = true;
+
+        /// <summary>
+        /// Bulk placement transaction flow: two transactions (Monday-style) vs single transaction.
+        /// When true: Tx1 = placement only → Commit; Tx2 = Flush parameters → Commit; then Regenerate (faster, ~25 sleeves/s).
+        /// When false: Single tx = placement + Flush parameters → Commit (rollback path if two-tx has issues).
+        /// Default: true (use two-transaction flow for performance; set false to roll back on failure).
+        /// Location: Services/OpeningCommandOrchestrator.cs (bulk placement block)
+        /// </summary>
+        public static bool UseTwoTransactionBulkPlacement { get; set; } = true;
 
         /// <summary>
         /// Skip forced garbage collection at end of refresh.

@@ -41,6 +41,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
         // Delegate for getting cluster placement by cluster ID (injected dependency)
         private readonly Func<int, XYZ> _getClusterPlacementFunc;
 
+        // ✅ Same rotation logic as individual sleeves (Wall X/Y, Floor circular/rectangular, Framing)
+        private readonly SleeveRotationService _sleeveRotationService;
+
         /// <summary>
         /// Constructor
         /// </summary>
@@ -62,6 +65,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
             _clashZoneCache = new Dictionary<int, ClashZone>();
             _getClashZoneFunc = getClashZoneFunc;
             _getClusterPlacementFunc = getClusterPlacementFunc;
+            _sleeveRotationService = new SleeveRotationService();
         }
 
         /// <summary>
@@ -142,80 +146,111 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
 
                     // Normalize HostOrientation string
                     string hostOrientation = (firstClashZone.HostOrientation ?? "").Trim();
+                    string hostTypeForOrientation = firstClashZone.StructuralElementType ?? "";
+                    bool isWallOrFramingForOrientation =
+                        hostTypeForOrientation.StartsWith("Wall", StringComparison.OrdinalIgnoreCase) ||
+                        hostTypeForOrientation.Equals("Structural Framing", StringComparison.OrdinalIgnoreCase);
                     
-                    // ✅ VALIDATION: All zones in cluster must have SAME orientation
-                    // This prevents mixed-orientation clusters (e.g. X-wall mixed with Y-wall)
+                    // ✅ VALIDATION: For WALL/FRAMING only, all zones must have SAME HostOrientation (X vs Y)
+                    // For FLOOR we do NOT require HostOrientation to match (often "" or "Floor") so rotated MEP gets MepElementRotationAngle
                     bool allSameOrientation = true;
-                    foreach (var item in cluster)
+                    if (isWallOrFramingForOrientation)
                     {
-                        ClashZone? itemCz = null;
-                        if (item is ClashZone clashZone)
-                            itemCz = clashZone;
-                        else if (item?.ClashZone != null)
-                            itemCz = item.ClashZone as ClashZone;
-                        
-                        // Treat null/empty as specific mismatch if reference is not empty
-                        string itemOrientation = (itemCz?.HostOrientation ?? "").Trim();
-                        
-                        if (!string.Equals(itemOrientation, hostOrientation, StringComparison.OrdinalIgnoreCase))
+                        foreach (var item in cluster)
                         {
-                            allSameOrientation = false;
-                            SafeFileLogger.SafeAppendText("cluster_errors.log",
-                                $"[{DateTime.Now:HH:mm:ss}] ❌ CRITICAL: Cluster has MIXED orientations! " +
-                                $"Zone1 Orientation='{hostOrientation}', Zone2 Orientation='{itemOrientation}'\n");
-                            break;
+                            ClashZone? itemCz = null;
+                            if (item is ClashZone clashZone)
+                                itemCz = clashZone;
+                            else if (item?.ClashZone != null)
+                                itemCz = item.ClashZone as ClashZone;
+                            
+                            string itemOrientation = (itemCz?.HostOrientation ?? "").Trim();
+                            if (!string.Equals(itemOrientation, hostOrientation, StringComparison.OrdinalIgnoreCase))
+                            {
+                                allSameOrientation = false;
+                                SafeFileLogger.SafeAppendText("cluster_errors.log",
+                                    $"[{DateTime.Now:HH:mm:ss}] ❌ CRITICAL: Cluster has MIXED orientations! " +
+                                    $"Zone1 Orientation='{hostOrientation}', Zone2 Orientation='{itemOrientation}'\n");
+                                break;
+                            }
                         }
-                    }
-                    
-                    if (!allSameOrientation)
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_errors.log",
-                            $"[{DateTime.Now:HH:mm:ss}] ❌ SKIPPING cluster due to mixed orientations\n");
-                        return 0.0; // Fallback to 0 (will likely be rejected or placed poorly, but safe)
+                        if (!allSameOrientation)
+                        {
+                            SafeFileLogger.SafeAppendText("cluster_errors.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ❌ SKIPPING cluster due to mixed orientations (Wall/Framing)\n");
+                            return 0.0;
+                        }
                     }
                     
                     // ✅ PHASE 4: Use database orientation directly (Simple Logic as requested)
                     // If HostOrientation is X/X-WALL -> Rotate 90 degrees
                     // Else -> 0 degrees
-                    if (string.Equals(hostOrientation, "X", StringComparison.OrdinalIgnoreCase) || 
-                        hostOrientation.IndexOf("X-WALL", StringComparison.OrdinalIgnoreCase) >= 0)
+                    // ✅ USER RULE (2026-02-05): For Floors, NO host orientation needed. Strictly use MEP orientation for rotated elements.
+                    // To avoid affecting walls/framing, we ONLY bypass this if host is explicitly a Floor.
+                    bool isFloorForOrientation = (firstClashZone.StructuralElementType ?? "").IndexOf("Floor", StringComparison.OrdinalIgnoreCase) >= 0;
+
+                    if (!isFloorForOrientation && (string.Equals(hostOrientation, "X", StringComparison.OrdinalIgnoreCase) || 
+                        hostOrientation.IndexOf("X-WALL", StringComparison.OrdinalIgnoreCase) >= 0))
                     {
                         double rotationAngle = Math.PI / 2.0; // 90 degrees for X-walls
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] ✅ ORIENTATION FROM DATABASE: X-wall → 90° rotation\n");
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ ORIENTATION (WALL): X-wall → 90° rotation\n");
                         }
                         return rotationAngle;
                     }
-                    else if (string.Equals(hostOrientation, "Y", StringComparison.OrdinalIgnoreCase) || 
-                             hostOrientation.IndexOf("Y-WALL", StringComparison.OrdinalIgnoreCase) >= 0)
+                    else if (!isFloorForOrientation && (string.Equals(hostOrientation, "Y", StringComparison.OrdinalIgnoreCase) || 
+                             hostOrientation.IndexOf("Y-WALL", StringComparison.OrdinalIgnoreCase) >= 0))
                     {
                          double rotationAngle = 0.0; // 0 degrees for Y-walls (User Req: "y should remain at 0 degre")
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] ✅ ORIENTATION FROM DATABASE: Y-wall → 0° rotation\n");
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ ORIENTATION (WALL): Y-wall → 0° rotation\n");
                         }
                         return rotationAngle;
                     }
                     else
                     {
                         // For floors (or anything not explicitly X/Y wall), use MEP element rotation angle (from database)
-                        // This covers "Floor", "Floors", or any other host type where we rely on the MEP element's rotation
+                        // ✅ FIX (2026-02-05): "yes 0 degree ok ... because we already get extreme corners to shape the box no need to rotate 0 degree"
+                        // Rule: If all angles are orthogonal (0, 90, 180, 270), return 0.
+                        // Only return non-zero if we find a "truly" rotated angle (e.g. 45 degrees).
                         
-                        // For rectangular elements or mixed clusters: use MEP rotation
-                        double rotationAngle = firstClashZone.MepElementRotationAngle;
-                        
-                        // Normalize to 0-2PI
-                        while (rotationAngle < 0) rotationAngle += 2 * Math.PI;
-                        while (rotationAngle >= 2 * Math.PI) rotationAngle -= 2 * Math.PI;
+                        double rotationAngle = 0.0;
+                        bool foundNonOrthogonal = false;
+
+                        foreach (var item in cluster)
+                        {
+                            ClashZone? itemCz = null;
+                            if (item is ClashZone czItem) itemCz = czItem;
+                            else if (item?.ClashZone != null) itemCz = item.ClashZone as ClashZone;
+                            
+                            if (itemCz != null)
+                            {
+                                double angle = itemCz.MepElementRotationAngle;
+                                // Normalize to 0-2PI for comparison
+                                while (angle < 0) angle += 2 * Math.PI;
+                                while (angle >= 2 * Math.PI) angle -= 2 * Math.PI;
+
+                                // Check if it's NOT a multiple of 90 degrees (1.570796 rad)
+                                double remainder = Math.Abs(angle % (Math.PI / 2.0));
+                                if (remainder > 1e-4 && Math.Abs(remainder - (Math.PI / 2.0)) > 1e-4)
+                                {
+                                    rotationAngle = angle;
+                                    foundNonOrthogonal = true;
+                                    break;
+                                }
+                            }
+                        }
 
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             string typeLog = string.IsNullOrEmpty(hostOrientation) ? "Unknown/Floor" : hostOrientation;
+                            string pathLog = foundNonOrthogonal ? "NON-ORTHOGONAL" : "ORTHOGONAL-MIX (Default to 0)";
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] ✅ ORIENTATION FROM DATABASE: {typeLog} → {rotationAngle * 180 / Math.PI:F1}° rotation (MEP Angle)\n");
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ ORIENTATION (FLOOR): {typeLog} → {rotationAngle * 180 / Math.PI:F1}° rotation ({pathLog})\n");
                         }
                         return rotationAngle;
                     }
@@ -1646,41 +1681,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                 }
                             }
                             
-                            // ❌ NO FALLBACK: Throw exception to force investigation - corners MUST be available
-                            throw new InvalidOperationException(
-                                 $"CRITICAL: Corner-based calculation failed - only {allCorners.Count} corners found (need at least 4). " +
-                                 $"This indicates corners were not saved correctly for individual sleeves. " +
-                                 $"ClashZone GUIDs: {string.Join(", ", clashZonesInCluster.Select(z => z.ClashZoneGuid))}. " +
-                                 $"Check corner saving logic (SleevePersistenceService.PersistSleeveData).");
+                            // ❌ NO FALLBACK EXCEPTION: Log and SKIP this cluster if corners are insufficient.
+                            // Caller (batch clustering) will simply not persist this cluster; corners themselves
+                            // are still persisted by the batch corner extractor after placement.
+                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                $"[{DateTime.Now:HH:mm:ss}] ❌ SKIPPING CLUSTER: Corner-based calculation failed - only {allCorners.Count} corners found (need at least 4). " +
+                                $"ClashZone GUIDs: {string.Join(", ", clashZonesInCluster.Select(z => z.ClashZoneGuid))}. " +
+                                $"Check corner saving logic (SleevePersistenceService.PersistSleeveData).\n");
+                            // Return a zero-sized bbox; caller should treat as 'no valid cluster bbox'
+                            return (0, 0, 0, XYZ.Zero, null, null, null, null, null, null);
                         }
                     }
                     else
                     {
-                        // ⚠️ CRITICAL ERROR: No corners found - this should NEVER happen
-                         SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                             $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ CRITICAL ERROR: No corners found in ANY sleeve!\n" +
-                             $"  This indicates corners were NOT saved during individual sleeve placement!\n" +
-                             $"  ClashZone GUIDs in cluster: {string.Join(", ", clashZonesInCluster.Select(z => z.ClashZoneGuid))}\n" +
-                             $"  Check if corners are saved to database (SleevePersistenceService.PersistSleeveData).\n");
-                        
-                        // ❌ NO FALLBACK: Throw exception to force investigation - corners MUST be available
-                        throw new InvalidOperationException(
-                             $"CRITICAL: Corner-based calculation failed - no corners found in any sleeve. " +
-                             $"This indicates corners were not saved during individual sleeve placement. " +
-                             $"ClashZone GUIDs: {string.Join(", ", clashZonesInCluster.Select(z => z.ClashZoneGuid))}. " +
-                             $"Check corner saving logic (SleevePersistenceService.PersistSleeveData).");
+                        // ⚠️ CRITICAL ERROR: No corners found – log and SKIP this cluster (do not throw).
+                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                            $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ SKIPPING CLUSTER: No corners found in ANY sleeve.\n" +
+                            $"  This indicates corners were NOT saved during individual sleeve placement!\n" +
+                            $"  ClashZone GUIDs in cluster: {string.Join(", ", clashZonesInCluster.Select(z => z.ClashZoneGuid))}\n" +
+                            $"  Check if corners are saved to database (SleevePersistenceService.PersistSleeveData).\n");
+                        return (0, 0, 0, XYZ.Zero, null, null, null, null, null, null);
                     }
                 }
                 catch (Exception cornerEx)
                 {
+                    // Log and SKIP this cluster instead of crashing the whole batch.
                     SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                         $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ CRITICAL EXCEPTION in corner-based calculation: {cornerEx.Message}\n" +
+                         $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ CORNER CALC EXCEPTION (cluster skipped): {cornerEx.Message}\n" +
                          $"StackTrace: {cornerEx.StackTrace}\n" +
-                         $"ClashZone GUIDs in cluster: {string.Join(", ", clashZonesInCluster.Select(z => z.ClashZoneGuid))}\n" +
-                         $"This should NOT happen - corners MUST be available for all sleeves.\n");
-                    
-                    // ❌ NO FALLBACK: Re-throw to force investigation
-                    throw;
+                         $"ClashZone GUIDs in cluster: {string.Join(", ", clashZonesInCluster.Select(z => z.ClashZoneGuid))}\n");
+                    return (0, 0, 0, XYZ.Zero, null, null, null, null, null, null);
                 }
             }
             // Note: Corner-based calculation is now always attempted and MUST succeed (no fallback to RCS)

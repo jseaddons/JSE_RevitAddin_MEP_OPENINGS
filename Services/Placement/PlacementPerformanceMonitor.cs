@@ -322,7 +322,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         }
         
         /// <summary>
-        /// Generate summary section for cluster placement
+        /// Generate summary section for cluster placement.
+        /// Mirrors the INDIVIDUAL summary style so the user sees:
+        /// - One clear wall-clock total for clusters (Bulk Cluster Sleeve Placement)
+        /// - Simple rate and average per cluster
+        /// - A flat "Steps (by time; % of total)" breakdown instead of a dense table.
         /// </summary>
         private void GenerateClusterPlacementSection(StringBuilder report, int totalClusters)
         {
@@ -344,18 +348,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 return;
             }
             
-            // Calculate total time for cluster operations
-            // ✅ FIX: Show actual time even when no clusters placed - this helps identify why operations are slow
-            long totalClusterTime = clusterOps.Sum(op => op.TotalMilliseconds);
+            // For clusters, just like individual, use the wall-clock of the bulk wrapper
+            // ("Bulk Cluster Sleeve Placement") as the single total instead of summing
+            // all children (which would double-count time).
+            var bulkClusterOp = clusterOps.FirstOrDefault(op => op.Name != null && op.Name.Contains("Bulk Cluster Sleeve Placement"));
+            long totalClusterTime = bulkClusterOp != null && bulkClusterOp.TotalMilliseconds > 0
+                ? bulkClusterOp.TotalMilliseconds
+                : clusterOps.Sum(op => op.TotalMilliseconds);
             
-            // Summary table
+            // Summary table in the same shape as individual placement
             report.AppendLine($"=== CLUSTER PLACEMENT SUMMARY ===");
             report.AppendLine($"{"Metric",-30} {"Value",20}");
             report.AppendLine(new string('-', 52));
             report.AppendLine($"{"Total Clusters Placed",-30} {totalClusters,20}");
-            report.AppendLine($"{"Total Time",-30} {totalClusterTime,19}ms ({TimeSpan.FromMilliseconds(totalClusterTime):mm\\:ss})");
+            report.AppendLine($"{"Total Time (wall-clock)",-30} {totalClusterTime,19}ms ({TimeSpan.FromMilliseconds(totalClusterTime):mm\\:ss})");
             
-            // ✅ FIX: Show warning if time was spent but no clusters were placed
             if (totalClusters == 0 && totalClusterTime > 0)
             {
                 report.AppendLine($"{"⚠️ WARNING",-30} {"Time spent but no clusters placed!",20}");
@@ -369,28 +376,55 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 report.AppendLine($"{"Avg Time per Cluster",-30} {avgTimePerCluster,19:F1}ms");
                 
                 bool meetsTarget = clustersPerSec >= 10;
-                report.AppendLine($"{"Performance Status",-30} {(meetsTarget ? "✅ MEETS TARGET (10+/s)" : "⚠️ BELOW TARGET (<10/s)"),20}");
+                // Keep this plain text (no emojis) to avoid encoding issues and match individual summary style.
+                report.AppendLine($"{"Performance Status",-30} {(meetsTarget ? "MEETS TARGET (10+/s)" : "BELOW TARGET (<10/s)"),20}");
             }
             report.AppendLine();
             
-            // Operation breakdown table
-            report.AppendLine($"=== CLUSTER PLACEMENT OPERATION BREAKDOWN ===");
-            report.AppendLine($"{"Operation",-45} {"Calls",8} {"Total",12} {"Avg",10} {"Min",10} {"Max",10} {"Items",10} {"Items/s",10} {"%",6}");
-            report.AppendLine(new string('-', 120));
-            
-            foreach (var op in clusterOps)
+            // Steps breakdown, formatted like individual placement
+            report.AppendLine("Steps (by time; % of total):");
+            report.AppendLine(new string('-', 72));
+
+            // Exclude the bulk wrapper itself from the rows – it is the total, not a step
+            var stepsOnlyOps = clusterOps.Where(op => op.Name == null || !op.Name.Contains("Bulk Cluster Sleeve Placement")).ToList();
+
+            // Sub-operations recorded under the bulk cluster operation
+            var bulkClusterSubOpsRaw = _subOpsForReport
+                .Where(s => s.ParentName != null && s.ParentName.Contains("Bulk Cluster Sleeve Placement"))
+                .ToList();
+
+            bool IsRedundantOrOptionalStep(string name)
             {
-                double avgMs = op.CallCount > 0 ? (double)op.TotalMilliseconds / op.CallCount : 0;
-                double avgItemsPerSec = op.TotalMilliseconds > 0 
-                    ? (double)op.TotalItemCount / op.TotalMilliseconds * 1000 
-                    : 0;
-                double percentage = totalClusterTime > 0 
-                    ? (double)op.TotalMilliseconds / totalClusterTime * 100 
-                    : 0;
-                
-                report.AppendLine($"{op.Name,-45} {op.CallCount,8} {op.TotalMilliseconds,12}ms {avgMs,9:F1}ms {op.MinMilliseconds,9}ms {op.MaxMilliseconds,9}ms {op.TotalItemCount,10} {avgItemsPerSec,9:F0}/s {percentage,5:F1}%");
+                if (string.IsNullOrEmpty(name)) return false;
+                var n = name.Trim();
+                // Hide generic wrapper/diagnostic steps so the user sees only meaningful phases.
+                return n.IndexOf("Operation 2", StringComparison.OrdinalIgnoreCase) >= 0
+                    || n.IndexOf("ExecuteBulkPlacement", StringComparison.OrdinalIgnoreCase) >= 0
+                    || n.IndexOf("Regenerate", StringComparison.OrdinalIgnoreCase) >= 0
+                    || n.IndexOf("Cluster Placement Total", StringComparison.OrdinalIgnoreCase) >= 0;
             }
-            
+
+            var bulkClusterSubOps = bulkClusterSubOpsRaw
+                .Where(s => !IsRedundantOrOptionalStep(s.OpName))
+                .OrderByDescending(s => s.Ms)
+                .ToList();
+
+            // Flatten top-level ops + sub-steps into a single sorted list
+            var allSteps = new List<(string Name, long Ms)>();
+            foreach (var op in stepsOnlyOps)
+            {
+                if (!IsRedundantOrOptionalStep(op.Name))
+                    allSteps.Add((op.Name, op.TotalMilliseconds));
+            }
+            foreach (var sub in bulkClusterSubOps)
+                allSteps.Add((sub.OpName, sub.Ms));
+
+            foreach (var step in allSteps.OrderByDescending(x => x.Ms))
+            {
+                double pct = totalClusterTime > 0 ? (double)step.Ms / totalClusterTime * 100 : 0;
+                report.AppendLine($"{step.Name,-50} {step.Ms,10}ms {pct,5:F1}%");
+            }
+
             report.AppendLine();
         }
         

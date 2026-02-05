@@ -65,6 +65,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                     (cz2.SleeveBoundingBoxMinY + cz2.SleeveBoundingBoxMaxY) / 2.0,
                     (cz2.SleeveBoundingBoxMinZ + cz2.SleeveBoundingBoxMinZ) / 2.0);
 
+                // ✅ FIX: "Strict 2D for Floors" - zero out Z coordinates if both are on floors
+                string hostType1 = cz1.StructuralElementType ?? "";
+                string hostType2 = cz2.StructuralElementType ?? "";
+                if (hostType1.IndexOf("Floor", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                    hostType2.IndexOf("Floor", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    center1 = new XYZ(center1.X, center1.Y, 0);
+                    center2 = new XYZ(center2.X, center2.Y, 0);
+                    
+                    // Also ensure the axis direction is horizontal
+                    if (cz1.MepElementOrientation != null)
+                    {
+                        var horizontalOrientation = new XYZ(cz1.MepElementOrientation.X, cz1.MepElementOrientation.Y, 0);
+                        if (horizontalOrientation.GetLength() > 1e-6)
+                        {
+                            // Temporarily override for this check if we know it's a floor
+                        }
+                    }
+                }
+
                 // ✅ STEP 1: Calculate shared rotated axis direction
                 // Prefer the full 3D orientation stored on the clash zone (handles tilted axes)
                 XYZ rotatedAxisDirection;

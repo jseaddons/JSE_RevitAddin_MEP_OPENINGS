@@ -269,13 +269,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Save cluster sleeve calculation results to database
         /// Called after cluster calculation completes in PATH 2/3
         /// </summary>
+        /// <param name="rotationAngleRadOverride">When set, use this angle for DB (same as used for placement). Stops overwriting with instance rotation which can be 0 before commit.</param>
         public void SaveClusterSleeve(
             int clusterInstanceId,
             int comboId,
             int filterId,
             string category,
             string sleeveFamilyName,
-            FamilyInstance actualInstance)
+            FamilyInstance actualInstance,
+            double? rotationAngleRadOverride = null)
         {
             // This is a bridge method for callers who only have the high-level Task or Data
             // We'll extract what we need and call the primitive version
@@ -283,6 +285,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             double width = 0, height = 0, depth = 0, rot = 0;
             double px = 0, py = 0, pz = 0;
             List<Guid> zoneGuids = new List<Guid>();
+            
+            // Use cluster/ClashZone angle when provided so we don't overwrite with instance rotation (often 0 at save time)
+            if (rotationAngleRadOverride.HasValue)
+                rot = rotationAngleRadOverride.Value;
             
             // Extract from actualInstance if possible for MAX ACCURACY
             if (actualInstance != null && actualInstance.IsValidObject)
@@ -292,12 +298,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 depth = (actualInstance.LookupParameter("Depth") ?? actualInstance.LookupParameter("Element Depth") ?? actualInstance.LookupParameter("Wall Width"))?.AsDouble() ?? 0;
                 
                 var loc = actualInstance.Location as LocationPoint;
-                if (loc != null)
+                if (loc != null && !rotationAngleRadOverride.HasValue)
                 {
                     px = loc.Point.X;
                     py = loc.Point.Y;
                     pz = loc.Point.Z;
                     rot = loc.Rotation;
+                }
+                else if (loc != null)
+                {
+                    px = loc.Point.X;
+                    py = loc.Point.Y;
+                    pz = loc.Point.Z;
                 }
                 
                 // Extract high-accuracy corners

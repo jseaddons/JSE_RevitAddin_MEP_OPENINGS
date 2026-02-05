@@ -246,6 +246,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                         return result;
                     }
                 }
+
+                // ✅ FIX: For floors, compute 2D distance in X-Y plane (ignore Z gap)
+                // This fix addresses the issue where sleeves in floors are separated vertically (Z) but should cluster based on plan view proximity.
+                string hostType1 = cz1.StructuralElementType ?? "";
+                string hostType2 = cz2.StructuralElementType ?? "";
+                if (hostType1.IndexOf("Floor", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                    hostType2.IndexOf("Floor", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    double gapX2D = Gap(bbox1.minX, bbox1.maxX, bbox2.minX, bbox2.maxX);
+                    double gapY2D = Gap(bbox1.minY, bbox1.maxY, bbox2.minY, bbox2.maxY);
+                    double dist2D = Math.Sqrt(gapX2D * gapX2D + gapY2D * gapY2D);
+                    bool floorResult = dist2D <= effectiveTolerance;
+
+                    if (category.Contains("Duct") || category.Contains("Damper") || category.Contains("Tray"))
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"  HostType: Floor → dXY(2D)={dist2D * 304.8:F1}mm (tol={effectiveTolerance * 304.8:F1}mm) => {floorResult}\n");
+                    }
+                    return floorResult;
+                }
                 
                 // Default: compute full 3D distance between the two corner bounding boxes
                 double gapX3 = Gap(bbox1.minX, bbox1.maxX, bbox2.minX, bbox2.maxX);

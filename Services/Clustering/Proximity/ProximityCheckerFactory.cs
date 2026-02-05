@@ -48,13 +48,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                     return new EdgeToEdgeProximityChecker();
                 }
 
-                // ✅ DECISION 3: Mixed types (one rectangular, one circular) → use robust MixedTypeProximityChecker
-                // This is specifically for the user's issue with bounding boxes on angled walls.
+                // ✅ DECISION 3: Mixed types (one rectangular, one circular) → use BoundingBoxProximityChecker (User Request)
                 if (cz1 != null && cz2 != null && 
                     ((helper.HasRectangularSleeveShape(cz1) && helper.HasCircularSleeveShape(cz2)) ||
                      (helper.HasCircularSleeveShape(cz1) && helper.HasRectangularSleeveShape(cz2))))
                 {
-                    return new MixedTypeProximityChecker();
+                    return new BoundingBoxProximityChecker();
                 }
 
                 // ✅ DECISION 4: Check for rotated sleeves → use rotated proximity checker
@@ -64,9 +63,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                     return new RotatedProximityChecker(rotationAngle);
                 }
 
-                // ✅ DECISION 5: Default fallback → use robust MixedTypeProximityChecker
-                // It handles Floors (WCS) and Walls (RCS) more safely than the basic BoundingBox checker.
-                return new MixedTypeProximityChecker();
+                // ✅ DECISION 5: Default fallback → Bounding Box for others
+                return new BoundingBoxProximityChecker();
             }
             catch (Exception ex)
             {

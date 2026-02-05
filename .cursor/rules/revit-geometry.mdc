@@ -1,0 +1,27 @@
+---
+description: Revit geometry persistence - never calculate corners or bbox from dimensions
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Revit geometry: do not calculate, only persist from Revit
+
+When editing placement, persistence, or clustering code, follow the project rule that **sleeve corners and bounding boxes must only come from Revit geometry**, never from math (placement point + width/height + rotation).
+
+## Protected data (ClashZone)
+
+- **SleeveCorner1X/Y/Z … SleeveCorner4X/Y/Z** — Only from Revit (e.g. `BatchSleeveCornerExtractor` using `SleeveCornerCalculationService.CalculateCornersFromInstance` on the placed FamilyInstance). Do **not** set from placement point + width/height + rotation.
+- **BoundingBoxMin/Max**, **RotatedBoundingBoxMin/Max** — Only from Revit: `element.get_BoundingBox(null)` and, for rotated bbox, that bbox transformed to element-local space. Do **not** use half-width/half-height math.
+
+## Allowed sources
+
+- Individual sleeves: corners from `BatchSleeveCornerExtractor` after placement (see `Services/Persistence/batch_corner_extractor.cs`).
+- Bbox in `BulkPlacementService.UpdateZoneGeometry` from Revit bbox only; sleeve corners are **not** set there (they come from the batch corner extractor).
+- Clusters: corners/bbox from the placed cluster FamilyInstance geometry only.
+
+## Do not do
+
+- Do **not** add or restore code that sets `SleeveCorner*` or `RotatedBoundingBox*` from placement point + width/height + rotation.
+- Do **not** derive corners or bbox from dimensions; always read from Revit element geometry.
+
+Full rules: see **REVIT_GEOMETRY_RULES.md** in the project root and XML comments on `Models/ClashZone.cs` for these properties.

@@ -275,6 +275,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
                             corners[2].X, corners[2].Y, corners[2].Z,
                             corners[3].X, corners[3].Y, corners[3].Z
                         ));
+
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            SafeFileLogger.SafeAppendText("corner_extraction.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] [DEBUG] Successfully extracted corners for sleeve {zone.SleeveInstanceId} (Zone: {zone.Id})\n");
+                        }
                     }
                 }
                 catch (Exception ex)

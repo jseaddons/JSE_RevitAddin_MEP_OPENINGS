@@ -37,6 +37,31 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                     
                 var repo = new ClashZoneRepository(context, msg => SafeFileLogger.SafeAppendText("cluster_debug.log", $"[Repo] {msg}\n"));
 
+                // ✅ Backfill cluster bbox from placement + dimensions when bbox is zero (so cleanup can find individuals inside)
+                try
+                {
+                    using (var backfillCmd = context.Connection.CreateCommand())
+                    {
+                        backfillCmd.CommandText = @"
+                            UPDATE ClusterSleeves SET
+                                BoundingBoxMinX = PlacementX - (ClusterWidth / 2.0),
+                                BoundingBoxMinY = PlacementY - (ClusterHeight / 2.0),
+                                BoundingBoxMinZ = PlacementZ - (ClusterDepth / 2.0),
+                                BoundingBoxMaxX = PlacementX + (ClusterWidth / 2.0),
+                                BoundingBoxMaxY = PlacementY + (ClusterHeight / 2.0),
+                                BoundingBoxMaxZ = PlacementZ + (ClusterDepth / 2.0)
+                            WHERE ClusterInstanceId > 0
+                              AND (BoundingBoxMinX = 0.0 AND BoundingBoxMaxX = 0.0)";
+                        int backfillRows = backfillCmd.ExecuteNonQuery();
+                        if (backfillRows > 0)
+                            SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Backfilled bbox for {backfillRows} cluster(s) from placement+dimensions\n");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ CLEANUP backfill bbox: {ex.Message}\n");
+                }
+
                 // ✅ SINGLE SQL QUERY: Find all sleeves with placement points inside cluster bounding boxes
                 // This replaces 3 separate queries - everything happens in one SQL query
                 // Performance: O(n log m) with indexes - database does all the work
@@ -48,8 +73,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                 using (var cmd = context.Connection.CreateCommand())
                 {
                     // ✅ SINGLE SQL QUERY: Join ClashZones with ClusterSleeves and check point-in-box
-                    // This replaces: (1) query individual sleeves, (2) query cluster sleeves, (3) find overlaps
-                    // Everything happens in the database - maximum performance
+                    // ClusterSleeves.BoundingBox* must be set by BatchClusterPlacementService.UpdateClusterBoundingBoxesAfterPlacement
+                    // (after parameter flush and doc.Regenerate) so Stage 2 cleanup finds floor and wall clusters.
                     var query = @"
                         SELECT DISTINCT cz.SleeveInstanceId, cs.ClusterInstanceId
                         FROM ClashZones cz
@@ -61,15 +86,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                           AND cz.SleevePlacementY IS NOT NULL AND cz.SleevePlacementY != 0.0
                           AND cz.SleevePlacementZ IS NOT NULL AND cz.SleevePlacementZ != 0.0
                           -- Individual sleeve must not already be part of a cluster
-                          AND (cz.ClusterInstanceId = 0 OR cz.ClusterInstanceId IS NULL)
+                          -- ✅ FIX: Include -1 (Not Clustered) and 0 and NULL
+                          AND (cz.ClusterInstanceId <= 0 OR cz.ClusterInstanceId IS NULL)
+                          
                           -- Cluster must have valid bounding box
                           AND cs.BoundingBoxMinX != 0.0 AND cs.BoundingBoxMinY != 0.0 AND cs.BoundingBoxMinZ != 0.0
                           AND cs.BoundingBoxMaxX != 0.0 AND cs.BoundingBoxMaxY != 0.0 AND cs.BoundingBoxMaxZ != 0.0
+                          
                           -- ✅ POINT-IN-BOX CHECK: Individual sleeve placement point must be inside cluster bounding box
                           AND cz.SleevePlacementX >= cs.BoundingBoxMinX AND cz.SleevePlacementX <= cs.BoundingBoxMaxX
                           AND cz.SleevePlacementY >= cs.BoundingBoxMinY AND cz.SleevePlacementY <= cs.BoundingBoxMaxY
                           AND cz.SleevePlacementZ >= cs.BoundingBoxMinZ AND cz.SleevePlacementZ <= cs.BoundingBoxMaxZ
-                          -- Exclude if individual sleeve ID matches cluster ID (avoid deleting clusters)
+
+                          -- Exclude if individual sleeve ID matches cluster ID
                           AND cz.SleeveInstanceId != cs.ClusterInstanceId";
                     
                     // Optional: Filter by specific cluster IDs if provided
