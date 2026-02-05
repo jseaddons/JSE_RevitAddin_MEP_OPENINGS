@@ -51,14 +51,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Se
                 DebugLogger.Info($"[CombinedDiscovery] Section Box Bounds: Min=({sectionBox.Min.X:F3}, {sectionBox.Min.Y:F3}, {sectionBox.Min.Z:F3}), Max=({sectionBox.Max.X:F3}, {sectionBox.Max.Y:F3}, {sectionBox.Max.Z:F3})");
                 DebugLogger.Info($"[CombinedDiscovery] UI-selected categories: [{string.Join(", ", categories)}]");
                 
-                // ✅ STEP 1: Filter zones by category (zones already have MepElementCategory set)
-                var categorySet = new System.Collections.Generic.HashSet<string>(categories, System.StringComparer.OrdinalIgnoreCase);
-                var categoryFilteredZones = zones.Where(z => 
-                    !string.IsNullOrWhiteSpace(z.MepElementCategory) && 
-                    categorySet.Contains(z.MepElementCategory))
-                    .ToList();
+                // ✅ STEP 1: Filter zones by category (REMOVED: redundant and broken for Cable Tray vs CableTrays)
+                // The repository LoadClusteredZones already filters and performs fuzzy matching.
+                var categoryFilteredZones = zones; 
                 
-                DebugLogger.Info($"[CombinedDiscovery] Category filter: {zones.Count} -> {categoryFilteredZones.Count} zones match UI-selected categories");
+                DebugLogger.Info($"[CombinedDiscovery] Category filter: Using all {zones.Count} zones from repository (which already handled category mapping)");
                 
                 try
                 {

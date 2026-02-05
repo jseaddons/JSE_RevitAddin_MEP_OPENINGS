@@ -1473,7 +1473,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     // ✅ PRIORITY 1: Query SleeveSnapshots to get Size from MepParametersJson
                     cmd.CommandText = $@"
                         SELECT DISTINCT
-                            ss.ClashZoneGuid,
+                            cz.ClashZoneGuid, -- ✅ FIX: Select GUID from ClashZones, not SleeveSnapshots (which might be null)
                             ss.MepParametersJson,
                             ss.MepElementIdsJson,
                             cz.MepElementId,
