@@ -39,6 +39,13 @@ cluster_sizing.log
 packages/
 *.nupkg
 
+
 # Others
 .DS_Store
 Thumbs.db
+
+# Documentation and AI artifacts
+Docs/
+.cursor/
+*.zip
+*.png
