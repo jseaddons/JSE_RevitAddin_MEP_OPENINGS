@@ -200,11 +200,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                         // Example: Use default categories and filter name (could be parameterized)
                         // CRITICAL FIX: Use user-selected categories instead of hardcoded defaults
                         var categories = new List<string>();
-                        if (IsDuctsSelected) categories.Add("Ducts");
-                        if (IsPipesSelected) categories.Add("Pipes");
-                        if (IsCableTraysSelected) categories.Add("CableTrays"); // Note: Internal name is "CableTrays" without space for some services, check usage
-                        if (IsConduitsSelected) categories.Add("Conduit");
-                        if (IsDuctAccessoriesSelected) categories.Add("Duct Accessories");
+                        if (IsDuctsSelected) categories.Add(MepCategoryConstants.DUCTS);
+                        if (IsPipesSelected) categories.Add(MepCategoryConstants.PIPES);
+                        if (IsCableTraysSelected) categories.Add(MepCategoryConstants.CABLE_TRAYS);
+                        if (IsConduitsSelected) categories.Add(MepCategoryConstants.CONDUITS);
+                        if (IsDuctAccessoriesSelected) categories.Add(MepCategoryConstants.DUCT_ACCESSORIES);
+
+                        DebugLogger.Info($"[AutoCluster] Selected Categories: [{string.Join(", ", categories)}]");
 
                         if (categories.Count == 0)
                         {
@@ -243,22 +245,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                         {
                             try
                             {
-                                // Convert ClusterSleeveInfo to UnifiedSleeve
-                                var unified = new UnifiedSleeve
+                                if (info.OriginalZone == null)
                                 {
-                                    Id = info.SleeveInstanceId > 0 ? $"I_{info.SleeveInstanceId}" : $"C_{info.ClusterSleeveInstanceId}",
-                                    Type = info.SleeveInstanceId > 0 ? SleeveType.Individual : SleeveType.Cluster,
-                                    Category = info.CategoryName,
-                                    BoundingBox = new BoundingBoxXYZ
-                                    {
-                                        Min = new XYZ(info.ClusterSleeveBoundingBoxMinX, info.ClusterSleeveBoundingBoxMinY, info.ClusterSleeveBoundingBoxMinZ),
-                                        Max = new XYZ(info.ClusterSleeveBoundingBoxMaxX, info.ClusterSleeveBoundingBoxMaxY, info.ClusterSleeveBoundingBoxMaxZ)
-                                    },
-                                    HostType = info.HostType,
-                                    HostOrientation = info.HostOrientation,
-                                    SourceData = info.OriginalZone
-                                };
-                                unifiedSleeves.Add(unified);
+                                    DebugLogger.Warning($"[AutoCluster] Sleeve {info.SleeveInstanceId} has no OriginalZone. Skipping.");
+                                    continue;
+                                }
+
+                                // ✅ CRITICAL FIX: Use static factory method to ensure BBox inflation (for flat floor sleeves)
+                                // and uniform property mapping. 
+                                var unified = UnifiedSleeve.FromClashZone(info.OriginalZone);
+                                if (unified != null)
+                                {
+                                    unifiedSleeves.Add(unified);
+                                }
                             }
                             catch (Exception ex)
                             {

@@ -11,8 +11,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
     public interface IClusterAlgorithmService
     {
         /// <summary>
-        /// Form clusters for already grouped sleeves (grouping done externally by host/system/orientation).
-        /// Preserves multi-threading (parallel over groups). Returns dictionary keyed by group with cluster lists.
+        /// Optimized FormClusters for ClashZoneWorkItem (Batch Mode).
+        /// </summary>
+        Dictionary<SleeveGroupKey, List<List<dynamic>>> FormClusters(
+            IEnumerable<IGrouping<SleeveGroupKey, JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.ClashZoneWorkItem>> sleeveGroups,
+            double toleranceDist,
+            Document doc,
+            bool enableParallel);
+
+        /// <summary>
+        /// Legacy FormClusters for dynamic grouping (RefactoredClusterService).
         /// </summary>
         Dictionary<SleeveGroupKey, List<List<dynamic>>> FormClusters(
             IEnumerable<IGrouping<SleeveGroupKey, dynamic>> sleeveGroups,

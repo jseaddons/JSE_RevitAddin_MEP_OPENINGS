@@ -12,12 +12,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public const string DUCTS = "Ducts";                    // OST_DuctCurves
         public const string PIPES = "Pipes";                    // OST_PipeCurves
         public const string CABLE_TRAYS = "Cable Trays";        // OST_CableTray
+        public const string CONDUITS = "Conduits";              // OST_Conduit
         public const string DUCT_ACCESSORIES = "Duct Accessories"; // OST_DuctAccessory
         
         // XML file suffixes (lowercase with underscores)
         public const string DUCTS_XML_SUFFIX = "ducts";
         public const string PIPES_XML_SUFFIX = "pipes";
         public const string CABLE_TRAYS_XML_SUFFIX = "cable_trays";
+        public const string CONDUITS_XML_SUFFIX = "conduits";
         public const string DUCT_ACCESSORIES_XML_SUFFIX = "duct_accessories";
         
         /// <summary>
@@ -37,6 +39,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
                 DUCTS => DUCTS_XML_SUFFIX,
                 PIPES => PIPES_XML_SUFFIX,
                 CABLE_TRAYS => CABLE_TRAYS_XML_SUFFIX,
+                CONDUITS => CONDUITS_XML_SUFFIX,
                 DUCT_ACCESSORIES => DUCT_ACCESSORIES_XML_SUFFIX,
                 _ => normalized.ToLower().Replace(" ", "_")
             };
@@ -52,6 +55,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
                 DUCTS => BuiltInCategory.OST_DuctCurves,
                 PIPES => BuiltInCategory.OST_PipeCurves,
                 CABLE_TRAYS => BuiltInCategory.OST_CableTray,
+                CONDUITS => BuiltInCategory.OST_Conduit,
                 DUCT_ACCESSORIES => BuiltInCategory.OST_DuctAccessory,
                 _ => BuiltInCategory.INVALID
             };
@@ -70,6 +74,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
                 DUCT_ACCESSORIES => MepCategory.DuctAccessories,
                 PIPES => MepCategory.Pipes,
                 CABLE_TRAYS => MepCategory.CableTrays,
+                CONDUITS => MepCategory.Conduits,
                 _ => MepCategory.Ducts // Default fallback
             };
         }
@@ -98,6 +103,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
                 normalized.Equals("Cabletray", System.StringComparison.OrdinalIgnoreCase))
                 return CABLE_TRAYS;
             
+            if (normalized.Equals("Conduit", System.StringComparison.OrdinalIgnoreCase) ||
+                normalized.Equals("Conduits", System.StringComparison.OrdinalIgnoreCase))
+                return CONDUITS;
+
             // ✅ CRITICAL FIX: Handle enum values FIRST (e.g., "DuctAccessories" from MepCategory enum)
             if (normalized.Equals("DuctAccessories", System.StringComparison.OrdinalIgnoreCase))
                 return DUCT_ACCESSORIES;

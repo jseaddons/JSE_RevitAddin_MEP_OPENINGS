@@ -243,10 +243,14 @@
     <Compile Remove="Reference\**" />
     <None Remove="BACKUP_WORKING_2025-06-26_16-30-47_CableTrayFixed\**" />
     <None Remove="Reference\**" />
+    <None Remove="Docs\**" />
     <Content Remove="BACKUP_WORKING_2025-06-26_16-30-47_CableTrayFixed\**" />
     <Content Remove="Reference\**" />
+    <Content Remove="Docs\**" />
     <EmbeddedResource Remove="BACKUP_WORKING_2025-06-26_16-30-47_CableTrayFixed\**" />
     <EmbeddedResource Remove="Reference\**" />
+    <EmbeddedResource Remove="Docs\**" />
+    <Compile Remove="Docs\**" />
   </ItemGroup>
 
   <ItemGroup>

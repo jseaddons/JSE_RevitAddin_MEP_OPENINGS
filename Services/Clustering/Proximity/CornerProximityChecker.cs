@@ -32,17 +32,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
 
                 bool isNearby = _helper.AreWithinProximity(cz1, cz2, tolerance);
 
-                // ✅ DIAGNOSTIC LOGGING: For dampers or rectangular ducts
-                string category = cz1.MepElementCategory ?? "";
-                if (category.Contains("Damper") || category.Contains("Duct"))
-                {
-                    double toleranceMM = tolerance * 304.8;
-                    
-                    SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        $"[CornerChecker] 📐 {category} Corner Proximity: Result={isNearby}, Tol={toleranceMM:F1}mm, " +
-                        $"ID1={cz1.SleeveInstanceId}, ID2={cz2.SleeveInstanceId}\n");
-                }
-
                 return isNearby;
             }
             catch (Exception ex)

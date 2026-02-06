@@ -371,6 +371,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             if (clusterInstanceId <= 0)
                 throw new ArgumentException("ClusterInstanceId must be greater than 0", nameof(clusterInstanceId));
 
+            // ✅ FIX: If GUIDs are not provided (e.g. from SaveClusterSleeve(actualInstance)), try to retrieve them from ClashZones
+            if (clashZoneIds == null || clashZoneIds.Count == 0)
+            {
+                clashZoneIds = GetClashZoneGuidsForCluster(clusterInstanceId);
+                _logger($"[{DateTime.Now:HH:mm:ss}]       SaveClusterSleeve: Auto-retrieved {clashZoneIds.Count} GUIDs for ClusterInstanceId={clusterInstanceId}\n");
+            }
+
             // ✅ DIAGNOSTIC: Log method entry
             _logger($"[{DateTime.Now:HH:mm:ss}]       SaveClusterSleeve CALLED\n" +
                    $"           clusterInstanceId={clusterInstanceId}, comboId={comboId}, filterId={filterId}\n");
@@ -1596,6 +1603,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             {
                                 elementIdList.Add(mepElementId.Value.ToString());
                             }
+
+                            // ✅ FIX: Populate serviceTypeList
+                            if (!string.IsNullOrWhiteSpace(serviceType))
+                            {
+                                serviceTypeList.Add(serviceType);
+                            }
                         }
                     }
 
@@ -1613,6 +1626,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 _logger($"[SQLite] ⚠️ Error loading MEP data for cluster: {ex.Message}");
                 return (null, null, null, null, null);
             }
+        }
+
+        /// <summary>
+        /// Retrieves ClashZoneGuids associated with a cluster from the ClashZones table.
+        /// </summary>
+        public List<Guid> GetClashZoneGuidsForCluster(int clusterInstanceId)
+        {
+            var guids = new List<Guid>();
+            try
+            {
+                using (var cmd = _context.Connection.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT ClashZoneGuid FROM ClashZones WHERE ClusterInstanceId = @ClusterInstanceId AND ClashZoneGuid IS NOT NULL AND ClashZoneGuid != ''";
+                    cmd.Parameters.AddWithValue("@ClusterInstanceId", clusterInstanceId);
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            if (Guid.TryParse(reader.GetString(0), out var guid))
+                                guids.Add(guid);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"[SQLite] ⚠️ Error retrieving GUIDs for cluster {clusterInstanceId}: {ex.Message}");
+            }
+            return guids;
         }
 
         /// <summary>

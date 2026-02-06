@@ -8921,7 +8921,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             {
                 using (var cmd = _context.Connection.CreateCommand())
                 {
-                    cmd.CommandText = "SELECT DISTINCT MepElementCategory FROM ClashZones WHERE MepElementCategory IS NOT NULL AND MepElementCategory != ''";
+                    cmd.CommandText = "SELECT DISTINCT MepCategory FROM ClashZones WHERE MepCategory IS NOT NULL AND MepCategory != ''";
                     using (var reader = cmd.ExecuteReader())
                     {
                         while (reader.Read())

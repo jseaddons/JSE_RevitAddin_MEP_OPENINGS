@@ -58,10 +58,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Re
                 if ((zones == null || zones.Count == 0))
                 {
                     string altCategory = null;
-                    if (string.Equals(category, "CableTrays", StringComparison.OrdinalIgnoreCase)) altCategory = "Cable Tray";
-                    else if (string.Equals(category, "Cable Tray", StringComparison.OrdinalIgnoreCase)) altCategory = "CableTrays";
+                    string normalized = MepCategoryConstants.Normalize(category);
+                    if (string.Equals(normalized, MepCategoryConstants.CABLE_TRAYS, StringComparison.OrdinalIgnoreCase)) altCategory = "CableTrays";
+                    else if (string.Equals(category, "CableTrays", StringComparison.OrdinalIgnoreCase)) altCategory = MepCategoryConstants.CABLE_TRAYS;
                     
-                    if (altCategory != null)
+                    if (altCategory != null && !string.Equals(category, altCategory, StringComparison.OrdinalIgnoreCase))
                     {
                         List<ClashZone> altZones;
                         if (scanAllFilters)

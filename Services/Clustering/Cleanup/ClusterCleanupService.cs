@@ -43,7 +43,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                     using (var backfillCmd = context.Connection.CreateCommand())
                     {
                         backfillCmd.CommandText = @"
-                            UPDATE ClusterSleeves SET
+                            UPDATE ClusterSleeves_v2 SET
                                 BoundingBoxMinX = PlacementX - (ClusterWidth / 2.0),
                                 BoundingBoxMinY = PlacementY - (ClusterHeight / 2.0),
                                 BoundingBoxMinZ = PlacementZ - (ClusterDepth / 2.0),
@@ -72,13 +72,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                 
                 using (var cmd = context.Connection.CreateCommand())
                 {
-                    // ✅ SINGLE SQL QUERY: Join ClashZones with ClusterSleeves and check point-in-box
-                    // ClusterSleeves.BoundingBox* must be set by BatchClusterPlacementService.UpdateClusterBoundingBoxesAfterPlacement
+                    // ✅ SINGLE SQL QUERY: Join ClashZones with ClusterSleeves_v2 and check point-in-box
+                    // ClusterSleeves_v2.BoundingBox* must be set by BatchClusterPlacementService.UpdateClusterBoundingBoxesAfterPlacement
                     // (after parameter flush and doc.Regenerate) so Stage 2 cleanup finds floor and wall clusters.
                     var query = @"
                         SELECT DISTINCT cz.SleeveInstanceId, cs.ClusterInstanceId
                         FROM ClashZones cz
-                        CROSS JOIN ClusterSleeves cs
+                        CROSS JOIN ClusterSleeves_v2 cs
                         WHERE cz.SleeveInstanceId > 0
                           AND cs.ClusterInstanceId > 0
                           -- Individual sleeve must have valid placement point
@@ -97,10 +97,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                           AND cz.SleevePlacementX >= cs.BoundingBoxMinX AND cz.SleevePlacementX <= cs.BoundingBoxMaxX
                           AND cz.SleevePlacementY >= cs.BoundingBoxMinY AND cz.SleevePlacementY <= cs.BoundingBoxMaxY
                           AND cz.SleevePlacementZ >= cs.BoundingBoxMinZ AND cz.SleevePlacementZ <= cs.BoundingBoxMaxZ
-
+ 
                           -- Exclude if individual sleeve ID matches cluster ID
-                          AND cz.SleeveInstanceId != cs.ClusterInstanceId";
-                    
+                          AND cz.SleeveInstanceId != cs.ClusterInstanceId";                    
                     // Optional: Filter by specific cluster IDs if provided
                     if (clusterInstanceIds != null && clusterInstanceIds.Count > 0)
                     {

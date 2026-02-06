@@ -380,10 +380,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 return;
             }
             
-            // For clusters, just like individual, use the wall-clock of the bulk wrapper
-            // ("Bulk Cluster Sleeve Placement") as the single total instead of summing
-            // all children (which would double-count time).
-            var bulkClusterOp = clusterOps.FirstOrDefault(op => op.Name != null && op.Name.Contains("Bulk Cluster Sleeve Placement"));
+            // For clusters, use the wall-clock of the top-level cluster placement operation
+            // This is either "Global Bulk Cluster Placement" or similar parent operation
+            // DO NOT sum children (which would double-count time)
+            var bulkClusterOp = clusterOps.FirstOrDefault(op => 
+                op.Name != null && 
+                (op.Name.Contains("Global Bulk Cluster Placement") || 
+                 op.Name.Contains("Bulk Cluster Sleeve Placement")));
+            
             long totalClusterTime = bulkClusterOp != null && bulkClusterOp.TotalMilliseconds > 0
                 ? bulkClusterOp.TotalMilliseconds
                 : clusterOps.Sum(op => op.TotalMilliseconds);
@@ -417,13 +421,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             report.AppendLine("Steps (by time; % of total):");
             report.AppendLine(new string('-', 72));
 
+            // ✅ FIX: Only show TOP-LEVEL operations to prevent double-counting
+            // The issue: "Global Bulk Cluster Placement" (1586ms) contains "Step 2" (1478ms) which contains "Step 2b" (1141ms)
+            // Showing all three makes it look like 1586+1478+1141=4205ms when it's really just 1586ms
+            // Solution: Only show operations that are NOT sub-operations of other cluster operations
+            
             // Exclude the bulk wrapper itself from the rows – it is the total, not a step
-            var stepsOnlyOps = clusterOps.Where(op => op.Name == null || !op.Name.Contains("Bulk Cluster Sleeve Placement")).ToList();
+            var stepsOnlyOps = clusterOps.Where(op => 
+                op.Name == null || 
+                (!op.Name.Contains("Bulk Cluster Sleeve Placement") && 
+                 !op.Name.Contains("Global Bulk Cluster Placement"))).ToList();
 
-            // Sub-operations recorded under the bulk cluster operation
-            var bulkClusterSubOpsRaw = _subOpsForReport
-                .Where(s => s.ParentName != null && s.ParentName.Contains("Bulk Cluster Sleeve Placement"))
-                .ToList();
+            // Get all sub-operation parent names to identify which operations are nested
+            var subOpParentNames = _subOpsForReport
+                .Where(s => s.ParentName != null && IsClusterPlacementOperation(s.ParentName))
+                .Select(s => s.ParentName)
+                .Distinct()
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             bool IsRedundantOrOptionalStep(string name)
             {
@@ -436,22 +450,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     || n.IndexOf("Cluster Placement Total", StringComparison.OrdinalIgnoreCase) >= 0;
             }
 
-            var bulkClusterSubOps = bulkClusterSubOpsRaw
-                .Where(s => !IsRedundantOrOptionalStep(s.OpName))
-                .OrderByDescending(s => s.Ms)
-                .ToList();
-
-            // Flatten top-level ops + sub-steps into a single sorted list
-            var allSteps = new List<(string Name, long Ms)>();
+            // ✅ CRITICAL FIX: Only show TOP-LEVEL operations (those that are NOT children of other operations)
+            // This prevents showing both "Global Bulk Cluster Placement" and its nested "Step 2: CLUSTER PLACEMENT MAIN LOOP"
+            var topLevelOps = new List<(string Name, long Ms)>();
             foreach (var op in stepsOnlyOps)
             {
                 if (!IsRedundantOrOptionalStep(op.Name))
-                    allSteps.Add((op.Name, op.TotalMilliseconds));
+                {
+                    // Check if this operation is a sub-operation of another cluster operation
+                    bool isSubOp = _subOpsForReport.Any(s => 
+                        s.OpName != null && 
+                        s.OpName.Equals(op.Name, StringComparison.OrdinalIgnoreCase) &&
+                        s.ParentName != null &&
+                        IsClusterPlacementOperation(s.ParentName));
+                    
+                    // Only add if it's NOT a sub-operation
+                    if (!isSubOp)
+                    {
+                        topLevelOps.Add((op.Name, op.TotalMilliseconds));
+                    }
+                }
             }
-            foreach (var sub in bulkClusterSubOps)
-                allSteps.Add((sub.OpName, sub.Ms));
 
-            foreach (var step in allSteps.OrderByDescending(x => x.Ms))
+            foreach (var step in topLevelOps.OrderByDescending(x => x.Ms))
             {
                 double pct = totalClusterTime > 0 ? (double)step.Ms / totalClusterTime * 100 : 0;
                 report.AppendLine($"{step.Name,-50} {step.Ms,10}ms {pct,5:F1}%");
@@ -466,6 +487,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         private bool IsIndividualPlacementOperation(string operationName)
         {
             string name = operationName.ToLowerInvariant();
+            
+            // ✅ FIX: Exclude cluster operations from individual summary
+            // Operations with "cluster" keyword should only appear in cluster summary
+            if (name.Contains("cluster"))
+                return false;
+            
             return name.Contains("individual") ||
                    name.Contains("bulk individual") ||
                    name.Contains("step 1") ||

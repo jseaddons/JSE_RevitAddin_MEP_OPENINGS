@@ -356,10 +356,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Bulk placement transaction flow: two transactions (Monday-style) vs single transaction.
         /// When true: Tx1 = placement only → Commit; Tx2 = Flush parameters → Commit; then Regenerate (faster, ~25 sleeves/s).
         /// When false: Single tx = placement + Flush parameters → Commit (rollback path if two-tx has issues).
-        /// Default: true (use two-transaction flow for performance; set false to roll back on failure).
+        /// Default: false (Single transaction avoids wasted regeneration of default-sized sleeves).
         /// Location: Services/OpeningCommandOrchestrator.cs (bulk placement block)
         /// </summary>
-        public static bool UseTwoTransactionBulkPlacement { get; set; } = true;
+        public static bool UseTwoTransactionBulkPlacement { get; set; } = false;
 
         /// <summary>
         /// Skip forced garbage collection at end of refresh.
@@ -461,7 +461,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Enable diagnostic mode for performance monitoring
         /// Default: false (disabled - causes 2.6x slowdown due to logging overhead)
         /// </summary>
-        public static bool UseDiagnosticMode { get; set; } = true; // ✅ DISABLED for performance - was causing 2.6x slowdown
+        public static bool UseDiagnosticMode { get; set; } = false; // DISABLED for performance - was causing 2.6x slowdown
         
         /// <summary>
         /// Enable batch clash zone creation (pre-calculate common data once)

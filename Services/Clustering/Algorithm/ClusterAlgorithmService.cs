@@ -15,7 +15,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
     public class ClusterAlgorithmService : IClusterAlgorithmService
     {
         public Dictionary<SleeveGroupKey, List<List<dynamic>>> FormClusters(
-            IEnumerable<IGrouping<SleeveGroupKey, dynamic>> sleeveGroups,
+            IEnumerable<IGrouping<SleeveGroupKey, JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.ClashZoneWorkItem>> sleeveGroups,
             double toleranceDist,
             Document doc,
             bool enableParallel)
@@ -23,65 +23,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
             var result = new Dictionary<SleeveGroupKey, List<List<dynamic>>>();
             var lockObj = new object();
 
-            Action<IGrouping<SleeveGroupKey, dynamic>> processGroup = group =>
+            Action<IGrouping<SleeveGroupKey, JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.ClashZoneWorkItem>> processGroup = group =>
             {
-                var clusters = new List<List<dynamic>>();
-                var sleeves = group.ToList();
-                // ✅ CRITICAL FIX: Track by ClashZone.Id (GUID), not SleeveInstanceId
-                // This is the ROOT CAUSE FIX for batch mode clustering issues.
-                // SleeveInstanceId can be shared by multiple ClashZones (same physical sleeve detected multiple times).
-                // ClashZone.Id is the true unique identifier for each clash detection result.
-                var visitedGuids = new HashSet<Guid>(); 
-
-                for (int i = 0; i < sleeves.Count; i++)
+                var workItems = group.ToList();
+                if (workItems.Count == 0)
                 {
-                    var seed = sleeves[i];
-                    ClashZone seedCz = seed?.ClashZone as ClashZone;
-                    if (seedCz == null) continue;
-                    
-                    Guid seedGuid = seedCz.Id;
-                    
-                    if (visitedGuids.Contains(seedGuid)) continue;
-
-                    var cluster = new List<dynamic> { seed };
-                    visitedGuids.Add(seedGuid);
-                    
-                    var queue = new Queue<dynamic>();
-                    queue.Enqueue(seed);
-
-                    while (queue.Count > 0)
-                    {
-                        var current = queue.Dequeue();
-                        // O(N^2) within group is acceptable as groups are usually small
-                        foreach (var other in sleeves)
-                        {
-                            ClashZone otherCz = other?.ClashZone as ClashZone;
-                            if (otherCz == null) continue;
-                            
-                            Guid otherGuid = otherCz.Id;
-                            if (visitedGuids.Contains(otherGuid)) continue;
-                            
-                            if (ShouldClusterSleeves(current, other, toleranceDist))
-                            {
-                                visitedGuids.Add(otherGuid);
-                                cluster.Add(other);
-                                queue.Enqueue(other);
-                            }
-                        }
-                    }
-                    clusters.Add(cluster);
+                    lock (lockObj) result[group.Key] = new List<List<dynamic>>();
+                    return;
                 }
 
-                if (enableParallel)
+                // ✅ PHASE 10: High-Performance Spatial Clustering
+                List<List<JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.ClashZoneWorkItem>> clusters = FormClustersSpatial(workItems, toleranceDist);
+
+                // Convert to dynamic for compatibility with orchestrator interface
+                var dynamicClusters = clusters.Select(c => c.Cast<dynamic>().ToList()).ToList();
+
+                lock (lockObj)
                 {
-                    lock (lockObj)
-                    {
-                        result[group.Key] = clusters;
-                    }
-                }
-                else
-                {
-                    result[group.Key] = clusters;
+                    result[group.Key] = dynamicClusters;
                 }
             };
 
@@ -97,6 +56,172 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
                 }
             }
             return result;
+        }
+
+        public Dictionary<SleeveGroupKey, List<List<dynamic>>> FormClusters(
+            IEnumerable<IGrouping<SleeveGroupKey, dynamic>> sleeveGroups,
+            double toleranceDist,
+            Document doc,
+            bool enableParallel)
+        {
+            // Convert legacy dynamic grouping to typed ClashZoneWorkItem grouping
+            var wrappedGroups = sleeveGroups.Select(g => 
+            {
+                var workItems = new List<JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.ClashZoneWorkItem>();
+                foreach (var d in g)
+                {
+                    if (d == null) continue;
+                    ClashZone cz = (d is ClashZone) ? (ClashZone)d : (ClashZone)d.ClashZone;
+                    if (cz == null) continue;
+
+                    workItems.Add(new JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.ClashZoneWorkItem
+                    {
+                        ClashZone = cz,
+                        SleeveInstanceId = cz.SleeveInstanceId,
+                        GroupKey = g.Key
+                    });
+                }
+                // Return as IGrouping by grouping already grouped items by the same key
+                return workItems.GroupBy(w => w.GroupKey).FirstOrDefault();
+            }).Where(g => g != null).ToList();
+
+            return FormClusters(wrappedGroups, toleranceDist, doc, enableParallel);
+        }
+
+        /// <summary>
+        /// O(N^2) Standard Algorithm - Efficient for small N (<50).
+        /// </summary>
+        private List<List<dynamic>> FormClustersDirect(List<dynamic> sleeves, double toleranceDist)
+        {
+            var clusters = new List<List<dynamic>>();
+            var visitedGuids = new HashSet<Guid>();
+
+            for (int i = 0; i < sleeves.Count; i++)
+            {
+                var seed = sleeves[i];
+                ClashZone seedCz = seed?.ClashZone as ClashZone;
+                if (seedCz == null) continue;
+
+                Guid seedGuid = seedCz.Id;
+                if (visitedGuids.Contains(seedGuid)) continue;
+
+                var cluster = new List<dynamic> { seed };
+                visitedGuids.Add(seedGuid);
+
+                var queue = new Queue<dynamic>();
+                queue.Enqueue(seed);
+
+                while (queue.Count > 0)
+                {
+                    var current = queue.Dequeue();
+                    // O(N) scan for neighbors
+                    foreach (var other in sleeves)
+                    {
+                        ClashZone otherCz = other?.ClashZone as ClashZone;
+                        if (otherCz == null) continue;
+
+                        Guid otherGuid = otherCz.Id;
+                        if (visitedGuids.Contains(otherGuid)) continue;
+
+                        if (ShouldClusterSleeves(current, other, toleranceDist))
+                        {
+                            visitedGuids.Add(otherGuid);
+                            cluster.Add(other);
+                            queue.Enqueue(other);
+                        }
+                    }
+                }
+                clusters.Add(cluster);
+            }
+            return clusters;
+        }
+
+        /// <summary>
+        /// O(N) Spatial Hashing Algorithm - Optimized for large N (>50).
+        /// Uses a generous cell size to partition sleeves and reduce comparisons.
+        /// </summary>
+        private List<List<JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.ClashZoneWorkItem>> FormClustersSpatial(
+            List<JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.ClashZoneWorkItem> sleeves, 
+            double toleranceDist)
+        {
+            var clusters = new List<List<JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.ClashZoneWorkItem>>();
+            var visitedGuids = new HashSet<Guid>();
+            
+            const double CELL_SIZE = 5.0; 
+            var grid = new Dictionary<(int, int, int), List<JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.ClashZoneWorkItem>>();
+            
+            (int x, int y, int z) GetCell(ClashZone cz)
+            {
+                 double cx = (cz.SleeveBoundingBoxMinX + cz.SleeveBoundingBoxMaxX) / 2.0;
+                 double cy = (cz.SleeveBoundingBoxMinY + cz.SleeveBoundingBoxMaxY) / 2.0;
+                 double cz_z = (cz.SleeveBoundingBoxMinZ + cz.SleeveBoundingBoxMaxZ) / 2.0;
+                 
+                 return (
+                     (int)Math.Floor(cx / CELL_SIZE),
+                     (int)Math.Floor(cy / CELL_SIZE),
+                     (int)Math.Floor(cz_z / CELL_SIZE)
+                 );
+            }
+
+            foreach (var s in sleeves)
+            {
+                var cz = s.ClashZone;
+                var key = GetCell(cz);
+                if (!grid.ContainsKey(key)) grid[key] = new List<JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.ClashZoneWorkItem>();
+                grid[key].Add(s);
+            }
+
+            // 3. Cluster with Grid Lookup
+            for (int i = 0; i < sleeves.Count; i++)
+            {
+                var seed = sleeves[i];
+                var seedCz = seed.ClashZone;
+                Guid seedGuid = seedCz.Id;
+                if (visitedGuids.Contains(seedGuid)) continue;
+
+                var cluster = new List<JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.ClashZoneWorkItem> { seed };
+                visitedGuids.Add(seedGuid);
+
+                var queue = new Queue<JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.ClashZoneWorkItem>();
+                queue.Enqueue(seed);
+
+                while (queue.Count > 0)
+                {
+                    var current = queue.Dequeue();
+                    var currentCz = current.ClashZone;
+                    var centerKey = GetCell(currentCz);
+
+                    // Check seed's cell AND all 26 neighbors
+                    for (int dx = -1; dx <= 1; dx++)
+                    {
+                        for (int dy = -1; dy <= 1; dy++)
+                        {
+                            for (int dz = -1; dz <= 1; dz++)
+                            {
+                                var neighborKey = (centerKey.Item1 + dx, centerKey.Item2 + dy, centerKey.Item3 + dz);
+                                if (!grid.TryGetValue(neighborKey, out var candidates)) continue;
+
+                                foreach (var other in candidates)
+                                {
+                                    var otherCz = other.ClashZone;
+                                    Guid otherGuid = otherCz.Id;
+                                    if (visitedGuids.Contains(otherGuid)) continue;
+                                    
+                                    // Narrow Phase: Precise Check
+                                    if (ShouldClusterSleeves(current, other, toleranceDist))
+                                    {
+                                        visitedGuids.Add(otherGuid);
+                                        cluster.Add(other);
+                                        queue.Enqueue(other);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                clusters.Add(cluster);
+            }
+            return clusters;
         }
 
         public Dictionary<(int x, int y, int z), List<FamilyInstance>> BuildSpatialGrid(
@@ -178,10 +303,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
 
                     // Get candidates from grid
                     var candidates = GetCandidatesFromGrid(current, currBbox, centers, grid, cellSize, toleranceDist);
-                    
+
                     // Filter candidates
                     var neighbors = FilterNeighborsByBoundingBox(current, candidates, currBbox, bboxes, visited, toleranceDist, groupKey);
-                    
+
                     foreach (var neighbor in neighbors)
                     {
                         if (visited.Contains(neighbor)) continue;
@@ -194,84 +319,72 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
             }
             return clusters;
         }
-
-        private bool ShouldClusterSleeves(dynamic s1, dynamic s2, double toleranceDist)
+        private bool ShouldClusterSleeves(
+            JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.ClashZoneWorkItem s1, 
+            JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.ClashZoneWorkItem s2, 
+            double toleranceDist)
         {
-            // ⚠️ DIAGNOSTIC 1: Prove method is called
-            SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                $"[{DateTime.Now:HH:mm:ss}] 🚨 ShouldClusterSleeves CALLED (tolerance={toleranceDist * 304.8:F0}mm)\n");
+            var cz1 = s1.ClashZone;
+            var cz2 = s2.ClashZone;
             
-            // ✅ CRITICAL FIX: Deterministic Validation (Phase 12: Duplicate Placement Fix)
-            // We enforce strict matching of HostID and Category BEFORE checking proximity.
-            // This prevents "Duplicate Placement" where sleeves from different walls/floors get clustered together
-            // simply because they are geometrically close (e.g. at corners).
-            
-            ClashZone cz1 = null;
-            ClashZone cz2 = null;
-            try
-            {
-                cz1 = s1?.ClashZone as ClashZone;
-                cz2 = s2?.ClashZone as ClashZone;
-                
-                // ✅ BATCH MODE FIX: Prevent same ClashZone from clustering with itself
-                // If both sleeves reference the same ClashZone GUID, they're the same clash detection result
-                if (cz1 != null && cz2 != null)
-                {
-                    if (cz1.Id == cz2.Id)
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss}]   ❌ REJECT: Same ClashZone GUID ({cz1.Id}) - cannot cluster with self\n");
-                        return false;
-                    }
+            if (cz1.Id == cz2.Id) return false;
 
-                    // 1. Check StructuralElementId (Host)
-                    int host1 = cz1.StructuralElementIdValue;
-                    int host2 = cz2.StructuralElementIdValue;
-                    
-                    if (host1 != host2)
-                    {
-                         // Special case: If either is -1 (unknown), we might allow fallback, 
-                         // but for robust de-duping, we should likely reject unless one is truly floating.
-                         // User requested STRICT check: "MUST match: StructuralElementId"
-                         if (host1 > 0 && host2 > 0)
-                         {
-                             SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}]   ❌ REJECT: Different Hosts (host1={host1} != host2={host2})\n");
-                             return false;
-                         }
-                    }
-
-                    // 2. Check MEP Category - MUST match: ducts with ducts only, duct accessories with duct accessories only, pipes with pipes only
-                    if (cz1.MepElementCategory != cz2.MepElementCategory)
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                           $"[{DateTime.Now:HH:mm:ss}]   ❌ REJECT: Different Categories ('{cz1.MepElementCategory}' != '{cz2.MepElementCategory}')\n");
-                        return false; 
-                    }
-                    
-                    SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss}]   ✅ MATCH: Same Host ({host1}) & Category ({cz1.MepElementCategory}). Proceeding to proximity check.\n");
-                }
-            }
-            catch (Exception ex)
-            {
-                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss}]   ❌ EXCEPTION in Validation: {ex.Message}\n");
-            }
+            // 1. Check StructuralElementId (Host)
+            int host1 = cz1.StructuralElementIdValue;
+            int host2 = cz2.StructuralElementIdValue;
             
-            // ✅ Continue with proximity logic
-            double angle1 = cz1?.MepElementRotationAngle ?? 0.0;
+            if (host1 != host2)
+            {
+                 if (host1 > 0 && host2 > 0) return false;
+            }
+
+            // 2. Check MEP Category
+            if (cz1.MepElementCategory != cz2.MepElementCategory) return false; 
+            
+            // ✅ PERSISTENCE CHECK: If bounding boxes are zero/null, log and skip (user requested no expensive fallback)
+            bool s1HasBbox = Math.Abs(cz1.SleeveBoundingBoxMaxX - cz1.SleeveBoundingBoxMinX) > 1e-6;
+            bool s2HasBbox = Math.Abs(cz2.SleeveBoundingBoxMaxX - cz2.SleeveBoundingBoxMinX) > 1e-6;
+
+            if (!s1HasBbox || !s2HasBbox)
+            {
+                // Only log once per session/run to avoid log bloat if needed, but for now simple log
+                if (!s1HasBbox) SafeFileLogger.SafeAppendText("clustering_warnings.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ Zone {cz1.ClashZoneGuid} has zero BBox - skipping proximity check.\n");
+                if (!s2HasBbox) SafeFileLogger.SafeAppendText("clustering_warnings.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ Zone {cz2.ClashZoneGuid} has zero BBox - skipping proximity check.\n");
+                return false;
+            }
+
+            // ✅ PHASE 10: Optimize Proximity Check
+            // Avoid creating factory/checker objects for simple AABB check if possible
+            double angle1 = cz1.MepElementRotationAngle;
             bool isRotated = Math.Abs(angle1) > 1e-6 && !IsAxisAlignedAngle(angle1);
-            var checker = ProximityCheckerFactory.CreateChecker(s1, s2, angle1, isRotated);
-            
 
-            bool proximityResult = checker.CheckProximity(s1, s2, toleranceDist);
-            
-            // ⚠️ DIAGNOSTIC 4: Show proximity result
-            SafeFileLogger.SafeAppendText("cluster_debug.log",
-                $"[{DateTime.Now:HH:mm:ss}]   Proximity check result: {(proximityResult ? "PASS (will cluster)" : "FAIL (too far)")}\n");
-            
-            return proximityResult;
+            if (!isRotated)
+            {
+                // Simple AABB Overlap (Phase 10 Fast Path)
+                double minX1 = cz1.SleeveBoundingBoxMinX - toleranceDist;
+                double minY1 = cz1.SleeveBoundingBoxMinY - toleranceDist;
+                double minZ1 = cz1.SleeveBoundingBoxMinZ - toleranceDist;
+                double maxX1 = cz1.SleeveBoundingBoxMaxX + toleranceDist;
+                double maxY1 = cz1.SleeveBoundingBoxMaxY + toleranceDist;
+                double maxZ1 = cz1.SleeveBoundingBoxMaxZ + toleranceDist;
+                
+                double minX2 = cz2.SleeveBoundingBoxMinX;
+                double minY2 = cz2.SleeveBoundingBoxMinY;
+                double minZ2 = cz2.SleeveBoundingBoxMinZ;
+                double maxX2 = cz2.SleeveBoundingBoxMaxX;
+                double maxY2 = cz2.SleeveBoundingBoxMaxY;
+                double maxZ2 = cz2.SleeveBoundingBoxMaxZ;
+                
+                bool overlapX = maxX2 >= minX1 && minX2 <= maxX1;
+                bool overlapY = maxY2 >= minY1 && minY2 <= maxY1;
+                bool overlapZ = maxZ2 >= minZ1 && minZ2 <= maxZ1;
+                
+                return overlapX && overlapY && overlapZ;
+            }
+
+            // Fallback to Rotated Proximity (Existing checker)
+            var checker = ProximityCheckerFactory.CreateChecker(s1.ClashZone, s2.ClashZone, angle1, isRotated);
+            return checker.CheckProximity(s1.ClashZone, s2.ClashZone, toleranceDist);
         }
 
         private static double NormalizeAngleDeg(double deg)

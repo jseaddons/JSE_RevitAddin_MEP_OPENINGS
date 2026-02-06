@@ -45,59 +45,66 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             _databasePath = databasePath;
         }
 
-        public string CalculateAndSave(
+        /// <summary>
+        /// ✅ PHASE 1: PURE CALCULATION (CPU Bound, Thread Safe)
+        /// Calculates clusters without touching the database (except for reading).
+        /// Returns calculated results in memory.
+        /// </summary>
+        public List<BatchClusterCalculationResult> CalculateOnly(
             List<ClashZone> clashZones, 
             string targetCategory, 
             int comboId, 
             int filterId,
             Document doc)
         {
-            // ✅ PATH 1 REMOVED: Always recalculate clusters (User Request: "Path 1 is cause of bug")
-            // CheckExistingClusterData logic removed to force fresh calculation.
-            
+            // ✅ PHASE 10: EARLY EXIT
+            if (clashZones == null || clashZones.Count == 0)
+                return new List<BatchClusterCalculationResult>();
+
             // 1. Generate Batch ID
             string batchId = $"{DateTime.Now:yyyyMMdd_HHmmss}_{targetCategory}_{filterId}";
-            SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🚀 STARTING BATCH V2: {batchId}, Zones={clashZones.Count}\n");
 
-            // 2. Group Zones (Standard Grouping Logic: Host, Orientation, Spatial Bucket)
-            // Note: Bucketing is used for "Primary Grouping" to limit N^2 complexity. 
-            // Splitting across buckets is handled by Deduplication logic later.
-            var sleeveGroups = GroupZones(clashZones);
-            SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 📦 Grouped into {sleeveGroups.Length} processing buckets.\n");
-
-            // 3. Form Clusters (Parallel)
-            // ✅ READ FROM USER SETTINGS: "Join openings if distance < (mm)"
             var settings = ApplicationProfileService.Instance.GetCurrentSettings();
-            double toleranceMM = settings.JoinOpeningsDistance; // User setting (default: 100mm)
+            double toleranceMM = settings.JoinOpeningsDistance;
             var toleranceDist = RevitUnitConversionService.Instance.ToInternalMillimeters(toleranceMM);
             
-            // ✅ CRITICAL FIX: Wrap ClashZone objects in anonymous objects with ClashZone property
-            // FormClusters expects items to have a ClashZone property, not be ClashZone objects directly
-            var wrappedZones = clashZones.Select(z => new
+            // 2. Group Zones (Optimized Phase 10)
+            // Pre-compute keys once to avoid string operations in GroupBy loop
+            var wrappedZones = new List<ClashZoneWorkItem>(clashZones.Count);
+            foreach (var z in clashZones)
             {
-                SleeveInstanceId = z.SleeveInstanceId,
-                Category = z.MepElementCategory,
-                ClashZone = z,
-                // ✅ FIX: Provide BoundingBox property for fallback ProximityCheckers (BoundingBoxProximityChecker)
-                // This mimics Revit's BoundingBoxXYZ structure for dynamic access
-                BoundingBox = new
+                var hostType = GetBatchHostType(z);
+                var groupKey = new SleeveGroupKey(
+                    $"{hostType}_{z.StructuralElementIdValue}",
+                    z.MepElementCategory ?? "Unknown", 
+                    z.HostOrientation ?? "Unknown",
+                    0, 0, 0);
+
+                wrappedZones.Add(new ClashZoneWorkItem
                 {
-                    Min = new { X = z.SleeveBoundingBoxMinX, Y = z.SleeveBoundingBoxMinY, Z = z.SleeveBoundingBoxMinZ },
-                    Max = new { X = z.SleeveBoundingBoxMaxX, Y = z.SleeveBoundingBoxMaxY, Z = z.SleeveBoundingBoxMaxZ }
-                }
-            });
+                    SleeveInstanceId = z.SleeveInstanceId,
+                    ClashZone = z,
+                    GroupKey = groupKey
+                });
+            }
             
-            // Group the wrapped zones: host type + host ID so Floor is strictly separate from Wall/Framing (editing floor won't affect wall)
-            var groupedZones = wrappedZones.GroupBy(w => new SleeveGroupKey(
-                GetBatchHostType(w.ClashZone) + "_" + w.ClashZone.StructuralElementIdValue.ToString(),
-                w.ClashZone.MepElementCategory ?? "Unknown", 
-                w.ClashZone.HostOrientation ?? "Unknown",
-                0, 0, 0));
+            var groupedZones = wrappedZones.GroupBy(w => w.GroupKey);
             
             var clustersByGroup = _algorithmService.FormClusters(groupedZones, toleranceDist, doc, enableParallel: true);
 
-            // 4. Process Results (Parallel Calculation + Serial DB Save? Or Parallel Save?)
-            // We'll collect all Valid Clusters in a concurrent bag first.
+            // ✅ CRITICAL PERFORMANCE FIX: Preload ClashZone cache BEFORE parallel execution
+            // Without this, each parallel thread will hit the database via _getClashZoneFunc inside CalculateRotatedBoundingBox,
+            // causing SQLite lock contention and serializing what should be parallel work.
+            var clashZoneDict = clashZones.ToDictionary(z => z.SleeveInstanceId, z => z);
+            int preloadedCount = _rotationService.PreloadClashZonesFromDictionary(clashZoneDict);
+            
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                SafeFileLogger.SafeAppendText("cluster_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss}] ✅ CACHE PRELOAD: Loaded {preloadedCount} ClashZones into rotation service cache before parallel calculation\n");
+            }
+
+            // 4. Process Results (Parallel Calculation)
             var validClusters = new ConcurrentBag<BatchClusterCalculationResult>();
 
             System.Threading.Tasks.Parallel.ForEach(clustersByGroup, (kvp) =>
@@ -108,8 +115,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     
                     try
                     {
-                        // ✅ PHASE 2: Branch logic by Host Type EARLY
-                        var first = (clusterList[0] is ClashZone z) ? z : (ClashZone)clusterList[0].ClashZone;
+                        // Branch logic by Host Type EARLY
+                        var first = (clusterList[0] is ClashZone z) ? z : (ClashZone)((ClashZoneWorkItem)clusterList[0]).ClashZone;
                         bool isFloor = (first.StructuralElementType ?? "").IndexOf("Floor", StringComparison.OrdinalIgnoreCase) >= 0;
 
                         BatchClusterCalculationResult result;
@@ -134,17 +141,44 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 }
             });
 
-            SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🧮 Calculated {validClusters.Count} candidate clusters. Saving to ClusterSleeves_v2 table...\n");
+            return validClusters.ToList();
+        }
 
-            // 5. Save to DB (Sequential for SQLite Safety, though SQLite handles concurrent reasonably well)
-            SaveToDatabase(validClusters, batchId);
+        /// <summary>
+        /// ✅ PHASE 2: BATCH SAVE (IO Bound, Single Transaction)
+        /// Saves a list of calculated results to the database.
+        /// Publicly exposed for Orchestrator to call after parallel calculation.
+        /// </summary>
+        public void BatchSave(IEnumerable<BatchClusterCalculationResult> results)
+        {
+             // Delegate to existing private method, but make sure it handles generic IEnumerable
+             var bag = new ConcurrentBag<BatchClusterCalculationResult>(results);
+             SaveToDatabase(bag, "BATCH_SAVE"); 
+        }
+
+        /// <summary>
+        /// ✅ PHASE 3: FLAG UPDATE (IO Bound, Single Transaction)
+        /// Updates ClashZone flags for clustered items.
+        /// </summary>
+        public void BatchUpdateFlags(IEnumerable<BatchClusterCalculationResult> results)
+        {
+             var bag = new ConcurrentBag<BatchClusterCalculationResult>(results);
+             UpdateMarkedForClusterProcessFlags(bag);
+        }
+
+        // DEPRECATED: Old combined method (kept for compatibility if needed, or can be removed)
+        public string CalculateAndSave(
+            List<ClashZone> clashZones, 
+            string targetCategory, 
+            int comboId, 
+            int filterId,
+            Document doc)
+        {
+            var results = CalculateOnly(clashZones, targetCategory, comboId, filterId, doc);
+            BatchSave(results);
+            BatchUpdateFlags(results);
             
-            // ✅ FLAG MANAGEMENT: Update MarkedForClusterProcess flag in ClashZones table (mimic slow mode)
-            // Only set to true for zones in clusters with >1 sleeve (multi-sleeve clusters)
-            // Zones not in clusters should remain false/null
-            UpdateMarkedForClusterProcessFlags(validClusters);
-
-            return batchId;
+            return results.FirstOrDefault()?.ClusterBatchId ?? $"{DateTime.Now:yyyyMMdd_HHmmss}_{targetCategory}_{filterId}";
         }
         
         /// <summary>
@@ -200,146 +234,179 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         {
             SafeFileLogger.SafeAppendText("batch_v2.log", 
                 $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: SaveToDatabase called with {results.Count} clusters, batchId={batchId}\n");
-            SafeFileLogger.SafeAppendText("batch_v2.log", 
-                $"[{DateTime.Now:HH:mm:ss}] 📊 TABLE: Saving to ClusterSleeves_v2 table in database\n");
             
-            if (results.Count == 0)
-            {
-                SafeFileLogger.SafeAppendText("batch_v2.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ DIAGNOSTIC: No clusters to save to ClusterSleeves_v2, returning early\n");
-                return;
-            }
+            if (results.Count == 0) return;
 
-            // Re-using direct connection style for speed/custom table
             try
             {
                 using (var conn = new System.Data.SQLite.SQLiteConnection($"Data Source={_databasePath};Version=3;"))
                 {
                     conn.Open();
-                    SafeFileLogger.SafeAppendText("batch_v2.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: Database connection opened, starting transaction for ClusterSleeves_v2\n");
-                    
                     using (var trans = conn.BeginTransaction())
-                    using (var cmd = conn.CreateCommand())
                     {
-                        cmd.Transaction = trans;
-                        cmd.CommandText = @"
-                            INSERT INTO ClusterSleeves_v2 (
-                                ClusterGUID, ClusterBatchId, PlacementX, PlacementY, PlacementZ, 
-                                ClusterWidth, ClusterHeight, ClusterDepth, RotationAngleRad,
-                                HostElementId, HostType, HostOrientation, Category, FamilyName,
-                                ConstituentZoneGuids, ComboId, FilterId, Status, ValidationStatus
-                            ) VALUES (
-                                @guid, @batch, @x, @y, @z, 
-                                @w, @h, @d, @rot,
-                                @host, @htype, @horient, @cat, @fam,
-                                @zones, @combo, @filter, @status, @valid
-                            )";
+                        // ✅ OPTIMIZATION Step 1: Pre-fetch existing locations to avoid N database reads
+                        // Instead of checking each cluster individually, load all relevant existing locations into memory
+                        var existingLocations = new HashSet<string>();
+                        using (var checkCmd = conn.CreateCommand())
+                        {
+                            checkCmd.Transaction = trans;
+                            checkCmd.CommandText = @"
+                                SELECT PlacementX, PlacementY, PlacementZ, FamilyName 
+                                FROM ClusterSleeves_v2 
+                                WHERE Status IN ('Pending', 'Placed')";
+                            
+                            using (var reader = checkCmd.ExecuteReader())
+                            {
+                                while (reader.Read())
+                                {
+                                    double x = reader.GetDouble(0);
+                                    double y = reader.GetDouble(1);
+                                    double z = reader.GetDouble(2);
+                                    string fam = reader.IsDBNull(3) ? "" : reader.GetString(3);
+                                    // Use same tolerance formatting as check logic (F1 or roughly 0.1)
+                                    // Actually, let's use a spatial key with 0.1 tolerance
+                                    existingLocations.Add(GetLocationKey(x, y, z, fam));
+                                }
+                            }
+                        }
 
-                        int savedCount = 0;
+                        // Filter results in memory
+                        var infoToSave = new List<BatchClusterCalculationResult>();
                         int skippedCount = 0;
-                        double tolerance = 0.1; // 0.1 feet tolerance for duplicate detection
                         
                         foreach (var r in results)
                         {
-                            try
+                            string key = GetLocationKey(r.PlacementX, r.PlacementY, r.PlacementZ, r.FamilyName ?? "");
+                            if (existingLocations.Contains(key))
                             {
-                                // ✅ CRITICAL FIX: Check if cluster with same placement point already exists (when DB is not cleared)
-                                // This prevents duplicate clusters from being saved when database is not cleared
-                                using (var checkCmd = conn.CreateCommand())
-                                {
-                                    checkCmd.Transaction = trans;
-                                    checkCmd.CommandText = @"
-                                        SELECT COUNT(*) FROM ClusterSleeves_v2 
-                                        WHERE ABS(PlacementX - @x) < @tol 
-                                          AND ABS(PlacementY - @y) < @tol 
-                                          AND ABS(PlacementZ - @z) < @tol
-                                          AND FamilyName = @fam
-                                          AND Status IN ('Pending', 'Placed')";
-                                    checkCmd.Parameters.AddWithValue("@x", r.PlacementX);
-                                    checkCmd.Parameters.AddWithValue("@y", r.PlacementY);
-                                    checkCmd.Parameters.AddWithValue("@z", r.PlacementZ);
-                                    checkCmd.Parameters.AddWithValue("@tol", tolerance);
-                                    checkCmd.Parameters.AddWithValue("@fam", r.FamilyName ?? "");
-                                    
-                                    int existingCount = Convert.ToInt32(checkCmd.ExecuteScalar());
-                                    if (existingCount > 0)
-                                    {
-                                        SafeFileLogger.SafeAppendText("batch_v2.log", 
-                                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ SKIPPING DUPLICATE CLUSTER in DB: ClusterGUID={r.ClusterGUID}, Location=({r.PlacementX:F6}, {r.PlacementY:F6}, {r.PlacementZ:F6}), ExistingCount={existingCount}\n");
-                                        skippedCount++;
-                                        continue; // Skip this cluster - duplicate already exists
-                                    }
-                                }
-                                
-                                cmd.Parameters.Clear();
-                                cmd.Parameters.AddWithValue("@guid", r.ClusterGUID);
-                                cmd.Parameters.AddWithValue("@batch", r.ClusterBatchId);
-                                cmd.Parameters.AddWithValue("@x", r.PlacementX);
-                                cmd.Parameters.AddWithValue("@y", r.PlacementY);
-                                cmd.Parameters.AddWithValue("@z", r.PlacementZ);
-                                cmd.Parameters.AddWithValue("@w", r.ClusterWidth);
-                                cmd.Parameters.AddWithValue("@h", r.ClusterHeight);
-                                cmd.Parameters.AddWithValue("@d", r.ClusterDepth);
-                                cmd.Parameters.AddWithValue("@rot", r.RotationAngleRad);
-                                cmd.Parameters.AddWithValue("@host", r.HostElementId);
-                                cmd.Parameters.AddWithValue("@htype", r.HostType ?? (object)DBNull.Value);
-                                cmd.Parameters.AddWithValue("@horient", r.HostOrientation ?? (object)DBNull.Value);
-                                cmd.Parameters.AddWithValue("@cat", r.Category ?? (object)DBNull.Value);
-                                cmd.Parameters.AddWithValue("@fam", r.FamilyName ?? (object)DBNull.Value);
-                                cmd.Parameters.AddWithValue("@zones", r.ConstituentZoneGuids ?? (object)DBNull.Value);
-                                cmd.Parameters.AddWithValue("@combo", r.ComboId);
-                                cmd.Parameters.AddWithValue("@filter", r.FilterId);
-                                cmd.Parameters.AddWithValue("@status", r.Status ?? "Pending");
-                                cmd.Parameters.AddWithValue("@valid", r.ValidationStatus ?? "Valid");
-                                
-                                int rowsAffected = cmd.ExecuteNonQuery();
-                                if (rowsAffected > 0)
-                                {
-                                    savedCount++;
-                                }
-                                else
-                                {
-                                    SafeFileLogger.SafeAppendText("batch_v2.log", 
-                                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ TABLE: INSERT into ClusterSleeves_v2 returned 0 rows for cluster {r.ClusterGUID}\n");
-                                }
+                                skippedCount++;
                             }
-                            catch (Exception ex)
+                            else
                             {
-                                SafeFileLogger.SafeAppendText("batch_v2_errors.log", 
-                                    $"[{DateTime.Now:HH:mm:ss}] ❌ TABLE ERROR: Failed to INSERT cluster {r.ClusterGUID} into ClusterSleeves_v2: {ex.Message}\n{ex.StackTrace}\n");
-                                throw; // Re-throw to rollback transaction
+                                infoToSave.Add(r);
+                                // Add to set to prevents duplicates WITHIN this batch too
+                                existingLocations.Add(key); 
                             }
                         }
-                        
+
                         if (skippedCount > 0)
                         {
                             SafeFileLogger.SafeAppendText("batch_v2.log", 
-                                $"[{DateTime.Now:HH:mm:ss}] ⚠️ DIAGNOSTIC: Skipped {skippedCount} duplicate clusters (already exist in DB)\n");
+                                $"[{DateTime.Now:HH:mm:ss}] ⚠️ DIAGNOSTIC: Skipped {skippedCount} duplicate clusters (already exist in DB or batch)\n");
+                        }
+
+                        if (infoToSave.Count == 0)
+                        {
+                             SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] ⚠️ DIAGNOSTIC: No unique clusters to save after filtering.\n");
+                             trans.Commit();
+                             return;
+                        }
+
+                        // ✅ OPTIMIZATION Step 2: Batch Insert
+                        // SQLite max variables = 999. We have ~19 params per row. 
+                        // Safe chunk size = 50 rows (~950 params).
+                        const int CHUNK_SIZE = 50;
+                        int savedCount = 0;
+                        
+                        for (int i = 0; i < infoToSave.Count; i += CHUNK_SIZE)
+                        {
+                            var chunk = infoToSave.Skip(i).Take(CHUNK_SIZE).ToList();
+                            
+                            using (var cmd = conn.CreateCommand())
+                            {
+                                cmd.Transaction = trans;
+                                var valueClauses = new List<string>();
+                                
+                                for (int k = 0; k < chunk.Count; k++)
+                                {
+                                    var r = chunk[k];
+                                    string p = $"@p{k}_"; // Prefix for this row's params
+                                    
+                                    valueClauses.Add($"({p}guid, {p}batch, {p}x, {p}y, {p}z, {p}w, {p}h, {p}d, {p}rot, {p}host, {p}htype, {p}horient, {p}cat, {p}fam, {p}zones, {p}combo, {p}filter, {p}status, {p}valid)");
+                                    
+                                    cmd.Parameters.AddWithValue($"{p}guid", r.ClusterGUID);
+                                    cmd.Parameters.AddWithValue($"{p}batch", r.ClusterBatchId);
+                                    cmd.Parameters.AddWithValue($"{p}x", r.PlacementX);
+                                    cmd.Parameters.AddWithValue($"{p}y", r.PlacementY);
+                                    cmd.Parameters.AddWithValue($"{p}z", r.PlacementZ);
+                                    cmd.Parameters.AddWithValue($"{p}w", r.ClusterWidth);
+                                    cmd.Parameters.AddWithValue($"{p}h", r.ClusterHeight);
+                                    cmd.Parameters.AddWithValue($"{p}d", r.ClusterDepth);
+                                    cmd.Parameters.AddWithValue($"{p}rot", r.RotationAngleRad);
+                                    cmd.Parameters.AddWithValue($"{p}host", r.HostElementId);
+                                    cmd.Parameters.AddWithValue($"{p}htype", r.HostType ?? (object)DBNull.Value);
+                                    cmd.Parameters.AddWithValue($"{p}horient", r.HostOrientation ?? (object)DBNull.Value);
+                                    cmd.Parameters.AddWithValue($"{p}cat", r.Category ?? (object)DBNull.Value);
+                                    cmd.Parameters.AddWithValue($"{p}fam", r.FamilyName ?? (object)DBNull.Value);
+                                    cmd.Parameters.AddWithValue($"{p}zones", r.ConstituentZoneGuids ?? (object)DBNull.Value);
+                                    cmd.Parameters.AddWithValue($"{p}combo", r.ComboId);
+                                    cmd.Parameters.AddWithValue($"{p}filter", r.FilterId);
+                                    cmd.Parameters.AddWithValue($"{p}status", r.Status ?? "Pending");
+                                    cmd.Parameters.AddWithValue($"{p}valid", r.ValidationStatus ?? "Valid");
+                                }
+                                
+                                try 
+                                {
+                                    // BATCH MODE: Execute the big INSERT string
+                                    // This is the "Fast Path" that mimics "Slow Mode" but in one go
+                                    cmd.CommandText = @"
+                                    INSERT INTO ClusterSleeves_v2 (
+                                        ClusterGUID, ClusterBatchId, PlacementX, PlacementY, PlacementZ, 
+                                        ClusterWidth, ClusterHeight, ClusterDepth, RotationAngleRad,
+                                        HostElementId, HostType, HostOrientation, Category, FamilyName, 
+                                        ConstituentZoneGuids, ComboId, FilterId, Status, ValidationStatus
+                                    ) VALUES " + string.Join(",", valueClauses) + @";
+
+                                    -- ✅ STURDY PERSISTENCE: Simultaneously insert into Legacy Table
+                                    -- This guarantees data exists even if placement fails or crashes later
+                                    INSERT OR IGNORE INTO ClusterSleeves (
+                                        ClusterGUID, ClusterBatchId, PlacementX, PlacementY, PlacementZ, 
+                                        ClusterWidth, ClusterHeight, ClusterDepth, RotationAngleRad,
+                                        HostElementId, HostType, HostOrientation, Category, FamilyName, 
+                                        ConstituentZoneGuids, ComboId, FilterId, Status, ValidationStatus
+                                    ) VALUES " + string.Join(",", valueClauses) + ";";
+
+                                    int rowsAffected = cmd.ExecuteNonQuery();
+                                    savedCount += rowsAffected;
+                                    
+                                    SafeFileLogger.SafeAppendText("batch_sql_debug.log", 
+                                        $"[{DateTime.Now:HH:mm:ss}] ✅ BATCH SQL SUCCESS: Inserted {rowsAffected} rows (Batch of {results.Count}).\n");
+                                }
+                                catch (Exception sqlEx)
+                                {
+                                    SafeFileLogger.SafeAppendText("batch_sql_debug.log", 
+                                        $"[{DateTime.Now:HH:mm:ss}] ❌ BATCH SQL ERROR: {sqlEx.Message}\n" +
+                                        $"SQL: {cmd.CommandText.Substring(0, Math.Min(500, cmd.CommandText.Length))}...\n");
+                                    throw; // Re-throw to trigger rollback
+                                }
+                            }
                         }
                         
-                        SafeFileLogger.SafeAppendText("batch_v2.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: Inserted {savedCount} of {results.Count} clusters into ClusterSleeves_v2, committing transaction\n");
-                        
                         trans.Commit();
-                        
                         SafeFileLogger.SafeAppendText("batch_v2.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] ✅ TABLE: Transaction committed successfully, {savedCount} clusters saved to ClusterSleeves_v2 table\n");
+                            $"[{DateTime.Now:HH:mm:ss}] ✅ TABLE: Bulk Inserted {savedCount} clusters into ClusterSleeves_v2\n");
                     }
                 }
             }
             catch (Exception ex)
             {
                 SafeFileLogger.SafeAppendText("batch_v2_errors.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] ❌ TABLE CRITICAL ERROR: SaveToDatabase failed to save to ClusterSleeves_v2 table: {ex.Message}\n{ex.StackTrace}\n");
+                    $"[{DateTime.Now:HH:mm:ss}] ❌ TABLE CRITICAL ERROR: SaveToDatabase failed: {ex.Message}\n{ex.StackTrace}\n");
                 throw;
             }
+        }
+        
+        private string GetLocationKey(double x, double y, double z, string family)
+        {
+            // Simple quantization to 1 decimal place (approx 0.1 ft) for key matching
+            return $"{x:F1}_{y:F1}_{z:F1}_{family}";
         }
 
         private SleeveGroupKey[] GroupZones(List<ClashZone> zones)
         {
             // Reusing existing grouping logic (Host, Orientation, 10m Buckets)
-            return zones
+            var groups = zones
                 .GroupBy(z =>
                 {
                     // ✅ FIX: Disable spatial bucketing as requested
@@ -354,10 +421,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     // Convert ClashZones to 'dynamic' explicitly
                     var items = g.Select(z => (dynamic)z).ToList();
                     var key = g.Key;
+                    
+                    // ✅ DIAGNOSTIC: Log large groups (>50 items) which trigger O(N^2) slowness
+                    if (items.Count > 50)
+                    {
+                        SafeFileLogger.SafeAppendText("batch_v2.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ LARGE GROUP DETECTED: Host={key.hostType}, Cat={key.systemType}, Orient={key.orientation}, Count={items.Count} items. This may cause slow clustering.\n");
+                    }
+                    
                     // SleeveGroupKey doesn't have Items property, return as-is
                     return key;
                 })
                 .ToArray();
+                
+            return groups;
         }
 
         /// <summary>
@@ -366,7 +443,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         /// </summary>
         private BatchClusterCalculationResult CalculateFloorCluster(List<dynamic> clusterItems, string batchId, int comboId, int filterId)
         {
-            var zones = clusterItems.Select(x => (x is ClashZone z) ? z : (ClashZone)x.ClashZone).ToList();
+            var zones = clusterItems.Select(x => (x is ClashZone z) ? z : ((ClashZoneWorkItem)x).ClashZone).ToList();
             if (zones.Count == 0) return null;
 
             var first = zones[0];
@@ -395,7 +472,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         /// </summary>
         private BatchClusterCalculationResult CalculateWallFramingCluster(List<dynamic> clusterItems, string batchId, int comboId, int filterId)
         {
-            var zones = clusterItems.Select(x => (x is ClashZone z) ? z : (ClashZone)x.ClashZone).ToList();
+            var zones = clusterItems.Select(x => (x is ClashZone z) ? z : ((ClashZoneWorkItem)x).ClashZone).ToList();
             if (zones.Count == 0) return null;
 
             var first = zones[0];
@@ -481,62 +558,73 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
             try
             {
+                // ✅ PHASE 7 FIX: Collect ALL GUIDs from ALL multi-sleeve clusters first
+                var allZoneGuids = new HashSet<string>();
+                int multiSleeveClusterCount = 0;
+
+                foreach (var cluster in validClusters)
+                {
+                    if (string.IsNullOrEmpty(cluster.ConstituentZoneGuids)) continue;
+                    
+                    var zoneGuids = cluster.ConstituentZoneGuids
+                        .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(g => g.Trim())
+                        .Where(g => !string.IsNullOrEmpty(g))
+                        .ToList();
+                    
+                    if (zoneGuids.Count >= 2)
+                    {
+                        multiSleeveClusterCount++;
+                        foreach (var guid in zoneGuids)
+                        {
+                            allZoneGuids.Add(guid);
+                        }
+                    }
+                }
+
+                if (allZoneGuids.Count == 0)
+                {
+                    SafeFileLogger.SafeAppendText("batch_v2.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] 🔍 FLAG UPDATE: No multi-sleeve clusters found, no flags to update.\n");
+                    return;
+                }
+
                 using (var conn = new System.Data.SQLite.SQLiteConnection($"Data Source={_databasePath};Version=3;"))
                 {
                     conn.Open();
                     using (var trans = conn.BeginTransaction())
                     {
-                        int updatedCount = 0;
-                        
-                        foreach (var cluster in validClusters)
+                        // ✅ SINGLE BATCH UPDATE: Use IN clause for all GUIDs at once
+                        // SQLite has a limit on parameters (usually 999), so we batch if more than that
+                        var guidList = allZoneGuids.ToList();
+                        int batchSize = 900;
+                        int totalUpdated = 0;
+
+                        for (int i = 0; i < guidList.Count; i += batchSize)
                         {
-                            if (string.IsNullOrEmpty(cluster.ConstituentZoneGuids)) continue;
-                            
-                            // Parse zone GUIDs from cluster
-                            var zoneGuids = cluster.ConstituentZoneGuids
-                                .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
-                                .Select(g => g.Trim())
-                                .Where(g => !string.IsNullOrEmpty(g))
-                                .ToList();
-                            
-                            if (zoneGuids.Count == 0) continue;
-                            
-                            // ✅ CRITICAL: Only update flags for clusters with >1 zone (multi-sleeve clusters)
-                            // Single-zone "clusters" should NOT have MarkedForClusterProcess = true
-                            // This matches slow mode behavior where only multi-sleeve clusters get the flag
-                            if (zoneGuids.Count < 2)
-                            {
-                                SafeFileLogger.SafeAppendText("batch_v2.log", 
-                                    $"[{DateTime.Now:HH:mm:ss}] 🔍 FLAG UPDATE: Skipping single-zone cluster {cluster.ClusterGUID} (zones={zoneGuids.Count})\n");
-                                continue;
-                            }
-                            
-                            // Update MarkedForClusterProcess = true for all zones in this multi-sleeve cluster
+                            var currentBatch = guidList.Skip(i).Take(batchSize).ToList();
                             using (var cmd = conn.CreateCommand())
                             {
                                 cmd.Transaction = trans;
-                                cmd.CommandText = @"
+                                var placeholders = string.Join(",", currentBatch.Select((_, idx) => $"@g{idx}"));
+                                cmd.CommandText = $@"
                                     UPDATE ClashZones 
                                     SET MarkedForClusterProcess = 1,
                                         UpdatedAt = CURRENT_TIMESTAMP
-                                    WHERE ClashZoneGuid IN (" + string.Join(",", zoneGuids.Select((_, i) => $"@guid{i}")) + ")";
+                                    WHERE ClashZoneGuid IN ({placeholders})";
                                 
-                                for (int i = 0; i < zoneGuids.Count; i++)
+                                for (int idx = 0; idx < currentBatch.Count; idx++)
                                 {
-                                    cmd.Parameters.AddWithValue($"@guid{i}", zoneGuids[i]);
+                                    cmd.Parameters.AddWithValue($"@g{idx}", currentBatch[idx]);
                                 }
                                 
-                                int rowsAffected = cmd.ExecuteNonQuery();
-                                updatedCount += rowsAffected;
-                                
-                                SafeFileLogger.SafeAppendText("batch_v2.log", 
-                                    $"[{DateTime.Now:HH:mm:ss}] 🔍 FLAG UPDATE: Set MarkedForClusterProcess=TRUE for {rowsAffected} zones in cluster {cluster.ClusterGUID} (zones={zoneGuids.Count})\n");
+                                totalUpdated += cmd.ExecuteNonQuery();
                             }
                         }
                         
                         trans.Commit();
                         SafeFileLogger.SafeAppendText("batch_v2.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] ✅ FLAG UPDATE: Updated MarkedForClusterProcess flag for {updatedCount} zones across {validClusters.Count} multi-sleeve clusters\n");
+                            $"[{DateTime.Now:HH:mm:ss}] ✅ FLAG UPDATE: Updated MarkedForClusterProcess=TRUE for {totalUpdated} zones across {multiSleeveClusterCount} clusters (Single Transaction)\n");
                     }
                 }
             }
@@ -547,6 +635,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             }
         }
 
+    }
+
+    public class ClashZoneWorkItem
+    {
+        public int SleeveInstanceId { get; set; }
+        public ClashZone ClashZone { get; set; }
+        public SleeveGroupKey GroupKey { get; set; }
+        // For compatibility with legacy dynamics
+        public dynamic GetClashZone() => ClashZone;
     }
 
     public class BatchClusterCalculationResult

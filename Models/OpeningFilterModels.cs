@@ -11,7 +11,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         Ducts,
         DuctAccessories,
         Pipes,
-        CableTrays
+
+        CableTrays,
+        Conduits
     }
 
     /// <summary>

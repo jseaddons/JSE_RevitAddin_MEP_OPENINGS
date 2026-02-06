@@ -100,49 +100,35 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Se
                     
                     if (sectionBoxBounds != null)
                     {
-                        var outline = new Autodesk.Revit.DB.Outline(sectionBoxBounds.Min, sectionBoxBounds.Max);
-                        var bbFilter = new Autodesk.Revit.DB.BoundingBoxIntersectsFilter(outline);
+                        // ✅ STEP 3: Filter zones by spatial coordinates (World Space)
+                        // This allows discovery of UNPLACED zones (SleeveInstanceId = -1) 
+                        // which would be rejected by FilteredElementCollector.
+                        int beforeSpatialFilter = categoryFilteredZones.Count;
                         
-                        // Collect all sleeve family instances in section box
-                        var sleevesInSectionBox = new Autodesk.Revit.DB.FilteredElementCollector(uiDoc.Document)
-                            .OfClass(typeof(Autodesk.Revit.DB.FamilyInstance))
-                            .WherePasses(bbFilter)
-                            .Cast<Autodesk.Revit.DB.FamilyInstance>()
-                            .Where(fi => fi.Symbol?.FamilyName != null && 
-                                   (fi.Symbol.FamilyName.Contains("Sleeve") || 
-                                    fi.Symbol.FamilyName.Contains("Opening")))
-                            .ToList();
+                        // Add a small tolerance (1 inch) to the section box to be safe
+                        double tolerance = 1.0 / 12.0; 
                         
-                        var sleeveIdsInSectionBox = new System.Collections.Generic.HashSet<int>(
-                            sleevesInSectionBox.Select(s => s.Id.IntegerValue));
+                        zones = categoryFilteredZones.Where(z => {
+                            // PRIORITY: Use calculated placement point if available, otherwise raw intersection point
+                            double x = z.SleevePlacementPointX != 0 ? z.SleevePlacementPointX : z.IntersectionPointX;
+                            double y = z.SleevePlacementPointY != 0 ? z.SleevePlacementPointY : z.IntersectionPointY;
+                            double zCoord = z.SleevePlacementPointZ != 0 ? z.SleevePlacementPointZ : z.IntersectionPointZ;
+                            
+                            // Check if point is inside section box (with tolerance)
+                            bool isInside = x >= sectionBoxBounds.Min.X - tolerance && x <= sectionBoxBounds.Max.X + tolerance &&
+                                           y >= sectionBoxBounds.Min.Y - tolerance && y <= sectionBoxBounds.Max.Y + tolerance &&
+                                           zCoord >= sectionBoxBounds.Min.Z - tolerance && zCoord <= sectionBoxBounds.Max.Z + tolerance;
+                                           
+                            if (!isInside && !DeploymentConfiguration.DeploymentMode)
+                            {
+                                DebugLogger.Info($"[CombinedDiscovery]   Zone {z.Id} ({z.MepElementCategory}) EXCLUDED: Point({x:F2}, {y:F2}, {zCoord:F2}) outside SectionBox");
+                            }
+                            
+                            return isInside;
+                        }).ToList();
                         
-                        DebugLogger.Info($"[CombinedDiscovery] Found {sleeveIdsInSectionBox.Count} sleeve elements in section box: [{string.Join(", ", sleeveIdsInSectionBox.Take(10))}]");
-                        
-                        // ✅ STEP 3: Filter category-matched zones to only those with sleeves in section box
-                        int beforeSectionBox = categoryFilteredZones.Count;
-                        
-                        // ✅ DIAGNOSTIC: Log each zone before filtering
-                        DebugLogger.Info($"[CombinedDiscovery] Section box contains {sleeveIdsInSectionBox.Count} sleeve IDs: [{string.Join(", ", sleeveIdsInSectionBox.Take(20))}]");
-                        foreach (var z in categoryFilteredZones)
-                        {
-                            bool individualMatch = z.SleeveInstanceId > 0 && sleeveIdsInSectionBox.Contains(z.SleeveInstanceId);
-                            bool clusterMatch = z.ClusterSleeveInstanceId > 0 && sleeveIdsInSectionBox.Contains(z.ClusterSleeveInstanceId);
-                            bool afterClusterMatch = z.AfterClusterSleevePlacedSleeveInstanceId > 0 && sleeveIdsInSectionBox.Contains(z.AfterClusterSleevePlacedSleeveInstanceId);
-                            bool combinedMatch = z.CombinedClusterSleeveInstanceId > 0 && sleeveIdsInSectionBox.Contains(z.CombinedClusterSleeveInstanceId);
-                            bool willPass = individualMatch || clusterMatch || afterClusterMatch || combinedMatch;
-                            DebugLogger.Info($"[CombinedDiscovery]   Zone {z.Id} ({z.MepElementCategory}): SleeveId={z.SleeveInstanceId}, ClusterId={z.ClusterSleeveInstanceId}, AfterClusterId={z.AfterClusterSleevePlacedSleeveInstanceId}, CombinedId={z.CombinedClusterSleeveInstanceId}, IndividualMatch={individualMatch}, ClusterMatch={clusterMatch}, AfterClusterMatch={afterClusterMatch}, CombinedMatch={combinedMatch}, WillPass={willPass}");
-                        }
-                        
-                        // ✅ FIX: Check all possible sleeve ID fields (Individual, Cluster, AfterCluster, Combined)
-                        zones = categoryFilteredZones.Where(z => 
-                            (z.SleeveInstanceId > 0 && sleeveIdsInSectionBox.Contains(z.SleeveInstanceId)) || 
-                            (z.ClusterSleeveInstanceId > 0 && sleeveIdsInSectionBox.Contains(z.ClusterSleeveInstanceId)) ||
-                            (z.AfterClusterSleevePlacedSleeveInstanceId > 0 && sleeveIdsInSectionBox.Contains(z.AfterClusterSleevePlacedSleeveInstanceId)) ||
-                            (z.CombinedClusterSleeveInstanceId > 0 && sleeveIdsInSectionBox.Contains(z.CombinedClusterSleeveInstanceId)))
-                            .ToList();
-                        
-                        DebugLogger.Info($"[CombinedDiscovery] Section box filter: {beforeSectionBox} -> {zones.Count} zones have sleeves in section box");
-                        DebugLogger.Info($"[CombinedDiscovery] ✅ FINAL: {zones.Count} zones passed both category and section box filters");
+                        DebugLogger.Info($"[CombinedDiscovery] Spatial filter (Section Box): {beforeSpatialFilter} -> {zones.Count} zones are within the bounds");
+                        DebugLogger.Info($"[CombinedDiscovery] ✅ FINAL: {zones.Count} zones passed both category and spatial filters");
                     }
                     else
                     {

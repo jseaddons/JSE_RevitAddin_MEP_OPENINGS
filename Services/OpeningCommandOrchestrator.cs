@@ -160,7 +160,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 foreach (var discipline in disciplineGroups)
                 {
-                    ExecuteDisciplineWithMemoryManagement(discipline.Key, discipline.Value, showProgress);
+                    totalIndividualPlaced += ExecuteDisciplineWithMemoryManagement(discipline.Key, discipline.Value, showProgress);
                 }
 
                 // Feature: Combined Sleeves (Refactored to dedicated Manager)
@@ -187,7 +187,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // ✅ GLOBAL CLUSTERING & CLEANUP PHASE
                 // This runs AFTER all individual sleeves from all disciplines/filters have been placed
                 // and their REVIT coordinates have been updated in the database.
-                ExecuteGlobalClusteringAndCleanup(filters, showProgress);
+                totalClustersPlaced = ExecuteGlobalClusteringAndCleanup(filters, showProgress);
+
+                // ✅ GENERATE REPORT AFTER ALL PHASES (Individual + Cluster)
+                // This ensures the summary table includes data from the global clustering phase
+                if (_performanceMonitor != null)
+                {
+                    _performanceMonitor.GenerateReport(totalIndividualPlaced, totalClustersPlaced);
+                }
 
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
@@ -269,9 +276,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
 
         /// <summary>
-        /// Execute all filters for a discipline with memory management
+        /// Execute all filters for a discipline with memory management. Returns total individual sleeves placed.
         /// </summary>
-        private void ExecuteDisciplineWithMemoryManagement(string discipline, List<OpeningFilter> filters, bool showProgress)
+        private int ExecuteDisciplineWithMemoryManagement(string discipline, List<OpeningFilter> filters, bool showProgress)
         {
             if (!DeploymentConfiguration.DeploymentMode)
             {
@@ -315,9 +322,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     totalClusters += clusters;
                 }
 
-                // ✅ Single report after all filters (was per-filter, causing two half-done sections)
-                if (_performanceMonitor != null)
-                    _performanceMonitor.GenerateReport(totalIndividualSleeves, totalClusters);
+                // Report generation moved to main ExecuteMultipleFilters method to include global clustering totals
 
                 // Force garbage collection after each discipline
                 GC.Collect();
@@ -329,6 +334,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[OpeningCommandOrchestrator] Discipline {discipline} completed, memory cleaned");
                 }
+                
+                return totalIndividualSleeves;
             }
             catch (Exception ex)
             {
@@ -1294,10 +1301,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         using (var t = new Transaction(_document, $"Bulk Place {filter.Name}"))
                                         {
                                             t.Start();
-                                            var failureOptions = t.GetFailureHandlingOptions();
-                                            failureOptions.SetFailuresPreprocessor(new NestedFamilyClashWarningSuppressor(_document, "Family2", "Bulk Place"));
-                                            t.SetFailureHandlingOptions(failureOptions);
-
+                                            
                                             using (placeTracker?.TrackSubOperation("ExecuteBulkPlacement (Revit API)"))
                                             {
                                                 bulkResult = bulkService.ExecuteBulkPlacement(_document, bulkTaskItemsDeduped);
@@ -1317,26 +1321,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                 using (var tParams = new Transaction(_document, "Flush Parameters"))
                                                 {
                                                     tParams.Start();
-                                                    // ✅ FIX: Robust warning suppression for parameter flushing transaction
-                                                    var failureOptions = tParams.GetFailureHandlingOptions();
-                                                    failureOptions.SetFailuresPreprocessor(new NestedFamilyClashWarningSuppressor(_document, "Family2", "Flush Parameters"));
-                                                    tParams.SetFailureHandlingOptions(failureOptions);
-
+                                                    // Transaction optimized for parameter flushing
                                                     using (placeTracker?.TrackSubOperation("Flush Deferred Parameters"))
                                                     {
                                                         paramService.FlushDeferredParameters(clearList: true, context: "AfterPlacement");
                                                     }
                                                     
+                                                    var commitTimer = System.Diagnostics.Stopwatch.StartNew();
                                                     using (placeTracker?.TrackSubOperation("Transaction Commit (Params)"))
                                                     {
                                                         tParams.Commit();
                                                     }
+                                                    commitTimer.Stop();
+                                                    SafeFileLogger.SafeAppendText("performance.log", $"[{DateTime.Now:HH:mm:ss.fff}] [PERF-TELEMETRY] ParamCommit={commitTimer.ElapsedMilliseconds}ms\n");
                                                 }
+                                                
+                                                var regenTimer = System.Diagnostics.Stopwatch.StartNew();
                                                 // ✅ OPTIMIZATION: Regenerate OUTSIDE transaction (was inside before)
                                                 using (placeTracker?.TrackSubOperation("Regenerate (Total)"))
                                                 {
                                                     _document.Regenerate();
                                                 }
+                                                regenTimer.Stop();
+                                                SafeFileLogger.SafeAppendText("performance.log", $"[{DateTime.Now:HH:mm:ss.fff}] [PERF-TELEMETRY] Regenerate={regenTimer.ElapsedMilliseconds}ms\n");
                                             }
                                             catch (Exception paramEx)
                                             {
@@ -1353,10 +1360,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         using (var t = new Transaction(_document, $"Bulk Place {filter.Name}"))
                                         {
                                             t.Start();
-                                            var failureOptions = t.GetFailureHandlingOptions();
-                                            failureOptions.SetFailuresPreprocessor(new NestedFamilyClashWarningSuppressor(_document, "Family2", "Bulk Place"));
-                                            t.SetFailureHandlingOptions(failureOptions);
-
                                             using (placeTracker?.TrackSubOperation("ExecuteBulkPlacement (Revit API)"))
                                             {
                                                 bulkResult = bulkService.ExecuteBulkPlacement(_document, bulkTaskItemsDeduped);
@@ -2044,12 +2047,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Iterates all categories, calculates clusters, and performs a single consolidated placement/cleanup.
         /// This ensures cross-category overlaps are correctly identified and cleaned up.
         /// </summary>
-        private void ExecuteGlobalClusteringAndCleanup(List<OpeningFilter> filters, bool showProgress)
+        /// <summary>
+        /// ✅ GLOBAL CLUSTERING & CLEANUP: Centralized phase after all individual sleeves are placed.
+        /// Iterates all categories, calculates clusters, and performs a single consolidated placement/cleanup.
+        /// This ensures cross-category overlaps are correctly identified and cleaned up.
+        /// Returns total clusters placed.
+        /// </summary>
+        private int ExecuteGlobalClusteringAndCleanup(List<OpeningFilter> filters, bool showProgress)
         {
             if (!OptimizationFlags.EnableClusteringWorkflow)
             {
                 SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ⏭️ GLOBAL CLUSTERING SKIPPED: EnableClusteringWorkflow=false\n");
-                return;
+                return 0;
             }
 
             SafeFileLogger.SafeAppendText("batch_v2.log", 
@@ -2095,26 +2104,93 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // ✅ PERFORMANCE: Track calculation phase
                     using (var calcTracker = _performanceMonitor?.TrackOperation("Global Cluster Calculation"))
                     {
-                        foreach (var cat in clusterableCategories)
+                        // ✅ FORCE ENABLE PARALLEL PROCESSING: Ensure optimization is active regardless of config
+                        if (!OptimizationFlags.UseParallelProcessing)
                         {
-                            var catZones = allUnresolvedZones.Where(z => string.Equals(z.MepElementCategory, cat, StringComparison.OrdinalIgnoreCase)).ToList();
-                            if (catZones.Count == 0) continue;
+                            OptimizationFlags.UseParallelProcessing = true;
+                            SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ FORCE-ENABLING Parallel Processing for Global Cluster Calculation.\n");
+                        }
 
-                            SafeFileLogger.SafeAppendText("batch_v2.log", 
-                                $"[{DateTime.Now:HH:mm:ss}] 🧮 GLOBAL CLUSTERING: Calculating for {cat} ({catZones.Count} zones)\n");
+                        if (OptimizationFlags.UseParallelProcessing)
+                        {
+                            // ✅ PARALLEL MODE: Calculate categories concurrently (Memory Only)
+                            SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🚀 GLOBAL CLUSTERING: Parallel Processing ENABLED for {clusterableCategories.Length} types (Calculation Only)\n");
+                            
+                            var globalResults = new System.Collections.Concurrent.ConcurrentBag<JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BatchClusterCalculationResult>();
 
-                            // Track sub-operation per category
-                            using (var catTracker = calcTracker?.TrackSubOperation($"Calculate {cat}"))
+                            System.Threading.Tasks.Parallel.ForEach(clusterableCategories, cat =>
                             {
-                                try
+                                try 
                                 {
-                                    // skipPlacement: true ensures we only save the cluster definition to ClusterSleeves_v2
-                                    clusterService.ClusterSleevesV2(_document, catZones, cat, 0, 0, skipPlacement: true);
-                                    catTracker?.SetItemCount(catZones.Count);
+                                    var catZones = allUnresolvedZones.Where(z => string.Equals(z.MepElementCategory, cat, StringComparison.OrdinalIgnoreCase)).ToList();
+                                    if (catZones.Count > 0)
+                                    {
+                                        SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                            $"[{DateTime.Now:HH:mm:ss}] 🧮 GLOBAL CLUSTERING (Parallel): Calculating for {cat} ({catZones.Count} zones) on Thread {System.Threading.Thread.CurrentThread.ManagedThreadId}\n");
+                                        
+                                        // ✅ ISOLATION: Create new service instance per thread
+                                        var parallelClusterService = ClusterServiceFactory.CreateRefactored(_document, performanceMonitor: null);
+                                        
+                                        // ✅ PHASE 1: Calculate Only (No DB Writes)
+                                        var results = parallelClusterService.ClusterSleevesCalculateOnly(_document, catZones, cat, 0, 0);
+                                        
+                                        foreach (var r in results)
+                                        {
+                                            globalResults.Add(r);
+                                        }
+                                        
+                                        SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                            $"[{DateTime.Now:HH:mm:ss}] 🧮 GLOBAL CLUSTERING (Parallel): {cat} complete. Yielded {results.Count} clusters.\n");
+                                    }
                                 }
                                 catch (Exception ex)
                                 {
-                                    SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ❌ GLOBAL CLUSTERING CALC ERROR ({cat}): {ex.Message}\n");
+                                    SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ❌ GLOBAL CLUSTERING PARALLEL ERROR ({cat}): {ex.Message}\n");
+                                }
+                            });
+                            
+                            // ✅ PHASE 2: Single Batch Save (Sequential DB Access)
+                            if (globalResults.Count > 0)
+                            {
+                                SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 💾 BATCH SAVE: Saving {globalResults.Count} total clusters to database...\n");
+                                
+                                // Create a service instance to handle saving
+                                var saveService = ClusterServiceFactory.CreateRefactored(_document, performanceMonitor: null);
+                                saveService.ClusterSleevesBatchSave(globalResults);
+                                saveService.ClusterSleevesBatchUpdateFlags(globalResults);
+                                
+                                SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ✅ BATCH SAVE: Complete.\n");
+                            }
+                        }
+                        else
+                        {
+                            // SEQUENTIAL MODE (Legacy)
+                             SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🐢 GLOBAL CLUSTERING: Sequential Processing (Legacy)\n");
+                            
+                            // Re-use outer instance for sequential
+                            var sequentialClusterService = ClusterServiceFactory.CreateRefactored(_document, performanceMonitor: _performanceMonitor);
+                            
+                            foreach (var cat in clusterableCategories)
+                            {
+                                var catZones = allUnresolvedZones.Where(z => string.Equals(z.MepElementCategory, cat, StringComparison.OrdinalIgnoreCase)).ToList();
+                                if (catZones.Count == 0) continue;
+
+                                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] 🧮 GLOBAL CLUSTERING: Calculating for {cat} ({catZones.Count} zones)\n");
+
+                                // Track sub-operation per category
+                                using (var catTracker = calcTracker?.TrackSubOperation($"Calculate {cat}"))
+                                {
+                                    try
+                                    {
+                                        // skipPlacement: true ensures we only save the cluster definition to ClusterSleeves_v2
+                                        sequentialClusterService.ClusterSleevesV2(_document, catZones, cat, 0, 0, skipPlacement: true);
+                                        catTracker?.SetItemCount(catZones.Count);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ❌ GLOBAL CLUSTERING CALC ERROR ({cat}): {ex.Message}\n");
+                                    }
                                 }
                             }
                         }
@@ -2145,6 +2221,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     SafeFileLogger.SafeAppendText("batch_v2.log", 
                         $"[{DateTime.Now:HH:mm:ss}] ✅ GLOBAL CLUSTERING COMPLETE: {placed} clusters placed, {cleanedUp} individual sleeves cleaned up\n");
+
+                    // ✅ SUMMARY: Generate Performance Report (Summary Table)
+                    if (_performanceMonitor != null)
+                    {
+                        // Pass total individual sleeves processed (approximate) and total clusters placed
+                        _performanceMonitor.GenerateReport(allUnresolvedZones.Count, placed);
+                    }
+                        
+                    return placed;
                 }
             }
             catch (Exception ex)
@@ -2152,7 +2237,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ❌ GLOBAL CLUSTERING FAILED: {ex.Message}\n{ex.StackTrace}\n");
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Error($"[GlobalClustering] Error: {ex.Message}");
+                return 0;
             }
+            return 0;
         }
     }
 
@@ -2180,8 +2267,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 // Also dismiss duplicate-related errors to prevent transaction rollback
                 else if (f.GetSeverity() == FailureSeverity.Error && 
-                         (description.Contains("duplicate", StringComparison.OrdinalIgnoreCase) || 
-                          description.Contains("already exists", StringComparison.OrdinalIgnoreCase)))
+                         (description.IndexOf("duplicate", StringComparison.OrdinalIgnoreCase) >= 0 || 
+                          description.IndexOf("already exists", StringComparison.OrdinalIgnoreCase) >= 0))
                 {
                     fa.DeleteWarning(f);
                     if (!DeploymentConfiguration.DeploymentMode)
@@ -2191,177 +2278,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
             }
             return FailureProcessingResult.Continue;
-        }
-    }
-
-    /// <summary>
-    /// Suppresses only the "identical instances in the same place" / "double counting in schedules" warning
-    /// when it involves a specific nested family (e.g. Family2). Other families and other warnings are not suppressed.
-    /// </summary>
-    public class NestedFamilyClashWarningSuppressor : IFailuresPreprocessor
-    {
-        private readonly Document _doc;
-        private readonly string _nestedFamilyName;
-        private readonly string _context;
-
-        public NestedFamilyClashWarningSuppressor(Document doc, string nestedFamilyName, string context = null)
-        {
-            _doc = doc ?? throw new ArgumentNullException(nameof(doc));
-            _nestedFamilyName = nestedFamilyName ?? string.Empty;
-            _context = context ?? "unknown";
-        }
-
-        public FailureProcessingResult PreprocessFailures(FailuresAccessor fa)
-        {
-            var failures = fa.GetFailureMessages();
-            const string logFile = "failure_suppression_debug.log";
-
-            // ✅ FAST PATH: nothing to do
-            if (failures == null || failures.Count == 0)
-            {
-                return FailureProcessingResult.Continue;
-            }
-
-            // ✅ PERFORMANCE: batch logging in non-deployment mode; no disk I/O in deployment mode
-            System.Text.StringBuilder? sb = null;
-            if (!DeploymentConfiguration.DeploymentMode)
-            {
-                sb = new System.Text.StringBuilder();
-                sb.AppendLine(
-                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [NestedFamilyClashWarningSuppressor] PreprocessFailures INVOKED (context={_context}). Failure count = {failures.Count}");
-            }
-
-            foreach (var f in failures)
-            {
-                var severity = f.GetSeverity();
-                var desc = f.GetDescriptionText() ?? string.Empty;
-
-                if (sb != null)
-                {
-                    sb.AppendLine(
-                        $"[{DateTime.Now:HH:mm:ss.fff}] Failure: Severity={severity}, Description=\"{desc}\"");
-                }
-
-                // Match "identical instances in the same place" / "double counting" variants
-                bool hasIdentical = desc.IndexOf("identical", StringComparison.OrdinalIgnoreCase) >= 0;
-                bool hasSamePlace = desc.IndexOf("same place", StringComparison.OrdinalIgnoreCase) >= 0;
-                bool hasInstance = desc.IndexOf("instance", StringComparison.OrdinalIgnoreCase) >= 0;
-                bool hasDoubleCounting = desc.IndexOf("double counting", StringComparison.OrdinalIgnoreCase) >= 0;
-                bool hasElementsSame = desc.IndexOf("elements", StringComparison.OrdinalIgnoreCase) >= 0 && desc.IndexOf("same", StringComparison.OrdinalIgnoreCase) >= 0;
-                bool hasDuplicate = desc.IndexOf("duplicate", StringComparison.OrdinalIgnoreCase) >= 0;
-
-                bool isIdenticalInstances = (hasIdentical && hasSamePlace) || 
-                                           hasDoubleCounting || 
-                                           (hasSamePlace && hasInstance) || 
-                                           (hasDuplicate && hasSamePlace) ||
-                                           (hasElementsSame && hasSamePlace);
-
-                if (!isIdenticalInstances)
-                {
-                    if (sb != null)
-                    {
-                        sb.AppendLine(
-                            $"[{DateTime.Now:HH:mm:ss.fff}]   -> SKIP (not identical-instances match). hasIdentical={hasIdentical}, hasSamePlace={hasSamePlace}, hasInstance={hasInstance}, hasDoubleCounting={hasDoubleCounting}, hasDuplicate={hasDuplicate}");
-                    }
-                    continue;
-                }
-
-                if (sb != null)
-                {
-                    sb.AppendLine(
-                        $"[{DateTime.Now:HH:mm:ss.fff}]   -> MATCH identical-instances. Attempting suppress...");
-                }
-
-                if (severity == FailureSeverity.Warning)
-                {
-                    try
-                    {
-                        fa.DeleteWarning(f);
-                        if (sb != null)
-                        {
-                            sb.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}]   -> DeleteWarning SUCCESS.");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        if (sb != null)
-                        {
-                            sb.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}]   -> DeleteWarning EXCEPTION: {ex.GetType().Name}: {ex.Message}");
-                        }
-                    }
-                }
-                else if (severity == FailureSeverity.Error)
-                {
-                    try
-                    {
-                        int numRes = f.GetNumberOfResolutions();
-                        if (numRes > 0)
-                        {
-                            // Revit 2023 compatibility: loop to find a valid resolution
-                            foreach (FailureResolutionType resType in Enum.GetValues(typeof(FailureResolutionType)))
-                            {
-                                if (resType == FailureResolutionType.Invalid) continue;
-
-                                if (f.HasResolutionOfType(resType))
-                                {
-                                    f.SetCurrentResolutionType(resType);
-                                    fa.ResolveFailure(f);
-                                    if (sb != null)
-                                    {
-                                        sb.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}]   -> ResolveFailure({resType}) SUCCESS.");
-                                    }
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        if (sb != null)
-                        {
-                            sb.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}]   -> Error resolution EXCEPTION: {ex.GetType().Name}: {ex.Message}");
-                        }
-                    }
-                }
-            }
-
-            if (sb != null && sb.Length > 0)
-            {
-                SafeFileLogger.SafeAppendText("failure_suppression_debug.log", sb.ToString());
-            }
-
-            return FailureProcessingResult.Continue;
-        }
-
-        /// <summary>True if any failing or additional elements are FamilyInstances whose family/symbol name matches.</summary>
-        private bool ElementsIncludeFamily(FailureMessageAccessor fm, string familyName)
-        {
-            if (string.IsNullOrEmpty(familyName) || _doc == null) return false;
-            try
-            {
-                if (ElementIdsIncludeFamily(fm.GetFailingElementIds(), familyName)) return true;
-                if (ElementIdsIncludeFamily(fm.GetAdditionalElementIds(), familyName)) return true;
-            }
-            catch { /* ignore if API differs or element invalid */ }
-            return false;
-        }
-
-        private bool ElementIdsIncludeFamily(ICollection<ElementId> ids, string familyName)
-        {
-            if (ids == null || ids.Count == 0) return false;
-            foreach (ElementId id in ids)
-            {
-                var el = _doc.GetElement(id);
-                if (el is FamilyInstance fi)
-                {
-                    var famName = fi.Symbol?.FamilyName ?? string.Empty;
-                    var symName = fi.Symbol?.Name ?? string.Empty;
-                    if (famName.IndexOf(familyName, StringComparison.OrdinalIgnoreCase) >= 0
-                        || symName.IndexOf(familyName, StringComparison.OrdinalIgnoreCase) >= 0)
-                        return true;
-                }
-            }
-            return false;
         }
     }
 }

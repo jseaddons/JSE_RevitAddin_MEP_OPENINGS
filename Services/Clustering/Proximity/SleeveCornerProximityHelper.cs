@@ -194,17 +194,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                     return 0.0;
                 }
 
-                // ✅ DIAGNOSTIC LOGGING: Show why proximity check fails
+                // ✅ PERFORMANCE: Disabled diagnostic logging (causes O(N²) file I/O during clustering)
+                // string category = cz1.MepElementCategory ?? "";
+                // if (category.Contains("Duct") || category.Contains("Damper") || category.Contains("Tray"))
+                // {
+                //     double toleranceMM = toleranceDist * 304.8;
+                //     SafeFileLogger.SafeAppendText("cluster_debug.log",
+                //         $"[ProximityCheck] 🔍 DETAILED CHECK for {category}:\n" +
+                //         $"  Tolerance: {toleranceMM:F1}mm ({toleranceDist:F6}ft)\n" +
+                //         $"  Sleeve1 BBox: X=[{bbox1.minX:F3}, {bbox1.maxX:F3}], Y=[{bbox1.minY:F3}, {bbox1.maxY:F3}], Z=[{bbox1.minZ:F3}, {bbox1.maxZ:F3}]\n" +
+                //         $"  Sleeve2 BBox: X=[{bbox2.minX:F3}, {bbox2.maxX:F3}], Y=[{bbox2.minY:F3}, {bbox2.maxY:F3}], Z=[{bbox2.minZ:F3}, {bbox2.maxZ:F3}]\n");
+                // }
                 string category = cz1.MepElementCategory ?? "";
-                if (category.Contains("Duct") || category.Contains("Damper") || category.Contains("Tray"))
-                {
-                    double toleranceMM = toleranceDist * 304.8;
-                    SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        $"[ProximityCheck] 🔍 DETAILED CHECK for {category}:\n" +
-                        $"  Tolerance: {toleranceMM:F1}mm ({toleranceDist:F6}ft)\n" +
-                        $"  Sleeve1 BBox: X=[{bbox1.minX:F3}, {bbox1.maxX:F3}], Y=[{bbox1.minY:F3}, {bbox1.maxY:F3}], Z=[{bbox1.minZ:F3}, {bbox1.maxZ:F3}]\n" +
-                        $"  Sleeve2 BBox: X=[{bbox2.minX:F3}, {bbox2.maxX:F3}], Y=[{bbox2.minY:F3}, {bbox2.maxY:F3}], Z=[{bbox2.minZ:F3}, {bbox2.maxZ:F3}]\n");
-                }
 
                 // ✅ FIX: For wall-hosted sleeves, compute TRUE 2D edge‑to‑edge distance in the wall plane.
                 // X‑wall (wall running along X): distance in X–Z, ignore Y (depth)
@@ -223,11 +224,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                         double dist = Math.Sqrt(gapX * gapX + gapZ * gapZ);
                         bool result = dist <= effectiveTolerance;
 
-                        if (category.Contains("Duct") || category.Contains("Damper") || category.Contains("Tray"))
-                        {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"  HostOrientation: X-wall → dXZ={dist * 304.8:F1}mm (tol={effectiveTolerance * 304.8:F1}mm) => {result}\n");
-                        }
+                        // if (category.Contains("Duct") || category.Contains("Damper") || category.Contains("Tray"))
+                        // {
+                        //     SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        //         $"  HostOrientation: X-wall → dXZ={dist * 304.8:F1}mm (tol={effectiveTolerance * 304.8:F1}mm) => {result}\n");
+                        // }
                         return result;
                     }
                     else if (hostOrientation1.Equals("Y", StringComparison.OrdinalIgnoreCase))
@@ -238,11 +239,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                         double dist = Math.Sqrt(gapY * gapY + gapZ * gapZ);
                         bool result = dist <= effectiveTolerance;
 
-                        if (category.Contains("Duct") || category.Contains("Damper") || category.Contains("Tray"))
-                        {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"  HostOrientation: Y-wall → dYZ={dist * 304.8:F1}mm (tol={effectiveTolerance * 304.8:F1}mm) => {result}\n");
-                        }
+                        // if (category.Contains("Duct") || category.Contains("Damper") || category.Contains("Tray"))
+                        // {
+                        //     SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        //         $"  HostOrientation: Y-wall → dYZ={dist * 304.8:F1}mm (tol={effectiveTolerance * 304.8:F1}mm) => {result}\n");
+                        // }
                         return result;
                     }
                 }
@@ -259,11 +260,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                     double dist2D = Math.Sqrt(gapX2D * gapX2D + gapY2D * gapY2D);
                     bool floorResult = dist2D <= effectiveTolerance;
 
-                    if (category.Contains("Duct") || category.Contains("Damper") || category.Contains("Tray"))
-                    {
-                        SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"  HostType: Floor → dXY(2D)={dist2D * 304.8:F1}mm (tol={effectiveTolerance * 304.8:F1}mm) => {floorResult}\n");
-                    }
+                    // if (category.Contains("Duct") || category.Contains("Damper") || category.Contains("Tray"))
+                    // {
+                    //     SafeFileLogger.SafeAppendText("cluster_debug.log",
+                    //         $"  HostType: Floor → dXY(2D)={dist2D * 304.8:F1}mm (tol={effectiveTolerance * 304.8:F1}mm) => {floorResult}\n");
+                    // }
                     return floorResult;
                 }
                 
@@ -274,11 +275,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                 double dist3D = Math.Sqrt(gapX3 * gapX3 + gapY3 * gapY3 + gapZ3 * gapZ3);
                 bool finalResult = dist3D <= effectiveTolerance;
 
-                if (category.Contains("Duct") || category.Contains("Damper") || category.Contains("Tray"))
-                {
-                    SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        $"  Default 3D distance={dist3D * 304.8:F1}mm (tol={effectiveTolerance * 304.8:F1}mm) => {finalResult}\n");
-                }
+                // if (category.Contains("Duct") || category.Contains("Damper") || category.Contains("Tray"))
+                // {
+                //     SafeFileLogger.SafeAppendText("cluster_debug.log",
+                //         $"  Default 3D distance={dist3D * 304.8:F1}mm (tol={effectiveTolerance * 304.8:F1}mm) => {finalResult}\n");
+                // }
                 return finalResult;
             }
             catch (Exception)

@@ -134,11 +134,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
 
                         if (!isWallOrFraming)
                         {
-                            if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss}] ✅ ALL-CIRCULAR NON-WALL CLUSTER: Skipping rotation (0.0°)\n");
-                            }
+                            // if (!DeploymentConfiguration.DeploymentMode)
+                            // {
+                            //    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            //        $"[{DateTime.Now:HH:mm:ss}] ✅ ALL-CIRCULAR NON-WALL CLUSTER: Skipping rotation (0.0°)\n");
+                            // }
                             return 0.0;
                         }
                         // Wall / framing + all circular: fall through and use HostOrientation logic below
@@ -193,22 +193,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                         hostOrientation.IndexOf("X-WALL", StringComparison.OrdinalIgnoreCase) >= 0))
                     {
                         double rotationAngle = Math.PI / 2.0; // 90 degrees for X-walls
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] ✅ ORIENTATION (WALL): X-wall → 90° rotation\n");
-                        }
+                        // if (!DeploymentConfiguration.DeploymentMode)
+                        // {
+                        //    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        //        $"[{DateTime.Now:HH:mm:ss}] ✅ ORIENTATION (WALL): X-wall → 90° rotation\n");
+                        // }
                         return rotationAngle;
                     }
                     else if (!isFloorForOrientation && (string.Equals(hostOrientation, "Y", StringComparison.OrdinalIgnoreCase) || 
                              hostOrientation.IndexOf("Y-WALL", StringComparison.OrdinalIgnoreCase) >= 0))
                     {
                          double rotationAngle = 0.0; // 0 degrees for Y-walls (User Req: "y should remain at 0 degre")
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] ✅ ORIENTATION (WALL): Y-wall → 0° rotation\n");
-                        }
+                        // if (!DeploymentConfiguration.DeploymentMode)
+                        // {
+                        //    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        //        $"[{DateTime.Now:HH:mm:ss}] ✅ ORIENTATION (WALL): Y-wall → 0° rotation\n");
+                        // }
                         return rotationAngle;
                     }
                     else
@@ -245,13 +245,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             }
                         }
 
-                        if (!DeploymentConfiguration.DeploymentMode)
-                        {
-                            string typeLog = string.IsNullOrEmpty(hostOrientation) ? "Unknown/Floor" : hostOrientation;
-                            string pathLog = foundNonOrthogonal ? "NON-ORTHOGONAL" : "ORTHOGONAL-MIX (Default to 0)";
-                            SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] ✅ ORIENTATION (OTHER): {typeLog} → {rotationAngle * 180 / Math.PI:F1}° rotation ({pathLog})\n");
-                        }
+                        // if (!DeploymentConfiguration.DeploymentMode)
+                        // {
+                        //    string typeLog = string.IsNullOrEmpty(hostOrientation) ? "Unknown/Floor" : hostOrientation;
+                        //    string pathLog = foundNonOrthogonal ? "NON-ORTHOGONAL" : "ORTHOGONAL-MIX (Default to 0)";
+                        //    SafeFileLogger.SafeAppendText("cluster_debug.log",
+                        //        $"[{DateTime.Now:HH:mm:ss}] ✅ ORIENTATION (OTHER): {typeLog} → {rotationAngle * 180 / Math.PI:F1}° rotation ({pathLog})\n");
+                        // }
                         return rotationAngle;
                     }
                 }
@@ -289,9 +289,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             calcStopwatch.Stop();
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                    $"[{DateTime.Now:HH:mm:ss}] ✅ CACHE HIT: Rotated bounding box for {cluster.Count} sleeves, rotation={rotationAngle * 180 / Math.PI:F1}° (saved {calcStopwatch.ElapsedMilliseconds}ms), cacheKey={cacheKey.Substring(0, Math.Min(50, cacheKey.Length))}\n");
-                                DebugLogger.Info($"[BBOX-CACHE] ✅ CACHE HIT: Rotated bounding box for {cluster.Count} sleeves, rotation={rotationAngle * 180 / Math.PI:F1}°");
+                                // SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                //    $"[{DateTime.Now:HH:mm:ss}] ✅ CACHE HIT: Rotated bounding box for {cluster.Count} sleeves, rotation={rotationAngle * 180 / Math.PI:F1}° (saved {calcStopwatch.ElapsedMilliseconds}ms), cacheKey={cacheKey.Substring(0, Math.Min(50, cacheKey.Length))}\n");
+                                // DebugLogger.Info($"[BBOX-CACHE] ✅ CACHE HIT: Rotated bounding box for {cluster.Count} sleeves, rotation={rotationAngle * 180 / Math.PI:F1}°");
                             }
                             return cachedResult;
                         }
@@ -300,9 +300,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             // ✅ DIAGNOSTIC: Log cache miss for debugging
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                    $"[{DateTime.Now:HH:mm:ss}] 💾 CACHE MISS: Rotated bounding box for {cluster.Count} sleeves, rotation={rotationAngle * 180 / Math.PI:F1}°, cacheKey={cacheKey.Substring(0, Math.Min(50, cacheKey.Length))}, cacheSize={_rotatedBboxCache.Count}\n");
-                                DebugLogger.Info($"[BBOX-CACHE] 💾 CACHE MISS: Rotated bounding box for {cluster.Count} sleeves, rotation={rotationAngle * 180 / Math.PI:F1}°, cacheSize={_rotatedBboxCache.Count}");
+                                // SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                //    $"[{DateTime.Now:HH:mm:ss}] 💾 CACHE MISS: Rotated bounding box for {cluster.Count} sleeves, rotation={rotationAngle * 180 / Math.PI:F1}°, cacheKey={cacheKey.Substring(0, Math.Min(50, cacheKey.Length))}, cacheSize={_rotatedBboxCache.Count}\n");
+                                // DebugLogger.Info($"[BBOX-CACHE] 💾 CACHE MISS: Rotated bounding box for {cluster.Count} sleeves, rotation={rotationAngle * 180 / Math.PI:F1}°, cacheSize={_rotatedBboxCache.Count}");
                             }
                         }
                     }
@@ -373,7 +373,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     // Fallback: try to get from cached/DB ClashZone lookup
                     if (clusterIdObj == null || (clusterIdObj is int cId2 && cId2 <= 0))
                     {
-                         var cz = GetCachedClashZone(firstSleeve.SleeveInstanceId, xmlFilePath);
+                         // ✅ CRITICAL FIX: Extract SleeveInstanceId from ClashZone property (wrapped anonymous type)
+                         int sleeveId = -1;
+                         try 
+                         {
+                             // Try direct access first (for ClashZone objects)
+                             sleeveId = firstSleeve.SleeveInstanceId;
+                         }
+                         catch
+                         {
+                             // Fallback: access via ClashZone property (for wrapped anonymous types)
+                             try { sleeveId = firstSleeve.ClashZone?.SleeveInstanceId ?? -1; } catch { }
+                         }
+                         
+                         var cz = GetCachedClashZone(sleeveId, xmlFilePath);
                          if (cz != null) 
                          {
                             clusterId = cz.ClusterInstanceId;
@@ -383,7 +396,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                          else
                          {
                             if (!DeploymentConfiguration.DeploymentMode)
-                                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] DEBUG: GetCachedClashZone returned NULL for {firstSleeve.SleeveInstanceId}\n");
+                                SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] DEBUG: GetCachedClashZone returned NULL for SleeveID={sleeveId}\n");
                          }
                     }
                     else
@@ -645,11 +658,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 
                 bool hasAxisAligned = clashZone.SleeveBoundingBoxMinX != 0.0 || clashZone.SleeveBoundingBoxMinY != 0.0 || clashZone.SleeveBoundingBoxMaxX != 0.0 || clashZone.SleeveBoundingBoxMaxY != 0.0;
                 
-                SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                    $"[{DateTime.Now:HH:mm:ss}] 📊 Sleeve {sleeveInstanceId} DATA CHECK: HasRotatedBbox={hasRot}, HasCorners={hasCorners}, HasCosSin={hasCosSin}, HasAxisAligned={hasAxisAligned}, Rotation={clashZone.MepElementRotationAngle * 180 / Math.PI:F1}°\n");
+                // SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                //    $"[{DateTime.Now:HH:mm:ss}] 📊 Sleeve {sleeveInstanceId} DATA CHECK: HasRotatedBbox={hasRot}, HasCorners={hasCorners}, HasCosSin={hasCosSin}, HasAxisAligned={hasAxisAligned}, Rotation={clashZone.MepElementRotationAngle * 180 / Math.PI:F1}°\n");
                 
-                SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                    $"[{DateTime.Now:HH:mm:ss}]   Sleeve {sleeveInstanceId}: HasRotatedBbox={hasRot}, HasAxisAlignedBbox={hasAxisAligned}\n");
+                // SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                //    $"[{DateTime.Now:HH:mm:ss}]   Sleeve {sleeveInstanceId}: HasRotatedBbox={hasRot}, HasAxisAlignedBbox={hasAxisAligned}\n");
                 if (hasRot)
                 {
                     SafeFileLogger.SafeAppendText("cluster_sizing.log",
@@ -700,13 +713,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                         }
                         else
                         {
+                            // ✅ CRITICAL FIX: For wrapped anonymous types (from BatchClusterCalculationService),
+                            // the ClashZone is directly accessible via the ClashZone property
                             try
                             {
-                                clashZone = sleeveData.ClashZone;
+                                // Try dynamic property access (works for anonymous types)
+                                dynamic dynamicSleeve = sleeveData;
+                                clashZone = dynamicSleeve.ClashZone as ClashZone;
                             }
                             catch
                             {
-                                // If that fails, try to get SleeveInstanceId and load from cache
+                                // ⚠️ FALLBACK: If ClashZone property doesn't exist, try cache lookup
+                                // NOTE: User warned that SleeveInstanceId may be overwritten, so this is unreliable
                                 try
                                 {
                                     int sleeveId = sleeveData.SleeveInstanceId;
@@ -799,14 +817,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             }
                             else
                             {
-                                SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                    $"[{DateTime.Now:HH:mm:ss}]   ⚠️ Sleeve {sleeveId}: Missing corners, Rotation={sleeveRotationDeg:F1}°\n");
+                                // SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                //    $"[{DateTime.Now:HH:mm:ss}]   ⚠️ Sleeve {sleeveId}: Missing corners, Rotation={sleeveRotationDeg:F1}°\n");
                             }
                         }
                     }
                     
-                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                        $"[{DateTime.Now:HH:mm:ss}] 📊 Corner check: {sleevesWithCorners}/{cluster.Count} sleeves have corners\n");
+                    // SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                    //    $"[{DateTime.Now:HH:mm:ss}] 📊 Corner check: {sleevesWithCorners}/{cluster.Count} sleeves have corners\n");
                     
                     if (hasAnyCorners)
                     {
@@ -858,21 +876,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                     allCorners.Add(new XYZ(corner4X.Value, corner4Y.Value, corner4ZValue));
                                     
                                     bool usingStoredZ = corner1Z.HasValue && corner2Z.HasValue && corner3Z.HasValue && corner4Z.HasValue;
-                                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                        $"[{DateTime.Now:HH:mm:ss}]   ✅ Added 4 corners for sleeve {sleeveId}: " +
-                                        $"C1=({corner1X.Value:F6},{corner1Y.Value:F6},{corner1ZValue:F6}), " +
-                                        $"C2=({corner2X.Value:F6},{corner2Y.Value:F6},{corner2ZValue:F6}), " +
-                                        $"C3=({corner3X.Value:F6},{corner3Y.Value:F6},{corner3ZValue:F6}), " +
-                                        $"C4=({corner4X.Value:F6},{corner4Y.Value:F6},{corner4ZValue:F6}) " +
-                                        $"[UsingStoredZ={usingStoredZ}]\n");
+                                    // SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                    //    $"[{DateTime.Now:HH:mm:ss}]   ✅ Added 4 corners for sleeve {sleeveId}: " +
+                                    //    $"C1=({corner1X.Value:F6},{corner1Y.Value:F6},{corner1ZValue:F6}), " +
+                                    //    $"C2=({corner2X.Value:F6},{corner2Y.Value:F6},{corner2ZValue:F6}), " +
+                                    //    $"C3=({corner3X.Value:F6},{corner3Y.Value:F6},{corner3ZValue:F6}), " +
+                                    //    $"C4=({corner4X.Value:F6},{corner4Y.Value:F6},{corner4ZValue:F6}) " +
+                                    //    $"[UsingStoredZ={usingStoredZ}]\n");
                                 }
                             }
                         }
                         
                         if (allCorners.Count >= 4)
                         {
-                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                $"[{DateTime.Now:HH:mm:ss}] 🔧 Starting corner-based calculation with {allCorners.Count} corners, rotation={rotationAngle * 180 / Math.PI:F1}°, isWallOrFraming={isWallOrFraming}\n");
+                            // SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                            //    $"[{DateTime.Now:HH:mm:ss}] 🔧 Starting corner-based calculation with {allCorners.Count} corners, rotation={rotationAngle * 180 / Math.PI:F1}°, isWallOrFraming={isWallOrFraming}\n");
                             
                             double cornerWidth = 0, cornerHeight = 0, cornerDepth = 0; // Initialize to avoid unassigned variable error
                             double rotatedMinX = 0, rotatedMinY = 0, rotatedMaxX = 0, rotatedMaxY = 0;
@@ -984,11 +1002,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                         rotatedMaxY = wcsMaxY;
                                     }
                                     
-                                     SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                         $"[{DateTime.Now:HH:mm:ss}]   ✅ STRAIGHT AXIS WALL: Using world-space corners directly (no RCS, no rotation). " +
-                                         $"WallType={(isYWall ? "Y-wall" : "X-wall")}, " +
-                                         $"minX={wcsMinX:F6}, maxX={wcsMaxX:F6}, minY={wcsMinY:F6}, maxY={wcsMaxY:F6}, " +
-                                         $"Width={cornerWidth:F6}\n");
+                                     // SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                     //     $"[{DateTime.Now:HH:mm:ss}]   ✅ STRAIGHT AXIS WALL: Using world-space corners directly (no RCS, no rotation). " +
+                                     //     $"WallType={(isYWall ? "Y-wall" : "X-wall")}, " +
+                                     //     $"minX={wcsMinX:F6}, maxX={wcsMaxX:F6}, minY={wcsMinY:F6}, maxY={wcsMaxY:F6}, " +
+                                     //     $"Width={cornerWidth:F6}\n");
 
                                      // ✅ OPTIONAL FIX: Update placement point to be the geometric center of the bounds
                                      if (OptimizationFlags.UseGeometricCenterForWalls)
@@ -1003,8 +1021,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                          
                                          placementPoint = new XYZ(midX, midY, midZ);
 
-                                         SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                             $"[{DateTime.Now:HH:mm:ss}]   ✅ STRAIGHT WALL CENTER: [FLAG ENABLED] Shifted from Centroid to Geometric Center: ({placementPoint.X:F4}, {placementPoint.Y:F4}, {placementPoint.Z:F4})\n");
+                                         // SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                         //    $"[{DateTime.Now:HH:mm:ss}]   ✅ STRAIGHT WALL CENTER: [FLAG ENABLED] Shifted from Centroid to Geometric Center: ({placementPoint.X:F4}, {placementPoint.Y:F4}, {placementPoint.Z:F4})\n");
                                      }
                                 }
                                 else
@@ -1086,20 +1104,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                          // Update placementPoint
                                          placementPoint = new XYZ(worldMidX, worldMidY, worldMidZ);
 
-                                         SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                             $"[{DateTime.Now:HH:mm:ss}]   ✅ ROTATED WALL CENTER: [FLAG ENABLED] Shifted from Centroid to Geometric Center: ({placementPoint.X:F4}, {placementPoint.Y:F4}, {placementPoint.Z:F4}). MidRot=({midRotX:F4},{midRotY:F4})\n");
+                                         // SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                         //    $"[{DateTime.Now:HH:mm:ss}]   ✅ ROTATED WALL CENTER: [FLAG ENABLED] Shifted from Centroid to Geometric Center: ({placementPoint.X:F4}, {placementPoint.Y:F4}, {placementPoint.Z:F4}). MidRot=({midRotX:F4},{midRotY:F4})\n");
                                      }
                                      else
                                      {
-                                         SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                             $"[{DateTime.Now:HH:mm:ss}]   ⚠️ ROTATED WALL CENTER: [FLAG DISABLED] Staying at Centroid: ({placementPoint.X:F4}, {placementPoint.Y:F4})\n");
+                                         // SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                         //    $"[{DateTime.Now:HH:mm:ss}]   ⚠️ ROTATED WALL CENTER: [FLAG DISABLED] Staying at Centroid: ({placementPoint.X:F4}, {placementPoint.Y:F4})\n");
                                      }
                                     
-                                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                        $"[{DateTime.Now:HH:mm:ss}]   ✅ ROTATED AXIS WALL: Transformed {transformedCorners.Count} corners to cluster's rotated coordinate system. " +
-                                        $"Rotation={rotationAngle * 180 / Math.PI:F1}°, WallType={(isYWall ? "Y-wall" : "X-wall")}, " +
-                                        $"minRotX={minRotX:F6}, maxRotX={maxRotX:F6}, minRotY={minRotY:F6}, maxRotY={maxRotY:F6}, " +
-                                        $"Width={cornerWidth:F6} (from {(isYWall ? "X" : "Y")} range in rotated space)\n");
+                                    // SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                    //    $"[{DateTime.Now:HH:mm:ss}]   ✅ ROTATED AXIS WALL: Transformed {transformedCorners.Count} corners to cluster's rotated coordinate system. " +
+                                    //    $"Rotation={rotationAngle * 180 / Math.PI:F1}°, WallType={(isYWall ? "Y-wall" : "X-wall")}, " +
+                                    //    $"minRotX={minRotX:F6}, maxRotX={maxRotX:F6}, minRotY={minRotY:F6}, maxRotY={maxRotY:F6}, " +
+                                    //    $"Width={cornerWidth:F6} (from {(isYWall ? "X" : "Y")} range in rotated space)\n");
                                 }
                                 } // End of injected 'else' (Rectangular Wall)
                             }
@@ -1239,8 +1257,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                                      mixedFloorZ = z;
                                                       if (!DeploymentConfiguration.DeploymentMode)
                                                      {
-                                                         SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                                             $"[{DateTime.Now:HH:mm:ss}]   ✅ MIXED FLOOR Z-FIX: Using Constituent Z (Pitch Z). Z={mixedFloorZ:F6}\n");
+                                                         // SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                                         //    $"[{DateTime.Now:HH:mm:ss}]   ✅ MIXED FLOOR Z-FIX: Using Constituent Z (Pitch Z). Z={mixedFloorZ:F6}\n");
                                                      }
                                                  }
                                              }
@@ -1318,8 +1336,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                          double midX = (wcsMinX + wcsMaxX) / 2.0;
                                          double midY = (wcsMinY + wcsMaxY) / 2.0;
                                          
-                                         SafeFileLogger.SafeAppendText("cluster_sizing.log", 
-                                             $"    🧮 MATH (STRAIGHT FLOOR): X=[{wcsMinX:F4} to {wcsMaxX:F4}] -> MidX={midX:F4}, Y=[{wcsMinY:F4} to {wcsMaxY:F4}] -> MidY={midY:F4}\n");
+                                         // SafeFileLogger.SafeAppendText("cluster_sizing.log", 
+                                         //    $"    🧮 MATH (STRAIGHT FLOOR): X=[{wcsMinX:F4} to {wcsMaxX:F4}] -> MidX={midX:F4}, Y=[{wcsMinY:F4} to {wcsMaxY:F4}] -> MidY={midY:F4}\n");
                                         
                                         // ✅ CRITICAL RE-VERIFICATION: Floor Cluster Z-Position Fix (Half-In/Half-Out)
                                         // User Requirement: "rotated cluster should be pitch z coordinates for floor same as its constiuents... just get any constiuent sleeve and use the z coordinate"
@@ -1412,13 +1430,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                         rotatedMinY = wcsMinY;
                                         rotatedMaxY = wcsMaxY;
                                         
-                                        SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                            $"[{DateTime.Now:HH:mm:ss}]   ✅ STRAIGHT AXIS FLOOR: X/Y from corner extents midpoints, Z from first sleeve. " +
-                                            $"PlacementPoint=({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6}), " +
-                                            $"X: mid={midX:F6} (min={wcsMinX:F6}, max={wcsMaxX:F6}), " +
-                                            $"Y: mid={midY:F6} (min={wcsMinY:F6}, max={wcsMaxY:F6}), " +
-                                            $"Z: from first sleeve={placementZ:F6}, " +
-                                            $"Width={cornerWidth:F6}, Height={cornerHeight:F6}, allCorners.Count={allCorners.Count}\n");
+                                        // SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                        //    $"[{DateTime.Now:HH:mm:ss}]   ✅ STRAIGHT AXIS FLOOR: X/Y from corner extents midpoints, Z from first sleeve. " +
+                                        //    $"PlacementPoint=({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6}), " +
+                                        //    $"X: mid={midX:F6} (min={wcsMinX:F6}, max={wcsMaxX:F6}), " +
+                                        //    $"Y: mid={midY:F6} (min={wcsMinY:F6}, max={wcsMaxY:F6}), " +
+                                        //    $"Z: from first sleeve={placementZ:F6}, " +
+                                        //    $"Width={cornerWidth:F6}, Height={cornerHeight:F6}, allCorners.Count={allCorners.Count}\n");
                                     }
                                     else
                                     {
@@ -1498,8 +1516,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                                 placementZ = z;
                                                 if (!DeploymentConfiguration.DeploymentMode)
                                                 {
-                                                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                                        $"[{DateTime.Now:HH:mm:ss}]   ✅ ROTATED FLOOR Z-FIX: Using Constituent Z (Pitch Z). Z={placementZ:F6}\n");
+                                                    // SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                                    //    $"[{DateTime.Now:HH:mm:ss}]   ✅ ROTATED FLOOR Z-FIX: Using Constituent Z (Pitch Z). Z={placementZ:F6}\n");
                                                 }
                                             }
                                         }
@@ -1605,8 +1623,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                             double heightMm = cornerHeight * 304.8;
                             double depthMm = cornerDepth * 304.8;
                             
-                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                $"[{DateTime.Now:HH:mm:ss}] ✅ CORNER-BASED SUCCESS (ROUNDED): W={widthMm:F1}mm, H={heightMm:F1}mm, D={depthMm:F1}mm (from {allCorners.Count} corners)\n");
+                            // SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                            //    $"[{DateTime.Now:HH:mm:ss}] ✅ CORNER-BASED SUCCESS (ROUNDED): W={widthMm:F1}mm, H={heightMm:F1}mm, D={depthMm:F1}mm (from {allCorners.Count} corners)\n");
                             
                             // ✅ Calculate rotated bounding box extents in world coordinates
                             // For straight axis floors: bounds are already in world space (no need to add origin)
@@ -1812,8 +1830,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                                             double wMm = RevitUnitConversionService.Instance.FromInternalMillimeters(rcsWidth);
                                             double hMm = RevitUnitConversionService.Instance.FromInternalMillimeters(rcsHeight);
                                             double dMm = RevitUnitConversionService.Instance.FromInternalMillimeters(rcsDepth);
-                                            SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                                                $"[{DateTime.Now:HH:mm:ss}] ✅ RCS TRANSFORM: Converted WCS to RCS for wall cluster: W={wMm:F1}mm, H={hMm:F1}mm, D={dMm:F1}mm, PlacementPoint=({placementPoint.X:F1}, {placementPoint.Y:F1}, {placementPoint.Z:F1})\n");
+                                            // SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                                            //    $"[{DateTime.Now:HH:mm:ss}] ✅ RCS TRANSFORM: Converted WCS to RCS for wall cluster: W={wMm:F1}mm, H={hMm:F1}mm, D={dMm:F1}mm, PlacementPoint=({placementPoint.X:F1}, {placementPoint.Y:F1}, {placementPoint.Z:F1})\n");
                                         }
                                         
                                         // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
@@ -2112,8 +2130,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     double hfMm = RevitUnitConversionService.Instance.FromInternalMillimeters(hf);
                     double dfMm = RevitUnitConversionService.Instance.FromInternalMillimeters(df);
                     
-                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                        $"[{DateTime.Now:HH:mm:ss}] ✅ FALLBACK (axis-aligned from DB): W={wfMm:F1}mm, H={hfMm:F1}mm, D={dfMm:F1}mm ({dbBboxes.Count} sleeves from database, isFloor={isFloorClusterProcessing})\n");
+                    // SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                    //    $"[{DateTime.Now:HH:mm:ss}] ✅ FALLBACK (axis-aligned from DB): W={wfMm:F1}mm, H={hfMm:F1}mm, D={dfMm:F1}mm ({dbBboxes.Count} sleeves from database, isFloor={isFloorClusterProcessing})\n");
                     
                     return (wf,hf,df,finalPlacementPoint,null,null,null,null,null,null);
                 }
@@ -2227,8 +2245,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                     double reconHeightMm = RevitUnitConversionService.Instance.FromInternalMillimeters(reconHeight);
                     double reconDepthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(reconDepth);
                     
-                    SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                        $"[{DateTime.Now:HH:mm:ss}] ✅ ROTATED-AXIS (reconstructed from WCS): W={reconWidthMm:F1}mm, H={reconHeightMm:F1}mm, D={reconDepthMm:F1}mm, Rotation={rotationAngle * 180 / Math.PI:F1}°\n");
+                    // SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                    //    $"[{DateTime.Now:HH:mm:ss}] ✅ ROTATED-AXIS (reconstructed from WCS): W={reconWidthMm:F1}mm, H={reconHeightMm:F1}mm, D={reconDepthMm:F1}mm, Rotation={rotationAngle * 180 / Math.PI:F1}°\n");
                     
                     // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
                     var reconResult = (reconWidth, reconHeight, reconDepth, placementPoint, reconMinX, reconMinY, reconMinZ, reconMaxX, reconMaxY, reconMaxZ);
@@ -2258,8 +2276,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation
                 double unionHeightMm = RevitUnitConversionService.Instance.FromInternalMillimeters(height);
                 double unionDepthMm = RevitUnitConversionService.Instance.FromInternalMillimeters(depth);
                 
-                SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ UNION (fallback - rotated bboxes): W={unionWidthMm:F1}mm, H={unionHeightMm:F1}mm, D={unionDepthMm:F1}mm, Rotation={rotationAngle * 180 / Math.PI:F1}°\n");
+                // SafeFileLogger.SafeAppendText("cluster_sizing.log",
+                //    $"[{DateTime.Now:HH:mm:ss}] ⚠️ UNION (fallback - rotated bboxes): W={unionWidthMm:F1}mm, H={unionHeightMm:F1}mm, D={unionDepthMm:F1}mm, Rotation={rotationAngle * 180 / Math.PI:F1}°\n");
             
             // ✅ FIX: Use intersection point centroid for placement, not bounding box midpoint
             var result = (width,height,depth,placementPoint,minX,minY,minZ,maxX,maxY,maxZ);

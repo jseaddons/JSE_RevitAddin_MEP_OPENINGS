@@ -1240,6 +1240,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
             // NOTE: IsCombinedResolved is NOT needed here - only in ClashZones
             // But CombinedClusterSleeveInstanceId IS needed for parameter transfer lookup
             AddColumnIfMissing("ClusterSleeves", "CombinedClusterSleeveInstanceId", "INTEGER DEFAULT -1", transaction);
+
+            // ✅ PERSISTENCE FIX: Add BoundingBox columns to Legacy Table
+            // Required for Stage 2 Cleanup which queries these columns
+            AddColumnIfMissing("ClusterSleeves", "BoundingBoxMinX", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves", "BoundingBoxMinY", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves", "BoundingBoxMinZ", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves", "BoundingBoxMaxX", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves", "BoundingBoxMaxY", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves", "BoundingBoxMaxZ", "REAL DEFAULT 0.0", transaction);
         }
 
         /// <summary>
@@ -1674,6 +1683,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
             AddColumnIfMissing("ClusterSleeves_v2", "MepServiceTypes", "TEXT", transaction);
             AddColumnIfMissing("ClusterSleeves_v2", "MepElementIds", "TEXT", transaction);
             AddColumnIfMissing("ClusterSleeves_v2", "IsRotated", "INTEGER DEFAULT 0", transaction);
+
+            // ✅ BOUNDING BOXES: Add bounding box columns for Stage 2 Cleanup
+            AddColumnIfMissing("ClusterSleeves_v2", "BoundingBoxMinX", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "BoundingBoxMinY", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "BoundingBoxMinZ", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "BoundingBoxMaxX", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "BoundingBoxMaxY", "REAL DEFAULT 0.0", transaction);
+            AddColumnIfMissing("ClusterSleeves_v2", "BoundingBoxMaxZ", "REAL DEFAULT 0.0", transaction);
             
             // ✅ CORNERS: Add all corner columns
             AddColumnIfMissing("ClusterSleeves_v2", "Corner1X", "REAL DEFAULT 0.0", transaction);

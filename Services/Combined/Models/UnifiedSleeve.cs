@@ -158,6 +158,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
                 new XYZ(clashZone.SleeveCorner3X ?? 0.0, clashZone.SleeveCorner3Y ?? 0.0, clashZone.SleeveCorner3Z ?? 0.0),
                 new XYZ(clashZone.SleeveCorner4X ?? 0.0, clashZone.SleeveCorner4Y ?? 0.0, clashZone.SleeveCorner4Z ?? 0.0)
             };
+
+            // ✅ FIX: Extrude Corners for Floor Sleeves (Flat Z) to ensure ProximityGroup has 3D volume
+            // Without this, rangeZ is 0, leading to Depth=0 for combined floor sleeves.
+            if (string.Equals(clashZone.StructuralElementType, "Floor", StringComparison.OrdinalIgnoreCase))
+            {
+                double minZ = corners.Min(c => c.Z);
+                double maxZ = corners.Max(c => c.Z);
+                
+                if (Math.Abs(maxZ - minZ) < 0.001)
+                {
+                     double height = clashZone.SleeveHeight > 0 ? clashZone.SleeveHeight : 
+                                    (clashZone.SleeveDiameter > 0 ? clashZone.SleeveDiameter : 1.0);
+                     
+                     // Add 4 extruded corners (Top Face)
+                     var topCorners = corners.Select(c => new XYZ(c.X, c.Y, c.Z + height)).ToList();
+                     corners.AddRange(topCorners);
+                }
+            }
             
             var bbox = new BoundingBoxXYZ();
             
@@ -176,6 +194,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
                     clashZone.SleeveBoundingBoxMaxX, 
                     clashZone.SleeveBoundingBoxMaxY, 
                     clashZone.SleeveBoundingBoxMaxZ);
+
+                // ✅ CRITICAL FIX: Inflate flat BBox (e.g. Floor Sleeves) even if "Valid" in X/Y
+                if (Math.Abs(bbox.Max.Z - bbox.Min.Z) < 0.001)
+                {
+                    double height = clashZone.SleeveHeight > 0 ? clashZone.SleeveHeight : 
+                                   (clashZone.SleeveDiameter > 0 ? clashZone.SleeveDiameter : 1.0);
+                    
+                    // Inflate MaxZ
+                    bbox.Max = new XYZ(bbox.Max.X, bbox.Max.Y, bbox.Max.Z + height);
+                }
             }
             else
             {
@@ -227,8 +255,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
                 new XYZ(clusterSleeve.Corner1X, clusterSleeve.Corner1Y, clusterSleeve.Corner1Z),
                 new XYZ(clusterSleeve.Corner2X, clusterSleeve.Corner2Y, clusterSleeve.Corner2Z),
                 new XYZ(clusterSleeve.Corner3X, clusterSleeve.Corner3Y, clusterSleeve.Corner3Z),
+                new XYZ(clusterSleeve.Corner3X, clusterSleeve.Corner3Y, clusterSleeve.Corner3Z),
                 new XYZ(clusterSleeve.Corner4X, clusterSleeve.Corner4Y, clusterSleeve.Corner4Z)
             };
+
+            // ✅ FIX: Extrude Corners for Floor Clusters (Flat Z)
+            if (string.Equals(clusterSleeve.HostType, "Floor", StringComparison.OrdinalIgnoreCase))
+            {
+                double minZ = corners.Min(c => c.Z);
+                double maxZ = corners.Max(c => c.Z);
+
+                if (Math.Abs(maxZ - minZ) < 0.001)
+                {
+                     double height = clusterSleeve.ClusterDepth > 0 ? clusterSleeve.ClusterDepth : 
+                                    (clusterSleeve.ClusterHeight > 0 ? clusterSleeve.ClusterHeight : 1.0);
+                     
+                     var topCorners = corners.Select(c => new XYZ(c.X, c.Y, c.Z + height)).ToList();
+                     corners.AddRange(topCorners);
+                }
+            }
             
             // ✅ IMPROVED LOGIC: Respect "High Quality" stored BBox if it has volume
             double dbMinZ = clusterSleeve.BoundingBoxMinZ;
@@ -280,6 +325,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
                 PlacementPoint = placementPoint,
                 Corners = corners,
                 HostOrientation = clusterSleeve.HostOrientation,
+                HostType = clusterSleeve.HostType, // ✅ FIX: Map HostType
                 RotationAngleDeg = clusterSleeve.RotationAngleDeg,
                 SourceData = clusterSleeve
             };
@@ -302,8 +348,23 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
                 new XYZ(clusterSleeve.Corner1X ?? 0.0, clusterSleeve.Corner1Y ?? 0.0, clusterSleeve.Corner1Z ?? 0.0),
                 new XYZ(clusterSleeve.Corner2X ?? 0.0, clusterSleeve.Corner2Y ?? 0.0, clusterSleeve.Corner2Z ?? 0.0),
                 new XYZ(clusterSleeve.Corner3X ?? 0.0, clusterSleeve.Corner3Y ?? 0.0, clusterSleeve.Corner3Z ?? 0.0),
+                new XYZ(clusterSleeve.Corner3X ?? 0.0, clusterSleeve.Corner3Y ?? 0.0, clusterSleeve.Corner3Z ?? 0.0),
                 new XYZ(clusterSleeve.Corner4X ?? 0.0, clusterSleeve.Corner4Y ?? 0.0, clusterSleeve.Corner4Z ?? 0.0)
             };
+
+            // ✅ FIX: Extrude Corners for Floor Clusters (Flat Z)
+            if (string.Equals(clusterSleeve.HostType, "Floor", StringComparison.OrdinalIgnoreCase))
+            {
+                double localMinZ = corners.Min(c => c.Z);
+                double localMaxZ = corners.Max(c => c.Z);
+
+                if (Math.Abs(localMaxZ - localMinZ) < 0.001)
+                {
+                     double height = 1.0; // Default if not available
+                     var topCorners = corners.Select(c => new XYZ(c.X, c.Y, c.Z + height)).ToList();
+                     corners.AddRange(topCorners);
+                }
+            }
             
             // Model doesn't store BBox explicitly.
             // So we must derive BBox from Corners.

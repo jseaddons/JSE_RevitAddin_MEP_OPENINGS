@@ -186,12 +186,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Mo
             }
 
             // ✅ FIX: Accept both individual sleeves AND cluster sleeves for Combined Sleeve discovery
-            // Individual sleeves: SleeveInstanceId > 0 (placed but not clustered)
-            // Cluster sleeves: IsClusterResolved && ClusterSleeveInstanceId > 0
+            // Also accept unplaced zones (SleeveInstanceId = -1) for candidate discovery
             bool isIndividualSleeve = zone.SleeveInstanceId > 0;
             bool isClusterSleeve = zone.IsClusterResolved && zone.ClusterSleeveInstanceId > 0;
+            bool isUnplacedCandidate = zone.SleeveInstanceId == -1 && !string.IsNullOrEmpty(zone.ClashZoneGuid);
             
-            if (!isIndividualSleeve && !isClusterSleeve)
+            if (!isIndividualSleeve && !isClusterSleeve && !isUnplacedCandidate)
             {
                 return null;
             }

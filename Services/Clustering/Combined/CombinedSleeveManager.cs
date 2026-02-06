@@ -132,7 +132,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined
 
                     var combinedSleeveRepository = new CombinedSleeveRepository(dbContext); // ✅ Created repository
                     var paramAggregator = new ParameterAggregatorService();
-                    var persistenceService = new CombinedClusterPersistenceService(clashZoneRepository, combinedSleeveRepository); // ✅ Passed to constructor
+                    var persistenceService = new CombinedClusterPersistenceService(clashZoneRepository, combinedSleeveRepository, _document); // ✅ Added _document
 
                     using (var tx = new Transaction(_document, "Create Combined Sleeves"))
                     {

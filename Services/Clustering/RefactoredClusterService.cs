@@ -266,6 +266,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         }
 
         /// <summary>
+        /// ✅ PHASE 1: PURE CALCULATION (Parallel Safe)
+        /// Runs only calculation logic, returns results in memory.
+        /// </summary>
+        public List<BatchClusterCalculationResult> ClusterSleevesCalculateOnly(
+            Document doc,
+            List<ClashZone> clashZones,
+            string targetCategory,
+            int comboId,
+            int filterId)
+        {
+            try
+            {
+                 // Load Cache (Critical for calculations)
+                 _dataService.LoadClashZoneCacheFromLoadedClashZones(clashZones, targetCategory);
+                 
+                 // Run Calculation Only
+                 return _batchCalculationService.CalculateOnly(clashZones, targetCategory, comboId, filterId, doc);
+            }
+            catch (Exception ex)
+            {
+                SafeFileLogger.SafeAppendText("batch_v2_errors.log", $"[{DateTime.Now:HH:mm:ss}] ❌ ORCHESTRATOR CALC ERROR: {ex.Message}\n");
+                return new List<BatchClusterCalculationResult>();
+            }
+        }
+
+        /// <summary>
+        /// ✅ PHASE 2: BATCH SAVE (Single Transaction)
+        /// Saves calculated results to DB.
+        /// </summary>
+        public void ClusterSleevesBatchSave(IEnumerable<BatchClusterCalculationResult> results)
+        {
+             _batchCalculationService.BatchSave(results);
+        }
+
+        /// <summary>
+        /// ✅ PHASE 3: FLAG UPDATE
+        /// Updates flags for clustered zones.
+        /// </summary>
+        public void ClusterSleevesBatchUpdateFlags(IEnumerable<BatchClusterCalculationResult> results)
+        {
+             _batchCalculationService.BatchUpdateFlags(results);
+        }
+
+        /// <summary>
         /// Main entry point: Cluster sleeves for a specific category.
         /// Clean orchestration of all Phase 1-10 services.
         /// </summary>

@@ -180,7 +180,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
                 // Depth -> Range Z (Thickness)
                 calculatedWidth = rangeU;
                 calculatedHeight = rangeV; 
-                calculatedDepth = rangeZ;
+                calculatedDepth = dbThickness ?? rangeZ;
             }
             else
             {

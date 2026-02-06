@@ -252,6 +252,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
             var width = result.width;
             var height = result.height;
             var depth = result.depth;
+
+            // ✅ FIX: Ensure minimum depth for visibility/validity
+            // User reported "Extrusion is too thin" errors. Enforcing default ~100mm if too small.
+            double minDepth = 0.35; // ~106mm
+            if (depth < 0.05) // < 15mm (treat as zero/invalid)
+            {
+                 _logger($"[CombinedSleevePlacement] ⚠️ Depth too thin ({depth:F3} ft). Enforcing minimum depth of {minDepth:F2} ft (~106mm) for visibility.");
+                 depth = minDepth;
+            }
             var rotation = group.CalculateCombinedRotation();
             var placementPoint = group.CalculateCombinedPlacementPoint();
             
@@ -428,49 +437,53 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                         
                         // ✅ BOTTOM OF OPENING: Calculate and set "Bottom of Opening" AFTER Schedule Level is set
                         // Formula: Bottom of Opening = Elevation from Level - (Height / 2)
-                        try
+                        // Only for WALL families (not slabs/floors)
+                        if (familyName.IndexOf("Wall", StringComparison.OrdinalIgnoreCase) >= 0)
                         {
-                            // Step 1: Read "Elevation from Level" from parameter (Revit calculates this after Schedule Level is set)
-                            var elevationParam = placedInstance.LookupParameter("Elevation from Level");
-                            double? elevationFromLevel = null;
-                            
-                            if (elevationParam != null && elevationParam.StorageType == StorageType.Double)
+                            try
                             {
-                                elevationFromLevel = elevationParam.AsDouble();
-                            }
-                            
-                            if (elevationFromLevel.HasValue)
-                            {
-                                // Step 2: Calculate Bottom of Opening = Elevation from Level - (Height / 2)
-                                double bottomOfOpening = elevationFromLevel.Value - (height / 2.0);
+                                // Step 1: Read "Elevation from Level" from parameter (Revit calculates this after Schedule Level is set)
+                                var elevationParam = placedInstance.LookupParameter("Elevation from Level");
+                                double? elevationFromLevel = null;
                                 
-                                // Step 3: Set "Bottom of Opening" parameter (try multiple variations)
-                                var bottomParam = placedInstance.LookupParameter("Bottom Of Opening")
-                                               ?? placedInstance.LookupParameter("Bottom of Opening")
-                                               ?? placedInstance.LookupParameter("BottomOfOpening")
-                                               ?? placedInstance.Symbol?.LookupParameter("Bottom Of Opening")
-                                               ?? placedInstance.Symbol?.LookupParameter("Bottom of Opening")
-                                               ?? placedInstance.Symbol?.LookupParameter("BottomOfOpening");
-                                
-                                if (bottomParam != null && !bottomParam.IsReadOnly)
+                                if (elevationParam != null && elevationParam.StorageType == StorageType.Double)
                                 {
-                                    bottomParam.Set(bottomOfOpening);
-                                    _logger($"[CombinedSleevePlacement] ✅ Set Bottom of Opening = {bottomOfOpening * 304.8:F1}mm " +
-                                           $"(Elevation from Level = {elevationFromLevel.Value * 304.8:F1}mm, Height = {height * 304.8:F1}mm)");
+                                    elevationFromLevel = elevationParam.AsDouble();
+                                }
+                                
+                                if (elevationFromLevel.HasValue)
+                                {
+                                    // Step 2: Calculate Bottom of Opening = Elevation from Level - (Height / 2)
+                                    double bottomOfOpening = elevationFromLevel.Value - (height / 2.0);
+                                    
+                                    // Step 3: Set "Bottom of Opening" parameter (try multiple variations)
+                                    var bottomParam = placedInstance.LookupParameter("Bottom Of Opening")
+                                                   ?? placedInstance.LookupParameter("Bottom of Opening")
+                                                   ?? placedInstance.LookupParameter("BottomOfOpening")
+                                                   ?? placedInstance.Symbol?.LookupParameter("Bottom Of Opening")
+                                                   ?? placedInstance.Symbol?.LookupParameter("Bottom of Opening")
+                                                   ?? placedInstance.Symbol?.LookupParameter("BottomOfOpening");
+                                    
+                                    if (bottomParam != null && !bottomParam.IsReadOnly)
+                                    {
+                                        bottomParam.Set(bottomOfOpening);
+                                        _logger($"[CombinedSleevePlacement] ✅ Set Bottom of Opening = {bottomOfOpening * 304.8:F1}mm " +
+                                               $"(Elevation from Level = {elevationFromLevel.Value * 304.8:F1}mm, Height = {height * 304.8:F1}mm)");
+                                    }
+                                    else
+                                    {
+                                        _logger($"[CombinedSleevePlacement] ⚠️ 'Bottom of Opening' parameter not found or read-only");
+                                    }
                                 }
                                 else
                                 {
-                                    _logger($"[CombinedSleevePlacement] ⚠️ 'Bottom of Opening' parameter not found or read-only");
+                                    _logger($"[CombinedSleevePlacement] ⚠️ 'Elevation from Level' parameter not available - skipping Bottom of Opening calculation");
                                 }
                             }
-                            else
+                            catch (Exception bottomEx)
                             {
-                                _logger($"[CombinedSleevePlacement] ⚠️ 'Elevation from Level' parameter not available - skipping Bottom of Opening calculation");
+                                _logger($"[CombinedSleevePlacement] ⚠️ Error setting Bottom of Opening: {bottomEx.Message}");
                             }
-                        }
-                        catch (Exception bottomEx)
-                        {
-                            _logger($"[CombinedSleevePlacement] ⚠️ Error setting Bottom of Opening: {bottomEx.Message}");
                         }
 
                         // 5. AUTO-JOIN (CRITICAL FIX)
