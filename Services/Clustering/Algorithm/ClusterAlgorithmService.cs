@@ -353,14 +353,27 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
                 return false;
             }
 
-            // ✅ PHASE 10: Optimize Proximity Check
-            // Avoid creating factory/checker objects for simple AABB check if possible
-            double angle1 = cz1.MepElementRotationAngle;
-            bool isRotated = Math.Abs(angle1) > 1e-6 && !IsAxisAlignedAngle(angle1);
 
-            if (!isRotated)
+            // ✅ PHASE 10: Optimize Proximity Check
+            // ✅ CRITICAL FIX: Check if EITHER sleeve is rotated (not just first one!)
+            // If either is rotated, we must use rotated proximity checker
+            double angle1 = cz1.MepElementRotationAngle;
+            double angle2 = cz2.MepElementRotationAngle;
+            bool isRotated1 = Math.Abs(angle1) > 1e-6 && !IsAxisAlignedAngle(angle1);
+            bool isRotated2 = Math.Abs(angle2) > 1e-6 && !IsAxisAlignedAngle(angle2);
+            
+            // 🔍 DIAGNOSTIC: Log rotation check for debugging
+            if (isRotated1 || isRotated2)
             {
-                // Simple AABB Overlap (Phase 10 Fast Path)
+                SafeFileLogger.SafeAppendText("batch_v2.log",
+                    $"[{DateTime.Now:HH:mm:ss}] 🔍 ROTATION CHECK: Zone1={cz1.ClashZoneGuid.Substring(0,8)}, " +
+                    $"Angle1={angle1:F4}, IsRot1={isRotated1}, Zone2={cz2.ClashZoneGuid.Substring(0,8)}, " +
+                    $"Angle2={angle2:F4}, IsRot2={isRotated2}\n");
+            }
+
+            if (!isRotated1 && !isRotated2)  // Both must be straight for AABB fast path
+            {
+                // Simple AABB Overlap (Phase 10 Fast Path) - only for axis-aligned sleeves
                 double minX1 = cz1.SleeveBoundingBoxMinX - toleranceDist;
                 double minY1 = cz1.SleeveBoundingBoxMinY - toleranceDist;
                 double minZ1 = cz1.SleeveBoundingBoxMinZ - toleranceDist;
@@ -382,9 +395,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Algorithm
                 return overlapX && overlapY && overlapZ;
             }
 
-            // Fallback to Rotated Proximity (Existing checker)
-            var checker = ProximityCheckerFactory.CreateChecker(s1.ClashZone, s2.ClashZone, angle1, isRotated);
-            return checker.CheckProximity(s1.ClashZone, s2.ClashZone, toleranceDist);
+            // Fallback to Rotated Proximity (if either sleeve is rotated)
+            // Use the angle from whichever sleeve is rotated (or angle1 if both are)
+            double rotationAngle = isRotated1 ? angle1 : angle2;
+            var checker = ProximityCheckerFactory.CreateChecker(s1.ClashZone, s2.ClashZone, rotationAngle, true);
+            bool result = checker.CheckProximity(s1.ClashZone, s2.ClashZone, toleranceDist);
+            
+            // 🔍 DIAGNOSTIC: Log proximity check result for rotated elements
+            SafeFileLogger.SafeAppendText("batch_v2.log",
+                $"[{DateTime.Now:HH:mm:ss}] 🔍 ROTATED PROXIMITY: Zone1={cz1.ClashZoneGuid.Substring(0,8)}, " +
+                $"Zone2={cz2.ClashZoneGuid.Substring(0,8)}, Angle={rotationAngle:F4}, Result={result}, " +
+                $"Tolerance={toleranceDist:F3}\n");
+            
+            return result;
         }
 
         private static double NormalizeAngleDeg(double deg)

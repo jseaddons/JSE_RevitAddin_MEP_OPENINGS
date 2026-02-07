@@ -461,7 +461,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Enable diagnostic mode for performance monitoring
         /// Default: false (disabled - causes 2.6x slowdown due to logging overhead)
         /// </summary>
-        public static bool UseDiagnosticMode { get; set; } = false; // DISABLED for performance - was causing 2.6x slowdown
+        public static bool UseDiagnosticMode { get; set; } = true; // DISABLED for performance - was causing 2.6x slowdown
         
         /// <summary>
         /// Enable batch clash zone creation (pre-calculate common data once)

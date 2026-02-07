@@ -63,6 +63,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
             // 1. Generate Batch ID
             string batchId = $"{DateTime.Now:yyyyMMdd_HHmmss}_{targetCategory}_{filterId}";
+            
+            // 🔍 DIAGNOSTIC: Log batch ID generation
+            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                $"[{DateTime.Now:HH:mm:ss}] 🔍 CALCULATE ONLY: Generated batchId={batchId} for {clashZones.Count} zones, Category={targetCategory}\n");
 
             var settings = ApplicationProfileService.Instance.GetCurrentSettings();
             double toleranceMM = settings.JoinOpeningsDistance;
@@ -153,7 +157,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         {
              // Delegate to existing private method, but make sure it handles generic IEnumerable
              var bag = new ConcurrentBag<BatchClusterCalculationResult>(results);
-             SaveToDatabase(bag, "BATCH_SAVE"); 
+             
+             // ✅ USE EXISTING BATCH ID: Don't create a new one, use what was set during calculation
+             // The batch ID was already set in CalculateOnly (e.g., "20260206_180119_Cable Trays_0")
+             string batchId = bag.FirstOrDefault()?.ClusterBatchId ?? "UNKNOWN_BATCH";
+             
+             SafeFileLogger.SafeAppendText("batch_v2.log", 
+                 $"[{DateTime.Now:HH:mm:ss}] 📦 BATCH SAVE: Saving {bag.Count} clusters with batchId={batchId}\n");
+             
+             SaveToDatabase(bag, batchId); 
         }
 
         /// <summary>
@@ -325,6 +337,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                     
                                     valueClauses.Add($"({p}guid, {p}batch, {p}x, {p}y, {p}z, {p}w, {p}h, {p}d, {p}rot, {p}host, {p}htype, {p}horient, {p}cat, {p}fam, {p}zones, {p}combo, {p}filter, {p}status, {p}valid)");
                                     
+                                    // 🔍 DIAGNOSTIC: Log what we're about to INSERT (ClusterBatchId = timestamp-style, same for whole batch)
+                                    SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                        $"[{DateTime.Now:HH:mm:ss}] 🔍 SQL INSERT #{k}: ClusterBatchId={r.ClusterBatchId}, GUID={r.ClusterGUID.Substring(0,8)}, " +
+                                        $"Placement=({r.PlacementX:F3},{r.PlacementY:F3},{r.PlacementZ:F3}), " +
+                                        $"Size=({r.ClusterWidth:F3}x{r.ClusterHeight:F3}x{r.ClusterDepth:F3})\n");
+                                    
                                     cmd.Parameters.AddWithValue($"{p}guid", r.ClusterGUID);
                                     cmd.Parameters.AddWithValue($"{p}batch", r.ClusterBatchId);
                                     cmd.Parameters.AddWithValue($"{p}x", r.PlacementX);
@@ -356,22 +374,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                         ClusterWidth, ClusterHeight, ClusterDepth, RotationAngleRad,
                                         HostElementId, HostType, HostOrientation, Category, FamilyName, 
                                         ConstituentZoneGuids, ComboId, FilterId, Status, ValidationStatus
-                                    ) VALUES " + string.Join(",", valueClauses) + @";
-
-                                    -- ✅ STURDY PERSISTENCE: Simultaneously insert into Legacy Table
-                                    -- This guarantees data exists even if placement fails or crashes later
-                                    INSERT OR IGNORE INTO ClusterSleeves (
-                                        ClusterGUID, ClusterBatchId, PlacementX, PlacementY, PlacementZ, 
-                                        ClusterWidth, ClusterHeight, ClusterDepth, RotationAngleRad,
-                                        HostElementId, HostType, HostOrientation, Category, FamilyName, 
-                                        ConstituentZoneGuids, ComboId, FilterId, Status, ValidationStatus
                                     ) VALUES " + string.Join(",", valueClauses) + ";";
 
                                     int rowsAffected = cmd.ExecuteNonQuery();
                                     savedCount += rowsAffected;
                                     
                                     SafeFileLogger.SafeAppendText("batch_sql_debug.log", 
-                                        $"[{DateTime.Now:HH:mm:ss}] ✅ BATCH SQL SUCCESS: Inserted {rowsAffected} rows (Batch of {results.Count}).\n");
+                                        $"[{DateTime.Now:HH:mm:ss}] ✅ BATCH SQL SUCCESS: Inserted {rowsAffected} rows into ClusterSleeves_v2 (Batch of {results.Count}).\n");
                                 }
                                 catch (Exception sqlEx)
                                 {
@@ -451,16 +460,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             double rotationAngle = _rotationService.DetermineRotationAngle(clusterItems);
 
             var bboxResult = _rotationService.CalculateRotatedBoundingBox(clusterItems, null, rotationAngle);
+            
+            // 🔍 DIAGNOSTIC: Log what CalculateRotatedBoundingBox returned
+            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                $"[{DateTime.Now:HH:mm:ss}] 🔍 BBOX CALC RESULT: Zones={zones.Count}, " +
+                $"MinX={bboxResult.rotatedMinX}, MinY={bboxResult.rotatedMinY}, MinZ={bboxResult.rotatedMinZ}, " +
+                $"MaxX={bboxResult.rotatedMaxX}, MaxY={bboxResult.rotatedMaxY}, MaxZ={bboxResult.rotatedMaxZ}, " +
+                $"Width={bboxResult.width}, Height={bboxResult.height}, Depth={bboxResult.depth}\n");
+            
+            // ✅ CRITICAL VALIDATION: Reject clusters with invalid bounding boxes
+            if (bboxResult.rotatedMinX == null || bboxResult.rotatedMinY == null || bboxResult.rotatedMinZ == null ||
+                bboxResult.rotatedMaxX == null || bboxResult.rotatedMaxY == null || bboxResult.rotatedMaxZ == null)
+            {
+                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ❌ BBOX VALIDATION FAILED: Cluster has null bbox values. " +
+                    $"Zones={zones.Count}, Category={first.MepElementCategory}, HostType={first.StructuralElementType}, " +
+                    $"ZoneGuids=[{string.Join(",", zones.Take(3).Select(z => z.ClashZoneGuid))}...]\n");
+                return null; // Skip this cluster - invalid data
+            }
+            
             double depth = first.StructuralElementThickness > 0.001 ? first.StructuralElementThickness : bboxResult.depth;
 
             var placementService = new JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement.ClusterPlacementCalculationService(
                 (id, _) => zones.FirstOrDefault(z => z.SleeveInstanceId == id) ?? zones.FirstOrDefault()
             );
 
-            XYZ bboxMin = new XYZ(bboxResult.rotatedMinX ?? 0, bboxResult.rotatedMinY ?? 0, bboxResult.rotatedMinZ ?? 0);
-            XYZ bboxMax = new XYZ(bboxResult.rotatedMaxX ?? 0, bboxResult.rotatedMaxY ?? 0, bboxResult.rotatedMaxZ ?? 0);
+            XYZ bboxMin = new XYZ(bboxResult.rotatedMinX.Value, bboxResult.rotatedMinY.Value, bboxResult.rotatedMinZ.Value);
+            XYZ bboxMax = new XYZ(bboxResult.rotatedMaxX.Value, bboxResult.rotatedMaxY.Value, bboxResult.rotatedMaxZ.Value);
 
             XYZ placementPoint = placementService.CalculatePlacementPoint(clusterItems, bboxResult.width, bboxResult.height, depth, bboxMin, bboxMax, bboxResult.mid);
+
+            // 🔍 DIAGNOSTIC: Log placement point calculation result
+            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                $"[{DateTime.Now:HH:mm:ss}] 🔍 PLACEMENT CALC: PlacementPoint=({placementPoint.X:F6}, {placementPoint.Y:F6}, {placementPoint.Z:F6}), " +
+                $"Width={bboxResult.width:F3}, Height={bboxResult.height:F3}, Depth={depth:F3}, Rotation={rotationAngle:F3}\n");
 
             if (!IsUniqueLocation(batchId, placementPoint)) return null;
 
@@ -480,6 +513,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
             var bboxResult = _rotationService.CalculateRotatedBoundingBox(clusterItems, null, rotationAngle);
             
+            // 🔍 DIAGNOSTIC: Log what CalculateRotatedBoundingBox returned (WALL/FRAMING)
+            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                $"[{DateTime.Now:HH:mm:ss}] 🔍 BBOX CALC RESULT (WALL): Zones={zones.Count}, " +
+                $"MinX={bboxResult.rotatedMinX}, MinY={bboxResult.rotatedMinY}, MinZ={bboxResult.rotatedMinZ}, " +
+                $"MaxX={bboxResult.rotatedMaxX}, MaxY={bboxResult.rotatedMaxY}, MaxZ={bboxResult.rotatedMaxZ}, " +
+                $"Width={bboxResult.width}, Height={bboxResult.height}, Depth={bboxResult.depth}\n");
+            
+            // ✅ CRITICAL VALIDATION: Reject clusters with invalid bounding boxes
+            if (bboxResult.rotatedMinX == null || bboxResult.rotatedMinY == null || bboxResult.rotatedMinZ == null ||
+                bboxResult.rotatedMaxX == null || bboxResult.rotatedMaxY == null || bboxResult.rotatedMaxZ == null)
+            {
+                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ❌ BBOX VALIDATION FAILED (WALL): Cluster has null bbox values. " +
+                    $"Zones={zones.Count}, Category={first.MepElementCategory}, HostType={first.StructuralElementType}, " +
+                    $"ZoneGuids=[{string.Join(",", zones.Take(3).Select(z => z.ClashZoneGuid))}...]\n");
+                return null; // Skip this cluster - invalid data
+            }
+            
             // Wall/Framing Depth Logic (Authoritative)
             double depth = bboxResult.depth;
             bool isWall = first.StructuralElementType == "Wall" || first.StructuralElementType == "Walls";
@@ -491,8 +542,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 (id, _) => zones.FirstOrDefault(z => z.SleeveInstanceId == id) ?? zones.FirstOrDefault()
             );
 
-            XYZ bboxMin = new XYZ(bboxResult.rotatedMinX ?? 0, bboxResult.rotatedMinY ?? 0, bboxResult.rotatedMinZ ?? 0);
-            XYZ bboxMax = new XYZ(bboxResult.rotatedMaxX ?? 0, bboxResult.rotatedMaxY ?? 0, bboxResult.rotatedMaxZ ?? 0);
+            XYZ bboxMin = new XYZ(bboxResult.rotatedMinX.Value, bboxResult.rotatedMinY.Value, bboxResult.rotatedMinZ.Value);
+            XYZ bboxMax = new XYZ(bboxResult.rotatedMaxX.Value, bboxResult.rotatedMaxY.Value, bboxResult.rotatedMaxZ.Value);
 
             XYZ placementPoint = placementService.CalculatePlacementPoint(clusterItems, bboxResult.width, bboxResult.height, depth, bboxMin, bboxMax, bboxResult.mid);
 
@@ -521,6 +572,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         private BatchClusterCalculationResult CreateResult(List<ClashZone> zones, string batchId, int comboId, int filterId, XYZ pt, double w, double h, double d, double rot)
         {
             var first = zones[0];
+            
+            // 🔍 DIAGNOSTIC: Log what CreateResult receives
+            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                $"[{DateTime.Now:HH:mm:ss}] 🔍 CREATE RESULT: batchId={batchId}, " +
+                $"Placement=({pt.X:F3},{pt.Y:F3},{pt.Z:F3}), Size=({w:F3}x{h:F3}x{d:F3}), " +
+                $"Zones={zones.Count}, Category={first.MepElementCategory}\n");
+            
             return new BatchClusterCalculationResult
             {
                 ClusterGUID = Guid.NewGuid().ToString(),

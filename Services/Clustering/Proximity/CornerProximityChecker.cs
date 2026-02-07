@@ -21,11 +21,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
         {
             try
             {
-                if (sleeve1?.ClashZone == null || sleeve2?.ClashZone == null)
-                    return false;
+                // ✅ CRASH-SAFE: Handled both wrapper objects (ClashZoneWorkItem) and direct ClashZone objects
+                ClashZone cz1 = null;
+                ClashZone cz2 = null;
 
-                ClashZone cz1 = sleeve1.ClashZone as ClashZone;
-                ClashZone cz2 = sleeve2.ClashZone as ClashZone;
+                // Try to get ClashZone from sleeve1
+                if (sleeve1 is ClashZone c1) cz1 = c1;
+                else if (sleeve1 != null) { try { cz1 = sleeve1.ClashZone as ClashZone; } catch { } }
+
+                // Try to get ClashZone from sleeve2
+                if (sleeve2 is ClashZone c2) cz2 = c2;
+                else if (sleeve2 != null) { try { cz2 = sleeve2.ClashZone as ClashZone; } catch { } }
 
                 if (cz1 == null || cz2 == null)
                     return false;
@@ -46,11 +52,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
         {
             try
             {
-                if (sleeve1?.ClashZone == null || sleeve2?.ClashZone == null)
-                    return null;
+                // ✅ CRASH-SAFE: Handled both wrapper objects (ClashZoneWorkItem) and direct ClashZone objects
+                ClashZone cz1 = null;
+                ClashZone cz2 = null;
 
-                ClashZone cz1 = sleeve1.ClashZone as ClashZone;
-                ClashZone cz2 = sleeve2.ClashZone as ClashZone;
+                // Try to get ClashZone from sleeve1
+                if (sleeve1 is ClashZone c1) cz1 = c1;
+                else if (sleeve1 != null) { try { cz1 = sleeve1.ClashZone as ClashZone; } catch { } }
+
+                // Try to get ClashZone from sleeve2
+                if (sleeve2 is ClashZone c2) cz2 = c2;
+                else if (sleeve2 != null) { try { cz2 = sleeve2.ClashZone as ClashZone; } catch { } }
 
                 if (cz1 == null || cz2 == null)
                     return null;

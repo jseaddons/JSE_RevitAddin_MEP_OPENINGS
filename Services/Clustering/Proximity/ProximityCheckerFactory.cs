@@ -32,35 +32,66 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                 }
 
                 // ✅ Based on SLEEVE SHAPE only (opening in wall/floor), not MEP element shape.
+                // ✅ CRASH-SAFE: Handle both wrapper objects (ClashZoneWorkItem) and direct ClashZone objects
                 var helper = new SleeveCornerProximityHelper();
-                var cz1 = sleeve1.ClashZone as Models.ClashZone;
-                var cz2 = sleeve2.ClashZone as Models.ClashZone;
+                Models.ClashZone cz1 = null;
+                Models.ClashZone cz2 = null;
 
-                // DECISION 1: Both sleeves have rectangular opening (corner geometry) → corner-based proximity
+                // Try to get ClashZone from sleeve1
+                if (sleeve1 is Models.ClashZone c1)
+                {
+                    cz1 = c1;
+                }
+                else if (sleeve1 != null)
+                {
+                    try { cz1 = sleeve1.ClashZone as Models.ClashZone; } catch { }
+                }
+
+                // Try to get ClashZone from sleeve2
+                if (sleeve2 is Models.ClashZone c2)
+                {
+                    cz2 = c2;
+                }
+                else if (sleeve2 != null)
+                {
+                    try { cz2 = sleeve2.ClashZone as Models.ClashZone; } catch { }
+                }
+
+                // ==========================================================================================
+                // 🛑 CRITICAL / DO NOT MOVE: ROTATION CHECK MUST BE FIRST! 🛑
+                // ==========================================================================================
+                // Reason: Rotated sleeves (especially on FLOORS like Cable Trays) are often "Rectangular".
+                // If we check for Rectangular shape first (Decision 2), they will be routed to 
+                // 'CornerProximityChecker', which assumes AXIS-ALIGNED geometry.
+                // This causes rotated elements to fail clustering or crash.
+                //
+                // ALWAYS check for rotation (isRotated) before checking shape (Rectangular/Circular).
+                // This ensures the specialized 'RotatedProximityChecker' is used, which handles
+                // the rotation matrix and true dimensions (not inflated bounding boxes).
+                // ==========================================================================================
+                if (isRotated && Math.Abs(rotationAngle) > 1e-6)
+                {
+                    return new RotatedProximityChecker(rotationAngle);
+                }
+
+                // DECISION 2: Both sleeves have rectangular opening (corner geometry) → corner-based proximity
                 if (cz1 != null && cz2 != null && helper.HasRectangularSleeveShape(cz1) && helper.HasRectangularSleeveShape(cz2))
                 {
                     return new CornerProximityChecker();
                 }
 
-                // DECISION 2: Both sleeves have circular opening (diameter, no corners) → edge-to-edge
+                // DECISION 3: Both sleeves have circular opening (diameter, no corners) → edge-to-edge
                 if (cz1 != null && cz2 != null && helper.HasCircularSleeveShape(cz1) && helper.HasCircularSleeveShape(cz2))
                 {
                     return new EdgeToEdgeProximityChecker();
                 }
 
-                // ✅ DECISION 3: Mixed types (one rectangular, one circular) → use BoundingBoxProximityChecker (User Request)
+                // ✅ DECISION 4: Mixed types (one rectangular, one circular) → use BoundingBoxProximityChecker (User Request)
                 if (cz1 != null && cz2 != null && 
                     ((helper.HasRectangularSleeveShape(cz1) && helper.HasCircularSleeveShape(cz2)) ||
                      (helper.HasCircularSleeveShape(cz1) && helper.HasRectangularSleeveShape(cz2))))
                 {
                     return new BoundingBoxProximityChecker();
-                }
-
-                // ✅ DECISION 4: Check for rotated sleeves → use rotated proximity checker
-                if (isRotated && Math.Abs(rotationAngle) > 1e-6)
-                {
-                    // Rotated sleeves: Use rotated proximity checker with rotation angle
-                    return new RotatedProximityChecker(rotationAngle);
                 }
 
                 // ✅ DECISION 5: Default fallback → Bounding Box for others

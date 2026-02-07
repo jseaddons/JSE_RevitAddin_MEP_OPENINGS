@@ -563,8 +563,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             int successCount = 0;
             int failCount = 0;
             int totalParams = 0;
+            int sleevesForLog = 0;
+            int totalParamsForLog = 0;
             var errorLog = new System.Text.StringBuilder();
-            
+
             var flushTimer = System.Diagnostics.Stopwatch.StartNew();
             
             if (!DeploymentConfiguration.DeploymentMode)
@@ -666,30 +668,32 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             }
             finally
             {
-                // Clear deferred parameters after flush (ready for next placement batch)
-                
+                // Capture counts BEFORE clear so batch_v2.log shows actual batch size (not 0 after clear)
+                sleevesForLog = targetDict?.Count ?? 0;
+                totalParamsForLog = targetDict != null ? targetDict.Values.Sum(d => d.Count) : 0;
+                totalParams = totalParamsForLog;
+
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    totalParams = targetDict.Values.Sum(d => d.Count);
-                    DebugLogger.Info($"[SleeveParameterService] [BATCH-PARAMS] ✅ Flushed {successCount} parameters for {targetDict.Count} sleeves, {failCount} failed. ClearList={clearList}");
+                    DebugLogger.Info($"[SleeveParameterService] [BATCH-PARAMS] ✅ Flushed {successCount} parameters for {sleevesForLog} sleeves, {failCount} failed. ClearList={clearList}");
                     if (errorLog.Length > 0)
                     {
                         SafeFileLogger.SafeAppendText("parameter_batching_errors.log", errorLog.ToString());
                     }
                 }
-                
+
                 // Clear deferred parameters after flush (ready for next placement batch)
                 if (clearList)
                 {
-                    targetDict.Clear();
+                    targetDict?.Clear();
                 }
             }
-            
+
             flushTimer.Stop();
-            totalParams = targetDict.Values.Sum(d => d.Count);
             SafeFileLogger.SafeAppendText("performance.log",
-                $"[{DateTime.Now:HH:mm:ss.fff}] [FLUSH-PERF] Context={context}, Sleeves={targetDict.Count}, TotalParams={totalParams}, Time={flushTimer.ElapsedMilliseconds}ms, Success={successCount}, Fail={failCount}\n");
-            
+                $"[{DateTime.Now:HH:mm:ss.fff}] [FLUSH-PERF] Context={context}, Sleeves={sleevesForLog}, TotalParams={totalParamsForLog}, Time={flushTimer.ElapsedMilliseconds}ms, Success={successCount}, Fail={failCount}\n");
+            SafeFileLogger.SafeAppendText("batch_v2.log",
+                $"[{DateTime.Now:HH:mm:ss.fff}] [PARAM-FLUSH] context={context} sleeves={sleevesForLog} totalParams={totalParamsForLog} flushed={successCount} failed={failCount} ms={flushTimer.ElapsedMilliseconds}\n");
             return successCount;
         }
 

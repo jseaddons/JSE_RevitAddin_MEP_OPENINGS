@@ -848,7 +848,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             if (clusters == null || clusters.Count == 0)
                 return;
 
+            // ✅ SINGLE WRITER: When bulk cluster save is enabled, BatchClusterCalculationService.SaveToDatabase
+            // is the only writer for ClusterSleeves_v2 (timestamp batch ID + placement/bbox). This path must
+            // not write to v2, or it overwrites good data with GUID batch ID and Placement 0,0,0.
+            if (OptimizationFlags.UseBulkClusterSave)
+            {
+                SafeFileLogger.SafeAppendText("batch_v2.log",
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [CLUSTER_V2_WRITE_REPO] Skipping v2 write for {clusters.Count} clusters (UseBulkClusterSave=true; calculation service is single writer for v2)\n");
+                return;
+            }
+
             var sw = System.Diagnostics.Stopwatch.StartNew();
+            SafeFileLogger.SafeAppendText("batch_v2.log",
+                $"[{DateTime.Now:HH:mm:ss.fff}] [CLUSTER_V2_WRITE_REPO] Writing {clusters.Count} clusters to ClusterSleeves_v2 (Repository path - ClusterBatchId = NEW Guid per row; Placement from ClusterSaveData)\n");
 
             using (var transaction = _context.Connection.BeginTransaction())
             {
@@ -901,6 +913,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                             // ✅ BATCH ID: Generate one per save operation (or use existing if available)
                             var clusterBatchId = Guid.NewGuid().ToString().ToUpperInvariant();
+                            // ✅ DIAGNOSTIC: Log each row so you can see why 2nd batch gets different GUID (this path uses Guid per row)
+                            SafeFileLogger.SafeAppendText("batch_v2.log",
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [CLUSTER_V2_WRITE_REPO] Row ClusterBatchId={clusterBatchId} ClusterGuid={clusterGuid} PlacementX={cluster.PlacementX} PlacementY={cluster.PlacementY} PlacementZ={cluster.PlacementZ}\n");
 
                             // (Per-row DELETE removed - handled by Scoped Delete above)
 

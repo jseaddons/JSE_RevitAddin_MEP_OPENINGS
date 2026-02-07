@@ -401,7 +401,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         {
                             totalInTable++;
                             var clusterGuid = reader["ClusterGUID"]?.ToString() ?? "";
-                            var clusterInstanceId = reader["ClusterInstanceId"] != DBNull.Value ? Convert.ToInt32(reader["ClusterInstanceId"]) : 0;
+                            var clusterInstanceId = (int)ReadLong(reader, "ClusterInstanceId"); // ✅ FIX: Use ReadLong to handle DBNull safely
                             
                             if (clusterInstanceId <= 0)
                             {
@@ -494,33 +494,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                     ClusterInstanceId = @id,
                                     PlacedAt = CURRENT_TIMESTAMP
                                 WHERE ClusterGUID = @guid;
-
-                                -- ✅ STURDY PERSISTENCE: UPSERT into legacy table
-                                -- 1. Try to insert from V2 if not exists
-                                INSERT OR IGNORE INTO ClusterSleeves (
-                                    ClusterGUID, ClusterInstanceId, ClusterBatchId,
-                                    PlacementX, PlacementY, PlacementZ,
+                                
+                                -- ✅ SYNC TO LEGACY TABLE: Required for combined sleeves & cleanup
+                                -- Convert V2 data to legacy schema format
+                                INSERT OR REPLACE INTO ClusterSleeves (
+                                    ClusterInstanceId, ComboId, FilterId, Category,
+                                    BoundingBoxMinX, BoundingBoxMinY, BoundingBoxMinZ,
+                                    BoundingBoxMaxX, BoundingBoxMaxY, BoundingBoxMaxZ,
                                     ClusterWidth, ClusterHeight, ClusterDepth,
-                                    RotationAngleRad, HostElementId, HostType, HostOrientation,
-                                    Category, FamilyName, ConstituentZoneGuids, ComboId, FilterId,
-                                    Status, ValidationStatus, CreatedAt, UpdatedAt
+                                    RotationAngleDeg, IsRotated,
+                                    PlacementX, PlacementY, PlacementZ,
+                                    HostType, HostOrientation,
+                                    ClashZoneGuids, ClashZoneIdsJson
                                 )
                                 SELECT 
-                                    ClusterGUID, @id, ClusterBatchId,
-                                    PlacementX, PlacementY, PlacementZ,
+                                    @id, ComboId, FilterId, Category,
+                                    (PlacementX - ClusterWidth/2), (PlacementY - ClusterHeight/2), (PlacementZ - ClusterDepth/2),
+                                    (PlacementX + ClusterWidth/2), (PlacementY + ClusterHeight/2), (PlacementZ + ClusterDepth/2),
                                     ClusterWidth, ClusterHeight, ClusterDepth,
-                                    RotationAngleRad, HostElementId, HostType, HostOrientation,
-                                    Category, FamilyName, ConstituentZoneGuids, ComboId, FilterId,
-                                    @status, ValidationStatus, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                                    (RotationAngleRad * 57.2958), (CASE WHEN ABS(RotationAngleRad) > 0.01 THEN 1 ELSE 0 END),
+                                    PlacementX, PlacementY, PlacementZ,
+                                    HostType, HostOrientation,
+                                    ConstituentZoneGuids, COALESCE(ConstituentZoneGuids, '[]')
                                 FROM ClusterSleeves_v2
-                                WHERE ClusterGUID = @guid;
-
-                                -- 2. Update status/ID (in case it already existed)
-                                UPDATE ClusterSleeves
-                                SET ClusterInstanceId = @id,
-                                    Status = @status,
-                                    UpdatedAt = CURRENT_TIMESTAMP
-                                WHERE ClusterGUID = @guid";
+                                WHERE ClusterGUID = @guid AND @id > 0";
+                            
+                            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] 🔄 SYNC: Updating V2 and syncing to legacy table for ClusterInstanceId={kvp.Value}\n");
+                            
                             cmd.Parameters.AddWithValue("@status", status);
                             cmd.Parameters.AddWithValue("@id", kvp.Value);
                             cmd.Parameters.AddWithValue("@guid", kvp.Key);

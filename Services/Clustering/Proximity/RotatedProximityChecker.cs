@@ -41,18 +41,36 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                     return false;
                 }
 
-                if (sleeve1?.ClashZone == null || sleeve2?.ClashZone == null)
+                // ✅ CRASH-SAFE: Handle both wrapper objects (ClashZoneWorkItem) and direct ClashZone objects
+                ClashZone cz1 = null;
+                ClashZone cz2 = null;
+
+                // Try to get ClashZone from sleeve1
+                if (sleeve1 is ClashZone c1)
                 {
-                    return false;
+                    cz1 = c1;
+                }
+                else if (sleeve1 != null)
+                {
+                    try { cz1 = sleeve1.ClashZone as ClashZone; } catch { }
                 }
 
-                var cz1 = sleeve1.ClashZone as ClashZone;
-                var cz2 = sleeve2.ClashZone as ClashZone;
+                // Try to get ClashZone from sleeve2
+                if (sleeve2 is ClashZone c2)
+                {
+                    cz2 = c2;
+                }
+                else if (sleeve2 != null)
+                {
+                    try { cz2 = sleeve2.ClashZone as ClashZone; } catch { }
+                }
 
                 if (cz1 == null || cz2 == null)
                 {
                     return false;
                 }
+
+                // [Use cz1/cz2 from here on]
 
                 // ✅ DATABASE DATA: Get sleeve centers from database (placement points)
                 XYZ center1 = cz1.SleevePlacementPoint ?? new XYZ(
@@ -131,12 +149,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
                 // Cluster if both conditions are met
                 bool shouldCluster = closeAlongAxis && closePerpendicular;
 
-                if (!shouldCluster && !DeploymentConfiguration.DeploymentMode)
+                if (!shouldCluster)
                 {
-                    SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        $"[RotatedProximityChecker] Sleeves {sleeve1.SleeveInstanceId} and {sleeve2.SleeveInstanceId}: " +
-                        $"DistanceAlongAxis={distanceAlongAxis * 304.8:F1}mm (max={maxDistanceAlongAxis * 304.8:F1}mm), " +
-                        $"PerpendicularDistance={perpendicularDistance * 304.8:F1}mm (max={maxPerpendicularDistance * 304.8:F1}mm) - NO CLUSTER");
+                    // 🔍 DIAGNOSTIC: Log detailed math for failed checks to batch_v2.log
+                    // This helps debug why overlapping rotated sleeves are being rejected
+                    SafeFileLogger.SafeAppendText("batch_v2.log",
+                        $"[{DateTime.Now:HH:mm:ss}] 🔍 PROXIMITY FAIL: Sleeves {cz1.SleeveInstanceId} and {cz2.SleeveInstanceId}: " +
+                        $"DistAxis={distanceAlongAxis:F3} (Max={maxDistanceAlongAxis:F3}), " +
+                        $"DistPerp={perpendicularDistance:F3} (Max={maxPerpendicularDistance:F3}), " +
+                        $"W1={sleeve1Width:F3}, W2={sleeve2Width:F3}, H1={sleeve1Height:F3}, H2={sleeve2Height:F3}, " +
+                        $"Vector=[{worldVector.X:F3},{worldVector.Y:F3},{worldVector.Z:F3}], Axis=[{rotatedAxisDirection.X:F3},{rotatedAxisDirection.Y:F3},{rotatedAxisDirection.Z:F3}]\n");
+
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        SafeFileLogger.SafeAppendText("cluster_debug.log",
+                            $"[RotatedProximityChecker] Sleeves {cz1.SleeveInstanceId} and {cz2.SleeveInstanceId}: " +
+                            $"DistanceAlongAxis={distanceAlongAxis * 304.8:F1}mm (max={maxDistanceAlongAxis * 304.8:F1}mm), " +
+                            $"PerpendicularDistance={perpendicularDistance * 304.8:F1}mm (max={maxPerpendicularDistance * 304.8:F1}mm) - NO CLUSTER");
+                    }
                 }
 
                 return shouldCluster;
@@ -203,29 +233,51 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Proximity
         }
 
         /// <summary>
-        /// ✅ DATABASE-ONLY: Get sleeve width from ClashZone (rotated bounding box preferred).
-        /// Uses pre-calculated data from database (dump once use many times).
+        /// ✅ DATABASE-ONLY: Get sleeve width from ClashZone.
+        /// Uses actual sleeve dimensions (SleeveWidth) instead of bounding box.
+        /// For rotated sleeves, bounding box is inflated (becomes square for 45° rotation).
         /// </summary>
         private double GetSleeveWidth(ClashZone cz)
         {
-            if (cz.RotatedBoundingBoxMinX.HasValue && cz.RotatedBoundingBoxMaxX.HasValue)
+            // Use actual sleeve width from database (extracted from Revit geometry)
+            // This is the true dimension, not the inflated axis-aligned bounding box
+            if (cz.SleeveWidth > 0)
             {
-                return cz.RotatedBoundingBoxMaxX.Value - cz.RotatedBoundingBoxMinX.Value;
+                return cz.SleeveWidth;
             }
-            return cz.SleeveBoundingBoxMaxX - cz.SleeveBoundingBoxMinX;
+            
+            // Fallback to calculated width if not set
+            if (cz.CalculatedSleeveWidth > 0)
+            {
+                return cz.CalculatedSleeveWidth;
+            }
+            
+            // Last resort: use bounding box (may be inflated for rotated sleeves)
+            return cz.BoundingBoxMaxX - cz.BoundingBoxMinX;
         }
 
         /// <summary>
-        /// ✅ DATABASE-ONLY: Get sleeve height from ClashZone (rotated bounding box preferred).
-        /// Uses pre-calculated data from database (dump once use many times).
+        /// ✅ DATABASE-ONLY: Get sleeve height from ClashZone.
+        /// Uses actual sleeve dimensions (SleeveHeight) instead of bounding box.
+        /// For rotated sleeves, bounding box is inflated (becomes square for 45° rotation).
         /// </summary>
         private double GetSleeveHeight(ClashZone cz)
         {
-            if (cz.RotatedBoundingBoxMinY.HasValue && cz.RotatedBoundingBoxMaxY.HasValue)
+            // Use actual sleeve height from database (extracted from Revit geometry)
+            // This is the true dimension, not the inflated axis-aligned bounding box
+            if (cz.SleeveHeight > 0)
             {
-                return cz.RotatedBoundingBoxMaxY.Value - cz.RotatedBoundingBoxMinY.Value;
+                return cz.SleeveHeight;
             }
-            return cz.SleeveBoundingBoxMaxY - cz.SleeveBoundingBoxMinY;
+            
+            // Fallback to calculated height if not set
+            if (cz.CalculatedSleeveHeight > 0)
+            {
+                return cz.CalculatedSleeveHeight;
+            }
+            
+            // Last resort: use bounding box (may be inflated for rotated sleeves)
+            return cz.BoundingBoxMaxY - cz.BoundingBoxMinY;
         }
     }
 }
