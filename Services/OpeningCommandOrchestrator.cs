@@ -1318,14 +1318,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                     SafeFileLogger.SafeAppendText("performance.log", $"[{DateTime.Now:HH:mm:ss.fff}] [PERF-TELEMETRY] ParamCommit={commitTimer.ElapsedMilliseconds}ms\n");
                                                 }
                                                 
-                                                var regenTimer = System.Diagnostics.Stopwatch.StartNew();
-                                                // ✅ OPTIMIZATION: Regenerate OUTSIDE transaction (was inside before)
-                                                using (placeTracker?.TrackSubOperation("Regenerate (Total)"))
-                                                {
-                                                    _document.Regenerate();
-                                                }
-                                                regenTimer.Stop();
-                                                SafeFileLogger.SafeAppendText("performance.log", $"[{DateTime.Now:HH:mm:ss.fff}] [PERF-TELEMETRY] Regenerate={regenTimer.ElapsedMilliseconds}ms\n");
+                                                // ✅ COMMENTED OUT: Revit API commit auto-invokes regeneration (Jeremey Tammik, Revit API Docs). Roll back if needed.
+                                                // var regenTimer = System.Diagnostics.Stopwatch.StartNew();
+                                                // using (placeTracker?.TrackSubOperation("Regenerate (Total)"))
+                                                // {
+                                                //     _document.Regenerate();
+                                                // }
+                                                // regenTimer.Stop();
+                                                // SafeFileLogger.SafeAppendText("performance.log", $"[{DateTime.Now:HH:mm:ss.fff}] [PERF-TELEMETRY] Regenerate={regenTimer.ElapsedMilliseconds}ms\n");
                                             }
                                             catch (Exception paramEx)
                                             {
@@ -1753,26 +1753,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     catch { }
                 }
                 
-                // ✅ RE-ENABLED: Explicit Regenerate() + short sleep so that
-                // all sleeve bounding boxes and centers reflect final Revit geometry
-                // (constraints, joins, host updates) before we read them for DB persistence.
-                try
-                {
-                    _document.Regenerate();
-                    System.Threading.Thread.Sleep(200);
-
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Document regenerated before AFTER_REGEN + coordinate update.\n");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    if (!DeploymentConfiguration.DeploymentMode)
-                    {
-                        DebugLogger.Warning($"[{DateTime.Now:HH:mm:ss}] Regenerate failed (continuing with existing geometry): {ex.Message}\n");
-                    }
-                }
+                // ✅ COMMENTED OUT: Revit API commit auto-invokes regeneration (Jeremey Tammik, Revit API Docs). Roll back if bbox/coords wrong.
+                // try
+                // {
+                //     _document.Regenerate();
+                //     System.Threading.Thread.Sleep(200);
+                //     if (!DeploymentConfiguration.DeploymentMode)
+                //         DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Document regenerated before AFTER_REGEN + coordinate update.\n");
+                // }
+                // catch (Exception ex)
+                // {
+                //     if (!DeploymentConfiguration.DeploymentMode)
+                //         DebugLogger.Warning($"[{DateTime.Now:HH:mm:ss}] Regenerate failed (continuing with existing geometry): {ex.Message}\n");
+                // }
                 
                 // ✅ CRITICAL LOGGING: Log bounding boxes from Revit AFTER regeneration
                 // ✅ DEPLOYMENT: Wrapped in deployment mode check

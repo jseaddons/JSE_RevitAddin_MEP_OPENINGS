@@ -164,6 +164,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                     {
                         try
                         {
+                            if (!group.IsValid())
+                            {
+                                _logger($"[CombinedSleevePlacement] REJECT: group invalid for placement (see [CombinedReject] in log for reason). Sleeves={group?.Count ?? 0}");
+                                continue;
+                            }
                             // Only place in Revit, don't save to database yet
                             var combinedSleeve = PlaceSingleCombinedSleeveInRevit(group, comboId, filterId);
                             // ✅ Only add if placement succeeded (CombinedInstanceId > 0)
@@ -251,9 +256,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
             // Calculate combined geometry (Agent B logic)
             var bbox = group.CalculateCombinedBoundingBox();
             var result = group.CalculateCombinedDimensions();
-            // ✅ Round up like cluster: use same rounding as cluster (RoundingValue, RoundAlwaysUp from UI)
+            // ✅ Round up width and height only; depth must match structural thickness (no rounding) — same as cluster/individual
             var (width, height) = OpeningSettingsHelper.RoundDimensionsForCluster(result.width, result.height);
-            double depth = OpeningSettingsHelper.RoundDimensionForCluster(result.depth);
+            double depth = result.depth;
+
+            // ✅ FIX: Never set width or height to 0 (causes invalid sleeve; rounding or 0 extent can produce 0)
+            const double minWidthHeightFt = 0.16; // ~50mm minimum for visibility/validity
+            if (width < minWidthHeightFt)
+            {
+                _logger($"[CombinedSleevePlacement] ⚠️ Width was {width:F3} ft (0 or too small). Enforcing minimum {minWidthHeightFt:F2} ft (~50mm) for combined sleeve.");
+                width = minWidthHeightFt;
+            }
+            if (height < minWidthHeightFt)
+            {
+                _logger($"[CombinedSleevePlacement] ⚠️ Height was {height:F3} ft (0 or too small). Enforcing minimum {minWidthHeightFt:F2} ft (~50mm) for combined sleeve.");
+                height = minWidthHeightFt;
+            }
 
             // ✅ FIX: Ensure minimum depth for visibility/validity
             // User reported "Extrusion is too thin" errors. Enforcing default ~100mm if too small.
@@ -592,8 +610,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                 Constituents = CreateConstituents(group)
             };
             
-            // Calculate and save corners (in-memory only, database save happens later)
-            CalculateAndSaveCorners(combinedSleeve, placementPoint, width, height, rotationAngle);
+            // Set corners from combined bbox only (bbox comes from constituent DB corners/bbox — no corner calculation)
+            SetCornersFromBbox(combinedSleeve);
 
             // ✅ CLEANUP: Delete original sleeves (Individual and Cluster) if placement was successful
             // Matches user request: "delete those sleeves that forms the combined sleeve"
@@ -927,6 +945,25 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
 
 
         
+        /// <summary>
+        /// Sets combined sleeve Corner1–4 from its BoundingBoxMin/Max (no corner service call).
+        /// Uses bottom face of bbox: C1=(MinX,MinY,MinZ), C2=(MaxX,MinY,MinZ), C3=(MaxX,MaxY,MinZ), C4=(MinX,MaxY,MinZ).
+        /// </summary>
+        private static void SetCornersFromBbox(CombinedSleeve combinedSleeve)
+        {
+            if (combinedSleeve == null) return;
+            double minX = combinedSleeve.BoundingBoxMinX;
+            double minY = combinedSleeve.BoundingBoxMinY;
+            double minZ = combinedSleeve.BoundingBoxMinZ;
+            double maxX = combinedSleeve.BoundingBoxMaxX;
+            double maxY = combinedSleeve.BoundingBoxMaxY;
+            double maxZ = combinedSleeve.BoundingBoxMaxZ;
+            combinedSleeve.Corner1X = minX; combinedSleeve.Corner1Y = minY; combinedSleeve.Corner1Z = minZ;
+            combinedSleeve.Corner2X = maxX; combinedSleeve.Corner2Y = minY; combinedSleeve.Corner2Z = minZ;
+            combinedSleeve.Corner3X = maxX; combinedSleeve.Corner3Y = maxY; combinedSleeve.Corner3Z = minZ;
+            combinedSleeve.Corner4X = minX; combinedSleeve.Corner4Y = maxY; combinedSleeve.Corner4Z = minZ;
+        }
+
         /// <summary>
         /// Calculates and saves corner coordinates for combined sleeve
         /// </summary>

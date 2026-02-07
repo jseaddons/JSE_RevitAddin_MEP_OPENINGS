@@ -4,6 +4,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
 {
@@ -106,18 +107,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
             string orientation = GetHostOrientation();
             var referenceSleeve = Sleeves.First();
 
-            // Floor (or no host): use axis-aligned XY only (rotation = 0). Width = max X - min X, Height = max Y - min Y.
-            // When hostType is null/empty (e.g. floor has no orientation), treat as Floor to avoid rotated OBB inflating dimensions.
+            // Floor (or no host): use axis-aligned XY only (rotation = 0).
+            // Framing (Y or X): no rotation — use axis-aligned extents so Y framing gets width = X span, height = Z span.
             bool isFloor = string.Equals(hostType, "Floor", StringComparison.OrdinalIgnoreCase)
                 || string.IsNullOrWhiteSpace(hostType);
-            double rotationRad = isFloor ? 0.0 : (referenceSleeve.RotationAngleDeg * (Math.PI / 180.0));
+            bool isFraming = (hostType ?? string.Empty).IndexOf("Framing", StringComparison.OrdinalIgnoreCase) >= 0;
+            double rotationRad = (isFloor || isFraming) ? 0.0 : (referenceSleeve.RotationAngleDeg * (Math.PI / 180.0));
 
             // 1. Define Projection Vectors (Rotated Axes; for Floor these are just X and Y)
             XYZ vecU = new XYZ(Math.Cos(rotationRad), Math.Sin(rotationRad), 0);
             XYZ vecV = new XYZ(-Math.Sin(rotationRad), Math.Cos(rotationRad), 0);
             XYZ vecZ = XYZ.BasisZ;
 
-            // 2. Project all corners
+            // 2. Project all corners — diagnostic: log per-sleeve geometry so we can see what causes rejection
+            for (int i = 0; i < Sleeves.Count; i++)
+            {
+                var s = Sleeves[i];
+                bool hasCorners = s.Corners != null && s.Corners.Count > 0;
+                bool hasBbox = s.BoundingBox != null;
+                DebugLogger.Info($"[CombinedDimensions] Sleeve[{i}] Id={s?.Id} Type={s?.Type} Corners={(hasCorners ? s.Corners.Count.ToString() : "null/0")} BoundingBox={(hasBbox ? "yes" : "null")}");
+            }
             var allCorners = Sleeves
                 .Where(s => s.Corners != null && s.Corners.Count > 0)
                 .SelectMany(s => s.Corners)
@@ -125,6 +134,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
 
             if (allCorners.Count == 0) // Fallback
             {
+                 DebugLogger.Info($"[CombinedDimensions] No corners from Sleeves.Corners; using BoundingBox fallback");
                  allCorners = Sleeves.Where(s => s.BoundingBox != null)
                      .SelectMany(s => new[] { 
                          s.BoundingBox.Min, 
@@ -133,6 +143,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
                          new XYZ(s.BoundingBox.Min.X, s.BoundingBox.Max.Y, s.BoundingBox.Min.Z)
                      }).ToList();
             }
+            DebugLogger.Info($"[CombinedDimensions] allCorners.Count={allCorners.Count} (from {(allCorners.Count > 0 && Sleeves.Any(s => s.Corners != null && s.Corners.Count > 0) ? "Corners" : "BBox")})");
 
             double minU = double.MaxValue, maxU = double.MinValue;
             double minV = double.MaxValue, maxV = double.MinValue;
@@ -180,27 +191,72 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
                 calculatedHeight = rangeV;
                 calculatedDepth = dbThickness ?? defaultDepth; // Never use rangeZ — depth is slab/sleeve thickness only
             }
-            else
+            else if (isFraming)
             {
-                // Wall: Use Orientation to swap U/V for Width vs Depth
-                // Z is always Height
+                // Framing: axis-aligned (rotationRad=0). U=X, V=Y, Z=Z.
+                // Y framing: width = Y extent (rangeV), height = Z (rangeZ), depth = X extent (rangeU) or thickness.
+                // X framing: width = X extent (rangeU), height = Z (rangeZ), depth = Y extent (rangeV) or thickness.
                 calculatedHeight = rangeZ;
-
                 if (string.Equals(orientation, "Y", StringComparison.OrdinalIgnoreCase))
                 {
-                    // Y-Wall (North-South): Width is along Y-axis (vecV)
-                    calculatedWidth = rangeV;
-                    calculatedDepth = dbThickness ?? rangeU; // Depth is Thickness (X-axis / vecU)
+                    calculatedWidth = rangeV;  // Y extent
+                    calculatedDepth = dbThickness ?? rangeU; // X extent or thickness
                 }
                 else
                 {
-                    // X-Wall (East-West) or Default: Width is along X-axis (vecU)
+                    calculatedWidth = rangeU;  // X extent
+                    calculatedDepth = dbThickness ?? rangeV; // Y extent or thickness
+                }
+            }
+            else
+            {
+                // Wall: Use Orientation to swap U/V for Width vs Depth. Z is always Height.
+                calculatedHeight = rangeZ;
+                if (string.Equals(orientation, "Y", StringComparison.OrdinalIgnoreCase))
+                {
+                    calculatedWidth = rangeV;
+                    calculatedDepth = dbThickness ?? rangeU;
+                }
+                else
+                {
                     calculatedWidth = rangeU;
-                    calculatedDepth = dbThickness ?? rangeV; // Depth is Thickness (Y-axis / vecV)
+                    calculatedDepth = dbThickness ?? rangeV;
                 }
             }
 
+            // ✅ FIX: If width or height is 0 (or near-zero) from corner/bbox extent, use constituent fallback so combined sleeve never gets W=0
+            const double minExtentFt = 0.01; // ~3mm
+            var (fallbackW, fallbackH) = GetConstituentWidthHeightFallback();
+            if (calculatedWidth < minExtentFt && fallbackW > minExtentFt)
+                calculatedWidth = fallbackW;
+            if (calculatedHeight < minExtentFt && fallbackH > minExtentFt)
+                calculatedHeight = fallbackH;
+
+            DebugLogger.Info($"[CombinedDimensions] result W={calculatedWidth:F3} H={calculatedHeight:F3} D={calculatedDepth:F3} ft");
             return (calculatedWidth, calculatedHeight, calculatedDepth);
+        }
+
+        /// <summary>
+        /// Gets fallback width and height from constituents (max of SleeveWidth/SleeveHeight or ClusterWidth/ClusterHeight).
+        /// Used when corner/bbox extent gives 0 or near-zero so combined sleeve never gets W=0 or H=0.
+        /// </summary>
+        private (double width, double height) GetConstituentWidthHeightFallback()
+        {
+            double maxW = 0, maxH = 0;
+            foreach (var s in Sleeves)
+            {
+                if (s.SourceData is ClashZone cz)
+                {
+                    if (cz.SleeveWidth > maxW) maxW = cz.SleeveWidth;
+                    if (cz.SleeveHeight > maxH) maxH = cz.SleeveHeight;
+                }
+                else if (s.SourceData is ClusterSleeveData csd)
+                {
+                    if (csd.ClusterWidth > maxW) maxW = csd.ClusterWidth;
+                    if (csd.ClusterHeight > maxH) maxH = csd.ClusterHeight;
+                }
+            }
+            return (maxW, maxH);
         }
         
         /// <summary>
@@ -273,30 +329,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
         }
 
         /// <summary>
-        /// Gets the host type from the first sleeve in the group
-        /// (assumes all sleeves in proximity have the same host)
+        /// Reference sleeve for host/orientation: prefer Framing so mixed groups (e.g. Duct in Wall + Cluster in Y Framing) use Y framing → 0° rotation.
+        /// </summary>
+        private UnifiedSleeve GetReferenceSleeveForHost()
+        {
+            var framing = Sleeves.FirstOrDefault(s => (s?.HostType ?? string.Empty).IndexOf("Framing", StringComparison.OrdinalIgnoreCase) >= 0);
+            return framing ?? Sleeves.FirstOrDefault();
+        }
+
+        /// <summary>
+        /// Gets the host type; prefers a Framing sleeve when present so Y framing gets 0° rotation.
         /// </summary>
         public string GetHostType()
         {
-            return Sleeves.FirstOrDefault()?.HostType;
+            return GetReferenceSleeveForHost()?.HostType;
         }
         
         /// <summary>
-        /// Gets the host orientation from the first sleeve in the group.
-        /// Orientation applies only to Wall and Framing; Floor (and other host types) have no host orientation.
+        /// Gets the host orientation; prefers a Framing sleeve when present. Y framing / Y wall → no rotation (0°).
         /// </summary>
         public string GetHostOrientation()
         {
-            var first = Sleeves.FirstOrDefault();
-            if (first == null) return null;
-            var hostType = first.HostType ?? string.Empty;
+            var refSleeve = GetReferenceSleeveForHost();
+            if (refSleeve == null) return null;
+            var hostType = refSleeve.HostType ?? string.Empty;
             var ht = hostType.Trim();
             if (string.Equals(ht, "Floor", StringComparison.OrdinalIgnoreCase))
                 return null; // Floor has no host orientation
             if (!string.Equals(ht, "Wall", StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(ht, "Framing", StringComparison.OrdinalIgnoreCase))
+                !string.Equals(ht, "Framing", StringComparison.OrdinalIgnoreCase) &&
+                ht.IndexOf("Framing", StringComparison.OrdinalIgnoreCase) < 0)
                 return null; // Only Wall and Framing have orientation
-            return first.HostOrientation;
+            return refSleeve.HostOrientation;
         }
         
         /// <summary>
@@ -327,15 +391,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
         {
             // Must have at least 2 sleeves
             if (Sleeves.Count < 2)
+            {
+                DebugLogger.Info($"[CombinedReject] REJECT: Sleeves.Count={Sleeves.Count} (need >= 2)");
                 return false;
+            }
             
             // Must be cross-category (different categories)
             if (!IsCrossCategory())
+            {
+                DebugLogger.Info($"[CombinedReject] REJECT: not cross-category (categories: {string.Join(", ", Sleeves.Select(s => s?.Category ?? "?"))})");
                 return false;
+            }
             
             // All sleeves must have geometry data
-            if (Sleeves.Any(s => s.BoundingBox == null && (s.Corners == null || s.Corners.Count == 0)))
+            var noGeometry = Sleeves.Where(s => s.BoundingBox == null && (s.Corners == null || s.Corners.Count == 0)).ToList();
+            if (noGeometry.Any())
+            {
+                foreach (var s in noGeometry)
+                    DebugLogger.Info($"[CombinedReject] REJECT: sleeve Id={s?.Id} Type={s?.Type} has no geometry (BoundingBox=null, Corners=null or Count=0)");
                 return false;
+            }
             
             return true;
         }

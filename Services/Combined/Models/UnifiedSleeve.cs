@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
 {
@@ -158,6 +159,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
                 new XYZ(clashZone.SleeveCorner3X ?? 0.0, clashZone.SleeveCorner3Y ?? 0.0, clashZone.SleeveCorner3Z ?? 0.0),
                 new XYZ(clashZone.SleeveCorner4X ?? 0.0, clashZone.SleeveCorner4Y ?? 0.0, clashZone.SleeveCorner4Z ?? 0.0)
             };
+
+            bool isClusterResolvedZone = clashZone.IsClusterResolved && clashZone.ClusterSleeveInstanceId > 0;
+            if (isClusterResolvedZone)
+            {
+                double c1x = clashZone.SleeveCorner1X ?? 0.0;
+                bool cornersSet = Math.Abs(c1x) > 1e-6 || Math.Abs(clashZone.SleeveCorner2X ?? 0.0) > 1e-6;
+                DebugLogger.Info($"[FromClashZone] cluster-resolved ZoneId={clashZone.Id} ClusterInstanceId={clashZone.ClusterSleeveInstanceId} CornersSet={cornersSet} (C1X={c1x:F3})");
+            }
 
             // ✅ FIX: Extrude Corners for Floor Sleeves (Flat Z) to ensure ProximityGroup has 3D volume
             // Without this, rangeZ is 0, leading to Depth=0 for combined floor sleeves.

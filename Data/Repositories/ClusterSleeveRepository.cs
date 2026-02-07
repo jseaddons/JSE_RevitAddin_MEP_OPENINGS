@@ -250,6 +250,94 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     }
                 }
             }
+
+            // ✅ MIXED-TYPE FIX: Fallback to ClusterSleeves_v2 for any instance IDs not found in ClusterSleeves.
+            // When clusters are saved only to v2 (e.g. bulk path), combined discovery needs their corners for
+            // individual+cluster proximity groups; otherwise cluster corners are missing and combined dimensions fail.
+            var foundIds = new HashSet<int>(clusters.Select(c => c.ClusterInstanceId));
+            var missingIds = ids.Where(id => !foundIds.Contains(id)).ToList();
+            if (missingIds.Count > 0)
+            {
+                try
+                {
+                    var fromV2 = GetClusterSleevesByInstanceIdsFromV2(missingIds);
+                    foreach (var c in fromV2)
+                        clusters.Add(c);
+                }
+                catch (Exception ex)
+                {
+                    _logger($"[ClusterSleeveRepo] Fallback ClusterSleeves_v2 read failed: {ex.Message}");
+                }
+            }
+
+            return clusters;
+        }
+
+        /// <summary>
+        /// Load cluster sleeve data by ClusterInstanceId from ClusterSleeves_v2 (for corner merge when not in legacy table).
+        /// </summary>
+        private List<ClusterSleeveData> GetClusterSleevesByInstanceIdsFromV2(List<int> instanceIds)
+        {
+            var clusters = new List<ClusterSleeveData>();
+            if (instanceIds == null || instanceIds.Count == 0) return clusters;
+
+            var idString = string.Join(",", instanceIds);
+            using (var cmd = _context.Connection.CreateCommand())
+            {
+                cmd.CommandText = $@"SELECT ClusterInstanceId, ComboId, FilterId, Category,
+                                       PlacementX, PlacementY, PlacementZ,
+                                       ClusterWidth, ClusterHeight, ClusterDepth,
+                                       RotationAngleRad, IsRotated,
+                                       HostType, HostOrientation,
+                                       Corner1X, Corner1Y, Corner1Z,
+                                       Corner2X, Corner2Y, Corner2Z,
+                                       Corner3X, Corner3Y, Corner3Z,
+                                       Corner4X, Corner4Y, Corner4Z
+                                FROM ClusterSleeves_v2
+                                WHERE ClusterInstanceId IN ({idString}) AND ClusterInstanceId IS NOT NULL";
+
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        double c1x = GetDouble(reader, "Corner1X", 0.0), c1y = GetDouble(reader, "Corner1Y", 0.0), c1z = GetDouble(reader, "Corner1Z", 0.0);
+                        double c2x = GetDouble(reader, "Corner2X", 0.0), c2y = GetDouble(reader, "Corner2Y", 0.0), c2z = GetDouble(reader, "Corner2Z", 0.0);
+                        double c3x = GetDouble(reader, "Corner3X", 0.0), c3y = GetDouble(reader, "Corner3Y", 0.0), c3z = GetDouble(reader, "Corner3Z", 0.0);
+                        double c4x = GetDouble(reader, "Corner4X", 0.0), c4y = GetDouble(reader, "Corner4Y", 0.0), c4z = GetDouble(reader, "Corner4Z", 0.0);
+
+                        var cluster = new ClusterSleeveData
+                        {
+                            ClusterInstanceId = GetInt(reader, "ClusterInstanceId", -1),
+                            ComboId = GetInt(reader, "ComboId", -1),
+                            FilterId = GetInt(reader, "FilterId", -1),
+                            Category = GetString(reader, "Category"),
+                            BoundingBoxMinX = Math.Min(Math.Min(c1x, c2x), Math.Min(c3x, c4x)),
+                            BoundingBoxMinY = Math.Min(Math.Min(c1y, c2y), Math.Min(c3y, c4y)),
+                            BoundingBoxMinZ = Math.Min(Math.Min(c1z, c2z), Math.Min(c3z, c4z)),
+                            BoundingBoxMaxX = Math.Max(Math.Max(c1x, c2x), Math.Max(c3x, c4x)),
+                            BoundingBoxMaxY = Math.Max(Math.Max(c1y, c2y), Math.Max(c3y, c4y)),
+                            BoundingBoxMaxZ = Math.Max(Math.Max(c1z, c2z), Math.Max(c3z, c4z)),
+                            ClusterWidth = GetDouble(reader, "ClusterWidth", 0.0),
+                            ClusterHeight = GetDouble(reader, "ClusterHeight", 0.0),
+                            ClusterDepth = GetDouble(reader, "ClusterDepth", 0.0),
+                            RotationAngleDeg = GetDouble(reader, "RotationAngleRad", 0.0) * (180.0 / Math.PI),
+                            IsRotated = GetBool(reader, "IsRotated"),
+                            PlacementX = GetDouble(reader, "PlacementX", 0.0),
+                            PlacementY = GetDouble(reader, "PlacementY", 0.0),
+                            PlacementZ = GetDouble(reader, "PlacementZ", 0.0),
+                            HostType = GetString(reader, "HostType"),
+                            HostOrientation = GetString(reader, "HostOrientation"),
+                            Corner1X = c1x, Corner1Y = c1y, Corner1Z = c1z,
+                            Corner2X = c2x, Corner2Y = c2y, Corner2Z = c2z,
+                            Corner3X = c3x, Corner3Y = c3y, Corner3Z = c3z,
+                            Corner4X = c4x, Corner4Y = c4y, Corner4Z = c4z,
+                            ClashZoneIds = new List<Guid>()
+                        };
+
+                        clusters.Add(cluster);
+                    }
+                }
+            }
             return clusters;
         }
 

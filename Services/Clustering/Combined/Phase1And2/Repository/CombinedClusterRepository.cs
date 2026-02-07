@@ -134,7 +134,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Re
 
             if (clusterInstanceIds.Count > 0)
             {
-                DebugLogger.Info($"[LoadClusteredZones] Fetching corner data for {clusterInstanceIds.Count} cluster sleeves from ClusterSleeves table");
+                // Cluster corners: repository reads ClusterSleeves first, then ClusterSleeves_v2 for any missing IDs (mixed individual+cluster fix).
+                DebugLogger.Info($"[LoadClusteredZones] Fetching corner data for {clusterInstanceIds.Count} cluster sleeves (ClusterSleeves + ClusterSleeves_v2 fallback)");
                 var clusterSleeves = _clashZoneRepository.GetClusterSleevesByInstanceIds(clusterInstanceIds);
                 var clusterCornerLookup = clusterSleeves.ToDictionary(cs => cs.ClusterInstanceId);
 
@@ -182,11 +183,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Re
                         zone.ClusterSleeveBoundingBoxMinZ = System.Math.Min(System.Math.Min(c1z, c2z), System.Math.Min(c3z, c4z));
                         zone.ClusterSleeveBoundingBoxMaxZ = System.Math.Max(System.Math.Max(c1z, c2z), System.Math.Max(c3z, c4z));
 
-                        DebugLogger.Info($"[LoadClusteredZones]   ✅ Merged cluster corner & BBox data for ClusterInstanceId={zone.ClusterSleeveInstanceId}");
+                        DebugLogger.Info($"[LoadClusteredZones]   ✅ Merged cluster corner & BBox ZoneId={zone.Id} ClusterInstanceId={zone.ClusterSleeveInstanceId} SleeveCorner1X={zone.SleeveCorner1X?.ToString("F3") ?? "null"}");
                     }
                     else
                     {
-                        DebugLogger.Info($"[LoadClusteredZones]   ⚠️ No cluster corner data found for ClusterInstanceId={zone.ClusterSleeveInstanceId}");
+                        DebugLogger.Info($"[LoadClusteredZones]   ⚠️ NO_MERGE ZoneId={zone.Id} ClusterInstanceId={zone.ClusterSleeveInstanceId} (not in cluster lookup)");
                     }
                 }
             }
