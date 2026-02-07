@@ -51,20 +51,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Basic validation
                 if (z.IntersectionPointX == 0 && z.IntersectionPointY == 0 && z.IntersectionPointZ == 0) continue;
 
-                // ✅ WALL THICKNESS CHECK
+                // Thickness filter: structural thickness for all host types (Floor, Wall, Framing)
                 if (minThicknessInternal > 0)
                 {
-                    // Check if host is a wall
-                    if (z.StructuralElementType != null && (z.StructuralElementType.Contains("Wall") || z.StructuralElementType.Contains("Walls")))
+                    double thickness = z.StructuralElementThickness;
+                    if (thickness > 0 && thickness < minThicknessInternal)
                     {
-                        // Use WallThickness if available, otherwise StructuralElementThickness
-                        double thickness = z.WallThickness > 0 ? z.WallThickness : z.StructuralElementThickness;
-                        
-                        if (thickness > 0 && thickness < minThicknessInternal)
-                        {
-                            excludedCount++;
-                            continue; // Skip this zone
-                        }
+                        excludedCount++;
+                        continue; // Skip this zone
                     }
                 }
 

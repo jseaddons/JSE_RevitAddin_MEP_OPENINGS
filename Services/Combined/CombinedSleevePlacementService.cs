@@ -7,6 +7,8 @@ using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Geometry;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
 {
@@ -249,9 +251,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
             // Calculate combined geometry (Agent B logic)
             var bbox = group.CalculateCombinedBoundingBox();
             var result = group.CalculateCombinedDimensions();
-            var width = result.width;
-            var height = result.height;
-            var depth = result.depth;
+            // ✅ Round up like cluster: use same rounding as cluster (RoundingValue, RoundAlwaysUp from UI)
+            var (width, height) = OpeningSettingsHelper.RoundDimensionsForCluster(result.width, result.height);
+            double depth = OpeningSettingsHelper.RoundDimensionForCluster(result.depth);
 
             // ✅ FIX: Ensure minimum depth for visibility/validity
             // User reported "Extrusion is too thin" errors. Enforcing default ~100mm if too small.
@@ -274,13 +276,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
 
             try
             {
-                // 1. Determine Family Name
-                string familyName = "RectangularOpeningOnWall"; // Default
+                // 1. Determine Family Name — all are generic (unhosted) families; no wall/floor host.
                 string hostType = group.GetHostType();
-                
-                if (hostType != null && (hostType.Contains("Floor") || hostType.Contains("Slab")))
+                string familyName;
+                if (!string.IsNullOrWhiteSpace(hostType))
                 {
-                    familyName = "RectangularOpeningOnSlab";
+                    string category = group.Sleeves?.FirstOrDefault()?.Category ?? "Pipes";
+                    double maxDimension = Math.Max(width, height);
+                    familyName = ClusterPlacementService.GetFamilyName(hostType, category, maxDimension, isCluster: true);
+                }
+                else
+                {
+                    // No host: use default generic rectangular opening family.
+                    familyName = "RectangularOpeningOnWall";
                 }
 
                 // 2. Load Symbol

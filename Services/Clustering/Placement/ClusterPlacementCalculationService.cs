@@ -99,18 +99,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
         }
 
         /// <summary>
-        /// ✅ SPECIALIZED FLOOR LOGIC: Strictly separated from wall logic.
-        /// Floors use Centroid or Explicit Center (BBox Geometric Center). No corner-based logic.
+        /// ✅ SPECIALIZED FLOOR LOGIC: X,Y from bbox/centroid; Z from constituent(s) so it stays same as individual (mid-thickness).
+        /// Do not recalculate Z from bbox — use constituent SleevePlacementPointZ so floor cluster Z matches individual placement.
         /// </summary>
         private XYZ CalculateFloorPlacementPoint(List<dynamic> cluster, XYZ? explicitCenter, string? xmlFilePath)
         {
             XYZ result = explicitCenter ?? CalculateFromIntersections(cluster, xmlFilePath);
-            
+            double zFromConstituents = GetConstituentZForFloor(cluster, xmlFilePath);
+            if (Math.Abs(zFromConstituents) > 1e-9)
+                result = new XYZ(result.X, result.Y, zFromConstituents);
             if (!DeploymentConfiguration.DeploymentMode)
                 SafeFileLogger.SafeAppendText("cluster_sizing.log",
-                    $"[{DateTime.Now:HH:mm:ss}] 🎯 FLOOR PLACEMENT: Using {(explicitCenter != null ? "Geometric Center" : "Centroid")}: ({result.X:F4}, {result.Y:F4}, {result.Z:F4})\n");
-            
+                    $"[{DateTime.Now:HH:mm:ss}] 🎯 FLOOR PLACEMENT: X,Y from center; Z from constituent(s): ({result.X:F4}, {result.Y:F4}, {result.Z:F4})\n");
             return result;
+        }
+
+        /// <summary>Z for floor cluster = constituent value (first or average). Keeps Z same as individual placement.</summary>
+        private double GetConstituentZForFloor(List<dynamic> cluster, string? xmlFilePath)
+        {
+            double sumZ = 0;
+            int count = 0;
+            foreach (var item in cluster)
+            {
+                ClashZone cz = null;
+                if (item is ClashZone directCz)
+                    cz = directCz;
+                else
+                {
+                    try { cz = item.ClashZone as ClashZone; } catch { }
+                    if (cz == null)
+                    {
+                        int id = GetSleeveId(item);
+                        if (id > 0) cz = _getClashZoneFunc(id, xmlFilePath);
+                    }
+                }
+                if (cz != null)
+                {
+                    double z = Math.Abs(cz.SleevePlacementPointZ) > 1e-9 ? cz.SleevePlacementPointZ : cz.CalculatedPlacementZ;
+                    if (Math.Abs(z) > 1e-9) { sumZ += z; count++; }
+                }
+            }
+            return count > 0 ? sumZ / count : 0;
         }
 
         /// <summary>

@@ -645,13 +645,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                             if (firstClashZone != null)
                             {
                                 logClashZone = firstClashZone;
-                                // Simplified Priority: Just try to get a valid thickness from the zone
+                                // Depth = structural thickness for all (Floor, Wall, Framing)
                                 if (firstClashZone.StructuralElementThickness > 0.001)
                                     structuralThickness = firstClashZone.StructuralElementThickness;
-                                else if (firstClashZone.WallThickness > 0.001)
-                                    structuralThickness = firstClashZone.WallThickness;
-                                else if (firstClashZone.FramingThickness > 0.001)
-                                    structuralThickness = firstClashZone.FramingThickness;
                             }
                             
                             // ✅ FALLBACK: If DB thickness is missing, check individual sleeves

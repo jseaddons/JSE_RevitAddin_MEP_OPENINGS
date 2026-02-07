@@ -35,11 +35,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Se
 
             var zones = _repository.LoadClusteredZones(uiDoc.Document, filterName, categories);
             DebugLogger.Info($"[CombinedDiscovery] Loaded {zones?.Count ?? 0} zones from repository");
+            SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] [CombinedSleeve] Discovery: categories=[{string.Join(", ", categories)}], zones loaded={zones?.Count ?? 0}\n");
 
             if (zones == null || zones.Count == 0)
             {
                 return Array.Empty<ClusterSleeveInfo>();
             }
+
+
 
             // SECTION BOX FILTERING: Simplified approach
             // 1. Filter zones by UI-selected categories first (zones already have MepElementCategory)
@@ -143,6 +146,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Se
                 }
             }
 
+            // ✅ CLUSTER COLLAPSE: For combined proximity we need one sleeve per cluster, not one per zone.
+            // Keep all individual zones; for cluster-resolved zones keep one representative per ClusterSleeveInstanceId.
+            var individualZones = zones.Where(z => !z.IsClusterResolved || z.ClusterSleeveInstanceId <= 0).ToList();
+            var onePerCluster = zones
+                .Where(z => z.IsClusterResolved && z.ClusterSleeveInstanceId > 0)
+                .GroupBy(z => z.ClusterSleeveInstanceId)
+                .Select(g => g.First())
+                .ToList();
+            zones = individualZones.Concat(onePerCluster).ToList();
+            if (onePerCluster.Count > 0 && !DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Info($"[CombinedDiscovery] Collapsed to 1 zone per cluster: {onePerCluster.Count} cluster(s), {individualZones.Count} individual(s) -> {zones.Count} sleeves for proximity");
+            }
+
             int added = 0;
             int fromClashZoneNull = 0;
 
@@ -163,6 +180,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Se
             });
 
             DebugLogger.Info($"[CombinedDiscovery] Results: {added} added, {fromClashZoneNull} rejected by FromClashZone");
+            SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] [CombinedSleeve] Discovery result: {added} sleeves added, {fromClashZoneNull} rejected by FromClashZone (categories=[{string.Join(", ", categories)}])\n");
 
             var materialized = sleeves.ToList();
             if (materialized.Count == 0)
@@ -201,5 +219,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Se
 
             return new ParallelOptions { MaxDegreeOfParallelism = max };
         }
+
+
     }
 }

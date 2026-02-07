@@ -178,65 +178,96 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
             }
             
             var bbox = new BoundingBoxXYZ();
-            
-            // Check if stored BBox is valid (volume > 0 or at least dimensions > 0)
-            bool hasValidStoredBBox = 
-                clashZone.SleeveBoundingBoxMaxX > clashZone.SleeveBoundingBoxMinX ||
-                clashZone.SleeveBoundingBoxMaxY > clashZone.SleeveBoundingBoxMinY;
+            string sleeveId = clashZone.Id.ToString();
+            var sleeveType = SleeveType.Individual;
+            XYZ placementPoint = clashZone.IntersectionPoint;
 
-            if (hasValidStoredBBox)
+            // ✅ CLUSTER-RESOLVED: Use cluster bounding box and cluster id for proximity (one sleeve per cluster)
+            bool isClusterResolved = clashZone.IsClusterResolved && clashZone.ClusterSleeveInstanceId > 0;
+            bool hasValidClusterBBox = clashZone.ClusterSleeveBoundingBoxMaxX > clashZone.ClusterSleeveBoundingBoxMinX ||
+                                       clashZone.ClusterSleeveBoundingBoxMaxY > clashZone.ClusterSleeveBoundingBoxMinY;
+
+            if (isClusterResolved && hasValidClusterBBox)
             {
                 bbox.Min = new XYZ(
-                    clashZone.SleeveBoundingBoxMinX, 
-                    clashZone.SleeveBoundingBoxMinY, 
-                    clashZone.SleeveBoundingBoxMinZ);
+                    clashZone.ClusterSleeveBoundingBoxMinX,
+                    clashZone.ClusterSleeveBoundingBoxMinY,
+                    clashZone.ClusterSleeveBoundingBoxMinZ);
                 bbox.Max = new XYZ(
-                    clashZone.SleeveBoundingBoxMaxX, 
-                    clashZone.SleeveBoundingBoxMaxY, 
-                    clashZone.SleeveBoundingBoxMaxZ);
+                    clashZone.ClusterSleeveBoundingBoxMaxX,
+                    clashZone.ClusterSleeveBoundingBoxMaxY,
+                    clashZone.ClusterSleeveBoundingBoxMaxZ);
+                sleeveId = clashZone.ClusterSleeveInstanceId.ToString();
+                sleeveType = SleeveType.Cluster;
+                placementPoint = new XYZ(
+                    (bbox.Min.X + bbox.Max.X) * 0.5,
+                    (bbox.Min.Y + bbox.Max.Y) * 0.5,
+                    (bbox.Min.Z + bbox.Max.Z) * 0.5);
 
-                // ✅ CRITICAL FIX: Inflate flat BBox (e.g. Floor Sleeves) even if "Valid" in X/Y
                 if (Math.Abs(bbox.Max.Z - bbox.Min.Z) < 0.001)
                 {
-                    double height = clashZone.SleeveHeight > 0 ? clashZone.SleeveHeight : 
+                    double height = clashZone.SleeveHeight > 0 ? clashZone.SleeveHeight :
                                    (clashZone.SleeveDiameter > 0 ? clashZone.SleeveDiameter : 1.0);
-                    
-                    // Inflate MaxZ
                     bbox.Max = new XYZ(bbox.Max.X, bbox.Max.Y, bbox.Max.Z + height);
+                    placementPoint = new XYZ(placementPoint.X, placementPoint.Y, placementPoint.Z + height * 0.5);
                 }
             }
             else
             {
-                // ✅ CRITICAL FIX: Derive BBox from Corners if stored BBox is missing (e.g. Synthetic Zones)
-                double minX = corners.Min(c => c.X);
-                double minY = corners.Min(c => c.Y);
-                double minZ = corners.Min(c => c.Z);
-                double maxX = corners.Max(c => c.X);
-                double maxY = corners.Max(c => c.Y);
-                double maxZ = corners.Max(c => c.Z);
+                // Individual sleeve: use stored BBox or derive from corners
+                bool hasValidStoredBBox =
+                    clashZone.SleeveBoundingBoxMaxX > clashZone.SleeveBoundingBoxMinX ||
+                    clashZone.SleeveBoundingBoxMaxY > clashZone.SleeveBoundingBoxMinY;
 
-                // Handle 2D case (flat Z) by adding height if available
-                if (Math.Abs(maxZ - minZ) < 0.001)
+                if (hasValidStoredBBox)
                 {
-                     double height = clashZone.SleeveHeight > 0 ? clashZone.SleeveHeight : clashZone.SleeveDiameter;
-                     if (height > 0) maxZ += height;
-                }
+                    bbox.Min = new XYZ(
+                        clashZone.SleeveBoundingBoxMinX,
+                        clashZone.SleeveBoundingBoxMinY,
+                        clashZone.SleeveBoundingBoxMinZ);
+                    bbox.Max = new XYZ(
+                        clashZone.SleeveBoundingBoxMaxX,
+                        clashZone.SleeveBoundingBoxMaxY,
+                        clashZone.SleeveBoundingBoxMaxZ);
 
-                bbox.Min = new XYZ(minX, minY, minZ);
-                bbox.Max = new XYZ(maxX, maxY, maxZ);
+                    if (Math.Abs(bbox.Max.Z - bbox.Min.Z) < 0.001)
+                    {
+                        double height = clashZone.SleeveHeight > 0 ? clashZone.SleeveHeight :
+                                       (clashZone.SleeveDiameter > 0 ? clashZone.SleeveDiameter : 1.0);
+                        bbox.Max = new XYZ(bbox.Max.X, bbox.Max.Y, bbox.Max.Z + height);
+                    }
+                }
+                else
+                {
+                    double minX = corners.Min(c => c.X);
+                    double minY = corners.Min(c => c.Y);
+                    double minZ = corners.Min(c => c.Z);
+                    double maxX = corners.Max(c => c.X);
+                    double maxY = corners.Max(c => c.Y);
+                    double maxZ = corners.Max(c => c.Z);
+
+                    if (Math.Abs(maxZ - minZ) < 0.001)
+                    {
+                        double height = clashZone.SleeveHeight > 0 ? clashZone.SleeveHeight : clashZone.SleeveDiameter;
+                        if (height > 0) maxZ += height;
+                    }
+
+                    bbox.Min = new XYZ(minX, minY, minZ);
+                    bbox.Max = new XYZ(maxX, maxY, maxZ);
+                }
             }
-            
+
             return new UnifiedSleeve
             {
-                Id = clashZone.Id.ToString(),
-                Type = SleeveType.Individual,
+                Id = sleeveId,
+                Type = sleeveType,
                 Category = clashZone.MepElementCategory,
                 BoundingBox = bbox,
-                PlacementPoint = clashZone.IntersectionPoint, // Use IntersectionPoint as placement point
+                PlacementPoint = placementPoint,
                 Corners = corners,
                 HostType = clashZone.StructuralElementType,
                 HostOrientation = clashZone.HostOrientation,
-                RotationAngleDeg = clashZone.MepElementRotationAngle * (180.0 / Math.PI), // Convert Rad to Deg
+                RotationAngleDeg = clashZone.MepElementRotationAngle * (180.0 / Math.PI),
                 SourceData = clashZone
             };
         }

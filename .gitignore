@@ -11,10 +11,12 @@ obj/
 # Ignore Revit Addin Manifest
 *.addin
 
-# Ignore Logs and Temporary Data
+# Ignore logs and temporary data (any *.log anywhere; Logs/ and Log/ folders)
 Logs/
-*.log
 Log/
+*.log
+**/placement_performance.log
+**/performance.log
 build_log*.txt
 build_output*.txt
 build_errors*.txt

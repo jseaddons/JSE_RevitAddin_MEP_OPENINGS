@@ -1055,18 +1055,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                             zone.CalculatedSleeveWidth = width; zone.CalculatedSleeveHeight = height;
                                             zone.SleeveWidth = width; zone.SleeveHeight = height;
                                             
-                                            // ✅ DEPTH FIX: Sleeve depth = host thickness only (never thickness+clearance). Overwrite any stored wrong value.
-                                            bool isWallHost = zone.StructuralElementType == "Wall" || zone.StructuralElementType == "Walls";
-                                            bool isFramingHost = string.Equals(zone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
-                                            double depth = 0;
-                                            if (isWallHost && zone.WallThickness > 0.001)
-                                                depth = zone.WallThickness;
-                                            else if (isFramingHost && zone.FramingThickness > 0.001)
-                                                depth = zone.FramingThickness;
-                                            else if (zone.StructuralElementThickness > 0.001)
-                                                depth = zone.StructuralElementThickness;
-                                            else
-                                                depth = zone.CalculatedSleeveDepth > 0 ? zone.CalculatedSleeveDepth : zone.SleeveDepth;
+                                            // Depth = structural thickness for all (Floor, Wall, Framing)
+                                            double depth = zone.StructuralElementThickness > 0.001 ? zone.StructuralElementThickness : (zone.CalculatedSleeveDepth > 0 ? zone.CalculatedSleeveDepth : zone.SleeveDepth);
                                             zone.CalculatedSleeveDepth = depth > 0 ? depth : zone.CalculatedSleeveDepth;
                                             
                                             double placementX = zone.SleevePlacementPointX != 0 ? zone.SleevePlacementPointX : zone.CalculatedPlacementX;
@@ -1129,17 +1119,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                                 // 1. Dimensions
                                                 zone.CalculatedSleeveWidth = plan.TargetWidthFt;
                                                 zone.CalculatedSleeveHeight = plan.TargetHeightFt;
-                                                // Sleeve depth = host thickness only (wall/framing/structural), NOT thickness+clearance
-                                                double depthForSleeve = 0;
-                                                bool isWallHost = string.Equals(zone.StructuralElementType, "Wall", StringComparison.OrdinalIgnoreCase) || string.Equals(zone.StructuralElementType, "Walls", StringComparison.OrdinalIgnoreCase);
-                                                bool isFramingHost = string.Equals(zone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
-                                                if (isWallHost && zone.WallThickness > 0.001)
-                                                    depthForSleeve = zone.WallThickness;
-                                                else if (isFramingHost && zone.FramingThickness > 0.001)
-                                                    depthForSleeve = zone.FramingThickness;
-                                                else if (zone.StructuralElementThickness > 0.001)
-                                                    depthForSleeve = zone.StructuralElementThickness;
-                                                zone.CalculatedSleeveDepth = depthForSleeve > 0 ? depthForSleeve : (plan.TargetDepthFt > 0 ? plan.TargetDepthFt : zone.StructuralElementThickness);
+                                                // Depth = structural thickness for all (Floor, Wall, Framing)
+                                                double depthForSleeve = zone.StructuralElementThickness > 0.001 ? zone.StructuralElementThickness : (plan.TargetDepthFt > 0 ? plan.TargetDepthFt : 0);
+                                                zone.CalculatedSleeveDepth = depthForSleeve > 0 ? depthForSleeve : zone.StructuralElementThickness;
                                                 
                                                 // ✅ USER FIX: Also map to "Actual" DB columns so clustering works correctly
                                                 // Bulk placement forces these dimensions, so we can trust them as "Actual"
@@ -2222,13 +2204,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     SafeFileLogger.SafeAppendText("batch_v2.log", 
                         $"[{DateTime.Now:HH:mm:ss}] ✅ GLOBAL CLUSTERING COMPLETE: {placed} clusters placed, {cleanedUp} individual sleeves cleaned up\n");
 
-                    // ✅ SUMMARY: Generate Performance Report (Summary Table)
-                    if (_performanceMonitor != null)
-                    {
-                        // Pass total individual sleeves processed (approximate) and total clusters placed
-                        _performanceMonitor.GenerateReport(allUnresolvedZones.Count, placed);
-                    }
-                        
+                    // Report is generated once after all phases (individual + cluster) in the main flow — do not call here to avoid duplicate report
                     return placed;
                 }
             }

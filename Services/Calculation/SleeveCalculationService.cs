@@ -134,13 +134,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Calculation
                     }
                     else
                     {
-                        // From NewSleevePlacer (SetSleeveParameters logic)
-                        if (zone.StructuralElementType?.Contains("Wall") == true)
-                            finalDepth = zone.WallThickness > 0 ? zone.WallThickness : zone.StructuralElementThickness;
-                        else if (zone.StructuralElementType?.Contains("Framing") == true)
-                            finalDepth = zone.FramingThickness > 0 ? zone.FramingThickness : zone.StructuralElementThickness;
-                        else
-                            finalDepth = zone.StructuralElementThickness;
+                        // Depth = structural thickness for all (Floor, Wall, Framing)
+                        finalDepth = zone.StructuralElementThickness;
                     }
 
                     // 7. Update Zone Object (In Memory)

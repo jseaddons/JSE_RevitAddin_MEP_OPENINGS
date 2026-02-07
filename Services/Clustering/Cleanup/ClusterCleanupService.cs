@@ -14,6 +14,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
     /// </summary>
     public class ClusterCleanupService : IClusterCleanupService
     {
+        /// <summary>SQLite parameter limit is 999; batch cluster IDs to stay under (leaves room for other params).</summary>
+        private const int MaxClusterIdsPerQuery = 400;
+        /// <summary>Revit delete in chunks to avoid transaction/timeout issues with hundreds of elements.</summary>
+        private const int MaxDeletePerTransaction = 200;
+
         /// <summary>
         /// Cleanup individual sleeves within clusters using database-only approach (Stage 2 cleanup)
         /// Checks if individual sleeve placement points are inside cluster bounding boxes
@@ -62,97 +67,66 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                     SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ CLEANUP backfill bbox: {ex.Message}\n");
                 }
 
-                // ✅ SINGLE SQL QUERY: Find all sleeves with placement points inside cluster bounding boxes
-                // This replaces 3 separate queries - everything happens in one SQL query
-                // Performance: O(n log m) with indexes - database does all the work
+                // ✅ Point-in-box query: batched when many cluster IDs (SQLite param limit ~999; Revit delete in chunks)
                 var sleevesToDelete = new HashSet<int>();
-                
+                var clusterIdBatches = (clusterInstanceIds != null && clusterInstanceIds.Count > 0)
+                    ? clusterInstanceIds.Select((id, i) => (id, i)).GroupBy(x => x.i / MaxClusterIdsPerQuery).Select(g => g.Select(x => x.id).ToList()).ToList()
+                    : new List<List<int>> { null }; // null = no IN filter (all clusters)
+
                 SafeFileLogger.SafeAppendText("batch_v2.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP DEBUG: Using single SQL query for point-in-box check (fully optimized)\n");
-                
-                using (var cmd = context.Connection.CreateCommand())
+                    $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP DEBUG: Point-in-box in {clusterIdBatches.Count} batch(es) (ClusterIds={clusterInstanceIds?.Count ?? 0})\n");
+
+                foreach (var batch in clusterIdBatches)
                 {
-                    // ✅ SINGLE SQL QUERY: Join ClashZones with ClusterSleeves_v2 and check point-in-box
-                    // ClusterSleeves_v2.BoundingBox* must be set by BatchClusterPlacementService.UpdateClusterBoundingBoxesAfterPlacement
-                    // (after parameter flush and doc.Regenerate) so Stage 2 cleanup finds floor and wall clusters.
-                    var query = @"
-                        SELECT DISTINCT cz.SleeveInstanceId, cs.ClusterInstanceId
-                        FROM ClashZones cz
-                        CROSS JOIN ClusterSleeves_v2 cs
-                        WHERE cz.SleeveInstanceId > 0
-                          AND cs.ClusterInstanceId > 0
-                          -- Individual sleeve must have valid placement point
-                          AND cz.SleevePlacementX IS NOT NULL AND cz.SleevePlacementX != 0.0
-                          AND cz.SleevePlacementY IS NOT NULL AND cz.SleevePlacementY != 0.0
-                          AND cz.SleevePlacementZ IS NOT NULL AND cz.SleevePlacementZ != 0.0
-                          -- Individual sleeve must not already be part of a cluster
-                          -- ✅ FIX: Include -1 (Not Clustered) and 0 and NULL
-                          AND (cz.ClusterInstanceId <= 0 OR cz.ClusterInstanceId IS NULL)
-                          
-                          -- Cluster must have valid bounding box
-                          AND cs.BoundingBoxMinX != 0.0 AND cs.BoundingBoxMinY != 0.0 AND cs.BoundingBoxMinZ != 0.0
-                          AND cs.BoundingBoxMaxX != 0.0 AND cs.BoundingBoxMaxY != 0.0 AND cs.BoundingBoxMaxZ != 0.0
-                          
-                          -- ✅ POINT-IN-BOX CHECK: Individual sleeve placement point must be inside cluster bounding box
-                          AND cz.SleevePlacementX >= cs.BoundingBoxMinX AND cz.SleevePlacementX <= cs.BoundingBoxMaxX
-                          AND cz.SleevePlacementY >= cs.BoundingBoxMinY AND cz.SleevePlacementY <= cs.BoundingBoxMaxY
-                          AND cz.SleevePlacementZ >= cs.BoundingBoxMinZ AND cz.SleevePlacementZ <= cs.BoundingBoxMaxZ
- 
-                          -- Exclude if individual sleeve ID matches cluster ID
-                          AND cz.SleeveInstanceId != cs.ClusterInstanceId";                    
-                    // Optional: Filter by specific cluster IDs if provided
-                    if (clusterInstanceIds != null && clusterInstanceIds.Count > 0)
+                    using (var cmd = context.Connection.CreateCommand())
                     {
-                        var idPlaceholders = string.Join(",", clusterInstanceIds.Select((_, i) => $"@clusterId{i}"));
-                        query += $" AND cs.ClusterInstanceId IN ({idPlaceholders})";
-                        for (int i = 0; i < clusterInstanceIds.Count; i++)
+                        var query = @"
+                            SELECT DISTINCT cz.SleeveInstanceId, cs.ClusterInstanceId
+                            FROM ClashZones cz
+                            CROSS JOIN ClusterSleeves_v2 cs
+                            WHERE cz.SleeveInstanceId > 0
+                              AND cs.ClusterInstanceId > 0
+                              AND cz.SleevePlacementX IS NOT NULL AND cz.SleevePlacementX != 0.0
+                              AND cz.SleevePlacementY IS NOT NULL AND cz.SleevePlacementY != 0.0
+                              AND cz.SleevePlacementZ IS NOT NULL AND cz.SleevePlacementZ != 0.0
+                              AND (cz.ClusterInstanceId <= 0 OR cz.ClusterInstanceId IS NULL)
+                              AND cs.BoundingBoxMinX != 0.0 AND cs.BoundingBoxMinY != 0.0 AND cs.BoundingBoxMinZ != 0.0
+                              AND cs.BoundingBoxMaxX != 0.0 AND cs.BoundingBoxMaxY != 0.0 AND cs.BoundingBoxMaxZ != 0.0
+                              AND cz.SleevePlacementX >= cs.BoundingBoxMinX AND cz.SleevePlacementX <= cs.BoundingBoxMaxX
+                              AND cz.SleevePlacementY >= cs.BoundingBoxMinY AND cz.SleevePlacementY <= cs.BoundingBoxMaxY
+                              AND cz.SleevePlacementZ >= cs.BoundingBoxMinZ AND cz.SleevePlacementZ <= cs.BoundingBoxMaxZ
+                              AND cz.SleeveInstanceId != cs.ClusterInstanceId";
+                        if (batch != null && batch.Count > 0)
                         {
-                            cmd.Parameters.AddWithValue($"@clusterId{i}", clusterInstanceIds[i]);
+                            var idPlaceholders = string.Join(",", batch.Select((_, i) => $"@clusterId{i}"));
+                            query += $" AND cs.ClusterInstanceId IN ({idPlaceholders})";
+                            for (int i = 0; i < batch.Count; i++)
+                                cmd.Parameters.AddWithValue($"@clusterId{i}", batch[i]);
                         }
-                    }
-                    
-                    // Optional: Filter by category if provided (for cluster sleeves)
-                    if (!string.IsNullOrEmpty(targetCategory))
-                    {
-                        query += " AND cs.Category = @targetCategory";
-                        cmd.Parameters.AddWithValue("@targetCategory", targetCategory);
-                    }
-                    
-                    cmd.CommandText = query;
-                    
-                    SafeFileLogger.SafeAppendText("batch_v2.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP DEBUG: Executing single SQL point-in-box query (Category={targetCategory ?? "ALL"}, ClusterIds={clusterInstanceIds?.Count ?? 0})\n");
-                    
-                    try
-                    {
-                        using (var reader = cmd.ExecuteReader())
+                        if (!string.IsNullOrEmpty(targetCategory))
                         {
-                            int pointInBoxCount = 0;
-                            while (reader.Read())
+                            query += " AND cs.Category = @targetCategory";
+                            cmd.Parameters.AddWithValue("@targetCategory", targetCategory);
+                        }
+                        cmd.CommandText = query;
+
+                        try
+                        {
+                            using (var reader = cmd.ExecuteReader())
                             {
-                                var sleeveId = reader.GetInt32(reader.GetOrdinal("SleeveInstanceId"));
-                                var clusterId = reader.GetInt32(reader.GetOrdinal("ClusterInstanceId"));
-                                
-                                if (sleevesToDelete.Add(sleeveId))
+                                while (reader.Read())
                                 {
-                                    pointInBoxCount++;
-                                    SafeFileLogger.SafeAppendText("batch_v2.log", 
-                                        $"[{DateTime.Now:HH:mm:ss}] 🗑 POINT-IN-BOX: Individual sleeve {sleeveId} placement point is inside cluster {clusterId} bounding box\n");
+                                    var sleeveId = reader.GetInt32(reader.GetOrdinal("SleeveInstanceId"));
+                                    sleevesToDelete.Add(sleeveId);
                                 }
                             }
-                            
-                            SafeFileLogger.SafeAppendText("batch_v2.log", 
-                                $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP DEBUG: SQL query found {pointInBoxCount} sleeves with placement points inside cluster bounding boxes\n");
                         }
-                    }
-                    catch (Exception sqlEx)
-                    {
-                        SafeFileLogger.SafeAppendText("batch_v2.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ CLEANUP DEBUG: SQL point-in-box query failed: {sqlEx.Message}\n{sqlEx.StackTrace}\n");
-                        // If SQL fails, we can't do fallback without separate queries, so return 0
-                        SafeFileLogger.SafeAppendText("batch_v2.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] ⚠️ CLEANUP: Cannot perform cleanup - SQL query failed\n");
-                        return 0;
+                        catch (Exception sqlEx)
+                        {
+                            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] ⚠️ CLEANUP: SQL point-in-box batch failed: {sqlEx.Message}\n");
+                            return 0;
+                        }
                     }
                 }
 
@@ -192,29 +166,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                 int deletedCount = 0;
                 try
                 {
-                    // Convert sleeve IDs to ElementIds
                     var elementIdsToDelete = new List<ElementId>();
                     foreach (var sleeveId in sleevesToDelete)
                     {
                         var elementId = new ElementId(sleeveId);
                         if (elementId != null && elementId != ElementId.InvalidElementId)
-                        {
                             elementIdsToDelete.Add(elementId);
-                        }
                     }
 
                     if (elementIdsToDelete.Count > 0)
                     {
                         SafeFileLogger.SafeAppendText("batch_v2.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP DEBUG: Deleting {elementIdsToDelete.Count} sleeves from Revit document\n");
+                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CLEANUP: Deleting {elementIdsToDelete.Count} sleeves in batches of {MaxDeletePerTransaction}\n");
 
-                        // Delete in a transaction
-                        using (Transaction deleteTx = new Transaction(doc, "Stage 2 Cleanup: Delete Individual Sleeves"))
+                        // Delete in chunks to avoid Revit transaction/timeout with hundreds of elements
+                        for (int offset = 0; offset < elementIdsToDelete.Count; offset += MaxDeletePerTransaction)
                         {
-                            deleteTx.Start();
-                            doc.Delete(elementIdsToDelete);
-                            deleteTx.Commit();
-                            deletedCount = elementIdsToDelete.Count;
+                            var chunk = elementIdsToDelete.Skip(offset).Take(MaxDeletePerTransaction).ToList();
+                            using (Transaction deleteTx = new Transaction(doc, "Stage 2 Cleanup: Delete Individual Sleeves"))
+                            {
+                                deleteTx.Start();
+                                doc.Delete(chunk);
+                                deleteTx.Commit();
+                                deletedCount += chunk.Count;
+                            }
                         }
 
                         SafeFileLogger.SafeAppendText("batch_v2.log", 
@@ -224,7 +199,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup
                 catch (Exception deleteEx)
                 {
                     SafeFileLogger.SafeAppendText("batch_v2.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ CLEANUP DEBUG: Exception during deletion: {deleteEx.Message}\n{deleteEx.StackTrace}\n");
+                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ CLEANUP: Exception during deletion: {deleteEx.Message}\n{deleteEx.StackTrace}\n");
                 }
                             
                             SafeFileLogger.SafeAppendText("cluster_debug.log", 

@@ -366,6 +366,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             report.AppendLine($"║                        CLUSTER BULK PLACEMENT PERFORMANCE                          ║");
             report.AppendLine($"╚════════════════════════════════════════════════════════════════════════════════════╝");
             report.AppendLine();
+            report.AppendLine("NOTE: Cluster placement includes extra steps that individual does not:");
+            report.AppendLine("      - Delete individuals, swap/DB, corners, bbox sync");
+            report.AppendLine("      - Step 4 (Flush + Regenerate) is the main bottleneck: many params per cluster + full doc.Regenerate()");
+            report.AppendLine("      For placement-API-only timing, compare: Cluster \"Step 2a: Revit NewFamilyInstances2\" vs Individual \"Revit NewFamilyInstances2\".");
+            report.AppendLine();
             
             // Filter operations related to cluster placement
             var clusterOps = _operations.Values
@@ -443,36 +448,47 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             {
                 if (string.IsNullOrEmpty(name)) return false;
                 var n = name.Trim();
-                // Hide generic wrapper/diagnostic steps so the user sees only meaningful phases.
                 return n.IndexOf("Operation 2", StringComparison.OrdinalIgnoreCase) >= 0
                     || n.IndexOf("ExecuteBulkPlacement", StringComparison.OrdinalIgnoreCase) >= 0
-                    || n.IndexOf("Regenerate", StringComparison.OrdinalIgnoreCase) >= 0
                     || n.IndexOf("Cluster Placement Total", StringComparison.OrdinalIgnoreCase) >= 0;
             }
 
-            // ✅ CRITICAL FIX: Only show TOP-LEVEL operations (those that are NOT children of other operations)
-            // This prevents showing both "Global Bulk Cluster Placement" and its nested "Step 2: CLUSTER PLACEMENT MAIN LOOP"
+            // Cluster sub-ops (e.g. Flush Deferred Parameters (Cluster), Regenerate (Cluster), Step 6: SAVE PLACED DATA TO DB)
+            var clusterSubOps = _subOpsForReport
+                .Where(s => s.ParentName != null && IsClusterPlacementOperation(s.ParentName) && !IsRedundantOrOptionalStep(s.OpName))
+                .Select(s => (s.OpName, s.Ms))
+                .ToList();
+            var parentsWithSubOps = _subOpsForReport
+                .Where(s => s.ParentName != null && IsClusterPlacementOperation(s.ParentName))
+                .Select(s => s.ParentName)
+                .Distinct()
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            // Top-level cluster ops: exclude bulk wrapper, exclude ops that are sub-ops of another cluster op,
+            // and exclude parents that have sub-ops (we show sub-ops instead to avoid double-counting)
             var topLevelOps = new List<(string Name, long Ms)>();
             foreach (var op in stepsOnlyOps)
             {
                 if (!IsRedundantOrOptionalStep(op.Name))
                 {
-                    // Check if this operation is a sub-operation of another cluster operation
-                    bool isSubOp = _subOpsForReport.Any(s => 
-                        s.OpName != null && 
+                    bool isSubOp = _subOpsForReport.Any(s =>
+                        s.OpName != null &&
                         s.OpName.Equals(op.Name, StringComparison.OrdinalIgnoreCase) &&
                         s.ParentName != null &&
                         IsClusterPlacementOperation(s.ParentName));
-                    
-                    // Only add if it's NOT a sub-operation
-                    if (!isSubOp)
-                    {
+                    bool hasSubOps = op.Name != null && parentsWithSubOps.Contains(op.Name);
+                    if (!isSubOp && !hasSubOps)
                         topLevelOps.Add((op.Name, op.TotalMilliseconds));
-                    }
                 }
             }
 
-            foreach (var step in topLevelOps.OrderByDescending(x => x.Ms))
+            var allClusterSteps = new List<(string Name, long Ms)>();
+            foreach (var t in topLevelOps)
+                allClusterSteps.Add(t);
+            foreach (var sub in clusterSubOps)
+                allClusterSteps.Add((sub.OpName, sub.Ms));
+
+            foreach (var step in allClusterSteps.OrderByDescending(x => x.Ms))
             {
                 double pct = totalClusterTime > 0 ? (double)step.Ms / totalClusterTime * 100 : 0;
                 report.AppendLine($"{step.Name,-50} {step.Ms,10}ms {pct,5:F1}%");

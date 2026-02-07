@@ -1,0 +1,18 @@
+Fix most placement and combined-sleeve bugs
+
+Place sleeve (individual):
+- Depth: use structural thickness only for Floor/Wall/Framing (no WallThickness/FramingThickness branching). Applied in SleeveParameterService, NewSleevePlacerService, ParallelSleevePlacementPlanner, ZoneFilterService, SleeveCalculationService.
+- Stage 2 cleanup: batched SQL (400 IDs) and batched Revit delete (200 per transaction) so cleanup runs reliably with 500+ sleeves (ClusterCleanupService).
+- Report: single placement report; cluster section now shows sub-step breakdown (Flush vs Regenerate, Step 6 save, etc.) without double-counting (PlacementPerformanceMonitor).
+
+Combined sleeves:
+- Depth: same rule—structural thickness only; constituent depth fallback (ProximityGroup, UnifiedSleeve).
+- Floor Z: cluster and combined placement Z use constituent Z (not bbox) so floor sleeves stay at correct elevation (ClusterPlacementCalculationService, ProximityGroup).
+
+Cluster placement:
+- Floor cluster Z from constituent sleeve Z (ClusterPlacementCalculationService).
+- Pre-activate cluster symbols once; batched DB updates and bounding-box updates; Step 4 sub-ops (Flush + Regenerate) tracked for report (BatchClusterPlacementService).
+- Cleanup always runs when clusters placed, even if bbox/corner prep fails (try/catch in PlaceAllCategoriesAndCleanup).
+
+Misc:
+- OpeningCommandOrchestrator: single report generation after all phases; removed duplicate report call in clustering phase.

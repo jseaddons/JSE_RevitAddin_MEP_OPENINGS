@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Repository
 {
@@ -27,6 +28,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Re
             }
 
             DebugLogger.Info($"[LoadClusteredZones] Starting discovery for filter='{filterName}', categories={string.Join(", ", categories)}");
+            SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] [CombinedSleeve] Selected categories: [{string.Join(", ", categories)}], filter={filterName ?? ""}\n");
 
             // ✅ CRITICAL: Verify sleeves (individual, cluster, combined) still exist in Revit and reset flags for deleted ones
             // This prevents placing sleeves inside remaining combined sleeves after one is deleted
@@ -190,6 +192,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Re
             }
 
             DebugLogger.Info($"[LoadClusteredZones] Total returned: {resolved.Count} zones");
+            SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] [CombinedSleeve] LoadClusteredZones returned {resolved.Count} zones for categories [{string.Join(", ", categories)}]\n");
             return resolved;
         }
 

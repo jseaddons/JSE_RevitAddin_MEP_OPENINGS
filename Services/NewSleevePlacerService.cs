@@ -738,22 +738,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                         double storedDepth = 0.0;
                         
-                        // ALWAYS calculate depth from structural element thickness (Geometry Depth != Diameter)
-                        bool isWallHost = clashZone.StructuralElementType == "Wall" || clashZone.StructuralElementType == "Walls";
-                        bool isFramingHost = string.Equals(clashZone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
-                        
-                        if (isWallHost)
-                        {
-                            storedDepth = clashZone.WallThickness > 0 ? clashZone.WallThickness : clashZone.StructuralElementThickness;
-                        }
-                        else if (isFramingHost)
-                        {
-                            storedDepth = clashZone.FramingThickness > 0 ? clashZone.FramingThickness : clashZone.StructuralElementThickness;
-                        }
-                        else
-                        {
-                            storedDepth = clashZone.StructuralElementThickness;
-                        }
+                        // Depth = structural thickness for all (Floor, Wall, Framing)
+                        storedDepth = clashZone.StructuralElementThickness;
                             
                             // ? ROBUST: No fallback - depth MUST be valid
                             if (storedDepth <= 0)
@@ -1384,23 +1370,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 zone.CalculatedSleeveWidth = isCircular ? diameter : width;
                 zone.CalculatedSleeveHeight = isCircular ? diameter : height;
                 zone.CalculatedSleeveDiameter = diameter;
-                zone.CalculatedSleeveDepth = zone.StructuralElementThickness; // Default depth 
-                
-                // ? CRITICAL FIX: Defined missing variables for depth calculation logic (Null-safe)
-                string safeStructuralType = zone.StructuralElementType ?? string.Empty;
-                bool isWallHost = safeStructuralType.IndexOf("Wall", StringComparison.OrdinalIgnoreCase) >= 0;
-                bool isFramingHost = safeStructuralType.IndexOf("Framing", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                     safeStructuralType.IndexOf("Beam", StringComparison.OrdinalIgnoreCase) >= 0;
-
-                // Try to get more accurate depth if available
-                 if (isWallHost)
-                {
-                    zone.CalculatedSleeveDepth = zone.WallThickness > 0 ? zone.WallThickness : zone.StructuralElementThickness;
-                }
-                else if (isFramingHost)
-                {
-                    zone.CalculatedSleeveDepth = zone.FramingThickness > 0 ? zone.FramingThickness : zone.StructuralElementThickness;
-                }
+                // Depth = structural thickness for all (Floor, Wall, Framing)
+                zone.CalculatedSleeveDepth = zone.StructuralElementThickness;
 
                 zone.CalculatedRotation = rotation;
                 zone.CalculatedPlacementX = placementPoint.X;
@@ -2508,22 +2479,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 else
                 {
-                    // For rectangular, calculate depth from structural element thickness
-                    bool isWallHost = zone.StructuralElementType == "Wall" || zone.StructuralElementType == "Walls";
-                    bool isFramingHost = string.Equals(zone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
-                    
-                    if (isWallHost)
-                    {
-                        depth = zone.WallThickness > 0 ? zone.WallThickness : zone.StructuralElementThickness;
-                    }
-                    else if (isFramingHost)
-                    {
-                        depth = zone.FramingThickness > 0 ? zone.FramingThickness : zone.StructuralElementThickness;
-                    }
-                    else
-                    {
-                        depth = zone.StructuralElementThickness;
-                    }
+                    // Depth = structural thickness for all (Floor, Wall, Framing)
+                    depth = zone.StructuralElementThickness;
                 }
 
                 dimensionCache[zone.Id] = (width, height, depth);
@@ -2646,22 +2603,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 else
                 {
-                    // For rectangular, calculate depth from structural element thickness
-                    bool isWallHost = zone.StructuralElementType == "Wall" || zone.StructuralElementType == "Walls";
-                    bool isFramingHost = string.Equals(zone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
-                    
-                    if (isWallHost)
-                    {
-                        depth = zone.WallThickness > 0 ? zone.WallThickness : zone.StructuralElementThickness;
-                    }
-                    else if (isFramingHost)
-                    {
-                        depth = zone.FramingThickness > 0 ? zone.FramingThickness : zone.StructuralElementThickness;
-                    }
-                    else
-                    {
-                        depth = zone.StructuralElementThickness;
-                    }
+                    // Depth = structural thickness for all (Floor, Wall, Framing)
+                    depth = zone.StructuralElementThickness;
                 }
 
                 return (zone, width, height, depth);

@@ -1104,18 +1104,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 
         private double GetThickness(ClashZone zone, bool isWallHost, bool isFramingHost)
         {
-            // ✅ CLUSTER SUPPORT: If a calculated depth exists (e.g. for clusters or manual overrides), prioritize it.
+            // Cluster/combined override: use calculated depth when already set
             if (zone.CalculatedSleeveDepth > 0.001)
                 return zone.CalculatedSleeveDepth;
-
-            // ✅ ITERATIVE PRIORITY: Prioritize based on host type to avoid picking junk values from other fields
-            if (isWallHost && zone.WallThickness > 0.001)
-                return zone.WallThickness;
-                
-            if (isFramingHost && zone.FramingThickness > 0.001)
-                return zone.FramingThickness;
-                
-            // Fallback to general structural thickness
+            // Individual/cluster/combined: depth = structural thickness (Floor, Wall, Framing)
             return zone.StructuralElementThickness;
         }
 

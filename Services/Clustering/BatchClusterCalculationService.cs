@@ -71,6 +71,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             var settings = ApplicationProfileService.Instance.GetCurrentSettings();
             double toleranceMM = settings.JoinOpeningsDistance;
             var toleranceDist = RevitUnitConversionService.Instance.ToInternalMillimeters(toleranceMM);
+            // Floor/pipes often form clusters of 2 ("in and out") because one pipe through a slab = two penetrations
+            // within tolerance; other pipes are further away. To get larger floor/pipe clusters, increase JoinOpeningsDistance.
             
             // 2. Group Zones (Optimized Phase 10)
             // Pre-compute keys once to avoid string operations in GroupBy loop
@@ -531,12 +533,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 return null; // Skip this cluster - invalid data
             }
             
-            // Wall/Framing Depth Logic (Authoritative)
-            double depth = bboxResult.depth;
-            bool isWall = first.StructuralElementType == "Wall" || first.StructuralElementType == "Walls";
-            if (isWall && first.WallThickness > 0.001) depth = first.WallThickness;
-            else if (!isWall && first.FramingThickness > 0.001) depth = first.FramingThickness;
-            else if (first.StructuralElementThickness > 0.001) depth = first.StructuralElementThickness;
+            // Depth = structural thickness for all host types (Floor, Wall, Framing)
+            double depth = first.StructuralElementThickness > 0.001 ? first.StructuralElementThickness : bboxResult.depth;
 
             var placementService = new JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement.ClusterPlacementCalculationService(
                 (id, _) => zones.FirstOrDefault(z => z.SleeveInstanceId == id) ?? zones.FirstOrDefault()

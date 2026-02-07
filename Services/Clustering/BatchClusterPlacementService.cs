@@ -91,50 +91,51 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     if (clusterInstanceIds.Count > 0)
                     {
                         SafeFileLogger.SafeAppendText("batch_v2.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CONSOLIDATED CLEANUP: Found {clusterInstanceIds.Count} placed clusters from all categories\n");
+                            $"[{DateTime.Now:HH:mm:ss}] 🧹 CONSOLIDATED CLEANUP: Found {clusterInstanceIds.Count} placed clusters — running Stage 2 cleanup\n");
                         
-                        // ✅ STAGE 2 CLEANUP FIX: Ensure ClusterSleeves (legacy) has bounding boxes before point-in-box query
-                        // Cleanup requires ClusterSleeves.BoundingBox* != 0; if in-placement bbox update was skipped/failed, do it now
-                        var instancesForBbox = new List<FamilyInstance>();
-                        foreach (int id in clusterInstanceIds)
+                        // Bbox/corner prep is best-effort; cleanup always runs (uses DB backfill if bbox was not updated)
+                        try
                         {
-                            var elem = doc.GetElement(new Autodesk.Revit.DB.ElementId(id)) as FamilyInstance;
-                            if (elem != null && elem.IsValidObject) instancesForBbox.Add(elem);
-                        }
-                        if (instancesForBbox.Count > 0)
-                        {
-                            try
+                            var instancesForBbox = new List<FamilyInstance>();
+                            foreach (int id in clusterInstanceIds)
                             {
-                                UpdateClusterBoundingBoxesAfterPlacement(doc, instancesForBbox);
-                                SafeFileLogger.SafeAppendText("batch_v2.log", 
-                                    $"[{DateTime.Now:HH:mm:ss}] 🧹 STAGE 2: Ensured {instancesForBbox.Count} cluster bboxes in DB before cleanup\n");
-
-                                // ✅ CRITICAL FIX: Extract and save corners for Cluster Sleeves
-                                // This ensures that cluster sleeves have valid 3D geometry (corners) for the proximity check
+                                var elem = doc.GetElement(new Autodesk.Revit.DB.ElementId(id)) as FamilyInstance;
+                                if (elem != null && elem.IsValidObject) instancesForBbox.Add(elem);
+                            }
+                            if (instancesForBbox.Count > 0)
+                            {
                                 try
                                 {
-                                    SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 📐 STAGE 2: Extracting corners for cluster sleeves...\n");
-                                    var cornerExtractor = new JSE_RevitAddin_MEP_OPENINGS.Services.Calculation.BatchSleeveCornerExtractor(_repository);
-                                    int cornersExtracted = cornerExtractor.ExtractAndSaveCornersForClusters(doc);
-                                    SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 📐 STAGE 2: Extracted corners for {cornersExtracted} cluster sleeves.\n");
-                                }
-                                catch (Exception cornerEx)
-                                {
+                                    UpdateClusterBoundingBoxesAfterPlacement(doc, instancesForBbox);
                                     SafeFileLogger.SafeAppendText("batch_v2.log", 
-                                        $"[{DateTime.Now:HH:mm:ss}] ⚠️ STAGE 2 cluster corner extraction failed (continuing): {cornerEx.Message}\n");
+                                        $"[{DateTime.Now:HH:mm:ss}] 🧹 STAGE 2: Ensured {instancesForBbox.Count} cluster bboxes in DB before cleanup\n");
+                                    try
+                                    {
+                                        var cornerExtractor = new JSE_RevitAddin_MEP_OPENINGS.Services.Calculation.BatchSleeveCornerExtractor(_repository);
+                                        int cornersExtracted = cornerExtractor.ExtractAndSaveCornersForClusters(doc);
+                                        SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 📐 STAGE 2: Extracted corners for {cornersExtracted} cluster sleeves.\n");
+                                    }
+                                    catch (Exception cornerEx)
+                                    {
+                                        SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ STAGE 2 corner extraction failed (continuing): {cornerEx.Message}\n");
+                                    }
                                 }
-                            }
-                            catch (Exception bboxEx)
-                            {
-                                SafeFileLogger.SafeAppendText("batch_v2.log", 
-                                    $"[{DateTime.Now:HH:mm:ss}] ⚠️ STAGE 2 bbox pre-cleanup failed (continuing): {bboxEx.Message}\n");
+                                catch (Exception bboxEx)
+                                {
+                                    SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ STAGE 2 bbox update failed (cleanup will still run): {bboxEx.Message}\n");
+                                }
                             }
                         }
+                        catch (Exception prepEx)
+                        {
+                            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                $"[{DateTime.Now:HH:mm:ss}] ⚠️ STAGE 2 prep failed (cleanup will still run): {prepEx.Message}\n");
+                        }
                         
-                        // ✅ CLEANUP ALL CATEGORIES: No category filter - check all individual sleeves against all cluster bboxes
+                        // Always run cleanup when we have placed clusters (cleanup service backfills bbox from placement+dimensions if needed)
                         cleanedUp = cleanupService.CleanupSleevesWithinClustersFromDatabase(
                             doc, 
-                            targetCategory: null, // null = all categories
+                            targetCategory: null,
                             clusterInstanceIds: clusterInstanceIds);
                         
                         SafeFileLogger.SafeAppendText("batch_v2.log", 
@@ -184,7 +185,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 int failedCount = 0;
                 var placedInstances = new List<FamilyInstance>(); // Track placed instances for 2nd cleanup
 
-                // ✅ OPTIMIZATION: Pre-fetch all required Family Symbols
+                // ✅ OPTIMIZATION: Pre-fetch and pre-activate all required Family Symbols (like individual bulk path)
                 var symbolCache = new Dictionary<string, FamilySymbol>();
                 using (_performanceMonitor?.TrackOperation("Step 1a: CACHE CLUSTER SYMBOLS"))
                 {
@@ -197,7 +198,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     foreach (var name in uniqueFamilyNames)
                     {
                         var symbol = allSymbols.FirstOrDefault(s => s.Name == name || s.Family.Name == name);
-                        if (symbol != null) symbolCache[name] = symbol;
+                        if (symbol != null)
+                        {
+                            symbolCache[name] = symbol;
+                            if (!symbol.IsActive) symbol.Activate();
+                        }
                     }
                 }
 
@@ -272,16 +277,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     {
                         using (var flushTracker = _performanceMonitor?.TrackOperation("Step 4: FLUSH CLUSTER PARAMETERS"))
                         {
-                            var clusterFlushTimer = System.Diagnostics.Stopwatch.StartNew();
-                            
-                            // Flush logic:
-                            int flushedCount = _parameterService.FlushDeferredParameters(clearList: true);
-                            doc.Regenerate();
-                            
-                            clusterFlushTimer.Stop();
+                            int flushedCount = 0;
+                            using (flushTracker?.TrackSubOperation("Flush Deferred Parameters (Cluster)"))
+                            {
+                                flushedCount = _parameterService.FlushDeferredParameters(clearList: true, context: "Cluster");
+                            }
+                            using (flushTracker?.TrackSubOperation("Regenerate (Cluster)"))
+                            {
+                                doc.Regenerate();
+                            }
                             SafeFileLogger.SafeAppendText("performance.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [CLUSTER-FLUSH] Clusters={placedCount}, Parameters={flushedCount}, Time={clusterFlushTimer.ElapsedMilliseconds}ms, InExistingTx={!manageTransaction}\n");
-                            
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [CLUSTER-FLUSH] Clusters={placedCount}, Parameters={flushedCount}, InExistingTx={!manageTransaction}\n");
                             flushTracker?.SetItemCount(flushedCount);
                         }
                     }
@@ -474,29 +480,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             return list;
         }
 
+        private const int StatusBatchChunkSize = 100;
+
         private void UpdateStatusBatch(Dictionary<string, int> guidToIdMap, string status)
         {
             if (guidToIdMap == null || guidToIdMap.Count == 0) return;
+            var list = guidToIdMap.ToList();
 
             using (var conn = new SQLiteConnection($"Data Source={_databasePath};Version=3;"))
             {
                 conn.Open();
                 using (var trans = conn.BeginTransaction())
                 {
-                    foreach (var kvp in guidToIdMap)
+                    for (int offset = 0; offset < list.Count; offset += StatusBatchChunkSize)
                     {
+                        var chunk = list.Skip(offset).Take(StatusBatchChunkSize).ToList();
+                        if (chunk.Count == 0) continue;
+
+                        // Batch UPDATE ClusterSleeves_v2: one query per chunk (avoids N round-trips)
+                        var caseId = string.Join(" ", chunk.Select((kvp, i) => $"WHEN @g{i} THEN @id{i}"));
+                        var inList = string.Join(",", chunk.Select((_, i) => $"@g{i}"));
                         using (var cmd = conn.CreateCommand())
                         {
                             cmd.Transaction = trans;
-                            cmd.CommandText = @"
+                            cmd.CommandText = $@"
                                 UPDATE ClusterSleeves_v2 
                                 SET Status = @status, 
-                                    ClusterInstanceId = @id,
+                                    ClusterInstanceId = CASE ClusterGUID {caseId} END,
                                     PlacedAt = CURRENT_TIMESTAMP
-                                WHERE ClusterGUID = @guid;
-                                
-                                -- ✅ SYNC TO LEGACY TABLE: Required for combined sleeves & cleanup
-                                -- Convert V2 data to legacy schema format
+                                WHERE ClusterGUID IN ({inList})";
+                            cmd.Parameters.AddWithValue("@status", status);
+                            for (int i = 0; i < chunk.Count; i++)
+                            {
+                                cmd.Parameters.AddWithValue($"@g{i}", chunk[i].Key);
+                                cmd.Parameters.AddWithValue($"@id{i}", chunk[i].Value);
+                            }
+                            cmd.ExecuteNonQuery();
+                        }
+
+                        // Sync to legacy: one SELECT per chunk
+                        var inList2 = string.Join(",", chunk.Select((_, i) => $"@g{i}"));
+                        using (var cmd = conn.CreateCommand())
+                        {
+                            cmd.Transaction = trans;
+                            cmd.CommandText = $@"
                                 INSERT OR REPLACE INTO ClusterSleeves (
                                     ClusterInstanceId, ComboId, FilterId, Category,
                                     BoundingBoxMinX, BoundingBoxMinY, BoundingBoxMinZ,
@@ -508,7 +535,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                     ClashZoneGuids, ClashZoneIdsJson
                                 )
                                 SELECT 
-                                    @id, ComboId, FilterId, Category,
+                                    ClusterInstanceId, ComboId, FilterId, Category,
                                     (PlacementX - ClusterWidth/2), (PlacementY - ClusterHeight/2), (PlacementZ - ClusterDepth/2),
                                     (PlacementX + ClusterWidth/2), (PlacementY + ClusterHeight/2), (PlacementZ + ClusterDepth/2),
                                     ClusterWidth, ClusterHeight, ClusterDepth,
@@ -517,14 +544,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                     HostType, HostOrientation,
                                     ConstituentZoneGuids, COALESCE(ConstituentZoneGuids, '[]')
                                 FROM ClusterSleeves_v2
-                                WHERE ClusterGUID = @guid AND @id > 0";
-                            
-                            SafeFileLogger.SafeAppendText("batch_v2.log", 
-                                $"[{DateTime.Now:HH:mm:ss}] 🔄 SYNC: Updating V2 and syncing to legacy table for ClusterInstanceId={kvp.Value}\n");
-                            
-                            cmd.Parameters.AddWithValue("@status", status);
-                            cmd.Parameters.AddWithValue("@id", kvp.Value);
-                            cmd.Parameters.AddWithValue("@guid", kvp.Key);
+                                WHERE ClusterGUID IN ({inList2}) AND ClusterInstanceId > 0";
+                            for (int i = 0; i < chunk.Count; i++)
+                                cmd.Parameters.AddWithValue($"@g{i}", chunk[i].Key);
                             cmd.ExecuteNonQuery();
                         }
                     }
@@ -1478,13 +1500,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
             int skippedDuplicateCount = 0;
             int skippedExistingCount = 0;
 
-            // 1. Prepare Creation Data
+            // 1. Prepare Creation Data (symbols already activated in Step 1a — no per-cluster Activate())
             using (placementTracker?.TrackSubOperation("Prepare Creation Data & Deduplication"))
             {
                 foreach (var cluster in clusters)
             {
                 if (!symbolCache.TryGetValue(cluster.FamilyName, out var symbol)) continue;
-                if (!symbol.IsActive) symbol.Activate();
 
                 XYZ location = new XYZ(cluster.PlacementX, cluster.PlacementY, cluster.PlacementZ);
                 
@@ -1900,66 +1921,83 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         /// Updates both ClusterSleeves table and ClashZones.ClusterSleeveBoundingBox columns
         /// This ensures Stage 2 cleanup can find overlapping sleeves using DB-only queries
         /// </summary>
+        private const int BboxBatchChunkSize = 100;
+
         private void UpdateClusterBoundingBoxesAfterPlacement(Document doc, List<FamilyInstance> placedInstances)
         {
             try
             {
                 SafeFileLogger.SafeAppendText("batch_v2.log", 
                     $"[{DateTime.Now:HH:mm:ss}] 💾 BATCH BBOX UPDATE: Starting update for {placedInstances.Count} instances\n");
-                
+
+                var rows = new List<(int id, double minX, double minY, double minZ, double maxX, double maxY, double maxZ)>();
+                foreach (var instance in placedInstances)
+                {
+                    if (instance == null || !instance.IsValidObject) continue;
+                    var bbox = instance.get_BoundingBox(null);
+                    if (bbox == null || !bbox.Enabled) continue;
+                    rows.Add((instance.Id.IntegerValue, bbox.Min.X, bbox.Min.Y, bbox.Min.Z, bbox.Max.X, bbox.Max.Y, bbox.Max.Z));
+                }
+
+                if (rows.Count == 0) return;
+
                 using (var context = new SleeveDbContext(doc))
                 {
                     context.Connection.Open();
                     using (var trans = context.Connection.BeginTransaction())
                     {
-                        int updatedCount = 0;
-                        foreach (var instance in placedInstances)
+                        for (int offset = 0; offset < rows.Count; offset += BboxBatchChunkSize)
                         {
-                            if (instance == null || !instance.IsValidObject) continue;
-                            
-                            int clusterInstanceId = instance.Id.IntegerValue;
-                            var bbox = instance.get_BoundingBox(null);
-                            if (bbox == null || !bbox.Enabled) continue;
-                            
+                            var chunk = rows.Skip(offset).Take(BboxBatchChunkSize).ToList();
+                            if (chunk.Count == 0) continue;
+
+                            var inList = string.Join(",", chunk.Select((_, i) => $"@id{i}"));
+                            var caseMinX = string.Join(" ", chunk.Select((_, i) => $"WHEN @id{i} THEN @minx{i}"));
+                            var caseMinY = string.Join(" ", chunk.Select((_, i) => $"WHEN @id{i} THEN @miny{i}"));
+                            var caseMinZ = string.Join(" ", chunk.Select((_, i) => $"WHEN @id{i} THEN @minz{i}"));
+                            var caseMaxX = string.Join(" ", chunk.Select((_, i) => $"WHEN @id{i} THEN @maxx{i}"));
+                            var caseMaxY = string.Join(" ", chunk.Select((_, i) => $"WHEN @id{i} THEN @maxy{i}"));
+                            var caseMaxZ = string.Join(" ", chunk.Select((_, i) => $"WHEN @id{i} THEN @maxz{i}"));
+
                             using (var cmd = context.Connection.CreateCommand())
                             {
                                 cmd.Transaction = trans;
-                                cmd.CommandText = @"
-                                    UPDATE ClusterSleeves_v2 
-                                    SET BoundingBoxMinX = @MinX,
-                                        BoundingBoxMinY = @MinY,
-                                        BoundingBoxMinZ = @MinZ,
-                                        BoundingBoxMaxX = @MaxX,
-                                        BoundingBoxMaxY = @MaxY,
-                                        BoundingBoxMaxZ = @MaxZ
-                                    WHERE ClusterInstanceId = @ClusterId;
-
-                                    -- ✅ STURDY PERSISTENCE: Sync BBox to legacy table
-                                    UPDATE ClusterSleeves 
-                                    SET BoundingBoxMinX = @MinX,
-                                        BoundingBoxMinY = @MinY,
-                                        BoundingBoxMinZ = @MinZ,
-                                        BoundingBoxMaxX = @MaxX,
-                                        BoundingBoxMaxY = @MaxY,
-                                        BoundingBoxMaxZ = @MaxZ
-                                    WHERE ClusterInstanceId = @ClusterId";
-                                
-                                cmd.Parameters.AddWithValue("@ClusterId", clusterInstanceId);
-                                cmd.Parameters.AddWithValue("@MinX", bbox.Min.X);
-                                cmd.Parameters.AddWithValue("@MinY", bbox.Min.Y);
-                                cmd.Parameters.AddWithValue("@MinZ", bbox.Min.Z);
-                                cmd.Parameters.AddWithValue("@MaxX", bbox.Max.X);
-                                cmd.Parameters.AddWithValue("@MaxY", bbox.Max.Y);
-                                cmd.Parameters.AddWithValue("@MaxZ", bbox.Max.Z);
-                                
-                                updatedCount += (cmd.ExecuteNonQuery() > 0 ? 1 : 0);
+                                cmd.CommandText = $@"
+                                    UPDATE ClusterSleeves_v2 SET
+                                        BoundingBoxMinX = CASE ClusterInstanceId {caseMinX} END,
+                                        BoundingBoxMinY = CASE ClusterInstanceId {caseMinY} END,
+                                        BoundingBoxMinZ = CASE ClusterInstanceId {caseMinZ} END,
+                                        BoundingBoxMaxX = CASE ClusterInstanceId {caseMaxX} END,
+                                        BoundingBoxMaxY = CASE ClusterInstanceId {caseMaxY} END,
+                                        BoundingBoxMaxZ = CASE ClusterInstanceId {caseMaxZ} END
+                                    WHERE ClusterInstanceId IN ({inList});
+                                    UPDATE ClusterSleeves SET
+                                        BoundingBoxMinX = CASE ClusterInstanceId {caseMinX} END,
+                                        BoundingBoxMinY = CASE ClusterInstanceId {caseMinY} END,
+                                        BoundingBoxMinZ = CASE ClusterInstanceId {caseMinZ} END,
+                                        BoundingBoxMaxX = CASE ClusterInstanceId {caseMaxX} END,
+                                        BoundingBoxMaxY = CASE ClusterInstanceId {caseMaxY} END,
+                                        BoundingBoxMaxZ = CASE ClusterInstanceId {caseMaxZ} END
+                                    WHERE ClusterInstanceId IN ({inList})";
+                                for (int i = 0; i < chunk.Count; i++)
+                                {
+                                    var r = chunk[i];
+                                    cmd.Parameters.AddWithValue($"@id{i}", r.id);
+                                    cmd.Parameters.AddWithValue($"@minx{i}", r.minX);
+                                    cmd.Parameters.AddWithValue($"@miny{i}", r.minY);
+                                    cmd.Parameters.AddWithValue($"@minz{i}", r.minZ);
+                                    cmd.Parameters.AddWithValue($"@maxx{i}", r.maxX);
+                                    cmd.Parameters.AddWithValue($"@maxy{i}", r.maxY);
+                                    cmd.Parameters.AddWithValue($"@maxz{i}", r.maxZ);
+                                }
+                                cmd.ExecuteNonQuery();
                             }
                         }
                         trans.Commit();
-                SafeFileLogger.SafeAppendText("batch_v2.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] ✅ BATCH BBOX UPDATE COMPLETE: Updated {updatedCount} clusters in BOTH v2 and legacy tables (Single Transaction)\n");
                     }
                 }
+                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                    $"[{DateTime.Now:HH:mm:ss}] ✅ BATCH BBOX UPDATE COMPLETE: Updated {rows.Count} clusters in BOTH v2 and legacy tables\n");
             }
             catch (Exception ex)
             {

@@ -490,19 +490,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     }
                 }
 
-                // 8. Host Thickness & Depth
+                // 8. Host Thickness & Depth — structural thickness for all (Floor, Wall, Framing)
                 double hostThickness = zone.StructuralElementThickness;
                 if (hostThickness <= 0) hostThickness = 0.5; // Fallback 6"
-                // Sleeve depth = host thickness only (wall/framing/structural). BulkPlacementService uses this for the Depth parameter.
-                bool isWallHost = string.Equals(hostType, "Wall", StringComparison.OrdinalIgnoreCase) || string.Equals(hostType, "Walls", StringComparison.OrdinalIgnoreCase);
-                bool isFramingHost = string.Equals(hostType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
-                double sleeveDepthFt = hostThickness;
-                if (isWallHost && zone.WallThickness > 0.001)
-                    sleeveDepthFt = zone.WallThickness;
-                else if (isFramingHost && zone.FramingThickness > 0.001)
-                    sleeveDepthFt = zone.FramingThickness;
-                else if (zone.StructuralElementThickness > 0.001)
-                    sleeveDepthFt = zone.StructuralElementThickness;
+                double sleeveDepthFt = zone.StructuralElementThickness > 0.001 ? zone.StructuralElementThickness : hostThickness;
 
                 // 9. Risk assessment
                 var risk = ClassifyRisk(hostThickness, clearance, rawDiameter);

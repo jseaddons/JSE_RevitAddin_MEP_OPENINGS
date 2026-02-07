@@ -102,18 +102,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
         /// </summary>
         public (double width, double height, double depth) CalculateCombinedDimensions()
         {
-            // ✅ LIGHTWEIGHT OBB LOGIC (Use Rotation Vector Projection)
-            // Projects corners onto the wall's local axes defined by RotationAngle.
-            // Matches Cluster Sleeve logic: Efficiently handles rotated walls (45 deg) without 'Too Big' AABB.
-
-            var referenceSleeve = Sleeves.First();
-            double rotationRad = referenceSleeve.RotationAngleDeg * (Math.PI / 180.0);
-            string orientation = GetHostOrientation();
             string hostType = GetHostType();
+            string orientation = GetHostOrientation();
+            var referenceSleeve = Sleeves.First();
 
-            // 1. Define Projection Vectors (Rotated Axes)
-            XYZ vecU = new XYZ(Math.Cos(rotationRad), Math.Sin(rotationRad), 0); // "Rotated X" / Along Rotated X-Wall
-            XYZ vecV = new XYZ(-Math.Sin(rotationRad), Math.Cos(rotationRad), 0); // "Rotated Y" / Normal to Rotated X-Wall (or Along Rotated Y-Wall)
+            // Floor (or no host): use axis-aligned XY only (rotation = 0). Width = max X - min X, Height = max Y - min Y.
+            // When hostType is null/empty (e.g. floor has no orientation), treat as Floor to avoid rotated OBB inflating dimensions.
+            bool isFloor = string.Equals(hostType, "Floor", StringComparison.OrdinalIgnoreCase)
+                || string.IsNullOrWhiteSpace(hostType);
+            double rotationRad = isFloor ? 0.0 : (referenceSleeve.RotationAngleDeg * (Math.PI / 180.0));
+
+            // 1. Define Projection Vectors (Rotated Axes; for Floor these are just X and Y)
+            XYZ vecU = new XYZ(Math.Cos(rotationRad), Math.Sin(rotationRad), 0);
+            XYZ vecV = new XYZ(-Math.Sin(rotationRad), Math.Cos(rotationRad), 0);
             XYZ vecZ = XYZ.BasisZ;
 
             // 2. Project all corners
@@ -155,32 +156,29 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
 
             double calculatedWidth, calculatedHeight, calculatedDepth;
 
-            // Database Thickness Check (Source of Truth)
+            // Depth = structural thickness for all host types (Floor, Wall, Framing). Then constituent ClusterDepth.
             double? dbThickness = null;
             foreach (var s in Sleeves)
             {
-                if (s.SourceData is ClashZone cz)
+                if (s.SourceData is ClashZone cz && cz.StructuralElementThickness > 0.001)
                 {
-                    if (cz.WallThickness > 0.001) dbThickness = cz.WallThickness;
-                    else if (cz.FramingThickness > 0.001) dbThickness = cz.FramingThickness;
-                    if (dbThickness.HasValue) break;
+                    dbThickness = cz.StructuralElementThickness;
+                    break;
                 }
-                else if (s.SourceData is ClusterSleeveData csd && csd.ClusterDepth > 0.001)
+                if (s.SourceData is ClusterSleeveData csd && csd.ClusterDepth > 0.001)
                 {
                     dbThickness = csd.ClusterDepth;
                     break;
                 }
             }
+            double defaultDepth = GetConstituentThicknessFallback();
 
-            if (string.Equals(hostType, "Floor", StringComparison.OrdinalIgnoreCase))
+            if (isFloor)
             {
-                // Floor: Planar dimensions are U/V
-                // Width -> Range U (Rotated X)
-                // Height -> Range V (Rotated Y) - Note: Height param usually maps to "Depth" in plan
-                // Depth -> Range Z (Thickness)
+                // Floor (or no host): Width & height from corner XY extents only (U/V). Depth = structural/constituent thickness only.
                 calculatedWidth = rangeU;
-                calculatedHeight = rangeV; 
-                calculatedDepth = dbThickness ?? rangeZ;
+                calculatedHeight = rangeV;
+                calculatedDepth = dbThickness ?? defaultDepth; // Never use rangeZ — depth is slab/sleeve thickness only
             }
             else
             {
@@ -206,43 +204,74 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
         }
         
         /// <summary>
-        /// Calculates the rotation angle in radians for the combined sleeve
+        /// Calculates the rotation angle in radians for the combined sleeve.
+        /// Floor: always 0 degrees (no rotation). Wall/Framing: use host orientation (Y → 0°, X → 90°).
         /// </summary>
         public double CalculateCombinedRotation()
         {
-            var orientation = GetHostOrientation();
-            
-            // USER FEEDBACK: Family is 'Left Oriented' / Y-Aligned by default.
-            // Y-Wall (running North-South): Rotation 0 (Native alignment)
-            // X-Wall (running East-West): Rotation 90 deg (PI/2) to align Y-Width to X-Wall
-            
-            if (string.Equals(orientation, "Y", StringComparison.OrdinalIgnoreCase))
-            {
-                return 0.0; // Native alignment for Y-wall
-            }
-            
-            // For Floors or slanted walls, we might want to respect the sleeve's rotation
             if (string.Equals(GetHostType(), "Floor", StringComparison.OrdinalIgnoreCase))
-            {
-               // ✅ USER REQUEST (2026-02-05): "for floor no rotation needed"
-               // Even if constituent sleeves are rotated (e.g. 45 deg duct), the combined opening should be axis-aligned (0 deg).
-               // The bounding box calculation already accounts for the rotated geometry (AABB), so the hole matches the full extent.
-               return 0.0;
-            }
-            
-            // Default / X-Wall -> Rotate 90 degrees
-            return Math.PI / 2.0;
+                return 0.0; // Floor: no rotation for combined sleeve — always 0 degrees
+
+            // Wall / Framing: use host orientation
+            var orientation = GetHostOrientation();
+            if (string.Equals(orientation, "Y", StringComparison.OrdinalIgnoreCase))
+                return 0.0; // Y-Wall (North-South): native alignment
+            return Math.PI / 2.0; // X-Wall (East-West): rotate 90°
         }
 
         /// <summary>
-        /// Calculates the combined placement point (center of combined bounding box)
+        /// Calculates the combined placement point.
+        /// Floor: mid X, mid Y from bbox; Z from constituent(s) so it stays same as individual (mid-thickness). Otherwise: center of combined bbox.
         /// </summary>
         public XYZ CalculateCombinedPlacementPoint()
         {
             var bbox = CalculateCombinedBoundingBox();
+            var ht = GetHostType();
+            bool isFloor = string.Equals(ht, "Floor", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(ht);
+            if (isFloor)
+            {
+                double midX = (bbox.Min.X + bbox.Max.X) / 2.0;
+                double midY = (bbox.Min.Y + bbox.Max.Y) / 2.0;
+                // Z from constituent(s) — do not change from individual placement (mid-thickness)
+                double floorZ = GetConstituentZForFloor();
+                if (Math.Abs(floorZ) < 1e-9)
+                    floorZ = bbox.Min.Z;
+                return new XYZ(midX, midY, floorZ);
+            }
             return (bbox.Min + bbox.Max) / 2.0;
         }
+
+        /// <summary>Z for floor combined = constituent value (average of placement Z). Keeps Z same as individual.</summary>
+        private double GetConstituentZForFloor()
+        {
+            var zList = new List<double>();
+            foreach (var s in Sleeves)
+            {
+                if (s.PlacementPoint != null && Math.Abs(s.PlacementPoint.Z) > 1e-9)
+                    zList.Add(s.PlacementPoint.Z);
+                else if (s.SourceData is ClashZone cz && Math.Abs(cz.SleevePlacementPointZ) > 1e-9)
+                    zList.Add(cz.SleevePlacementPointZ);
+                else if (s.SourceData is ClusterSleeveData csd && Math.Abs(csd.PlacementZ) > 1e-9)
+                    zList.Add(csd.PlacementZ);
+            }
+            return zList.Count > 0 ? zList.Average() : 0;
+        }
         
+        /// <summary>
+        /// Gets fallback depth: structural thickness (Floor/Wall/Framing) or constituent ClusterDepth.
+        /// </summary>
+        private double GetConstituentThicknessFallback()
+        {
+            foreach (var s in Sleeves)
+            {
+                if (s.SourceData is ClashZone cz && cz.StructuralElementThickness > 0.001)
+                    return cz.StructuralElementThickness;
+                if (s.SourceData is ClusterSleeveData csd && csd.ClusterDepth > 0.001)
+                    return csd.ClusterDepth;
+            }
+            return 0.1; // ~30mm default only when no constituent has thickness
+        }
+
         /// <summary>
         /// Gets the host type from the first sleeve in the group
         /// (assumes all sleeves in proximity have the same host)
@@ -253,12 +282,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
         }
         
         /// <summary>
-        /// Gets the host orientation from the first sleeve in the group
-        /// (assumes all sleeves in proximity have the same host orientation)
+        /// Gets the host orientation from the first sleeve in the group.
+        /// Orientation applies only to Wall and Framing; Floor (and other host types) have no host orientation.
         /// </summary>
         public string GetHostOrientation()
         {
-            return Sleeves.FirstOrDefault()?.HostOrientation;
+            var first = Sleeves.FirstOrDefault();
+            if (first == null) return null;
+            var hostType = first.HostType ?? string.Empty;
+            var ht = hostType.Trim();
+            if (string.Equals(ht, "Floor", StringComparison.OrdinalIgnoreCase))
+                return null; // Floor has no host orientation
+            if (!string.Equals(ht, "Wall", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(ht, "Framing", StringComparison.OrdinalIgnoreCase))
+                return null; // Only Wall and Framing have orientation
+            return first.HostOrientation;
         }
         
         /// <summary>
