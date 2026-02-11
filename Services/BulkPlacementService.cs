@@ -192,9 +192,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     t.Start();
                     
-                    using (parentTracker?.TrackSubOperation("4. Revit AI Placement"))
+                    using (var tracker = parentTracker?.TrackSubOperation("4. Revit AI Placement"))
                     {
                         var placementResult = ExecuteBulkPlacement(doc, itemsToPlace);
+                        tracker?.SetItemCount(placementResult.PlacedCount);
                         
                         if (placementResult.OverallSuccess && placementResult.PlacedCount > 0)
                         {
@@ -486,12 +487,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 // ✅ BATCH PLACEMENT using NewFamilyInstances2
                 ICollection<ElementId> placedIds;
-                using (_performanceMonitor?.TrackOperation("Revit NewFamilyInstances2 (BATCH)"))
+                using (var op = _performanceMonitor?.TrackOperation("Revit NewFamilyInstances2 (BATCH)"))
                 {
                     SafeFileLogger.SafeAppendText("bulk_placement_debug.log",
                         $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-PLACE] Calling NewFamilyInstances2 with {creationDataList.Count} items\n");
 
                     placedIds = doc.Create.NewFamilyInstances2(creationDataList);
+                    op?.SetItemCount(placedIds.Count);
                     
                     // ✅ CRITICAL: Force Revit to calculate the location of newly batched instances
                     // Without this, the Location property may return (0,0,0) immediately after batch creation,

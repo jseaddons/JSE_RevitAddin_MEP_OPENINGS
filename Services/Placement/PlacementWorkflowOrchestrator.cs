@@ -81,6 +81,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                             }
                         }
                     }
+                    bulkOp?.SetItemCount(totalPlaced);
                 }
 
                 // 2. GEOMETRY EXTRACTION (Only for newly placed sleeves)

@@ -72,8 +72,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     var result = workflowOrchestrator.ExecuteOptimizedPlacementWorkflow(filters, tracker);
 
-                    // Generate performance report
-                    _performanceMonitor.GenerateReport(result.PlacedCount, 0);
+                    // Generate performance report using actual counts from result
+                    _performanceMonitor.GenerateReport(result.PlacedCount, result.ClusterCount);
                 }
             }
             catch (Exception ex)

@@ -123,13 +123,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// ✅ Now includes ActivePlacement (As-Placed coordinates in Revit).
         /// ✅ Uses nullable bools for flags to enable COALESCE preservation logic in repository.
         /// </summary>
-        void BatchUpdateFlags(List<(System.Guid ClashZoneId, bool IsResolved, bool? IsClusterResolved, bool? IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool? IsClusteredFlag, bool? MarkedForClusterProcess, int AfterClusterSleeveId, bool IsClustered, double SleeveWidth, double SleeveHeight, double SleeveDiameter, double SleeveDepth, string SleeveFamilyName, double? ActivePlacementX, double? ActivePlacementY, double? ActivePlacementZ, double? BBoxMinX, double? BBoxMinY, double? BBoxMinZ, double? BBoxMaxX, double? BBoxMaxY, double? BBoxMaxZ)> updates);
+        void BatchUpdateFlags(List<(System.Guid ClashZoneId, bool IsResolved, bool? IsClusterResolved, bool? IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool? IsClusteredFlag, bool? MarkedForClusterProcess, int AfterClusterSleeveId, bool IsClustered, double SleeveWidth, double SleeveHeight, double SleeveDiameter, double SleeveDepth, string SleeveFamilyName, double? ActivePlacementX, double? ActivePlacementY, double? ActivePlacementZ, double? BBoxMinX, double? BBoxMinY, double? BBoxMinZ, double? BBoxMaxX, double? BBoxMaxY, double? BBoxMaxZ)> updates, System.Data.SQLite.SQLiteTransaction? transaction = null);
 
         /// <summary>
         /// ✅ LEGACY SUPPORT: Simple batch update for resolution flags.
         /// Matches the original signature used by FlagManager and Clustering services.
         /// </summary>
-        void BatchUpdateFlags(List<(System.Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsClusteredFlag, bool MarkedForClusterProcess, int AfterClusterSleeveId)> updates);
+        void BatchUpdateFlags(List<(System.Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsClusteredFlag, bool MarkedForClusterProcess, int AfterClusterSleeveId)> updates, System.Data.SQLite.SQLiteTransaction? transaction = null);
 
         /// <summary>
         /// Batch update flags including IsCurrentClashFlag.

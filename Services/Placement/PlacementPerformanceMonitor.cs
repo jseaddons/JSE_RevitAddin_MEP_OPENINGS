@@ -235,7 +235,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 
                 if (clusterOps.Any())
                 {
-                    totalClusters = clusterOps.Max(op => op.TotalItemCount);
+                    // ✅ FIX: Sum total items from all cluster placement operations
+                    totalClusters = clusterOps.Sum(op => op.TotalItemCount);
                 }
             }
             
@@ -552,11 +553,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         /// </summary>
         private bool IsClusterPlacementOperation(string operationName)
         {
+            if (string.IsNullOrEmpty(operationName)) return false;
             string name = operationName.ToLowerInvariant();
             return name.Contains("cluster") ||
                    name.Contains("prepare creation") ||
                    name.Contains("collect individual sleeves") ||
                    name.Contains("delete individual sleeves") ||
+                   name.Contains("step 2b") ||
+                   name.Contains("bulk cluster") ||
                    (name.Contains("newfamilyinstances2") && name.Contains("cluster")) ||
                    name.Contains("post-placement") ||
                    name.Contains("database updates") ||

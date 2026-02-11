@@ -212,12 +212,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// </summary>
         public static bool LogFlagResetDiagnostics { get; set; } = false;
 
-        /// <summary>
-        /// When false: placement_debug.log is not written (reduces thousands of log lines during placement).
-        /// When true: placement_debug.log is written (for debugging placement only).
-        /// Default: false (suppressed).
-        /// </summary>
         public static bool EnablePlacementDebugLog { get; set; } = false;
+
+        /// <summary>
+        /// Enable detailed placement diagnostics (e.g. corner comparisons).
+        /// When true: Logs calculated vs Revit-extracted corners for clusters.
+        /// Default: false (skipped for performance).
+        /// </summary>
+        public static bool EnablePlacementDiagnostics { get; set; } = false;
 
         /// <summary>
         /// Use streamlined clash zone creation path when intersections come from optimized MepIntersectionService
@@ -334,7 +336,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Use in production/deployment mode for maximum performance.
         /// Location: DebugLogger.cs (all Log calls check this flag)
         /// </summary>
-        public static bool DisableVerboseLogging { get; set; } = false  ; // ✅ ENABLED for performance - reduces overhead
+        public static bool DisableVerboseLogging { get; set; } = true; // ✅ ENABLED for performance - reduces overhead
 
         /// <summary>
         /// Skip synchronous parameter capture for existing zones in ClashZoneService.
@@ -461,7 +463,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Enable diagnostic mode for performance monitoring
         /// Default: false (disabled - causes 2.6x slowdown due to logging overhead)
         /// </summary>
-        public static bool UseDiagnosticMode { get; set; } =true; // DISABLED for performance - was causing 2.6x slowdown
+        public static bool UseDiagnosticMode { get; set; } =false; // DISABLED for performance - was causing 2.6x slowdown
         
         /// <summary>
         /// Enable batch clash zone creation (pre-calculate common data once)

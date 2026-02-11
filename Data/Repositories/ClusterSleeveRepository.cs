@@ -80,11 +80,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             var clusters = new List<ClusterSleeveData>();
             using (var cmd = _context.Connection.CreateCommand())
             {
+                // ✅ FIX: Read from ClusterSleeves_v2 (the only populated table)
+                // Alias RotationAngleRad to RotationAngleDeg for downstream compatibility
                 cmd.CommandText = @"SELECT ClusterInstanceId, ComboId, FilterId, Category,
                                        BoundingBoxMinX, BoundingBoxMinY, BoundingBoxMinZ,
                                        BoundingBoxMaxX, BoundingBoxMaxY, BoundingBoxMaxZ,
                                        ClusterWidth, ClusterHeight, ClusterDepth,
-                                       RotationAngleDeg, IsRotated,
+                                       RotationAngleRad * 57.29577951308232 AS RotationAngleDeg, IsRotated,
                                        PlacementX, PlacementY, PlacementZ,
                                        HostType, HostOrientation, ClashZoneIdsJson,
                                        SleeveFamilyName,
@@ -92,7 +94,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                        Corner2X, Corner2Y, Corner2Z,
                                        Corner3X, Corner3Y, Corner3Z,
                                        Corner4X, Corner4Y, Corner4Z
-                                FROM ClusterSleeves";
+                                FROM ClusterSleeves_v2";
 
                 using (var reader = cmd.ExecuteReader())
                 {
@@ -172,11 +174,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             var idString = string.Join(",", ids);
             using (var cmd = _context.Connection.CreateCommand())
             {
+                // ✅ FIX: Read from ClusterSleeves_v2 (the only populated table)
+                // Alias RotationAngleRad to RotationAngleDeg for downstream compatibility
                 cmd.CommandText = $@"SELECT ClusterInstanceId, ComboId, FilterId, Category,
                                        BoundingBoxMinX, BoundingBoxMinY, BoundingBoxMinZ,
                                        BoundingBoxMaxX, BoundingBoxMaxY, BoundingBoxMaxZ,
                                        ClusterWidth, ClusterHeight, ClusterDepth,
-                                       RotationAngleDeg, IsRotated,
+                                       RotationAngleRad * 57.29577951308232 AS RotationAngleDeg, IsRotated,
                                        PlacementX, PlacementY, PlacementZ,
                                        HostType, HostOrientation, ClashZoneIdsJson,
                                        SleeveFamilyName,
@@ -184,7 +188,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                        Corner2X, Corner2Y, Corner2Z,
                                        Corner3X, Corner3Y, Corner3Z,
                                        Corner4X, Corner4Y, Corner4Z
-                                FROM ClusterSleeves
+                                FROM ClusterSleeves_v2
                                 WHERE ClusterInstanceId IN ({idString})";
 
                 using (var reader = cmd.ExecuteReader())
@@ -745,85 +749,84 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 return;
             }
 
-            using (var transaction = _context.Connection.BeginTransaction())
+            // Non-bulk path uses _context.Connection with its own transaction
+            BatchSaveClusterSleevesInternal(clusters, _context.Connection, null);
+        }
+
+        /// <summary>
+        /// 🚀 BATCH SAVE (External Transaction): Save using caller's connection/transaction.
+        /// Fixes WAL snapshot isolation: all writes share the same transaction as UpdateStatusBatch,
+        /// so the legacy sync SELECT FROM ClusterSleeves_v2 sees the newly-written rows.
+        /// </summary>
+        public void BatchSaveClusterSleeves(List<ClusterSaveData> clusters, SQLiteConnection conn, SQLiteTransaction trans)
+        {
+            if (clusters == null || clusters.Count == 0)
+                return;
+
+            if (OptimizationFlags.UseBulkClusterSave)
             {
-                try
+                BatchSaveClusterSleevesBulk(clusters, conn, trans);
+                return;
+            }
+
+            BatchSaveClusterSleevesInternal(clusters, conn, trans);
+        }
+
+        /// <summary>
+        /// Internal implementation for the non-bulk path.
+        /// When externalTrans is null, creates and manages its own transaction.
+        /// When externalTrans is provided, uses it without committing (caller commits).
+        /// </summary>
+        private void BatchSaveClusterSleevesInternal(List<ClusterSaveData> clusters, SQLiteConnection conn, SQLiteTransaction externalTrans)
+        {
+            if (clusters == null || clusters.Count == 0)
+                return;
+
+            // When externalTrans is null, we manage our own transaction lifecycle
+            bool ownTransaction = (externalTrans == null);
+            var transaction = externalTrans ?? conn.BeginTransaction();
+
+            try
+            {
+                foreach (var cluster in clusters)
                 {
-                    foreach (var cluster in clusters)
+                    // ✅ CRITICAL FIX: Generate deterministic ClusterGuid from sorted ClashZoneIds
+                    string clusterGuid = GenerateDeterministicClusterGuid(cluster.ClashZoneIds);
+
+                    // Check if cluster already exists
+                    using (var checkCmd = conn.CreateCommand())
                     {
-                        // ✅ CRITICAL FIX: Generate deterministic ClusterGuid from sorted ClashZoneIds
-                        string clusterGuid = GenerateDeterministicClusterGuid(cluster.ClashZoneIds);
-
-                        // Check if cluster already exists
-                        using (var checkCmd = _context.Connection.CreateCommand())
+                        checkCmd.Transaction = transaction;
+                        // ✅ CRITICAL FIX: Check by ClusterGuid first (deterministic), then fallback to ClusterInstanceId
+                        if (!string.IsNullOrWhiteSpace(clusterGuid))
                         {
-                            checkCmd.Transaction = transaction;
-                            // ✅ CRITICAL FIX: Check by ClusterGuid first (deterministic), then fallback to ClusterInstanceId
-                            if (!string.IsNullOrWhiteSpace(clusterGuid))
-                            {
-                                checkCmd.CommandText = @"
-                                    SELECT ClusterSleeveId FROM ClusterSleeves 
-                                    WHERE ClusterGuid = @ClusterGuid";
-                                checkCmd.Parameters.AddWithValue("@ClusterGuid", clusterGuid);
-                            }
-                            else
-                            {
-                                checkCmd.CommandText = @"
-                                SELECT ClusterSleeveId FROM ClusterSleeves 
-                                WHERE ClusterInstanceId = @ClusterInstanceId";
-                                checkCmd.Parameters.AddWithValue("@ClusterInstanceId", cluster.ClusterInstanceId);
-                            }
+                            checkCmd.CommandText = @"
+                                SELECT ClusterSleeveId FROM ClusterSleeves
+                                WHERE ClusterGuid = @ClusterGuid";
+                            checkCmd.Parameters.AddWithValue("@ClusterGuid", clusterGuid);
+                        }
+                        else
+                        {
+                            checkCmd.CommandText = @"
+                            SELECT ClusterSleeveId FROM ClusterSleeves
+                            WHERE ClusterInstanceId = @ClusterInstanceId";
+                            checkCmd.Parameters.AddWithValue("@ClusterInstanceId", cluster.ClusterInstanceId);
+                        }
 
-                            var existingId = checkCmd.ExecuteScalar();
+                        var existingId = checkCmd.ExecuteScalar();
 
-                            if (existingId != null)
+                        if (existingId != null)
+                        {
+                            // Update existing cluster
+                            using (var updateCmd = conn.CreateCommand())
                             {
-                                // Update existing cluster
-                                using (var updateCmd = _context.Connection.CreateCommand())
+                                updateCmd.Transaction = transaction;
+                                // ✅ CRITICAL FIX: Update by ClusterGuid (deterministic) if available, otherwise by ClusterInstanceId
+                                if (!string.IsNullOrWhiteSpace(clusterGuid))
                                 {
-                                    updateCmd.Transaction = transaction;
-                                    // ✅ CRITICAL FIX: Update by ClusterGuid (deterministic) if available, otherwise by ClusterInstanceId
-                                    if (!string.IsNullOrWhiteSpace(clusterGuid))
-                                    {
-                                        updateCmd.CommandText = @"
-                                            UPDATE ClusterSleeves SET
-                                                ClusterInstanceId = @ClusterInstanceId,
-                                                ComboId = @ComboId,
-                                                FilterId = @FilterId,
-                                                Category = @Category,
-                                                BoundingBoxMinX = @BoundingBoxMinX,
-                                                BoundingBoxMinY = @BoundingBoxMinY,
-                                                BoundingBoxMinZ = @BoundingBoxMinZ,
-                                                BoundingBoxMaxX = @BoundingBoxMaxX,
-                                                BoundingBoxMaxY = @BoundingBoxMaxY,
-                                                BoundingBoxMaxZ = @BoundingBoxMaxZ,
-                                                ClusterWidth = @ClusterWidth,
-                                                ClusterHeight = @ClusterHeight,
-                                                ClusterDepth = @ClusterDepth,
-                                                RotationAngleDeg = @RotationAngleDeg,
-                                                IsRotated = @IsRotated,
-                                                PlacementX = @PlacementX,
-                                                PlacementY = @PlacementY,
-                                                PlacementZ = @PlacementZ,
-                                                HostType = @HostType,
-                                                HostOrientation = @HostOrientation,
-                                                ClashZoneIdsJson = @ClashZoneIdsJson,
-                                                SleeveFamilyName = @SleeveFamilyName,
-                                                ClashZoneGuids = @ClashZoneGuids,
-                                                MepSizes = @MepSizes,
-                                                MepSystemNames = @MepSystemNames,
-                                                MepElementIds = @MepElementIds,
-                                                Corner1X = @Corner1X, Corner1Y = @Corner1Y, Corner1Z = @Corner1Z,
-                                                Corner2X = @Corner2X, Corner2Y = @Corner2Y, Corner2Z = @Corner2Z,
-                                                Corner3X = @Corner3X, Corner3Y = @Corner3Y, Corner3Z = @Corner3Z,
-                                                Corner4X = @Corner4X, Corner4Y = @Corner4Y, Corner4Z = @Corner4Z,
-                                                UpdatedAt = CURRENT_TIMESTAMP
-                                            WHERE ClusterGuid = @ClusterGuid";
-                                    }
-                                    else
-                                    {
-                                        updateCmd.CommandText = @"
+                                    updateCmd.CommandText = @"
                                         UPDATE ClusterSleeves SET
+                                            ClusterInstanceId = @ClusterInstanceId,
                                             ComboId = @ComboId,
                                             FilterId = @FilterId,
                                             Category = @Category,
@@ -844,6 +847,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                             HostType = @HostType,
                                             HostOrientation = @HostOrientation,
                                             ClashZoneIdsJson = @ClashZoneIdsJson,
+                                            SleeveFamilyName = @SleeveFamilyName,
                                             ClashZoneGuids = @ClashZoneGuids,
                                             MepSizes = @MepSizes,
                                             MepSystemNames = @MepSystemNames,
@@ -853,91 +857,158 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                             Corner3X = @Corner3X, Corner3Y = @Corner3Y, Corner3Z = @Corner3Z,
                                             Corner4X = @Corner4X, Corner4Y = @Corner4Y, Corner4Z = @Corner4Z,
                                             UpdatedAt = CURRENT_TIMESTAMP
-                                        WHERE ClusterInstanceId = @ClusterInstanceId";
-                                    }
-
-                                    AddClusterSleeveParameters(updateCmd, cluster);
-
-                                    // Add ClusterGuid parameter for WHERE clause
-                                    if (!string.IsNullOrWhiteSpace(clusterGuid))
-                                    {
-                                        updateCmd.Parameters.AddWithValue("@ClusterGuid", clusterGuid);
-                                    }
-
-                                    updateCmd.ExecuteNonQuery();
+                                        WHERE ClusterGuid = @ClusterGuid";
                                 }
-                            }
-                            else
-                            {
-                                // Insert new cluster
-                                using (var insertCmd = _context.Connection.CreateCommand())
+                                else
                                 {
-                                    insertCmd.Transaction = transaction;
-                                    insertCmd.CommandText = @"
-                                        INSERT INTO ClusterSleeves (
-                                            ClusterInstanceId, ClusterGuid, ComboId, FilterId, Category,
-                                            BoundingBoxMinX, BoundingBoxMinY, BoundingBoxMinZ,
-                                            BoundingBoxMaxX, BoundingBoxMaxY, BoundingBoxMaxZ,
-                                            ClusterWidth, ClusterHeight, ClusterDepth,
-                                            RotationAngleDeg, IsRotated,
-                                            PlacementX, PlacementY, PlacementZ,
-                                            HostType, HostOrientation, ClashZoneIdsJson,
-                                            SleeveFamilyName,
-                                            ClashZoneGuids, MepSizes, MepSystemNames, MepElementIds,
-                                            Corner1X, Corner1Y, Corner1Z,
-                                            Corner2X, Corner2Y, Corner2Z,
-                                            Corner3X, Corner3Y, Corner3Z,
-                                            Corner4X, Corner4Y, Corner4Z,
-                                            CreatedAt, UpdatedAt
-                                        ) VALUES (
-                                            @ClusterInstanceId, @ClusterGuid, @ComboId, @FilterId, @Category,
-                                            @BoundingBoxMinX, @BoundingBoxMinY, @BoundingBoxMinZ,
-                                            @BoundingBoxMaxX, @BoundingBoxMaxY, @BoundingBoxMaxZ,
-                                            @ClusterWidth, @ClusterHeight, @ClusterDepth,
-                                            @RotationAngleDeg, @IsRotated,
-                                            @PlacementX, @PlacementY, @PlacementZ,
-                                            @HostType, @HostOrientation, @ClashZoneIdsJson,
-                                            @SleeveFamilyName,
-                                            @ClashZoneGuids, @MepSizes, @MepSystemNames, @MepElementIds,
-                                            @Corner1X, @Corner1Y, @Corner1Z,
-                                            @Corner2X, @Corner2Y, @Corner2Z,
-                                            @Corner3X, @Corner3Y, @Corner3Z,
-                                            @Corner4X, @Corner4Y, @Corner4Z,
-                                            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-                                        )";
-
-                                    AddClusterSleeveParameters(insertCmd, cluster);
-                                    insertCmd.ExecuteNonQuery();
+                                    updateCmd.CommandText = @"
+                                    UPDATE ClusterSleeves SET
+                                        ComboId = @ComboId,
+                                        FilterId = @FilterId,
+                                        Category = @Category,
+                                        BoundingBoxMinX = @BoundingBoxMinX,
+                                        BoundingBoxMinY = @BoundingBoxMinY,
+                                        BoundingBoxMinZ = @BoundingBoxMinZ,
+                                        BoundingBoxMaxX = @BoundingBoxMaxX,
+                                        BoundingBoxMaxY = @BoundingBoxMaxY,
+                                        BoundingBoxMaxZ = @BoundingBoxMaxZ,
+                                        ClusterWidth = @ClusterWidth,
+                                        ClusterHeight = @ClusterHeight,
+                                        ClusterDepth = @ClusterDepth,
+                                        RotationAngleDeg = @RotationAngleDeg,
+                                        IsRotated = @IsRotated,
+                                        PlacementX = @PlacementX,
+                                        PlacementY = @PlacementY,
+                                        PlacementZ = @PlacementZ,
+                                        HostType = @HostType,
+                                        HostOrientation = @HostOrientation,
+                                        ClashZoneIdsJson = @ClashZoneIdsJson,
+                                        ClashZoneGuids = @ClashZoneGuids,
+                                        MepSizes = @MepSizes,
+                                        MepSystemNames = @MepSystemNames,
+                                        MepElementIds = @MepElementIds,
+                                        Corner1X = @Corner1X, Corner1Y = @Corner1Y, Corner1Z = @Corner1Z,
+                                        Corner2X = @Corner2X, Corner2Y = @Corner2Y, Corner2Z = @Corner2Z,
+                                        Corner3X = @Corner3X, Corner3Y = @Corner3Y, Corner3Z = @Corner3Z,
+                                        Corner4X = @Corner4X, Corner4Y = @Corner4Y, Corner4Z = @Corner4Z,
+                                        UpdatedAt = CURRENT_TIMESTAMP
+                                    WHERE ClusterInstanceId = @ClusterInstanceId";
                                 }
+
+                                AddClusterSleeveParameters(updateCmd, cluster);
+
+                                // Add ClusterGuid parameter for WHERE clause
+                                if (!string.IsNullOrWhiteSpace(clusterGuid))
+                                {
+                                    updateCmd.Parameters.AddWithValue("@ClusterGuid", clusterGuid);
+                                }
+
+                                updateCmd.ExecuteNonQuery();
+                            }
+                        }
+                        else
+                        {
+                            // Insert new cluster
+                            using (var insertCmd = conn.CreateCommand())
+                            {
+                                insertCmd.Transaction = transaction;
+                                insertCmd.CommandText = @"
+                                    INSERT INTO ClusterSleeves (
+                                        ClusterInstanceId, ClusterGuid, ComboId, FilterId, Category,
+                                        BoundingBoxMinX, BoundingBoxMinY, BoundingBoxMinZ,
+                                        BoundingBoxMaxX, BoundingBoxMaxY, BoundingBoxMaxZ,
+                                        ClusterWidth, ClusterHeight, ClusterDepth,
+                                        RotationAngleDeg, IsRotated,
+                                        PlacementX, PlacementY, PlacementZ,
+                                        HostType, HostOrientation, ClashZoneIdsJson,
+                                        SleeveFamilyName,
+                                        ClashZoneGuids, MepSizes, MepSystemNames, MepElementIds,
+                                        Corner1X, Corner1Y, Corner1Z,
+                                        Corner2X, Corner2Y, Corner2Z,
+                                        Corner3X, Corner3Y, Corner3Z,
+                                        Corner4X, Corner4Y, Corner4Z,
+                                        CreatedAt, UpdatedAt
+                                    ) VALUES (
+                                        @ClusterInstanceId, @ClusterGuid, @ComboId, @FilterId, @Category,
+                                        @BoundingBoxMinX, @BoundingBoxMinY, @BoundingBoxMinZ,
+                                        @BoundingBoxMaxX, @BoundingBoxMaxY, @BoundingBoxMaxZ,
+                                        @ClusterWidth, @ClusterHeight, @ClusterDepth,
+                                        @RotationAngleDeg, @IsRotated,
+                                        @PlacementX, @PlacementY, @PlacementZ,
+                                        @HostType, @HostOrientation, @ClashZoneIdsJson,
+                                        @SleeveFamilyName,
+                                        @ClashZoneGuids, @MepSizes, @MepSystemNames, @MepElementIds,
+                                        @Corner1X, @Corner1Y, @Corner1Z,
+                                        @Corner2X, @Corner2Y, @Corner2Z,
+                                        @Corner3X, @Corner3Y, @Corner3Z,
+                                        @Corner4X, @Corner4Y, @Corner4Z,
+                                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                                    )";
+
+                                AddClusterSleeveParameters(insertCmd, cluster);
+                                insertCmd.ExecuteNonQuery();
                             }
                         }
                     }
-
-                    transaction.Commit();
-                    DatabaseOperationLogger.LogTransaction("COMMIT", "SUCCESS", $"Batch saved {clusters.Count} clusters");
-                    _logger($"[SQLite] ✅ Batch saved {clusters.Count} cluster sleeves in single transaction");
                 }
-                catch (Exception ex)
+
+                if (ownTransaction)
                 {
-                    DatabaseOperationLogger.LogTransaction("ROLLBACK", "FAILED", ex.Message);
+                    transaction.Commit();
+                }
+                DatabaseOperationLogger.LogTransaction("COMMIT", "SUCCESS", $"Batch saved {clusters.Count} clusters");
+                _logger($"[SQLite] ✅ Batch saved {clusters.Count} cluster sleeves in single transaction");
+            }
+            catch (Exception ex)
+            {
+                DatabaseOperationLogger.LogTransaction("ROLLBACK", "FAILED", ex.Message);
+                if (ownTransaction)
+                {
                     transaction.Rollback();
-                    _logger($"[SQLite] ❌ Error batch saving cluster sleeves: {ex.Message}");
-                    throw;
+                }
+                _logger($"[SQLite] ❌ Error batch saving cluster sleeves: {ex.Message}");
+                throw;
+            }
+            finally
+            {
+                if (ownTransaction)
+                {
+                    transaction.Dispose();
                 }
             }
         }
 
         /// <summary>
         /// ✅ SIMPLIFIED: Save clusters using INSERT OR REPLACE based on ClusterInstanceId (PRIMARY KEY).
-        /// This eliminates complex bulk insert/update logic and parameter misalignment issues.
+        /// Uses _context.Connection with its own transaction (standalone mode).
         /// </summary>
         private void BatchSaveClusterSleevesBulk(List<ClusterSaveData> clusters)
+        {
+            BatchSaveClusterSleevesBulkInternal(clusters, _context.Connection, null);
+        }
+
+        /// <summary>
+        /// ✅ ISOLATION FIX: Save clusters using caller's connection/transaction.
+        /// All writes to ClusterSleeves_v2 happen on the same connection/transaction as
+        /// UpdateStatusBatch, so the legacy sync SELECT sees the newly-written rows.
+        /// </summary>
+        private void BatchSaveClusterSleevesBulk(List<ClusterSaveData> clusters, SQLiteConnection conn, SQLiteTransaction trans)
+        {
+            BatchSaveClusterSleevesBulkInternal(clusters, conn, trans);
+        }
+
+        /// <summary>
+        /// Internal shared implementation for bulk cluster save.
+        /// When externalTrans is null, creates and manages its own transaction.
+        /// When externalTrans is provided, uses it without committing (caller commits).
+        /// </summary>
+        private void BatchSaveClusterSleevesBulkInternal(List<ClusterSaveData> clusters, SQLiteConnection conn, SQLiteTransaction externalTrans)
         {
             if (clusters == null || clusters.Count == 0)
                 return;
 
             // ✅ SINGLE WRITER: When bulk cluster save is enabled, BatchClusterCalculationService.SaveToDatabase
-            // is the only writer for ClusterSleeves_v2 (timestamp batch ID + placement/bbox). 
+            // is the only writer for ClusterSleeves_v2 (timestamp batch ID + placement/bbox).
             // However, BatchClusterPlacementService ALSO calls this to save FINAL corners and Instance IDs.
             // So we only skip if ALL items are Pending (Calculation Phase). If any have ID > 0, we MUST write.
             if (OptimizationFlags.UseBulkClusterSave && clusters.All(c => c.ClusterInstanceId <= 0))
@@ -948,205 +1019,213 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             }
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
+            bool usingExternalTrans = (externalTrans != null);
             SafeFileLogger.SafeAppendText("batch_v2.log",
-                $"[{DateTime.Now:HH:mm:ss.fff}] [CLUSTER_V2_WRITE_REPO] Writing {clusters.Count} clusters to ClusterSleeves_v2 (Repository path - ClusterBatchId = NEW Guid per row; Placement from ClusterSaveData)\n");
+                $"[{DateTime.Now:HH:mm:ss.fff}] [CLUSTER_V2_WRITE_REPO] Writing {clusters.Count} clusters to ClusterSleeves_v2 (ExternalTrans={usingExternalTrans})\n");
 
-            using (var transaction = _context.Connection.BeginTransaction())
+            // When externalTrans is null, we manage our own transaction lifecycle
+            bool ownTransaction = (externalTrans == null);
+            var transaction = externalTrans ?? conn.BeginTransaction();
+
+            try
             {
-                try
+                // ✅ SCOPED DELETE: Delete ALL old clusters for the affected scopes (Combo/Filter/Category)
+                // This is critical to remove "Ghost Clusters" if the cluster composition changes (and thus GUID changes).
+                // We simply wipe the slate clean for the scopes we are about to update.
+                var scopes = clusters
+                    .Select(c => new { c.ComboId, c.FilterId, Category = c.Category ?? string.Empty })
+                    .Distinct()
+                    .ToList();
+
+                using (var deleteCmd = conn.CreateCommand())
                 {
-                    // ✅ SCOPED DELETE: Delete ALL old clusters for the affected scopes (Combo/Filter/Category)
-                    // This is critical to remove "Ghost Clusters" if the cluster composition changes (and thus GUID changes).
-                    // We simply wipe the slate clean for the scopes we are about to update.
-                    var scopes = clusters
-                        .Select(c => new { c.ComboId, c.FilterId, Category = c.Category ?? string.Empty })
-                        .Distinct()
-                        .ToList();
-
-                    using (var deleteCmd = _context.Connection.CreateCommand())
+                    deleteCmd.Transaction = transaction;
+                    foreach (var scope in scopes)
                     {
-                        deleteCmd.Transaction = transaction;
-                        foreach (var scope in scopes)
-                        {
-                            deleteCmd.CommandText = @"
-                                DELETE FROM ClusterSleeves_v2 
-                                WHERE ComboId = @ComboId 
-                                  AND FilterId = @FilterId 
-                                  AND Category = @Category";
-                            deleteCmd.Parameters.Clear();
-                            deleteCmd.Parameters.AddWithValue("@ComboId", scope.ComboId);
-                            deleteCmd.Parameters.AddWithValue("@FilterId", scope.FilterId);
-                            deleteCmd.Parameters.AddWithValue("@Category", scope.Category);
-                            deleteCmd.ExecuteNonQuery();
-                        }
+                        deleteCmd.CommandText = @"
+                            DELETE FROM ClusterSleeves_v2
+                            WHERE ComboId = @ComboId
+                              AND FilterId = @FilterId
+                              AND Category = @Category";
+                        deleteCmd.Parameters.Clear();
+                        deleteCmd.Parameters.AddWithValue("@ComboId", scope.ComboId);
+                        deleteCmd.Parameters.AddWithValue("@FilterId", scope.FilterId);
+                        deleteCmd.Parameters.AddWithValue("@Category", scope.Category);
+                        deleteCmd.ExecuteNonQuery();
                     }
-
-                    int savedCount = 0;
-
-                    // ✅ FIX: Generate ONE batch ID for the entire save operation (not per row)
-                    // Use timestamp format: yyyyMMdd_HHmmss_Category_FilterId
-                    var firstCluster = clusters.FirstOrDefault();
-                    var category = firstCluster?.Category ?? "Unknown";
-                    var filterId = firstCluster?.FilterId ?? 0;
-                    var sharedBatchId = $"{DateTime.Now:yyyyMMdd_HHmmss}_{category}_{filterId}";
-
-                    SafeFileLogger.SafeAppendText("batch_v2.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [CLUSTER_V2_WRITE_REPO] Using shared ClusterBatchId={sharedBatchId} for {clusters.Count} clusters\n");
-
-                    foreach (var cluster in clusters)
-                    {
-                        using (var cmd = _context.Connection.CreateCommand())
-                        {
-                            cmd.Transaction = transaction;
-
-                            // Generate deterministic ClusterGuid
-                            var clusterGuid = GenerateDeterministicClusterGuid(cluster.ClashZoneIds);
-
-                            // Get comma-separated MEP data
-                            var (clashZoneGuids, mepSizes, mepSystemNames, mepServiceTypes, mepElementIds) = GetCommaSeparatedMepData(cluster.ClashZoneIds);
-
-                            // Serialize ClashZoneIds to JSON
-                            var clashZoneIdsJson = cluster.ClashZoneIds != null && cluster.ClashZoneIds.Count > 0
-                                ? JsonSerializer.Serialize(cluster.ClashZoneIds.Select(g => g.ToString()).ToList())
-                                : "[]";
-
-                            // ✅ FIX: Use the shared batch ID for all clusters in this save operation
-                            var clusterBatchId = sharedBatchId;
-                            // ✅ DIAGNOSTIC: Log each row (all rows now share the same ClusterBatchId)
-                            SafeFileLogger.SafeAppendText("batch_v2.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [CLUSTER_V2_WRITE_REPO] Saving Cluster: ClusterGuid={clusterGuid}, PlacementX={cluster.PlacementX:F3}, PlacementY={cluster.PlacementY:F3}, PlacementZ={cluster.PlacementZ:F3}\n");
-
-                            // (Per-row DELETE removed - handled by Scoped Delete above)
-
-                            // Now INSERT new record
-                            // ✅ SIMPLE: INSERT (Duplicates within batch are impossible if logic is correct, and DB is cleared)
-                            // We use INSERT OR REPLACE just to be extra safe against constraint violations if batch has dupes
-                            // We use INSERT OR REPLACE just to be extra safe against constraint violations if batch has dupes
-                            cmd.CommandText = @"
-                                INSERT OR REPLACE INTO ClusterSleeves_v2 (
-                                    ClusterInstanceId, ComboId, FilterId, ClusterGUID, ClusterBatchId,
-                                    PlacementX, PlacementY, PlacementZ,
-                                    ClusterWidth, ClusterHeight, ClusterDepth,
-                                    RotationAngleRad, IsRotated,
-                                    HostType, HostOrientation, Category,
-                                    ValidationStatus, ValidationMessage,
-                                    ClashZoneIdsJson, ConstituentZoneGuids, ClashZoneGuids,
-                                    MepSizes, MepSystemNames, MepServiceTypes, MepElementIds,
-                                    Corner1X, Corner1Y, Corner1Z,
-                                    Corner2X, Corner2Y, Corner2Z,
-                                    Corner3X, Corner3Y, Corner3Z,
-                                    Corner4X, Corner4Y, Corner4Z,
-                                    SleeveFamilyName,
-                                    CalculatedAt, PlacedAt, Status
-                                ) VALUES (
-                                    @ClusterInstanceId, @ComboId, @FilterId, @ClusterGuid, @ClusterBatchId,
-                                    @PlacementX, @PlacementY, @PlacementZ,
-                                    @ClusterWidth, @ClusterHeight, @ClusterDepth,
-                                    @RotationAngleRad, @IsRotated,
-                                    @HostType, @HostOrientation, @Category,
-                                    'Valid', '',
-                                    @ClashZoneIdsJson, @ClashZoneGuids, @ClashZoneGuids,
-                                    @MepSizes, @MepSystemNames, @MepServiceTypes, @MepElementIds,
-                                    @Corner1X, @Corner1Y, @Corner1Z,
-                                    @Corner2X, @Corner2Y, @Corner2Z,
-                                    @Corner3X, @Corner3Y, @Corner3Z,
-                                    @Corner4X, @Corner4Y, @Corner4Z,
-                                    @SleeveFamilyName,
-                                    CURRENT_TIMESTAMP, NULL, 'Pending'
-                                )";
-
-                            // Clear and re-add all parameters for the INSERT
-                            cmd.Parameters.Clear();
-                            cmd.Parameters.AddWithValue("@ClusterInstanceId", cluster.ClusterInstanceId);
-                            cmd.Parameters.AddWithValue("@ComboId", cluster.ComboId);
-                            cmd.Parameters.AddWithValue("@FilterId", cluster.FilterId);
-                            cmd.Parameters.AddWithValue("@ClusterGuid", string.IsNullOrWhiteSpace(clusterGuid) ? (object)DBNull.Value : clusterGuid);
-                            cmd.Parameters.AddWithValue("@ClusterBatchId", clusterBatchId);
-                            cmd.Parameters.AddWithValue("@PlacementX", cluster.PlacementX);
-                            cmd.Parameters.AddWithValue("@PlacementY", cluster.PlacementY);
-                            cmd.Parameters.AddWithValue("@PlacementZ", cluster.PlacementZ);
-                            cmd.Parameters.AddWithValue("@ClusterWidth", cluster.ClusterWidth);
-                            cmd.Parameters.AddWithValue("@ClusterHeight", cluster.ClusterHeight);
-                            cmd.Parameters.AddWithValue("@ClusterDepth", cluster.ClusterDepth);
-                            // ✅ ANGLE: Convert Deg to Rad for V2
-                            cmd.Parameters.AddWithValue("@RotationAngleRad", cluster.RotationAngleDeg * (Math.PI / 180.0));
-                            cmd.Parameters.AddWithValue("@IsRotated", cluster.IsRotated ? 1 : 0);
-                            cmd.Parameters.AddWithValue("@HostType", cluster.HostType ?? (object)DBNull.Value);
-                            cmd.Parameters.AddWithValue("@HostOrientation", cluster.HostOrientation ?? (object)DBNull.Value);
-                            cmd.Parameters.AddWithValue("@Category", cluster.Category ?? string.Empty);
-                            cmd.Parameters.AddWithValue("@ClashZoneIdsJson", clashZoneIdsJson);
-                            cmd.Parameters.AddWithValue("@ClashZoneGuids", clashZoneGuids ?? (object)DBNull.Value);
-                            cmd.Parameters.AddWithValue("@MepSizes", mepSizes ?? (object)DBNull.Value);
-                            cmd.Parameters.AddWithValue("@MepSystemNames", mepSystemNames ?? (object)DBNull.Value);
-                            cmd.Parameters.AddWithValue("@MepServiceTypes", mepServiceTypes ?? (object)DBNull.Value);
-                            cmd.Parameters.AddWithValue("@MepElementIds", mepElementIds ?? (object)DBNull.Value);
-
-                            // ✅ CORNERS: Add in exact order
-                            cmd.Parameters.AddWithValue("@Corner1X", cluster.Corner1X);
-                            cmd.Parameters.AddWithValue("@Corner1Y", cluster.Corner1Y);
-                            cmd.Parameters.AddWithValue("@Corner1Z", cluster.Corner1Z);
-                            cmd.Parameters.AddWithValue("@Corner2X", cluster.Corner2X);
-                            cmd.Parameters.AddWithValue("@Corner2Y", cluster.Corner2Y);
-                            cmd.Parameters.AddWithValue("@Corner2Z", cluster.Corner2Z);
-                            cmd.Parameters.AddWithValue("@Corner3X", cluster.Corner3X);
-                            cmd.Parameters.AddWithValue("@Corner3Y", cluster.Corner3Y);
-                            cmd.Parameters.AddWithValue("@Corner3Z", cluster.Corner3Z);
-                            cmd.Parameters.AddWithValue("@Corner4X", cluster.Corner4X);
-                            cmd.Parameters.AddWithValue("@Corner4Y", cluster.Corner4Y);
-                            cmd.Parameters.AddWithValue("@Corner4Z", cluster.Corner4Z);
-
-                            // ✅ FAMILY NAME: Add family name explicitly
-                            cmd.Parameters.AddWithValue("@SleeveFamilyName", cluster.SleeveFamilyName ?? (object)DBNull.Value);
-
-                            // 🔥 DEBUG: Log before execution
-                            try
-                            {
-                                var versionTag = "R2023"; // Hardcoded for simplicity
-                                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                                var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
-                                var logPath = Path.Combine(logDir, "cluster_debug.log");
-                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 💾 EXECUTING INSERT OR REPLACE for ClusterInstanceId={cluster.ClusterInstanceId}, Corner1X={cluster.Corner1X:F2}, Corner1Y={cluster.Corner1Y:F2}\n");
-                            }
-                            catch { }
-
-                            int rowsAffected = cmd.ExecuteNonQuery();
-
-                            // 🔥 DEBUG: Log after execution
-                            try
-                            {
-                                var versionTag = "R2023";
-                                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                                var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
-                                var logPath = Path.Combine(logDir, "cluster_debug.log");
-                                File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ INSERT OR REPLACE COMPLETED: rowsAffected={rowsAffected}\n");
-                            }
-                            catch { }
-
-                            DatabaseOperationLogger.LogOperation("INSERT OR REPLACE", "ClusterSleeves",
-                                new Dictionary<string, object>
-                                {
-                                    { "ClusterInstanceId", cluster.ClusterInstanceId },
-                                    { "Corner1X", cluster.Corner1X },
-                                    { "Corner1Y", cluster.Corner1Y },
-                                    { "Corner1Z", cluster.Corner1Z }
-                                });
-
-                            savedCount++;
-                        }
-                    }
-
-                    transaction.Commit();
-                    sw.Stop();
-
-                    DatabaseOperationLogger.LogTransaction("COMMIT", "SUCCESS", $"Saved {savedCount} clusters using INSERT OR REPLACE");
-                    _logger($"[SQLite] ✅ Saved {savedCount} cluster sleeves in {sw.ElapsedMilliseconds}ms using INSERT OR REPLACE");
                 }
-                catch (Exception ex)
+
+                int savedCount = 0;
+
+                // ✅ FIX: Generate ONE batch ID for the entire save operation (not per row)
+                // Use timestamp format: yyyyMMdd_HHmmss_Category_FilterId
+                var firstCluster = clusters.FirstOrDefault();
+                var category = firstCluster?.Category ?? "Unknown";
+                var filterId = firstCluster?.FilterId ?? 0;
+                var sharedBatchId = $"{DateTime.Now:yyyyMMdd_HHmmss}_{category}_{filterId}";
+
+                SafeFileLogger.SafeAppendText("batch_v2.log",
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [CLUSTER_V2_WRITE_REPO] Using shared ClusterBatchId={sharedBatchId} for {clusters.Count} clusters\n");
+
+                foreach (var cluster in clusters)
                 {
-                    DatabaseOperationLogger.LogTransaction("ROLLBACK", "FAILED", ex.Message);
+                    using (var cmd = conn.CreateCommand())
+                    {
+                        cmd.Transaction = transaction;
+
+                        // Generate deterministic ClusterGuid
+                        var clusterGuid = GenerateDeterministicClusterGuid(cluster.ClashZoneIds);
+
+                        // Get comma-separated MEP data (reads from ClashZones/SleeveSnapshots via _context - safe, those tables are not being modified)
+                        var (clashZoneGuids, mepSizes, mepSystemNames, mepServiceTypes, mepElementIds) = GetCommaSeparatedMepData(cluster.ClashZoneIds);
+
+                        // Serialize ClashZoneIds to JSON
+                        var clashZoneIdsJson = cluster.ClashZoneIds != null && cluster.ClashZoneIds.Count > 0
+                            ? JsonSerializer.Serialize(cluster.ClashZoneIds.Select(g => g.ToString()).ToList())
+                            : "[]";
+
+                        // ✅ FIX: Use the shared batch ID for all clusters in this save operation
+                        var clusterBatchId = sharedBatchId;
+                        SafeFileLogger.SafeAppendText("batch_v2.log",
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [CLUSTER_V2_WRITE_REPO] Saving Cluster: ClusterGuid={clusterGuid}, PlacementX={cluster.PlacementX:F3}, PlacementY={cluster.PlacementY:F3}, PlacementZ={cluster.PlacementZ:F3}\n");
+
+                        cmd.CommandText = @"
+                            INSERT OR REPLACE INTO ClusterSleeves_v2 (
+                                ClusterInstanceId, ComboId, FilterId, ClusterGUID, ClusterBatchId,
+                                PlacementX, PlacementY, PlacementZ,
+                                ClusterWidth, ClusterHeight, ClusterDepth,
+                                RotationAngleRad, IsRotated,
+                                HostType, HostOrientation, Category,
+                                ValidationStatus, ValidationMessage,
+                                ClashZoneIdsJson, ConstituentZoneGuids, ClashZoneGuids,
+                                MepSizes, MepSystemNames, MepServiceTypes, MepElementIds,
+                                Corner1X, Corner1Y, Corner1Z,
+                                Corner2X, Corner2Y, Corner2Z,
+                                Corner3X, Corner3Y, Corner3Z,
+                                Corner4X, Corner4Y, Corner4Z,
+                                SleeveFamilyName,
+                                CalculatedAt, PlacedAt, Status
+                            ) VALUES (
+                                @ClusterInstanceId, @ComboId, @FilterId, @ClusterGuid, @ClusterBatchId,
+                                @PlacementX, @PlacementY, @PlacementZ,
+                                @ClusterWidth, @ClusterHeight, @ClusterDepth,
+                                @RotationAngleRad, @IsRotated,
+                                @HostType, @HostOrientation, @Category,
+                                'Valid', '',
+                                @ClashZoneIdsJson, @ClashZoneGuids, @ClashZoneGuids,
+                                @MepSizes, @MepSystemNames, @MepServiceTypes, @MepElementIds,
+                                @Corner1X, @Corner1Y, @Corner1Z,
+                                @Corner2X, @Corner2Y, @Corner2Z,
+                                @Corner3X, @Corner3Y, @Corner3Z,
+                                @Corner4X, @Corner4Y, @Corner4Z,
+                                @SleeveFamilyName,
+                                CURRENT_TIMESTAMP, NULL, 'Pending'
+                            )";
+
+                        // Clear and re-add all parameters for the INSERT
+                        cmd.Parameters.Clear();
+                        cmd.Parameters.AddWithValue("@ClusterInstanceId", cluster.ClusterInstanceId);
+                        cmd.Parameters.AddWithValue("@ComboId", cluster.ComboId);
+                        cmd.Parameters.AddWithValue("@FilterId", cluster.FilterId);
+                        cmd.Parameters.AddWithValue("@ClusterGuid", string.IsNullOrWhiteSpace(clusterGuid) ? (object)DBNull.Value : clusterGuid);
+                        cmd.Parameters.AddWithValue("@ClusterBatchId", clusterBatchId);
+                        cmd.Parameters.AddWithValue("@PlacementX", cluster.PlacementX);
+                        cmd.Parameters.AddWithValue("@PlacementY", cluster.PlacementY);
+                        cmd.Parameters.AddWithValue("@PlacementZ", cluster.PlacementZ);
+                        cmd.Parameters.AddWithValue("@ClusterWidth", cluster.ClusterWidth);
+                        cmd.Parameters.AddWithValue("@ClusterHeight", cluster.ClusterHeight);
+                        cmd.Parameters.AddWithValue("@ClusterDepth", cluster.ClusterDepth);
+                        // ✅ ANGLE: Convert Deg to Rad for V2
+                        cmd.Parameters.AddWithValue("@RotationAngleRad", cluster.RotationAngleDeg * (Math.PI / 180.0));
+                        cmd.Parameters.AddWithValue("@IsRotated", cluster.IsRotated ? 1 : 0);
+                        cmd.Parameters.AddWithValue("@HostType", cluster.HostType ?? (object)DBNull.Value);
+                        cmd.Parameters.AddWithValue("@HostOrientation", cluster.HostOrientation ?? (object)DBNull.Value);
+                        cmd.Parameters.AddWithValue("@Category", cluster.Category ?? string.Empty);
+                        cmd.Parameters.AddWithValue("@ClashZoneIdsJson", clashZoneIdsJson);
+                        cmd.Parameters.AddWithValue("@ClashZoneGuids", clashZoneGuids ?? (object)DBNull.Value);
+                        cmd.Parameters.AddWithValue("@MepSizes", mepSizes ?? (object)DBNull.Value);
+                        cmd.Parameters.AddWithValue("@MepSystemNames", mepSystemNames ?? (object)DBNull.Value);
+                        cmd.Parameters.AddWithValue("@MepServiceTypes", mepServiceTypes ?? (object)DBNull.Value);
+                        cmd.Parameters.AddWithValue("@MepElementIds", mepElementIds ?? (object)DBNull.Value);
+
+                        // ✅ CORNERS: Add in exact order
+                        cmd.Parameters.AddWithValue("@Corner1X", cluster.Corner1X);
+                        cmd.Parameters.AddWithValue("@Corner1Y", cluster.Corner1Y);
+                        cmd.Parameters.AddWithValue("@Corner1Z", cluster.Corner1Z);
+                        cmd.Parameters.AddWithValue("@Corner2X", cluster.Corner2X);
+                        cmd.Parameters.AddWithValue("@Corner2Y", cluster.Corner2Y);
+                        cmd.Parameters.AddWithValue("@Corner2Z", cluster.Corner2Z);
+                        cmd.Parameters.AddWithValue("@Corner3X", cluster.Corner3X);
+                        cmd.Parameters.AddWithValue("@Corner3Y", cluster.Corner3Y);
+                        cmd.Parameters.AddWithValue("@Corner3Z", cluster.Corner3Z);
+                        cmd.Parameters.AddWithValue("@Corner4X", cluster.Corner4X);
+                        cmd.Parameters.AddWithValue("@Corner4Y", cluster.Corner4Y);
+                        cmd.Parameters.AddWithValue("@Corner4Z", cluster.Corner4Z);
+
+                        // ✅ FAMILY NAME: Add family name explicitly
+                        cmd.Parameters.AddWithValue("@SleeveFamilyName", cluster.SleeveFamilyName ?? (object)DBNull.Value);
+
+                        // 🔥 DEBUG: Log before execution
+                        try
+                        {
+                            var versionTag = "R2023"; // Hardcoded for simplicity
+                            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                            var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                            var logPath = Path.Combine(logDir, "cluster_debug.log");
+                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] 💾 EXECUTING INSERT OR REPLACE for ClusterInstanceId={cluster.ClusterInstanceId}, Corner1X={cluster.Corner1X:F2}, Corner1Y={cluster.Corner1Y:F2}\n");
+                        }
+                        catch { }
+
+                        int rowsAffected = cmd.ExecuteNonQuery();
+
+                        // 🔥 DEBUG: Log after execution
+                        try
+                        {
+                            var versionTag = "R2023";
+                            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                            var logDir = Path.Combine(appData, "JSE_MEP_Openings", "Logs", versionTag);
+                            var logPath = Path.Combine(logDir, "cluster_debug.log");
+                            File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] ✅ INSERT OR REPLACE COMPLETED: rowsAffected={rowsAffected}\n");
+                        }
+                        catch { }
+
+                        DatabaseOperationLogger.LogOperation("INSERT OR REPLACE", "ClusterSleeves",
+                            new Dictionary<string, object>
+                            {
+                                { "ClusterInstanceId", cluster.ClusterInstanceId },
+                                { "Corner1X", cluster.Corner1X },
+                                { "Corner1Y", cluster.Corner1Y },
+                                { "Corner1Z", cluster.Corner1Z }
+                            });
+
+                        savedCount++;
+                    }
+                }
+
+                if (ownTransaction)
+                {
+                    transaction.Commit();
+                }
+                sw.Stop();
+
+                DatabaseOperationLogger.LogTransaction("COMMIT", "SUCCESS", $"Saved {savedCount} clusters using INSERT OR REPLACE");
+                _logger($"[SQLite] ✅ Saved {savedCount} cluster sleeves in {sw.ElapsedMilliseconds}ms using INSERT OR REPLACE (ExternalTrans={usingExternalTrans})");
+            }
+            catch (Exception ex)
+            {
+                DatabaseOperationLogger.LogTransaction("ROLLBACK", "FAILED", ex.Message);
+                if (ownTransaction)
+                {
                     transaction.Rollback();
-                    _logger($"[SQLite] ❌ Error saving cluster sleeves: {ex.Message}");
-                    throw;
+                }
+                _logger($"[SQLite] ❌ Error saving cluster sleeves: {ex.Message}");
+                throw;
+            }
+            finally
+            {
+                if (ownTransaction)
+                {
+                    transaction.Dispose();
                 }
             }
         }

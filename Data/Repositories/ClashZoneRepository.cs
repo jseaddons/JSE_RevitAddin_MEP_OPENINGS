@@ -8136,7 +8136,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// ✅ INTERFACE IMPLEMENTATION (LEGACY): Simple version with 9 parameters.
         /// Delegates to full implementation with default/null values for dimensions.
         /// </summary>
-        public void BatchUpdateFlags(List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsClusteredFlag, bool MarkedForClusterProcess, int AfterClusterSleeveId)> updates)
+        public void BatchUpdateFlags(List<(Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsClusteredFlag, bool MarkedForClusterProcess, int AfterClusterSleeveId)> updates, SQLiteTransaction? transaction = null)
         {
             if (updates == null || updates.Count == 0) return;
 
@@ -8158,7 +8158,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 (double?)null, (double?)null, (double?)null, (double?)null, (double?)null, (double?)null // BoundingBox
             )).ToList();
 
-            BatchUpdateFlags(modernUpdates);
+            BatchUpdateFlags(modernUpdates, transaction);
         }
 
         /// <summary>
@@ -8166,7 +8166,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Updates IsResolvedFlag, IsClusterResolvedFlag, SleeveInstanceId, and ClusterInstanceId
         /// Uses GUID, OLD SleeveInstanceId/ClusterInstanceId, or MEP+Host+Point for matching
         /// </summary>
-        public void BatchUpdateFlags(List<(System.Guid ClashZoneId, bool IsResolved, bool? IsClusterResolved, bool? IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool? IsClusteredFlag, bool? MarkedForClusterProcess, int AfterClusterSleeveId, bool IsClustered, double SleeveWidth, double SleeveHeight, double SleeveDiameter, double SleeveDepth, string SleeveFamilyName, double? ActivePlacementX, double? ActivePlacementY, double? ActivePlacementZ, double? BBoxMinX, double? BBoxMinY, double? BBoxMinZ, double? BBoxMaxX, double? BBoxMaxY, double? BBoxMaxZ)> updates)
+        public void BatchUpdateFlags(List<(System.Guid ClashZoneId, bool IsResolved, bool? IsClusterResolved, bool? IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool? IsClusteredFlag, bool? MarkedForClusterProcess, int AfterClusterSleeveId, bool IsClustered, double SleeveWidth, double SleeveHeight, double SleeveDiameter, double SleeveDepth, string SleeveFamilyName, double? ActivePlacementX, double? ActivePlacementY, double? ActivePlacementZ, double? BBoxMinX, double? BBoxMinY, double? BBoxMinZ, double? BBoxMaxX, double? BBoxMaxY, double? BBoxMaxZ)> updates, SQLiteTransaction? transaction = null)
         {
             if (updates == null || updates.Count == 0)
                 return;
@@ -8185,244 +8185,212 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 rowsAffected: -1,
                 additionalInfo: $"Batch updating flags for {updatesList.Count} clash zones");
 
-            using (var transaction = _context.Connection.BeginTransaction())
+            bool isExternalTrans = transaction != null;
+            // ✅ FIX: When external transaction is provided, use ITS connection (not _context.Connection)
+            // This prevents "Transaction is not associated with the command's connection" when
+            // PlaceBulkClusters passes its own conn/trans to BatchUpdateFlags via PrepareClusterSaveDataBatch
+            var activeConn = isExternalTrans ? transaction.Connection : _context.Connection;
+            var activeTrans = transaction ?? activeConn.BeginTransaction();
+
+            try
             {
-                try
+                int rowsAffectedTotal = 0;
+
+                // Step 1: Create temp table for batch data (24 columns)
+                using (var tempCmd = activeConn.CreateCommand())
                 {
-                    int rowsAffectedTotal = 0;
-
-                    // Step 1: Create temp table for batch data (24 columns)
-                    using (var tempCmd = _context.Connection.CreateCommand())
-                    {
-                        tempCmd.Transaction = transaction;
-                        tempCmd.CommandText = @"
-                                CREATE TEMP TABLE IF NOT EXISTS TempFlagUpdates (
-                                    ClashZoneGuid TEXT,
-                                    IsResolvedFlag INTEGER,
-                                    IsClusterResolvedFlag INTEGER,
-                                    IsCombinedResolved INTEGER,
-                                    SleeveInstanceId INTEGER,
-                                    ClusterInstanceId INTEGER,
-                                    IsClusteredFlag INTEGER,
-                                    MarkedForClusterProcess INTEGER,
-                                    AfterClusterSleeveId INTEGER,
-                                    IsClustered INTEGER,
-                                    IsCurrentClashFlag INTEGER,
-                                    SleeveWidth REAL,
-                                    SleeveHeight REAL,
-                                    SleeveDiameter REAL,
-                                    SleeveDepth REAL,
-                                    SleeveFamilyName TEXT,
-                                    SleevePlacementActiveX REAL,
-                                    SleevePlacementActiveY REAL,
-                                    SleevePlacementActiveZ REAL,
-                                    BoundingBoxMinX REAL,
-                                    BoundingBoxMinY REAL,
-                                    BoundingBoxMinZ REAL,
-                                    BoundingBoxMaxX REAL,
-                                    BoundingBoxMaxY REAL,
-                                    BoundingBoxMaxZ REAL
-                                )";
-                        tempCmd.ExecuteNonQuery();
-                    }
-
-                    // Step 2: Bulk insert all updates into temp table
-                    using (var insertCmd = _context.Connection.CreateCommand())
-                    {
-                        insertCmd.Transaction = transaction;
-                        insertCmd.CommandText = @"
-                                INSERT INTO TempFlagUpdates (
-                                    ClashZoneGuid, IsResolvedFlag, IsClusterResolvedFlag, IsCombinedResolved,
-                                    SleeveInstanceId, ClusterInstanceId, IsClusteredFlag, MarkedForClusterProcess,
-                                    AfterClusterSleeveId, IsClustered, IsCurrentClashFlag, 
-                                    SleeveWidth, SleeveHeight, SleeveDiameter, SleeveDepth, SleeveFamilyName,
-                                    SleevePlacementActiveX, SleevePlacementActiveY, SleevePlacementActiveZ,
-                                    BoundingBoxMinX, BoundingBoxMinY, BoundingBoxMinZ,
-                                    BoundingBoxMaxX, BoundingBoxMaxY, BoundingBoxMaxZ
-                                ) VALUES (
-                                    @g, @ir, @icr, @icb, @si, @ci, @icf, @mcp, @asi, @ic, @icc,
-                                    @sw, @sh, @sdm, @sdp, @sf, @ax, @ay, @az, @bminx, @bminy, @bminz, @bmaxx, @bmaxy, @bmaxz
-                                )";
-
-                        var p_guid = insertCmd.Parameters.Add("@g", System.Data.DbType.String);
-                        var p_isResolved = insertCmd.Parameters.Add("@ir", System.Data.DbType.Int32);
-                        var p_isClusterResolved = insertCmd.Parameters.Add("@icr", System.Data.DbType.Int32);
-                        var p_isCombinedResolved = insertCmd.Parameters.Add("@icb", System.Data.DbType.Int32);
-                        var p_sleeveId = insertCmd.Parameters.Add("@si", System.Data.DbType.Int32);
-                        var p_clusterId = insertCmd.Parameters.Add("@ci", System.Data.DbType.Int32);
-                        var p_isClusteredFlag = insertCmd.Parameters.Add("@icf", System.Data.DbType.Int32);
-                        var p_markedForCluster = insertCmd.Parameters.Add("@mcp", System.Data.DbType.Int32);
-                        var p_afterClusterId = insertCmd.Parameters.Add("@asi", System.Data.DbType.Int32);
-                        var p_isClustered = insertCmd.Parameters.Add("@ic", System.Data.DbType.Int32);
-                        var p_isCurrentClash = insertCmd.Parameters.Add("@icc", System.Data.DbType.Int32);
-                        var p_width = insertCmd.Parameters.Add("@sw", System.Data.DbType.Double);
-                        var p_height = insertCmd.Parameters.Add("@sh", System.Data.DbType.Double);
-                        var p_diameter = insertCmd.Parameters.Add("@sdm", System.Data.DbType.Double);
-                        var p_depth = insertCmd.Parameters.Add("@sdp", System.Data.DbType.Double);
-                        var p_family = insertCmd.Parameters.Add("@sf", System.Data.DbType.String);
-                        var p_ax = insertCmd.Parameters.Add("@ax", System.Data.DbType.Double);
-                        var p_ay = insertCmd.Parameters.Add("@ay", System.Data.DbType.Double);
-                        var p_az = insertCmd.Parameters.Add("@az", System.Data.DbType.Double);
-                        var p_bminx = insertCmd.Parameters.Add("@bminx", System.Data.DbType.Double);
-                        var p_bminy = insertCmd.Parameters.Add("@bminy", System.Data.DbType.Double);
-                        var p_bminz = insertCmd.Parameters.Add("@bminz", System.Data.DbType.Double);
-                        var p_bmaxx = insertCmd.Parameters.Add("@bmaxx", System.Data.DbType.Double);
-                        var p_bmaxy = insertCmd.Parameters.Add("@bmaxy", System.Data.DbType.Double);
-                        var p_bmaxz = insertCmd.Parameters.Add("@bmaxz", System.Data.DbType.Double);
-
-                        insertCmd.Prepare();
-
-                        foreach (var u in updatesList)
-                        {
-                            p_guid.Value = u.ClashZoneId.ToString().ToUpperInvariant();
-                            p_isResolved.Value = u.IsResolved ? 1 : 0;
-                            p_isClusterResolved.Value = u.IsClusterResolved.HasValue ? (object)(u.IsClusterResolved.Value ? 1 : 0) : DBNull.Value;
-                            p_isCombinedResolved.Value = u.IsCombinedResolved.HasValue ? (object)(u.IsCombinedResolved.Value ? 1 : 0) : DBNull.Value;
-                            p_sleeveId.Value = u.SleeveInstanceId != 0 ? (object)u.SleeveInstanceId : DBNull.Value;
-                            p_clusterId.Value = u.ClusterInstanceId != 0 ? (object)u.ClusterInstanceId : DBNull.Value;
-                            p_isClusteredFlag.Value = u.IsClusteredFlag.HasValue ? (object)(u.IsClusteredFlag.Value ? 1 : 0) : DBNull.Value;
-                            p_markedForCluster.Value = u.MarkedForClusterProcess.HasValue ? (object)(u.MarkedForClusterProcess.Value ? 1 : 0) : DBNull.Value;
-                            p_afterClusterId.Value = u.AfterClusterSleeveId != 0 ? (object)u.AfterClusterSleeveId : DBNull.Value;
-                            p_isClustered.Value = u.IsClustered ? 1 : 0;
-                            p_isCurrentClash.Value = DBNull.Value; // Standard BatchUpdateFlags doesn't set this from the input tuple
-                            p_width.Value = u.SleeveWidth > 0 ? (object)u.SleeveWidth : DBNull.Value;
-                            p_height.Value = u.SleeveHeight > 0 ? (object)u.SleeveHeight : DBNull.Value;
-                            p_diameter.Value = u.SleeveDiameter > 0 ? (object)u.SleeveDiameter : DBNull.Value;
-                            p_depth.Value = u.SleeveDepth > 0 ? (object)u.SleeveDepth : DBNull.Value;
-                            p_family.Value = !string.IsNullOrEmpty(u.SleeveFamilyName) ? (object)u.SleeveFamilyName : DBNull.Value;
-                            p_ax.Value = u.ActivePlacementX.HasValue ? (object)u.ActivePlacementX.Value : DBNull.Value;
-                            p_ay.Value = u.ActivePlacementY.HasValue ? (object)u.ActivePlacementY.Value : DBNull.Value;
-                            p_az.Value = u.ActivePlacementZ.HasValue ? (object)u.ActivePlacementZ.Value : DBNull.Value;
-                            p_bminx.Value = u.BBoxMinX.HasValue ? (object)u.BBoxMinX.Value : DBNull.Value;
-                            p_bminy.Value = u.BBoxMinY.HasValue ? (object)u.BBoxMinY.Value : DBNull.Value;
-                            p_bminz.Value = u.BBoxMinZ.HasValue ? (object)u.BBoxMinZ.Value : DBNull.Value;
-                            p_bmaxx.Value = u.BBoxMaxX.HasValue ? (object)u.BBoxMaxX.Value : DBNull.Value;
-                            p_bmaxy.Value = u.BBoxMaxY.HasValue ? (object)u.BBoxMaxY.Value : DBNull.Value;
-                            p_bmaxz.Value = u.BBoxMaxZ.HasValue ? (object)u.BBoxMaxZ.Value : DBNull.Value;
-
-                            insertCmd.ExecuteNonQuery();
-                        }
-                    }
-
-                    // Step 3: Multi-column UPDATE with subqueries (compatible with all SQLite versions)
-                    using (var bulkUpdateCmd = _context.Connection.CreateCommand())
-                    {
-                        bulkUpdateCmd.Transaction = transaction;
-                        bulkUpdateCmd.CommandText = @"
-                                UPDATE ClashZones
-                                SET
-                                    IsResolvedFlag = (SELECT t.IsResolvedFlag FROM TempFlagUpdates t WHERE REPLACE(REPLACE(UPPER(t.ClashZoneGuid), '{', ''), '}', '') = REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '')),
-                                    IsClusterResolvedFlag = COALESCE((SELECT t.IsClusterResolvedFlag FROM TempFlagUpdates t WHERE REPLACE(REPLACE(UPPER(t.ClashZoneGuid), '{', ''), '}', '') = REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '')), ClashZones.IsClusterResolvedFlag),
-                                    IsCombinedResolved = COALESCE((SELECT t.IsCombinedResolved FROM TempFlagUpdates t WHERE REPLACE(REPLACE(UPPER(t.ClashZoneGuid), '{', ''), '}', '') = REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '')), ClashZones.IsCombinedResolved),
-                                    SleeveInstanceId = (SELECT t.SleeveInstanceId FROM TempFlagUpdates t WHERE REPLACE(REPLACE(UPPER(t.ClashZoneGuid), '{', ''), '}', '') = REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '')),
-                                    ClusterInstanceId = (SELECT t.ClusterInstanceId FROM TempFlagUpdates t WHERE REPLACE(REPLACE(UPPER(t.ClashZoneGuid) , '{', ''), '}', '') = REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '')),
-                                    MarkedForClusterProcess = COALESCE((SELECT t.MarkedForClusterProcess FROM TempFlagUpdates t WHERE REPLACE(REPLACE(UPPER(t.ClashZoneGuid), '{', ''), '}', '') = REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '')), ClashZones.MarkedForClusterProcess),
-                                    AfterClusterSleeveId = (SELECT t.AfterClusterSleeveId FROM TempFlagUpdates t WHERE REPLACE(REPLACE(UPPER(t.ClashZoneGuid), '{', ''), '}', '') = REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '')),
-                                    IsClusteredFlag = COALESCE((SELECT t.IsClusteredFlag FROM TempFlagUpdates t WHERE REPLACE(REPLACE(UPPER(t.ClashZoneGuid), '{', ''), '}', '') = REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '')), ClashZones.IsClusteredFlag),
-                                    IsCurrentClashFlag = COALESCE((SELECT t.IsCurrentClashFlag FROM TempFlagUpdates t WHERE REPLACE(REPLACE(UPPER(t.ClashZoneGuid), '{', ''), '}', '') = REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '')), ClashZones.IsCurrentClashFlag),
-                                    SleeveWidth = COALESCE((SELECT t.SleeveWidth FROM TempFlagUpdates t WHERE REPLACE(REPLACE(UPPER(t.ClashZoneGuid), '{', ''), '}', '') = REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '')), ClashZones.SleeveWidth),
-                                    SleeveHeight = COALESCE((SELECT t.SleeveHeight FROM TempFlagUpdates t WHERE REPLACE(REPLACE(UPPER(t.ClashZoneGuid), '{', ''), '}', '') = REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '')), ClashZones.SleeveHeight),
-                                    SleeveDiameter = COALESCE((SELECT t.SleeveDiameter FROM TempFlagUpdates t WHERE REPLACE(REPLACE(UPPER(t.ClashZoneGuid), '{', ''), '}', '') = REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '')), ClashZones.SleeveDiameter),
-                                    SleeveDepth = COALESCE((SELECT t.SleeveDepth FROM TempFlagUpdates t WHERE REPLACE(REPLACE(UPPER(t.ClashZoneGuid), '{', ''), '}', '') = REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '')), ClashZones.SleeveDepth),
-                                    SleeveFamilyName = COALESCE((SELECT t.SleeveFamilyName FROM TempFlagUpdates t WHERE REPLACE(REPLACE(UPPER(t.ClashZoneGuid), '{', ''), '}', '') = REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '')), ClashZones.SleeveFamilyName),
-                                    SleevePlacementActiveX = COALESCE((SELECT t.SleevePlacementActiveX FROM TempFlagUpdates t WHERE REPLACE(REPLACE(UPPER(t.ClashZoneGuid), '{', ''), '}', '') = REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '')), ClashZones.SleevePlacementActiveX),
-                                    SleevePlacementActiveY = COALESCE((SELECT t.SleevePlacementActiveY FROM TempFlagUpdates t WHERE REPLACE(REPLACE(UPPER(t.ClashZoneGuid), '{', ''), '}', '') = REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '')), ClashZones.SleevePlacementActiveY),
-                                    SleevePlacementActiveZ = COALESCE((SELECT t.SleevePlacementActiveZ FROM TempFlagUpdates t WHERE REPLACE(REPLACE(UPPER(t.ClashZoneGuid), '{', ''), '}', '') = REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '')), ClashZones.SleevePlacementActiveZ),
-                                    BoundingBoxMinX = COALESCE((SELECT t.BoundingBoxMinX FROM TempFlagUpdates t WHERE REPLACE(REPLACE(UPPER(t.ClashZoneGuid), '{', ''), '}', '') = REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '')  ), ClashZones.BoundingBoxMinX),
-                                    BoundingBoxMinY = COALESCE((SELECT t.BoundingBoxMinY FROM TempFlagUpdates t WHERE REPLACE(REPLACE(UPPER(t.ClashZoneGuid), '{', ''), '}', '') = REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '')), ClashZones.BoundingBoxMinY),
-                                    BoundingBoxMinZ = COALESCE((SELECT t.BoundingBoxMinZ FROM TempFlagUpdates t WHERE REPLACE(REPLACE(UPPER(t.ClashZoneGuid), '{', ''), '}', '') = REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '')), ClashZones.BoundingBoxMinZ),
-                                    BoundingBoxMaxX = COALESCE((SELECT t.BoundingBoxMaxX FROM TempFlagUpdates t WHERE REPLACE(REPLACE(UPPER(t.ClashZoneGuid), '{', ''), '}', '') = REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '')), ClashZones.BoundingBoxMaxX),
-                                    BoundingBoxMaxY = COALESCE((SELECT t.BoundingBoxMaxY FROM TempFlagUpdates t WHERE REPLACE(REPLACE(UPPER(t.ClashZoneGuid), '{', ''), '}', '') = REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '')), ClashZones.BoundingBoxMaxY),
-                                    BoundingBoxMaxZ = COALESCE((SELECT t.BoundingBoxMaxZ FROM TempFlagUpdates t WHERE REPLACE(REPLACE(UPPER(t.ClashZoneGuid), '{', ''), '}', '') = REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '')), ClashZones.BoundingBoxMaxZ),
-                                    UpdatedAt = datetime('now', '+5 hours', '+30 minutes')
-                                WHERE EXISTS (
-                                    SELECT 1 FROM TempFlagUpdates t 
-                                    WHERE REPLACE(REPLACE(UPPER(t.ClashZoneGuid), '{', ''), '}', '') = REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '')
-                                      AND ClashZones.ClashZoneGuid IS NOT NULL
-                                      AND ClashZones.ClashZoneGuid != ''
-                                )";
-                        rowsAffectedTotal = bulkUpdateCmd.ExecuteNonQuery();
-
-                        // ✅ LOUD DIAGNOSTIC LOGGING: Log how many rows were actually updated
-                        _logger?.Invoke($"[ClashZoneRepository] [BatchUpdateFlags] LOUD-DEBUG: Batch of {updatesList.Count} input GUIDs resulted in {rowsAffectedTotal} database rows updated.");
-                        
-                        // If 0 rows updated, log the first few GUIDs for investigation
-                        if (rowsAffectedTotal == 0 && updatesList.Count > 0)
-                        {
-                            var sampleGuids = string.Join(", ", updatesList.Take(3).Select(u => u.ClashZoneId.ToString()));
-                            _logger?.Invoke($"[ClashZoneRepository] [BatchUpdateFlags] ⚠️ WARNING: Zero rows matched! Samples: {sampleGuids}");
-                            SafeFileLogger.SafeAppendText("db_error.log", $"[{DateTime.Now}] BatchUpdateFlags: 0 rows updated for {updatesList.Count} GUIDs. Sample: {sampleGuids}\n");
-                        }
-                    }
-
-                    // ✅ DIAGNOSTIC STEP: Verify flags were actually set in database
-                    if (!DeploymentConfiguration.DeploymentMode && rowsAffectedTotal > 0)
-                    {
-                        using (var verifyCmd = _context.Connection.CreateCommand())
-                        {
-                            verifyCmd.Transaction = transaction;
-                            verifyCmd.CommandText = @"
-                                SELECT
-                                    COUNT(CASE WHEN IsResolvedFlag = 1 THEN 1 END) as IsResolvedCount,
-                                    COUNT(CASE WHEN MarkedForClusterProcess = 1 THEN 1 END) as MarkedForClusterCount,
-                                    COUNT(CASE WHEN MarkedForClusterProcess IS NULL THEN 1 END) as MarkedForClusterNullCount,
-                                    COUNT(CASE WHEN ClashZoneGuid IS NULL OR ClashZoneGuid = '' THEN 1 END) as NullGuidCount,
-                                    COUNT(*) as TotalZones
-                                FROM ClashZones
-                                WHERE ReadyForPlacementFlag = 1 AND IsCurrentClashFlag = 1";
-
-                            using (var reader = verifyCmd.ExecuteReader())
-                            {
-                                if (reader.Read())
-                                {
-                                    int isResolvedCount = reader.IsDBNull(0) ? 0 : reader.GetInt32(0);
-                                    int markedCount = reader.IsDBNull(1) ? 0 : reader.GetInt32(1);
-                                    int nullMarkedCount = reader.IsDBNull(2) ? 0 : reader.GetInt32(2);
-                                    int nullGuidCount = reader.IsDBNull(3) ? 0 : reader.GetInt32(3);
-                                    int totalZones = reader.IsDBNull(4) ? 0 : reader.GetInt32(4);
-
-                                    _logger($"[ClashZoneRepository] [BATCH-VERIFY] ✅ Flag Status:");
-                                    _logger($"  - Total zones ready for placement: {totalZones}");
-                                    _logger($"  - IsResolvedFlag = 1: {isResolvedCount}");
-                                    _logger($"  - MarkedForClusterProcess = 1: {markedCount}");
-                                    _logger($"  - MarkedForClusterProcess IS NULL: {nullMarkedCount}");
-                                    _logger($"  - ClashZoneGuid IS NULL or empty: {nullGuidCount}");
-
-                                    if (nullGuidCount > 0)
-                                    {
-                                        _logger($"[ClashZoneRepository] ⚠️ WARNING: {nullGuidCount} zones have NULL/empty ClashZoneGuid - clustering will fail for these!");
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Step 4: Cleanup temp table
-                    using (var dropCmd = _context.Connection.CreateCommand())
-                    {
-                        dropCmd.Transaction = transaction;
-                        dropCmd.CommandText = "DROP TABLE IF EXISTS TempFlagUpdates";
-                        dropCmd.ExecuteNonQuery();
-                    }
-
-                    int updateCount = updatesList.Count;
-                    transaction.Commit();
-                    _logger($"[SQLite] ✅ 🚀 BATCH UPDATE COMPLETED: {updateCount} items processed.");
+                    tempCmd.Transaction = activeTrans;
+                    tempCmd.CommandText = @"
+                            CREATE TEMP TABLE IF NOT EXISTS TempFlagUpdates (
+                                ClashZoneGuid TEXT,
+                                IsResolvedFlag INTEGER,
+                                IsClusterResolvedFlag INTEGER,
+                                IsCombinedResolved INTEGER,
+                                SleeveInstanceId INTEGER,
+                                ClusterInstanceId INTEGER,
+                                IsClusteredFlag INTEGER,
+                                MarkedForClusterProcess INTEGER,
+                                AfterClusterSleeveId INTEGER,
+                                IsClustered INTEGER,
+                                IsCurrentClashFlag INTEGER,
+                                SleeveWidth REAL,
+                                SleeveHeight REAL,
+                                SleeveDiameter REAL,
+                                SleeveDepth REAL,
+                                SleeveFamilyName TEXT,
+                                SleevePlacementActiveX REAL,
+                                SleevePlacementActiveY REAL,
+                                SleevePlacementActiveZ REAL,
+                                BoundingBoxMinX REAL,
+                                BoundingBoxMinY REAL,
+                                BoundingBoxMinZ REAL,
+                                BoundingBoxMaxX REAL,
+                                BoundingBoxMaxY REAL,
+                                BoundingBoxMaxZ REAL
+                            )";
+                    tempCmd.ExecuteNonQuery();
                 }
-                catch (Exception ex)
+
+                // Step 2: Bulk insert all updates into temp table
+                using (var insertCmd = activeConn.CreateCommand())
                 {
-                    transaction.Rollback();
-                    _logger($"[SQLite] ❌ Error batch updating flags: {ex.Message}");
-                    throw;
+                    insertCmd.Transaction = activeTrans;
+                    insertCmd.CommandText = @"
+                            INSERT INTO TempFlagUpdates (
+                                ClashZoneGuid, IsResolvedFlag, IsClusterResolvedFlag, IsCombinedResolved,
+                                SleeveInstanceId, ClusterInstanceId, IsClusteredFlag, MarkedForClusterProcess,
+                                AfterClusterSleeveId, IsClustered, IsCurrentClashFlag, 
+                                SleeveWidth, SleeveHeight, SleeveDiameter, SleeveDepth, SleeveFamilyName,
+                                SleevePlacementActiveX, SleevePlacementActiveY, SleevePlacementActiveZ,
+                                BoundingBoxMinX, BoundingBoxMinY, BoundingBoxMinZ,
+                                BoundingBoxMaxX, BoundingBoxMaxY, BoundingBoxMaxZ
+                            ) VALUES (
+                                @g, @ir, @icr, @icb, @si, @ci, @icf, @mcp, @asi, @ic, @icc,
+                                @sw, @sh, @sdm, @sdp, @sf, @ax, @ay, @az, @bminx, @bminy, @bminz, @bmaxx, @bmaxy, @bmaxz
+                            )";
+
+                    var p_guid = insertCmd.Parameters.Add("@g", System.Data.DbType.String);
+                    var p_isResolved = insertCmd.Parameters.Add("@ir", System.Data.DbType.Int32);
+                    var p_isClusterResolved = insertCmd.Parameters.Add("@icr", System.Data.DbType.Int32);
+                    var p_isCombinedResolved = insertCmd.Parameters.Add("@icb", System.Data.DbType.Int32);
+                    var p_sleeveId = insertCmd.Parameters.Add("@si", System.Data.DbType.Int32);
+                    var p_clusterId = insertCmd.Parameters.Add("@ci", System.Data.DbType.Int32);
+                    var p_isClusteredFlag = insertCmd.Parameters.Add("@icf", System.Data.DbType.Int32);
+                    var p_markedForCluster = insertCmd.Parameters.Add("@mcp", System.Data.DbType.Int32);
+                    var p_afterClusterId = insertCmd.Parameters.Add("@asi", System.Data.DbType.Int32);
+                    var p_isClustered = insertCmd.Parameters.Add("@ic", System.Data.DbType.Int32);
+                    var p_isCurrentClash = insertCmd.Parameters.Add("@icc", System.Data.DbType.Int32);
+                    var p_width = insertCmd.Parameters.Add("@sw", System.Data.DbType.Double);
+                    var p_height = insertCmd.Parameters.Add("@sh", System.Data.DbType.Double);
+                    var p_diameter = insertCmd.Parameters.Add("@sdm", System.Data.DbType.Double);
+                    var p_depth = insertCmd.Parameters.Add("@sdp", System.Data.DbType.Double);
+                    var p_family = insertCmd.Parameters.Add("@sf", System.Data.DbType.String);
+                    var p_ax = insertCmd.Parameters.Add("@ax", System.Data.DbType.Double);
+                    var p_ay = insertCmd.Parameters.Add("@ay", System.Data.DbType.Double);
+                    var p_az = insertCmd.Parameters.Add("@az", System.Data.DbType.Double);
+                    var p_bminx = insertCmd.Parameters.Add("@bminx", System.Data.DbType.Double);
+                    var p_bminy = insertCmd.Parameters.Add("@bminy", System.Data.DbType.Double);
+                    var p_bminz = insertCmd.Parameters.Add("@bminz", System.Data.DbType.Double);
+                    var p_bmaxx = insertCmd.Parameters.Add("@bmaxx", System.Data.DbType.Double);
+                    var p_bmaxy = insertCmd.Parameters.Add("@bmaxy", System.Data.DbType.Double);
+                    var p_bmaxz = insertCmd.Parameters.Add("@bmaxz", System.Data.DbType.Double);
+
+                    insertCmd.Prepare();
+
+                    foreach (var u in updatesList)
+                    {
+                        p_guid.Value = u.ClashZoneId.ToString().ToUpperInvariant();
+                        p_isResolved.Value = u.IsResolved ? 1 : 0;
+                        p_isClusterResolved.Value = u.IsClusterResolved.HasValue ? (object)(u.IsClusterResolved.Value ? 1 : 0) : DBNull.Value;
+                        p_isCombinedResolved.Value = u.IsCombinedResolved.HasValue ? (object)(u.IsCombinedResolved.Value ? 1 : 0) : DBNull.Value;
+                        p_sleeveId.Value = (u.SleeveInstanceId != 0 && u.SleeveInstanceId != -1) ? (object)u.SleeveInstanceId : DBNull.Value;
+                        p_clusterId.Value = (u.ClusterInstanceId != 0 && u.ClusterInstanceId != -1) ? (object)u.ClusterInstanceId : DBNull.Value;
+                        p_isClusteredFlag.Value = u.IsClusteredFlag.HasValue ? (object)(u.IsClusteredFlag.Value ? 1 : 0) : DBNull.Value;
+                        p_markedForCluster.Value = u.MarkedForClusterProcess.HasValue ? (object)(u.MarkedForClusterProcess.Value ? 1 : 0) : DBNull.Value;
+                        p_afterClusterId.Value = (u.AfterClusterSleeveId != 0 && u.AfterClusterSleeveId != -1) ? (object)u.AfterClusterSleeveId : DBNull.Value;
+                        p_isClustered.Value = u.IsClustered ? 1 : 0;
+                        p_isCurrentClash.Value = DBNull.Value;
+                        p_width.Value = u.SleeveWidth > 0 ? (object)u.SleeveWidth : DBNull.Value;
+                        p_height.Value = u.SleeveHeight > 0 ? (object)u.SleeveHeight : DBNull.Value;
+                        p_diameter.Value = u.SleeveDiameter > 0 ? (object)u.SleeveDiameter : DBNull.Value;
+                        p_depth.Value = u.SleeveDepth > 0 ? (object)u.SleeveDepth : DBNull.Value;
+                        p_family.Value = !string.IsNullOrEmpty(u.SleeveFamilyName) ? (object)u.SleeveFamilyName : DBNull.Value;
+                        p_ax.Value = u.ActivePlacementX.HasValue ? (object)u.ActivePlacementX.Value : DBNull.Value;
+                        p_ay.Value = u.ActivePlacementY.HasValue ? (object)u.ActivePlacementY.Value : DBNull.Value;
+                        p_az.Value = u.ActivePlacementZ.HasValue ? (object)u.ActivePlacementZ.Value : DBNull.Value;
+                        p_bminx.Value = u.BBoxMinX.HasValue ? (object)u.BBoxMinX.Value : DBNull.Value;
+                        p_bminy.Value = u.BBoxMinY.HasValue ? (object)u.BBoxMinY.Value : DBNull.Value;
+                        p_bminz.Value = u.BBoxMinZ.HasValue ? (object)u.BBoxMinZ.Value : DBNull.Value;
+                        p_bmaxx.Value = u.BBoxMaxX.HasValue ? (object)u.BBoxMaxX.Value : DBNull.Value;
+                        p_bmaxy.Value = u.BBoxMaxY.HasValue ? (object)u.BBoxMaxY.Value : DBNull.Value;
+                        p_bmaxz.Value = u.BBoxMaxZ.HasValue ? (object)u.BBoxMaxZ.Value : DBNull.Value;
+
+                        insertCmd.ExecuteNonQuery();
+                    }
+                }
+
+                // Step 3: Multi-column UPDATE
+                // ✅ PERF: Index temp table for faster join lookups
+                using (var idxCmd = activeConn.CreateCommand())
+                {
+                    idxCmd.Transaction = activeTrans;
+                    idxCmd.CommandText = "CREATE INDEX IF NOT EXISTS idx_temp_guid ON TempFlagUpdates(ClashZoneGuid)";
+                    idxCmd.ExecuteNonQuery();
+                }
+
+                using (var bulkUpdateCmd = activeConn.CreateCommand())
+                {
+                    bulkUpdateCmd.Transaction = activeTrans;
+                    // ✅ PERF: UPDATE...FROM (SQLite 3.33+) joins ONCE instead of 24 correlated subqueries
+                    // GUID normalization runs 1x per row instead of 48x (24 columns * 2 sides)
+                    // Temp table GUIDs are already normalized (uppercase, no braces) from C# insert
+                    bulkUpdateCmd.CommandText = @"
+                            UPDATE ClashZones
+                            SET
+                                IsResolvedFlag = t.IsResolvedFlag,
+                                IsClusterResolvedFlag = COALESCE(t.IsClusterResolvedFlag, ClashZones.IsClusterResolvedFlag),
+                                IsCombinedResolved = COALESCE(t.IsCombinedResolved, ClashZones.IsCombinedResolved),
+                                SleeveInstanceId = COALESCE(t.SleeveInstanceId, ClashZones.SleeveInstanceId),
+                                ClusterInstanceId = COALESCE(t.ClusterInstanceId, ClashZones.ClusterInstanceId),
+                                MarkedForClusterProcess = COALESCE(t.MarkedForClusterProcess, ClashZones.MarkedForClusterProcess),
+                                AfterClusterSleeveId = COALESCE(t.AfterClusterSleeveId, ClashZones.AfterClusterSleeveId),
+                                IsClusteredFlag = COALESCE(t.IsClusteredFlag, ClashZones.IsClusteredFlag),
+                                IsCurrentClashFlag = COALESCE(t.IsCurrentClashFlag, ClashZones.IsCurrentClashFlag),
+                                SleeveWidth = COALESCE(t.SleeveWidth, ClashZones.SleeveWidth),
+                                SleeveHeight = COALESCE(t.SleeveHeight, ClashZones.SleeveHeight),
+                                SleeveDiameter = COALESCE(t.SleeveDiameter, ClashZones.SleeveDiameter),
+                                SleeveDepth = COALESCE(t.SleeveDepth, ClashZones.SleeveDepth),
+                                SleeveFamilyName = COALESCE(t.SleeveFamilyName, ClashZones.SleeveFamilyName),
+                                SleevePlacementActiveX = COALESCE(t.SleevePlacementActiveX, ClashZones.SleevePlacementActiveX),
+                                SleevePlacementActiveY = COALESCE(t.SleevePlacementActiveY, ClashZones.SleevePlacementActiveY),
+                                SleevePlacementActiveZ = COALESCE(t.SleevePlacementActiveZ, ClashZones.SleevePlacementActiveZ),
+                                BoundingBoxMinX = COALESCE(t.BoundingBoxMinX, ClashZones.BoundingBoxMinX),
+                                BoundingBoxMinY = COALESCE(t.BoundingBoxMinY, ClashZones.BoundingBoxMinY),
+                                BoundingBoxMinZ = COALESCE(t.BoundingBoxMinZ, ClashZones.BoundingBoxMinZ),
+                                BoundingBoxMaxX = COALESCE(t.BoundingBoxMaxX, ClashZones.BoundingBoxMaxX),
+                                BoundingBoxMaxY = COALESCE(t.BoundingBoxMaxY, ClashZones.BoundingBoxMaxY),
+                                BoundingBoxMaxZ = COALESCE(t.BoundingBoxMaxZ, ClashZones.BoundingBoxMaxZ),
+                                UpdatedAt = datetime('now', '+5 hours', '+30 minutes')
+                            FROM TempFlagUpdates t
+                            WHERE REPLACE(REPLACE(UPPER(ClashZones.ClashZoneGuid), '{', ''), '}', '') = t.ClashZoneGuid
+                              AND ClashZones.ClashZoneGuid IS NOT NULL
+                              AND ClashZones.ClashZoneGuid != ''";
+                    rowsAffectedTotal = bulkUpdateCmd.ExecuteNonQuery();
+                    _logger?.Invoke($"[ClashZoneRepository] [BatchUpdateFlags] LOUD-DEBUG: Batch of {updatesList.Count} input GUIDs resulted in {rowsAffectedTotal} database rows updated.");
+                }
+
+                // Step 4: Cleanup
+                using (var dropCmd = activeConn.CreateCommand())
+                {
+                    dropCmd.Transaction = activeTrans;
+                    dropCmd.CommandText = "DROP TABLE IF EXISTS TempFlagUpdates";
+                    dropCmd.ExecuteNonQuery();
+                }
+
+                _logger($"[SQLite] ✅ 🚀 BATCH UPDATE COMPLETED: {updatesList.Count} items processed.");
+
+                if (!isExternalTrans)
+                {
+                    activeTrans.Commit();
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!isExternalTrans)
+                {
+                    activeTrans.Rollback();
+                }
+                _logger($"[SQLite] ❌ Error batch updating flags: {ex.Message}");
+                throw;
+            }
+            finally
+            {
+                if (!isExternalTrans)
+                {
+                    activeTrans.Dispose();
                 }
             }
         }
-
-        /// <summary>
-        /// ✅ BATCH UPDATE: Optimized version that also updates IsCurrentClashFlag
-        /// Used by FlagManagerService for placement updates to clear the "Current Clash" status
-        /// </summary>
-
 
         /// <summary>
         /// ✅ FLAG RESET: Resets IsFilterComboNew flag to 0 after cluster sleeve placement completes
@@ -8851,9 +8819,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 var idString = string.Join(",", ids);
                 using (var cmd = _context.Connection.CreateCommand())
                 {
+                    // ✅ FIX: Read from ClusterSleeves_v2 (the only populated table)
+                    // Use SQL aliases to match legacy column names expected by MapClusterSleeve
                     cmd.CommandText = $@"
-                        SELECT * 
-                        FROM ClusterSleeves 
+                        SELECT 0 AS ClusterSleeveId, ClusterInstanceId, Category,
+                               Corner1X, Corner1Y, Corner1Z, Corner2X, Corner2Y, Corner2Z,
+                               Corner3X, Corner3Y, Corner3Z, Corner4X, Corner4Y, Corner4Z,
+                               RotationAngleRad * 57.29577951308232 AS RotationAngleDeg,
+                               HostType, HostOrientation
+                        FROM ClusterSleeves_v2
                         WHERE ClusterInstanceId IN ({idString})";
 
                     using (var reader = cmd.ExecuteReader())
@@ -8891,7 +8865,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             {
                 using (var cmd = _context.Connection.CreateCommand())
                 {
-                    cmd.CommandText = "SELECT * FROM ClusterSleeves";
+                    // ✅ FIX: Read from ClusterSleeves_v2 (the only populated table)
+                    // Use SQL aliases to match legacy column names expected by MapClusterSleeve
+                    cmd.CommandText = @"
+                        SELECT 0 AS ClusterSleeveId, ClusterInstanceId, Category,
+                               Corner1X, Corner1Y, Corner1Z, Corner2X, Corner2Y, Corner2Z,
+                               Corner3X, Corner3Y, Corner3Z, Corner4X, Corner4Y, Corner4Z,
+                               RotationAngleRad * 57.29577951308232 AS RotationAngleDeg,
+                               HostType, HostOrientation
+                        FROM ClusterSleeves_v2";
 
                     using (var reader = cmd.ExecuteReader())
                     {
