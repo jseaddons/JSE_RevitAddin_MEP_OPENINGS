@@ -867,30 +867,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         if (actualBbox != null)
                         {
-                            // ? SRP COMPLIANCE: Delegate RCS transformation to specialized service
+                            // ? SRP COMPLIANCE: Delegate RCS transformation to specialized service (corners/bbox from placed sleeve)
                             _rcsBoundingBoxService.ProcessBoundingBox(zone, actualBbox);
 
-                            // ? CRITICAL FIX: ONLY update placement point for INDIVIDUAL sleeves, NOT cluster sleeves
-                            // Cluster sleeves cover multiple zones - their bounding box center is NOT the individual placement point
-                            if (zone.ClusterSleeveInstanceId <= 0)
-                            {
-                                // Update placement point from bounding box center (only for individual sleeves)
-                                zone.SleevePlacementPoint = new XYZ(
-                                    (actualBbox.Min.X + actualBbox.Max.X) / 2,
-                                    (actualBbox.Min.Y + actualBbox.Max.Y) / 2,
-                                    (actualBbox.Min.Z + actualBbox.Max.Z) / 2
-                                );
-
-                                zone.SleevePlacementPointX = zone.SleevePlacementPoint.X;
-                                zone.SleevePlacementPointY = zone.SleevePlacementPoint.Y;
-                                zone.SleevePlacementPointZ = zone.SleevePlacementPoint.Z;
-                            }
-                            else if (!DeploymentConfiguration.DeploymentMode)
-                            {
-                                // Cluster sleeve: keep individual placement point unchanged
-                                SafeFileLogger.SafeAppendText("placement_debug.log",
-                                    $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] [CLUSTER-BBOX] Zone {zone.Id}: SKIPPED placement point update (cluster sleeve), keeping individual placement point\n");
-                            }
+                            // ? SOURCE OF TRUTH: Placement point = calculated sleeve placement point only (from refresh/placement step).
+                            // Do NOT overwrite SleevePlacementPoint from bbox center — that can persist wrong values (e.g. outlier).
+                            // Corners/bbox rely on placed sleeves; placement point relies on calculated only.
 
                             bboxCount++;
                         }
@@ -1055,8 +1037,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                    zone.SleevePlacementPointX != 0;
         }
 
+        /// <summary>
+        /// Duct Accessories are always in Wall only. When host type is missing, set to Wall so family, rotation, and host logic use Wall.
+        /// </summary>
+        private static void EnsureDuctAccessoriesHostType(ClashZone zone)
+        {
+            if (zone == null) return;
+            if (!string.IsNullOrWhiteSpace(zone.StructuralElementType)) return;
+            if ((zone.MepElementCategory ?? string.Empty).IndexOf("Duct Accessor", StringComparison.OrdinalIgnoreCase) < 0) return;
+            zone.StructuralElementType = "Wall";
+        }
+
         private FamilyInstance PlaceSleeveFromSavedData(ClashZone zone)
         {
+            EnsureDuctAccessoriesHostType(zone);
             // Use saved dimensions directly
             double width = zone.SleeveWidth;
             double height = zone.SleeveHeight;
@@ -1116,9 +1110,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             if (symbol == null) return null;
 
-            // Place Instance
-            XYZ placementPoint = new XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ);
-            
+            // ? SOURCE OF TRUTH: For individual sleeves, placement point is locked in refresh only.
+            // Place sleeve does NOT calculate — merely uses the one calculated in refresh (or IntersectionPoint fallback).
+            XYZ placementPoint;
+            bool hasRefreshPoint = !_isForceDetectionMode && (zone.SleevePlacementPointX != 0 || zone.SleevePlacementPointY != 0 || zone.SleevePlacementPointZ != 0);
+            if (hasRefreshPoint)
+                placementPoint = new XYZ(zone.SleevePlacementPointX, zone.SleevePlacementPointY, zone.SleevePlacementPointZ);
+            else
+                placementPoint = new XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ);
+
             // ? SRP: Use rotation service to determine correct rotation for host type
             double rotation = _rotationService.DetermineRotation(zone); 
 
@@ -1155,16 +1155,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     zone.SleeveHeight = roundedHeight;
                     zone.SleeveDiameter = roundedDiameter;
                 }
-                zone.SleevePlacementPoint = placementPoint;
-                zone.SleevePlacementPointX = placementPoint.X;
-                zone.SleevePlacementPointY = placementPoint.Y;
-                zone.SleevePlacementPointZ = placementPoint.Z;
-                
-                // ✅ CRITICAL FIX: Set Active Document coordinates for proximity calculation and persistence
-                // Without this, database will have 0.0 for Active coordinates after batch placement
-                zone.SleevePlacementActiveX = placementPoint.X;
-                zone.SleevePlacementActiveY = placementPoint.Y;
-                zone.SleevePlacementActiveZ = placementPoint.Z;
+                // ? SOURCE OF TRUTH: Placement point locked in refresh — don't overwrite when we used refresh value
+                if (!hasRefreshPoint)
+                {
+                    zone.SleevePlacementPoint = placementPoint;
+                    zone.SleevePlacementPointX = placementPoint.X;
+                    zone.SleevePlacementPointY = placementPoint.Y;
+                    zone.SleevePlacementPointZ = placementPoint.Z;
+                }
                 zone.SleevePlacementPointActiveDocument = placementPoint;
             }
             
@@ -1173,6 +1171,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         private FamilyInstance PlaceSleeveNormal(ClashZone zone, SleevePlacementPlanningDto? planningDto = null)
         {
+            EnsureDuctAccessoriesHostType(zone);
             // ? DIAGNOSTIC: Log entry into PlaceSleeveNormal
             SafeFileLogger.SafeAppendText("placement_debug.log",
                 $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ?? PlaceSleeveNormal START: Zone {zone.Id}, HasPlanningDto={planningDto != null}\n");
@@ -1285,21 +1284,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 damperOffsetVector = offsetVector;
             }
             
-            // Determine Placement Point
-            // Γ£à DB-FIRST: Use saved sleeve placement point if available
-            bool hasSavedPoint = !_isForceDetectionMode && (zone.SleevePlacementPointX != 0 || zone.SleevePlacementPointY != 0 || zone.SleevePlacementPointZ != 0);
-
-            if (hasSavedPoint)
+            // ? SOURCE OF TRUTH: For individual sleeves, placement point is locked in refresh only.
+            // Place sleeve does NOT calculate — merely uses the one calculated in refresh (or IntersectionPoint fallback).
+            bool hasRefreshPoint = !_isForceDetectionMode && (zone.SleevePlacementPointX != 0 || zone.SleevePlacementPointY != 0 || zone.SleevePlacementPointZ != 0);
+            if (hasRefreshPoint)
             {
                 placementPoint = new XYZ(zone.SleevePlacementPointX, zone.SleevePlacementPointY, zone.SleevePlacementPointZ);
                 SafeFileLogger.SafeAppendText("placement_debug.log", 
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] Γ£à FAST PATH: Using saved SleevePlacementPoint from DB: Zone {zone.Id}\n");
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] Using placement point from refresh (locked): Zone {zone.Id}\n");
             }
             else
-            {
-                // ? DELEGATE TO SERVICE: PlacementPointAdjustmentService handles non-dampers, DamperPlacementPointService handles dampers
-                placementPoint = _placementPointAdjustmentService.AdjustPlacementPoint(zone, placementPoint, null);
-            }
+                placementPoint = zone.IntersectionPoint ?? new XYZ(zone.IntersectionPointX, zone.IntersectionPointY, zone.IntersectionPointZ);
             
             // ? DIAGNOSTIC: Capture base point BEFORE any damper offset (sequential path proof)
             XYZ basePointBeforeDamperOffset = placementPoint;
@@ -1359,9 +1354,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     zone.SleeveHeight = height;
                     zone.SleeveDiameter = diameter;
                 }
-                zone.SleevePlacementPointX = placementPoint.X;
-                zone.SleevePlacementPointY = placementPoint.Y;
-                zone.SleevePlacementPointZ = placementPoint.Z;
+                // ? SOURCE OF TRUTH: Placement point locked in refresh — don't overwrite when we used refresh value
+                if (!hasRefreshPoint)
+                {
+                    zone.SleevePlacementPointX = placementPoint.X;
+                    zone.SleevePlacementPointY = placementPoint.Y;
+                    zone.SleevePlacementPointZ = placementPoint.Z;
+                }
                 zone.SleevePlacementPointActiveDocumentX = placementPoint.X;
                 zone.SleevePlacementPointActiveDocumentY = placementPoint.Y;
                 zone.SleevePlacementPointActiveDocumentZ = placementPoint.Z;
@@ -1434,18 +1433,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     zone.SleeveHeight = roundedHeight;
                     zone.SleeveDiameter = roundedDiameter;
                 }
-                zone.SleevePlacementPoint = placementPoint;
-                zone.SleevePlacementPointX = placementPoint.X;
-                zone.SleevePlacementPointY = placementPoint.Y;
-                zone.SleevePlacementPointZ = placementPoint.Z;
-                
-                // Γ£à CRITICAL FIX: Set Active Document coordinates for proximity calculation and persistence
-                // Without this, database will have 0.0 for Active coordinates after batch placement
-                zone.SleevePlacementActiveX = placementPoint.X;
-                zone.SleevePlacementActiveY = placementPoint.Y;
-                zone.SleevePlacementActiveZ = placementPoint.Z;
-                zone.SleevePlacementActiveZ = placementPoint.Z;
+                // ? SOURCE OF TRUTH: Placement point locked in refresh — don't overwrite when we used refresh value
+                if (!hasRefreshPoint)
+                {
+                    zone.SleevePlacementPoint = placementPoint;
+                    zone.SleevePlacementPointX = placementPoint.X;
+                    zone.SleevePlacementPointY = placementPoint.Y;
+                    zone.SleevePlacementPointZ = placementPoint.Z;
+                }
                 zone.SleevePlacementPointActiveDocument = placementPoint;
+                zone.SleevePlacementPointActiveDocumentX = placementPoint.X;
+                zone.SleevePlacementPointActiveDocumentY = placementPoint.Y;
+                zone.SleevePlacementPointActiveDocumentZ = placementPoint.Z;
 
                 SafeFileLogger.SafeAppendText("placement_debug.log",
                     $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ? PERSISTENCE CHECK: Zone {zone.Id}, \n" +
@@ -2142,44 +2141,26 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Update Instance ID
                     repository.UpdateSleeveInstanceId(zone.Id, sleeve.Id.IntegerValue);
                     
-                    // ? CRITICAL FIX: Get actual placement point from sleeve instance
-                    // Don't rely on zone.SleevePlacementPointX/Y/Z which might be (0,0,0)
-                    XYZ actualPlacementPoint = null;
-                    if (sleeve.Location is LocationPoint locationPoint)
-                    {
-                        actualPlacementPoint = locationPoint.Point;
-                    }
-                    else if (sleeve.Location is LocationCurve locationCurve)
-                    {
-                        var curve = locationCurve.Curve;
-                        if (curve != null)
-                        {
-                            actualPlacementPoint = curve.GetEndPoint(0);
-                        }
-                    }
+                    // ? SOURCE OF TRUTH: Placement point = calculated sleeve placement point only (from refresh/placement step).
+                    // Do NOT use sleeve.Location — corners/bbox rely on placed sleeves; placement point relies on calculated only.
+                    XYZ placementPoint = zone.SleevePlacementPoint ?? new XYZ(
+                        zone.SleevePlacementPointX,
+                        zone.SleevePlacementPointY,
+                        zone.SleevePlacementPointZ);
                     
-                    // Fallback to zone placement point if we can't get it from instance
-                    if (actualPlacementPoint == null)
-                    {
-                        actualPlacementPoint = zone.SleevePlacementPoint ?? new XYZ(
-                            zone.SleevePlacementPointX,
-                            zone.SleevePlacementPointY,
-                            zone.SleevePlacementPointZ);
-                    }
-                    
-                    // Update Placement Data
+                    // Update Placement Data (calculated placement point only)
                     repository.UpdateSleevePlacement(
                         zone.Id,
                         sleeve.Id.IntegerValue,
                         zone.SleeveWidth,
                         zone.SleeveHeight,
                         zone.SleeveDiameter,
-                        actualPlacementPoint.X, // Use actual placement point from instance
-                        actualPlacementPoint.Y,
-                        actualPlacementPoint.Z,
-                        actualPlacementPoint.X, // Active doc coords (same as placement point)
-                        actualPlacementPoint.Y,
-                        actualPlacementPoint.Z,
+                        placementPoint.X,
+                        placementPoint.Y,
+                        placementPoint.Z,
+                        placementPoint.X,
+                        placementPoint.Y,
+                        placementPoint.Z,
                         zone.MepElementRotationAngle
                     );
                 }

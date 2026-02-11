@@ -32,6 +32,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
     public class OpeningFilter
     {
         /// <summary>
+        /// Unique identifier for this filter
+        /// </summary>
+        public int Id { get; set; }
+
+        /// <summary>
         /// User-defined name for this filter (e.g., "Fire Fighting", "Data Devices")
         /// </summary>
         public string Name { get; set; } = string.Empty;

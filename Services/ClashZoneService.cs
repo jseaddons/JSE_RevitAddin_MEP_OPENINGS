@@ -2823,7 +2823,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // ✅ FINAL PLACEMENT POINT: Use pre-calculated value passed from caller (calculated once before CreateClashZone using bbox method)
             // This is the final placement point at wall centerline, saved directly to SleevePlacementPoint
             // If not provided, fallback to intersection point (for backward compatibility or when calculation fails)
-            XYZ finalPlacementPoint = wallCenterlinePoint ?? intersectionPoint;
+            // ✅ CRITICAL FIX: FOR FLOORS, ALWAYS USE INTERSECTION POINT (FloorCenterPoint concept)
+            // WallCenterlinePoint is only relevant for Walls/Framing
+            bool isFloor = structuralElementType == "Floor";
+            XYZ finalPlacementPoint = (isFloor || wallCenterlinePoint == null) ? intersectionPoint : wallCenterlinePoint;
             
             // ✅ DIAGNOSTIC: Log final placement point being set on ClashZone object
             if (!DeploymentConfiguration.DeploymentMode && wallCenterlinePoint != null)
@@ -2927,7 +2930,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 IntersectionPointZ = intersectionPoint.Z, // ✅ CRITICAL FIX: Explicitly set for XML serialization
                 // Log first few zones to placement_debug to verify creation
                 // (moved after object creation for safety)
-                SleevePlacementPointX = finalPlacementPoint.X, // XML serializable - final placement point at wall centerline
+                SleevePlacementPointX = finalPlacementPoint.X, // XML serializable - final placement point (Intersection for Floor, WallCentral for Wall)
                 SleevePlacementPointY = finalPlacementPoint.Y, // XML serializable - final placement point at wall centerline
                 SleevePlacementPointZ = finalPlacementPoint.Z, // XML serializable - final placement point at wall centerline
                 ClashBoundingBox = boundingBox,

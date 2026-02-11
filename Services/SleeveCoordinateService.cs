@@ -1268,10 +1268,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
     public class SleeveCoordinateUpdater
     {
         private readonly Document _doc;
+        private readonly JSE_RevitAddin_MEP_OPENINGS.Services.Geometry.ISleeveCornerCalculationService _sleeveCornerService;
         
         public SleeveCoordinateUpdater(Document doc)
         {
             _doc = doc;
+            _sleeveCornerService = new JSE_RevitAddin_MEP_OPENINGS.Services.Geometry.SleeveCornerCalculationService();
         }
         
         public void UpdateSleeveCoordinates(List<ClashZone> clashZones)
@@ -1450,7 +1452,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (matchedSleeve != null)
                     {
                         var bbox = matchedSleeve.get_BoundingBox(null);
-                        if (bbox != null)
+                        
+                        // ✅ FIX: Check if BBox is zero-sized (common for Cable Trays/Pipes)
+                        bool isBBoxZero = bbox == null || (
+                            Math.Abs(bbox.Max.X - bbox.Min.X) < 0.001 &&
+                            Math.Abs(bbox.Max.Y - bbox.Min.Y) < 0.001 &&
+                            Math.Abs(bbox.Max.Z - bbox.Min.Z) < 0.001);
+
+                        if (bbox != null || isBBoxZero) // Enter if we have a bbox OR if we need to calculate it
                         {
                             if (isClusterSleeve)
                             {
@@ -1521,8 +1530,62 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 }
                                 else
                                 {
-                                    // ✅ RECTANGULAR SLEEVE: Use geometry bounding box
-                                    clashZone.SetSleeveBoundingBox(bbox);
+                                    // ✅ RECTANGULAR SLEEVE: Use geometry bounding box OR fallback to corner calculation
+                                    
+                                    // 1. Calculate corners using robust service (handles zero geometry by using parameters)
+                                    var corners = _sleeveCornerService.CalculateCornersFromInstance(
+                                        matchedSleeve, 
+                                        clashZone.MepElementOrientationDirection, 
+                                        clashZone.StructuralElementType);
+
+                                    if (corners.HasValue)
+                                    {
+                                        var (c1, c2, c3, c4) = corners.Value;
+                                        
+                                        // Update Corners in ClashZone
+                                        clashZone.SleeveCorner1X = c1.X; clashZone.SleeveCorner1Y = c1.Y; clashZone.SleeveCorner1Z = c1.Z;
+                                        clashZone.SleeveCorner2X = c2.X; clashZone.SleeveCorner2Y = c2.Y; clashZone.SleeveCorner2Z = c2.Z;
+                                        clashZone.SleeveCorner3X = c3.X; clashZone.SleeveCorner3Y = c3.Y; clashZone.SleeveCorner3Z = c3.Z;
+                                        clashZone.SleeveCorner4X = c4.X; clashZone.SleeveCorner4Y = c4.Y; clashZone.SleeveCorner4Z = c4.Z;
+
+                                        // If BBox was zero/null, reconstruct it from corners
+                                        if (isBBoxZero)
+                                        {
+                                            double minX = Math.Min(Math.Min(c1.X, c2.X), Math.Min(c3.X, c4.X));
+                                            double minY = Math.Min(Math.Min(c1.Y, c2.Y), Math.Min(c3.Y, c4.Y));
+                                            double minZ = Math.Min(Math.Min(c1.Z, c2.Z), Math.Min(c3.Z, c4.Z));
+                                            double maxX = Math.Max(Math.Max(c1.X, c2.X), Math.Max(c3.X, c4.X));
+                                            double maxY = Math.Max(Math.Max(c1.Y, c2.Y), Math.Max(c3.Y, c4.Y));
+                                            // Ensure Z has some height if flat
+                                            double maxZ = Math.Max(Math.Max(c1.Z, c2.Z), Math.Max(c3.Z, c4.Z));
+                                            if (Math.Abs(maxZ - minZ) < 0.001) maxZ += 1.0; // Default 1ft height if flat
+
+                                            clashZone.SleeveBoundingBoxMinX = minX;
+                                            clashZone.SleeveBoundingBoxMinY = minY;
+                                            clashZone.SleeveBoundingBoxMinZ = minZ;
+                                            clashZone.SleeveBoundingBoxMaxX = maxX;
+                                            clashZone.SleeveBoundingBoxMaxY = maxY;
+                                            clashZone.SleeveBoundingBoxMaxZ = maxZ;
+
+                                            if (!DeploymentConfiguration.DeploymentMode)
+                                            {
+                                                 File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BBOX-RECONSTRUCTED] ClashZone {clashZone.Id}: Reconstructed from calculated corners (Zero BBox Fix)\n");
+                                            }
+                                        }
+                                        else
+                                        {
+                                            // Use existing BBox if valid
+                                            clashZone.SetSleeveBoundingBox(bbox);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // No corners calculated, fall back to bbox if valid
+                                        if (!isBBoxZero)
+                                        {
+                                            clashZone.SetSleeveBoundingBox(bbox);
+                                        }
+                                    }
                                 }
                             }
                         }

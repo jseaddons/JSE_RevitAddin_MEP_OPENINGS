@@ -22,6 +22,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Geometry
     /// </summary>
     public class SleeveCornerCalculationService : ISleeveCornerCalculationService
     {
+        // ✅ PERFORMANCE: Cache successful parameter names to avoid repeated LookUpParameter calls (15 per sleeve -> 0)
+        // Key: "Width", "Height", "Diameter"
+        // Value: The actual parameter name that worked (e.g. "Element Width")
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _parameterNameCache 
+            = new System.Collections.Concurrent.ConcurrentDictionary<string, string>();
         /// <summary>
         /// ✅ SRP: Calculates 4 corner coordinates in WORLD space from placement point, dimensions, and rotation.
         /// Pure math operation - thread-safe and can be parallelized.
@@ -379,24 +384,41 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Geometry
 
                 double width = -1, height = -1;
 
-                Func<string[], double> getVal = (names) => {
+
+
+                // Helper to get value with caching
+                Func<string[], string, double> getVal = (names, cacheKey) => {
+                    // 1. Try Cache First
+                    if (_parameterNameCache.TryGetValue(cacheKey, out string cachedName))
+                    {
+                        Parameter p = sleeve.LookupParameter(cachedName);
+                        if (p == null && sleeve.Symbol != null) p = sleeve.Symbol.LookupParameter(cachedName);
+                        if (p != null) return p.AsDouble();
+                    }
+
+                    // 2. Iterate List (Slow path - run once per session)
                     foreach (var name in names) {
                         // Check Instance
                         Parameter p = sleeve.LookupParameter(name);
                         // Check Type (Symbol)
                         if (p == null && sleeve.Symbol != null) p = sleeve.Symbol.LookupParameter(name);
                         
-                        if (p != null) return p.AsDouble();
+                        if (p != null) 
+                        {
+                            // ✅ Cache the successful name
+                            _parameterNameCache.TryAdd(cacheKey, name);
+                            return p.AsDouble();
+                        }
                     }
                     return -1;
                 };
 
-                width = getVal(widthParams);
-                height = getVal(heightParams);
+                width = getVal(widthParams, "Width");
+                height = getVal(heightParams, "Height");
 
                 if (width <= 0 || height <= 0)
                 {
-                    double dia = getVal(diaParams);
+                    double dia = getVal(diaParams, "Diameter");
                     if (dia > 0) { width = dia; height = dia; }
                 }
                 

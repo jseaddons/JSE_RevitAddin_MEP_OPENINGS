@@ -177,6 +177,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
             if (File.Exists(targetPath))
             {
                 _logger($"[SQLite] ✅ Found dependency: {relativePath}");
+                // ✅ Explicitly load native library to satisfy SQLite interop
+                if (relativePath.EndsWith("SQLite.Interop.dll", StringComparison.OrdinalIgnoreCase))
+                {
+                    Helpers.NativeLibraryLoader.LoadNativeLibrary(targetPath);
+                }
                 return;
             }
 
@@ -190,6 +195,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     Directory.CreateDirectory(Path.GetDirectoryName(destination) ?? assemblyDirectory);
                     File.Copy(candidate, destination, overwrite: true);
                     _logger($"[SQLite] ✅ Copied dependency from NuGet cache: {candidate}");
+                    
+                    // ✅ Explicitly load native library after copy
+                    if (relativePath.EndsWith("SQLite.Interop.dll", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Helpers.NativeLibraryLoader.LoadNativeLibrary(destination);
+                    }
                     return;
                 }
                 catch (Exception copyEx)
@@ -326,6 +337,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                             SleeveWidth   REAL,
                             SleeveHeight  REAL,
                             SleeveDiameter REAL,
+                            SleeveDepth REAL,
                             SleevePlacementX REAL,
                             SleevePlacementY REAL,
                             SleevePlacementZ REAL,
@@ -606,6 +618,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                     AddColumnIfMissing("ClashZones", "CalculatedSleeveHeight", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "CalculatedSleeveDiameter", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "CalculatedSleeveDepth", "REAL", transaction);
+                    AddColumnIfMissing("ClashZones", "SleeveDepth", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "CalculatedRotation", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "CalculatedPlacementX", "REAL", transaction);
                     AddColumnIfMissing("ClashZones", "CalculatedPlacementY", "REAL", transaction);

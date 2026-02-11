@@ -39,6 +39,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces
         IOperationTracker TrackOperation(string operationName);
 
         /// <summary>
+        /// Update the total number of zones processed (analyzed for clustering).
+        /// </summary>
+        void AddZonesProcessed(int count);
+
+        /// <summary>
         /// Generate final performance report.
         /// </summary>
         void GenerateReport(int totalIndividualSleeves, int totalClusters);

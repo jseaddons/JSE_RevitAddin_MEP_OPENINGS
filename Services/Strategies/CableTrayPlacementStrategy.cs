@@ -347,51 +347,52 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
                 // Check if this is a vertical cable tray intersecting a floor
                 if (IsVerticalCableTrayOnFloor(clashZone))
                 {
-                    DebugLogger.Info($"[CableTrayStrategy] 🎯 VERTICAL CABLE TRAY ON FLOOR DETECTED - Using smart open side detection");
+                    DebugLogger.Info($"[CableTrayStrategy] 🎯 VERTICAL CABLE TRAY ON FLOOR DETECTED - Applying User Rule: Top=Left, Bottom=Right");
 
                     var mepOrientation = clashZone.MepElementOrientation;
                     if (mepOrientation != null)
                     {
-                        // Use the width direction (perpendicular to cable tray centerline) as open side indicator
+                        // Use the width direction (perpendicular to cable tray centerline) 
                         double absX = Math.Abs(mepOrientation.X);
                         double absY = Math.Abs(mepOrientation.Y);
                         double absZ = Math.Abs(mepOrientation.Z);
 
                         DebugLogger.Info($"[CableTrayStrategy] MEP Orientation Analysis: X={absX:F3}, Y={absY:F3}, Z={absZ:F3}");
 
-                        // ✅ CRITICAL FIX: Use mm values directly to avoid variable swapping issues when batching is enabled
-                        double topClearanceForOffset = UnitUtils.ConvertToInternalUnits(topClearanceMm, UnitTypeId.Millimeters);
-                        double otherClearanceForOffset = UnitUtils.ConvertToInternalUnits(otherClearanceMm, UnitTypeId.Millimeters);
-                        double offsetDelta = (topClearanceForOffset - otherClearanceForOffset) / 2.0;
+                        double leftClearance = UnitUtils.ConvertToInternalUnits(topClearanceMm, UnitTypeId.Millimeters); // "Top" is Left
+                        double rightClearance = UnitUtils.ConvertToInternalUnits(otherClearanceMm, UnitTypeId.Millimeters); // "Other" is Right
                         
+                        // Formula: If Left has more clearance, center shifts Right (Positive) to make room?
+                        // No: Center = (Min + Max) / 2.
+                        // Min = -Width/2 - Left. Max = Width/2 + Right.
+                        // Center = (-Width/2 - Left + Width/2 + Right) / 2 = (Right - Left) / 2.
+                        // Example: Left=100, Right=0. Center = -50. (Shift towards Left).
+                        double offsetDelta = (rightClearance - leftClearance) / 2.0;
+
                         if (absX > absY && absX > absZ)
                         {
-                            // X component is dominant - open side likely along X
+                            // Width is along X. Left is -X, Right is +X.
                             offsetVector = new XYZ(offsetDelta, 0, 0);
-                            DebugLogger.Info($"[CableTrayStrategy] 🔄 Using X-direction offset: {offsetDelta:F4}ft ({offsetVector})");
+                            DebugLogger.Info($"[CableTrayStrategy] 🔄 Floor Rule (Width X): Left(Top)={topClearanceMm}mm, Right(Other)={otherClearanceMm}mm -> Offset X={offsetDelta:F4}ft");
                         }
                         else if (absY > absX && absY > absZ)
                         {
-                            // Y component is dominant - open side likely along Y
+                            // Width is along Y. Left is -Y, Right is +Y.
                             offsetVector = new XYZ(0, offsetDelta, 0);
-                            DebugLogger.Info($"[CableTrayStrategy] 🔄 Using Y-direction offset: {offsetDelta:F4}ft ({offsetVector})");
+                            DebugLogger.Info($"[CableTrayStrategy] 🔄 Floor Rule (Width Y): Left(Top)={topClearanceMm}mm, Right(Other)={otherClearanceMm}mm -> Offset Y={offsetDelta:F4}ft");
                         }
                         else
                         {
-                            // Z component is dominant or equal - use Z direction (upward)
-                            offsetVector = new XYZ(0, 0, offsetDelta);
-                            DebugLogger.Info($"[CableTrayStrategy] 🔄 Using Z-direction offset: {offsetDelta:F4}ft ({offsetVector})");
+                            // Ambiguous -> Zero Offset (Safety)
+                            offsetVector = XYZ.Zero;
+                            DebugLogger.Info($"[CableTrayStrategy] 🔄 Vertical tray with ambiguous width: Using ZERO offset.");
                         }
                     }
                     else
                     {
-                        // No orientation data - fallback to upward
-                        // ✅ CRITICAL FIX: Use mm values directly to avoid variable swapping issues when batching is enabled
-                        double topClearanceForOffset = UnitUtils.ConvertToInternalUnits(topClearanceMm, UnitTypeId.Millimeters);
-                        double otherClearanceForOffset = UnitUtils.ConvertToInternalUnits(otherClearanceMm, UnitTypeId.Millimeters);
-                        double offsetDelta = (topClearanceForOffset - otherClearanceForOffset) / 2.0;
-                        offsetVector = new XYZ(0, 0, offsetDelta);
-                        DebugLogger.Warning($"[CableTrayStrategy] ⚠️ No orientation data for vertical cable tray, using upward fallback");
+                        // No orientation data -> Zero Offset
+                        offsetVector = XYZ.Zero;
+                        DebugLogger.Warning($"[CableTrayStrategy] ⚠️ No orientation data for vertical cable tray, using ZERO offset");
                     }
                 }
                 else

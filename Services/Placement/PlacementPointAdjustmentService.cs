@@ -287,21 +287,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 }
                 else if (hostElement is Floor floor)
                 {
-                    int elemId = floor.Id.IntegerValue;
-                    if (!_floorCenterlineCache.TryGetValue(elemId, out var data))
-                    {
-                         data = WallCenterlineHelper.GetFloorInvariantData(floor);
-                         _floorCenterlineCache[elemId] = data;
-                    }
-                    
-                    if (data.Success)
-                    {
-                         centerlinePoint = placementPoint + data.Normal * (-data.Thickness / 2.0);
-                    }
-                    else
-                    {
-                         centerlinePoint = WallCenterlineHelper.GetElementCenterlinePoint(hostElement, placementPoint, _doc);
-                    }
+                    // ✅ FLOORS: Use IntersectionPoint directly (which is the center of the clash).
+                    // Do NOT apply thickness offset, as IntersectionPoint is already at the correct elevation
+                    // (intersecting the MEP element at the floor's location).
+                    // Applying `Normal * -Thickness/2` assumes the point is on a FACE, which may not be true if
+                    // the intersection is in the middle of the floor (e.g. vertical pipe).
+                    // For floors, we trust the Clash Point.
+                    return placementPoint;
                 }
                 else
                 {

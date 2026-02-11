@@ -159,7 +159,50 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
             set { _isDuctAccessoriesSelected = value; OnPropertyChanged(nameof(IsDuctAccessoriesSelected)); }
         }
 
+        // Host Type checkboxes for placement control (right-side UI) — user can select 1, 2, or more
+        private bool _isFloorHostSelected = true;
+        public bool IsFloorHostSelected
+        {
+            get => _isFloorHostSelected;
+            set { _isFloorHostSelected = value; OnPropertyChanged(nameof(IsFloorHostSelected)); }
+        }
+
+        private bool _isWallHostSelected = true;
+        public bool IsWallHostSelected
+        {
+            get => _isWallHostSelected;
+            set { _isWallHostSelected = value; OnPropertyChanged(nameof(IsWallHostSelected)); }
+        }
+
+        private bool _isStructuralFramingHostSelected = true;
+        public bool IsStructuralFramingHostSelected
+        {
+            get => _isStructuralFramingHostSelected;
+            set { _isStructuralFramingHostSelected = value; OnPropertyChanged(nameof(IsStructuralFramingHostSelected)); }
+        }
+
         protected void OnPropertyChanged(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
+        /// <summary>Returns true if at least one host type is selected.</summary>
+        private bool HasAnyHostTypeSelected => IsFloorHostSelected || IsWallHostSelected || IsStructuralFramingHostSelected;
+
+        /// <summary>Filter proximity groups by selected host type checkboxes (place only groups matching any checked host type).</summary>
+        private List<ProximityGroup> FilterProximityGroupsByHost(List<ProximityGroup> groups)
+        {
+            if (groups == null || groups.Count == 0) return groups;
+            if (!HasAnyHostTypeSelected) return groups; // caller must check first and prompt user
+
+            var filtered = new List<ProximityGroup>();
+            foreach (var g in groups)
+            {
+                string ht = (g.GetHostType() ?? string.Empty).Trim();
+                bool match = (IsFloorHostSelected && string.Equals(ht, "Floor", StringComparison.OrdinalIgnoreCase)) ||
+                    (IsWallHostSelected && string.Equals(ht, "Wall", StringComparison.OrdinalIgnoreCase)) ||
+                    (IsStructuralFramingHostSelected && ht.IndexOf("Framing", StringComparison.OrdinalIgnoreCase) >= 0);
+                if (match) filtered.Add(g);
+            }
+            return filtered;
+        }
 
         private void Refresh()
         {
@@ -212,6 +255,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                         {
                             StatusMessage = "No categories selected.";
                             DebugLogger.Warning("[AutoCluster] No categories selected by user.");
+                            return;
+                        }
+
+                        if (!HasAnyHostTypeSelected)
+                        {
+                            StatusMessage = "Please select at least one host type first (Floor, Wall, or Structural Framing).";
+                            DebugLogger.Warning("[AutoCluster] No host type selected.");
                             return;
                         }
 
@@ -276,11 +326,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                             return;
                         }
 
-                        // 4. Place combined sleeves using NEW placement service
-                        // 4. Place combined sleeves using NEW placement service (Batch Method handles Transaction & DB Save)
+                        // 4. Filter by Host Type / Orientation (user placement control)
+                        var filteredGroups = FilterProximityGroupsByHost(proximityGroups);
+                        if (filteredGroups.Count == 0)
+                        {
+                            StatusMessage = "No groups match selected host types.";
+                            return;
+                        }
+                        if (filteredGroups.Count < proximityGroups.Count)
+                            DebugLogger.Info($"[AutoCluster] Filtered to {filteredGroups.Count} groups (Host types: Floor={IsFloorHostSelected}, Wall={IsWallHostSelected}, Framing={IsStructuralFramingHostSelected})");
+
+                        // 5. Place combined sleeves using NEW placement service
                         try
                         {
-                            var placedSleeves = _placementService.PlaceProximityGroups(proximityGroups, 0, 0);
+                            var placedSleeves = _placementService.PlaceProximityGroups(filteredGroups, 0, 0);
                             StatusMessage = $"Auto-Clustered {placedSleeves.Count} combined sleeves.";
                             DebugLogger.Info($"[AutoCluster] Batch placement complete. Placed: {placedSleeves.Count}");
                         }
@@ -413,6 +472,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                     {
                         Document doc = uiapp.ActiveUIDocument.Document;
                         if (!doc.IsValidObject) return;
+
+                        if (!HasAnyHostTypeSelected)
+                        {
+                            StatusMessage = "Please select at least one host type first (Floor, Wall, or Structural Framing).";
+                            DebugLogger.Warning("[ManualJoin] No host type selected.");
+                            return;
+                        }
 
                         // 1. Construct ProximityGroup from Selected Sleeves
                         var group = new JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models.ProximityGroup();
@@ -560,13 +626,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                             return;
                         }
 
-                        // 2. Delegate to Placement Service
-                        // Construct a list of 1 group
+                        // 2. Filter by Host Type / Orientation (user placement control)
                         var groups = new List<JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models.ProximityGroup> { group };
-                        
+                        var filteredGroups = FilterProximityGroupsByHost(groups);
+                        if (filteredGroups.Count == 0)
+                        {
+                            StatusMessage = "Selected group does not match selected host types.";
+                            return;
+                        }
+
+                        // 3. Delegate to Placement Service
                         // Call PlaceProximityGroups (This handles Transaction, Placement, Flag Update, Cleanup)
                         // Use dummy comboId/filterId (0,0) as this is manual
-                        var results = _placementService.PlaceProximityGroups(groups, 0, 0);
+                        var results = _placementService.PlaceProximityGroups(filteredGroups, 0, 0);
                         
                         DebugLogger.Info($"[ManualJoin] Service returned {results.Count} placed sleeves.");
                         

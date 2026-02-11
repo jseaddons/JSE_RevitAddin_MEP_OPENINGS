@@ -13,6 +13,7 @@ using System.Xml.Linq;
 
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Switch;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 namespace JSE_RevitAddin_MEP_OPENINGS
 {
     /// <summary>
@@ -117,11 +118,40 @@ namespace JSE_RevitAddin_MEP_OPENINGS
                 CreateLogger();
                 File.AppendAllText(startupLogPath, $"[{DateTime.Now}] CreateLogger() DONE\n");
                 
-                // ✅ CRITICAL: Copy native SQLite DLL to temporary execution directory
-                // Revit copies the add-in DLL to a temp directory but doesn't copy native DLLs
                 File.AppendAllText(startupLogPath, $"[{DateTime.Now}] About to CopyNativeSqliteDllToExecutionDirectory()\n");
                 CopyNativeSqliteDllToExecutionDirectory();
                 File.AppendAllText(startupLogPath, $"[{DateTime.Now}] CopyNativeSqliteDllToExecutionDirectory() DONE\n");
+
+                // ✅ CRITICAL: Explicitly load SQLite.Interop.dll to satisfy System.Data.SQLite
+                // This is especially needed for Addin Manager where the search path might be incorrect.
+                try
+                {
+                    var asmLoc = Assembly.GetExecutingAssembly().Location;
+                    var asmDir = Path.GetDirectoryName(asmLoc);
+                    if (!string.IsNullOrEmpty(asmDir))
+                    {
+                        // Check multiple potential locations
+                        string[] candidatePaths = {
+                            Path.Combine(asmDir, "SQLite.Interop.dll"),
+                            Path.Combine(asmDir, "x64", "SQLite.Interop.dll")
+                        };
+
+                        foreach (var path in candidatePaths)
+                        {
+                            if (File.Exists(path))
+                            {
+                                File.AppendAllText(startupLogPath, $"[{DateTime.Now}] [SQLite] Attempting LoadLibrary: {path}\n");
+                                bool loaded = NativeLibraryLoader.LoadNativeLibrary(path);
+                                File.AppendAllText(startupLogPath, $"[{DateTime.Now}] [SQLite] LoadLibrary result: {loaded}\n");
+                                if (loaded) break;
+                            }
+                        }
+                    }
+                }
+                catch (Exception loadEx)
+                {
+                    File.AppendAllText(startupLogPath, $"[{DateTime.Now}] [SQLite] ❌ Error during explicit LoadLibrary: {loadEx.Message}\n");
+                }
 
                 // ✅ VERIFY SQLITE DEPLOYMENT (managed + native)
                 File.AppendAllText(startupLogPath, $"[{DateTime.Now}] About to SqliteDeploymentVerifier.Verify()\n");

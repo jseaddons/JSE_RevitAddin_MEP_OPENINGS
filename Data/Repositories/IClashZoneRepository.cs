@@ -118,8 +118,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         System.Collections.Generic.Dictionary<int, System.Collections.Generic.Dictionary<string, string>> GetSnapshotMepParametersForSleeveIds(System.Collections.Generic.IEnumerable<int> sleeveInstanceIds);
 
         /// <summary>
-        /// Batch update IsResolvedFlag, IsClusterResolvedFlag, IsCombinedResolved, SleeveInstanceId, and ClusterInstanceId for placed sleeves.
-        /// Now includes IsClusteredFlag, MarkedForClusterProcess, and AfterClusterSleeveId.
+        /// Batch update resolution flags and as-placed dimensions/metadata for multiple clash zones.
+        /// ✅ Now includes Dimensions (Width, Height, Diameter, Depth) and FamilyName.
+        /// ✅ Now includes ActivePlacement (As-Placed coordinates in Revit).
+        /// ✅ Uses nullable bools for flags to enable COALESCE preservation logic in repository.
+        /// </summary>
+        void BatchUpdateFlags(List<(System.Guid ClashZoneId, bool IsResolved, bool? IsClusterResolved, bool? IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool? IsClusteredFlag, bool? MarkedForClusterProcess, int AfterClusterSleeveId, bool IsClustered, double SleeveWidth, double SleeveHeight, double SleeveDiameter, double SleeveDepth, string SleeveFamilyName, double? ActivePlacementX, double? ActivePlacementY, double? ActivePlacementZ, double? BBoxMinX, double? BBoxMinY, double? BBoxMinZ, double? BBoxMaxX, double? BBoxMaxY, double? BBoxMaxZ)> updates);
+
+        /// <summary>
+        /// ✅ LEGACY SUPPORT: Simple batch update for resolution flags.
+        /// Matches the original signature used by FlagManager and Clustering services.
         /// </summary>
         void BatchUpdateFlags(List<(System.Guid ClashZoneId, bool IsResolved, bool IsClusterResolved, bool IsCombinedResolved, int SleeveInstanceId, int ClusterInstanceId, bool IsClusteredFlag, bool MarkedForClusterProcess, int AfterClusterSleeveId)> updates);
 
@@ -304,5 +312,30 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// Update corner coordinates for cluster sleeves in both ClusterSleeves and ClusterSleeves_v2 tables.
         /// </summary>
         void BatchUpdateClusterSleeveCorners(IEnumerable<(int ClusterInstanceId, double c1x, double c1y, double c1z, double c2x, double c2y, double c2z, double c3x, double c3y, double c3z, double c4x, double c4y, double c4z)> updates);
+
+        /// <summary>
+        /// ✅ PLACEMENT OPTIMIZATION: Autonomous data loading for BulkPlacementService.
+        /// Strictly loads zones where ReadyForPlacementFlag=1 AND IsCurrentClashFlag=1.
+        /// </summary>
+        List<ClashZone> GetReadyZonesInContext();
+
+        /// <summary>
+        /// ✅ CLUSTERING OPTIMIZATION: Load zones ready for clustering (Ready=1, Current=1, IsResolved=1, MarkedForClusterProcess=1).
+        /// Only returns zones that have been individually placed and marked for clustering based on proximity.
+        /// </summary>
+        List<ClashZone> GetZonesForClustering();
+
+        /// <summary>
+        /// Load zones ready for proximity checking (before MarkedForClusterProcess flag is set).
+        /// Returns zones that have been individually placed but not yet checked for clustering eligibility.
+        /// Filter: ReadyForPlacementFlag=1 AND IsResolvedFlag=1 AND MarkedForClusterProcess IS NULL
+        /// </summary>
+        List<ClashZone> GetZonesReadyForProximityCheck(string categoryFilter = null);
+
+        /// <summary>
+        /// Batch updates the MarkedForClusterProcess flag for zones based on proximity results.
+        /// Called after proximity analysis to mark zones with neighbors for clustering.
+        /// </summary>
+        void BatchUpdateMarkedForClusterProcess(System.Collections.Generic.List<(System.Guid zoneId, bool hasProximity)> updates);
     }
 }

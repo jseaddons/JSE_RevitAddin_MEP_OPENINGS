@@ -20,6 +20,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         private readonly string _logFileName;
         private readonly Stopwatch _totalTimer;
         private static string _lastWrittenLogPath;
+        private int _totalZonesProcessed;
+
+        public void AddZonesProcessed(int count) => _totalZonesProcessed += count;
 
         /// <summary>Write to AppData\Roaming\JSE_MEP_Openings\Logs\R2023\placement_performance.log. No dependency on SafeFileLogger (root cause fix: GetLogDirectory can throw or not be ready).</summary>
         private static void WritePerformanceLogDirect(string content, bool overwrite = false)
@@ -222,29 +225,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 totalIndividualSleeves = individualOps.Sum(op => op.TotalItemCount);
             }
             
+            // ✅ IMPROVED CLUSTER COUNTING (Zones Processed vs Clusters Placed)
             if (totalClusters == 0)
             {
+                // Capture the actual PLACED count from the specific bulk placement operation
                 var clusterOps = _operations.Values
                     .Where(op => IsClusterPlacementOperation(op.Name) && op.Name.Contains("Bulk Cluster Sleeve Placement"))
                     .ToList();
-                totalClusters = clusterOps.Sum(op => op.TotalItemCount);
+                
+                if (clusterOps.Any())
+                {
+                    totalClusters = clusterOps.Max(op => op.TotalItemCount);
+                }
             }
             
-            // One total only: use the wall-clock of "Bulk Individual Sleeve Placement" when present (it wraps everything).
-            // Step 1, Pre-activate, Build, Revit NewFamilyInstances2, Apply Rotation all run INSIDE that block — do not sum them or we double-count.
-            var bulkBlockOp = _operations.Values.FirstOrDefault(op => op.Name != null && op.Name.Contains("Bulk Individual Sleeve Placement"));
-            var individualOpsForTotal = _operations.Values.Where(op => IsIndividualPlacementOperation(op.Name)).ToList();
-            long totalPlacementMs = bulkBlockOp != null && bulkBlockOp.TotalMilliseconds > 0
-                ? bulkBlockOp.TotalMilliseconds
-                : individualOpsForTotal.Sum(op => op.TotalMilliseconds);
+            // Wall-clock for Clusters vs Individual
+            var bulkIndividualOp = _operations.Values.FirstOrDefault(op => op.Name != null && op.Name.Contains("Bulk Individual Sleeve Placement"));
+            var bulkClusterOp = _operations.Values.FirstOrDefault(op => op.Name != null && op.Name.Contains("Bulk Cluster Sleeve Placement"));
+
+            long totalPlacementMs = _totalTimer.ElapsedMilliseconds;
 
             report.AppendLine($"=== PLACEMENT PERFORMANCE REPORT ===");
             report.AppendLine($"Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
             report.AppendLine($"🔨 Build Timestamp: {buildTimestamp} | Assembly: {System.IO.Path.GetFileName(assemblyPath)}");
             report.AppendLine();
-            report.AppendLine($"TOTAL PLACEMENT TIME: {totalPlacementMs}ms ({TimeSpan.FromMilliseconds(totalPlacementMs):mm\\:ss})  ← single wall-clock (one filter batch)");
+            report.AppendLine($"TOTAL PLACEMENT TIME: {totalPlacementMs}ms ({TimeSpan.FromMilliseconds(totalPlacementMs):mm\\:ss})");
             report.AppendLine($"Total Individual Sleeves: {totalIndividualSleeves}");
-            report.AppendLine($"Total Clusters: {totalClusters}");
+            report.AppendLine($"Total Clusters Placed:    {totalClusters}");
+            report.AppendLine($"Total Zones Processed:    {_totalZonesProcessed}  ← (Potential clusters analyzed)");
             report.AppendLine();
             
             // Memory summary
@@ -368,9 +376,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             report.AppendLine($"╚════════════════════════════════════════════════════════════════════════════════════╝");
             report.AppendLine();
             report.AppendLine("WHY CLUSTER TAKES MORE TIME THAN INDIVIDUAL (contrast study):");
-            report.AppendLine("  1. Regenerate (Cluster) - full doc.Regenerate() after flush; individual path has no Regenerate in block.");
-            report.AppendLine("  2. Step 6 SAVE TO DB - per-cluster DB (GetClashZonesByGuids, BatchUpdateFlags, UpdateClashZones) vs single batch in individual.");
-            report.AppendLine("  See Docs/CLUSTER_VS_INDIVIDUAL_CONTRAST_STUDY.md for bottleneck analysis and optimization ideas.");
+            report.AppendLine("  1. Regenerate (Cluster) - full doc.Regenerate() after flush to ensure accurate corner geometry calculations.");
+            report.AppendLine("  2. Step 6 SAVE TO DB - Batched in modern workflow (single transaction for all updates).");
             report.AppendLine();
             
             // Filter operations related to cluster placement

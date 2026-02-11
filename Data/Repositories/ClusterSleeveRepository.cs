@@ -937,12 +937,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 return;
 
             // ✅ SINGLE WRITER: When bulk cluster save is enabled, BatchClusterCalculationService.SaveToDatabase
-            // is the only writer for ClusterSleeves_v2 (timestamp batch ID + placement/bbox). This path must
-            // not write to v2, or it overwrites good data with GUID batch ID and Placement 0,0,0.
-            if (OptimizationFlags.UseBulkClusterSave)
+            // is the only writer for ClusterSleeves_v2 (timestamp batch ID + placement/bbox). 
+            // However, BatchClusterPlacementService ALSO calls this to save FINAL corners and Instance IDs.
+            // So we only skip if ALL items are Pending (Calculation Phase). If any have ID > 0, we MUST write.
+            if (OptimizationFlags.UseBulkClusterSave && clusters.All(c => c.ClusterInstanceId <= 0))
             {
                 SafeFileLogger.SafeAppendText("batch_v2.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [CLUSTER_V2_WRITE_REPO] Skipping v2 write for {clusters.Count} clusters (UseBulkClusterSave=true; calculation service is single writer for v2)\n");
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [CLUSTER_V2_WRITE_REPO] Skipping v2 write for {clusters.Count} PENDING clusters (UseBulkClusterSave=true; calculation service is writer)\n");
                 return;
             }
 
@@ -982,6 +983,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                     int savedCount = 0;
 
+                    // ✅ FIX: Generate ONE batch ID for the entire save operation (not per row)
+                    // Use timestamp format: yyyyMMdd_HHmmss_Category_FilterId
+                    var firstCluster = clusters.FirstOrDefault();
+                    var category = firstCluster?.Category ?? "Unknown";
+                    var filterId = firstCluster?.FilterId ?? 0;
+                    var sharedBatchId = $"{DateTime.Now:yyyyMMdd_HHmmss}_{category}_{filterId}";
+
+                    SafeFileLogger.SafeAppendText("batch_v2.log",
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [CLUSTER_V2_WRITE_REPO] Using shared ClusterBatchId={sharedBatchId} for {clusters.Count} clusters\n");
+
                     foreach (var cluster in clusters)
                     {
                         using (var cmd = _context.Connection.CreateCommand())
@@ -999,20 +1010,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 ? JsonSerializer.Serialize(cluster.ClashZoneIds.Select(g => g.ToString()).ToList())
                                 : "[]";
 
-                            // ✅ BATCH ID: Generate one per save operation (or use existing if available)
-                            var clusterBatchId = Guid.NewGuid().ToString().ToUpperInvariant();
-                            // ✅ DIAGNOSTIC: Log each row so you can see why 2nd batch gets different GUID (this path uses Guid per row)
+                            // ✅ FIX: Use the shared batch ID for all clusters in this save operation
+                            var clusterBatchId = sharedBatchId;
+                            // ✅ DIAGNOSTIC: Log each row (all rows now share the same ClusterBatchId)
                             SafeFileLogger.SafeAppendText("batch_v2.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [CLUSTER_V2_WRITE_REPO] Row ClusterBatchId={clusterBatchId} ClusterGuid={clusterGuid} PlacementX={cluster.PlacementX} PlacementY={cluster.PlacementY} PlacementZ={cluster.PlacementZ}\n");
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [CLUSTER_V2_WRITE_REPO] Saving Cluster: ClusterGuid={clusterGuid}, PlacementX={cluster.PlacementX:F3}, PlacementY={cluster.PlacementY:F3}, PlacementZ={cluster.PlacementZ:F3}\n");
 
                             // (Per-row DELETE removed - handled by Scoped Delete above)
 
                             // Now INSERT new record
                             // ✅ SIMPLE: INSERT (Duplicates within batch are impossible if logic is correct, and DB is cleared)
                             // We use INSERT OR REPLACE just to be extra safe against constraint violations if batch has dupes
+                            // We use INSERT OR REPLACE just to be extra safe against constraint violations if batch has dupes
                             cmd.CommandText = @"
                                 INSERT OR REPLACE INTO ClusterSleeves_v2 (
-                                    ComboId, FilterId, ClusterGUID, ClusterBatchId,
+                                    ClusterInstanceId, ComboId, FilterId, ClusterGUID, ClusterBatchId,
                                     PlacementX, PlacementY, PlacementZ,
                                     ClusterWidth, ClusterHeight, ClusterDepth,
                                     RotationAngleRad, IsRotated,
@@ -1027,7 +1039,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                     SleeveFamilyName,
                                     CalculatedAt, PlacedAt, Status
                                 ) VALUES (
-                                    @ComboId, @FilterId, @ClusterGuid, @ClusterBatchId,
+                                    @ClusterInstanceId, @ComboId, @FilterId, @ClusterGuid, @ClusterBatchId,
                                     @PlacementX, @PlacementY, @PlacementZ,
                                     @ClusterWidth, @ClusterHeight, @ClusterDepth,
                                     @RotationAngleRad, @IsRotated,
@@ -1045,6 +1057,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                             // Clear and re-add all parameters for the INSERT
                             cmd.Parameters.Clear();
+                            cmd.Parameters.AddWithValue("@ClusterInstanceId", cluster.ClusterInstanceId);
                             cmd.Parameters.AddWithValue("@ComboId", cluster.ComboId);
                             cmd.Parameters.AddWithValue("@FilterId", cluster.FilterId);
                             cmd.Parameters.AddWithValue("@ClusterGuid", string.IsNullOrWhiteSpace(clusterGuid) ? (object)DBNull.Value : clusterGuid);

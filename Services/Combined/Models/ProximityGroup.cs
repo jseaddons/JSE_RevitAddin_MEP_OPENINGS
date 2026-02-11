@@ -329,12 +329,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
         }
 
         /// <summary>
-        /// Reference sleeve for host/orientation: prefer Framing so mixed groups (e.g. Duct in Wall + Cluster in Y Framing) use Y framing → 0° rotation.
+        /// Reference sleeve for host/orientation. Prefer a sleeve with a known structural host type so Wall + Duct Accessories
+        /// uses Wall (not Duct Accessories with empty host type → wrong placement/orientation and no host join).
+        /// Order: Framing → Wall → Floor → first sleeve.
         /// </summary>
         private UnifiedSleeve GetReferenceSleeveForHost()
         {
-            var framing = Sleeves.FirstOrDefault(s => (s?.HostType ?? string.Empty).IndexOf("Framing", StringComparison.OrdinalIgnoreCase) >= 0);
-            return framing ?? Sleeves.FirstOrDefault();
+            var ht = (string s) => s?.Trim() ?? string.Empty;
+            var framing = Sleeves.FirstOrDefault(s => ht(s?.HostType).IndexOf("Framing", StringComparison.OrdinalIgnoreCase) >= 0);
+            if (framing != null) return framing;
+            var wall = Sleeves.FirstOrDefault(s => string.Equals(ht(s?.HostType), "Wall", StringComparison.OrdinalIgnoreCase));
+            if (wall != null) return wall;
+            var floor = Sleeves.FirstOrDefault(s => string.Equals(ht(s?.HostType), "Floor", StringComparison.OrdinalIgnoreCase));
+            if (floor != null) return floor;
+            return Sleeves.FirstOrDefault();
         }
 
         /// <summary>

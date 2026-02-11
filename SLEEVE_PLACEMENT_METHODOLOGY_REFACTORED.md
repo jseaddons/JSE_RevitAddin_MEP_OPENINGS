@@ -17,6 +17,8 @@
 7. [Sleeve Placement Flow](#7-sleeve-placement-flow)
 8. [Clustering Flow](#8-clustering-flow)
 9. [Combine Sleeve Feature](#9-combine-sleeve-feature)
+10. [Comprehensive Flag Management System](#10-comprehensive-flag-management-system)
+    - 10.6 [Cross-Filter Consistency Principles](#106-cross-filter-consistency-principles)
 
 ---
 
@@ -245,6 +247,7 @@ ELSE IF enableThreePointValidation = true
 - **UPDATE**: Update existing zones if intersection points changed
 - **INSERT/UPDATE**: Save sleeve snapshots to `SleeveSnapshots` table
 - **NO RESET**: Flag stays = 1 until after cluster sleeve placement
+- **Invalid Zone Removal:** If a zone is found to be invalid (elements no longer intersect or are deleted), it is **REMOVED** from the database.
 
 **Clustering (Zone-Type Based):**
 - **Validated zones**: Check `ClusterSleeves` table (same as PATH 1)
@@ -1592,3 +1595,83 @@ double offsetAmount = (mepSideClearance - otherSideClearance) / 2.0;
 10. **Comprehensive Logging**: Every detection is logged with full context for rapid debugging.
 
 **Result**: Robust, fail-proof connector detection and sleeve placement for dampers with connectors on any side (Left/Right/Top/Bottom), on any wall orientation (X/Y), with correct clearances and positioning. The system handles edge cases, invalid data, and production debugging through multiple optimization layers and fail-safe mechanisms.
+
+---
+
+## 10. Comprehensive Flag Management System
+
+**Status:** Current Architecture - Database-Only (SQLITE)  
+**Source of Truth:** All flags are managed exclusively in the SQLite database (`ClashZones` and `FileCombos` tables). Legacy Global/Filter XML files are NO LONGER used for flag management.
+
+### 10.1 Core Flag Definitions
+
+| Flag | Table | Purpose |
+| :--- | :--- | :--- |
+| **`ReadyForPlacementFlag`** | `ClashZones` | **Primary Processor Flag:** The ONLY flag used by placement services to identify zones for processing. Set to `1` only if all session and physical constraints are met. |
+| **`IsCurrentClashFlag`** | `ClashZones` | **Initialization Helper:** Its ONLY role is to facilitate the setting of `ReadyForPlacementFlag` by identifying zones that match the active Context Session (Filters and File Combos). |
+| **`IsResolvedFlag`** | `ClashZones` | **Individual Resolution:** `1` if an individual sleeve has been placed for this clash. |
+| **`IsClusterResolvedFlag`** | `ClashZones` | **Cluster Resolution:** `1` if this clash is covered by a cluster sleeve. |
+| **`IsCombinedResolved`** | `ClashZones` | **Manual/Refactored Combined Resolution:** `1` if part of a manual or refactored combined sleeve. |
+| **`IsFilterComboNew`** | `FileCombos` | **Optimization Path:** `1` for fresh detection runs, `0` for subsequent "Replay" (Path 1) runs. |
+
+### 10.2 Flag Hierarchy & Logic Flow
+
+The system uses a strict hierarchy to determine if a zone is "eligible" for placement:
+
+1.  **Context Session Activation (Refresh):**
+    - `SetReadyForPlacementBatchOptimized` performs a two-step **Atomic Session Update**:
+        - **Step A (Reset):** Set `ReadyForPlacementFlag = 0` for all zones in the current filter/category context.
+        - **Step B (Activate):** Set `IsCurrentClashFlag = 1` for ALL zones matching the active Context Session (Filters and File Combos).
+        - **Step C (Identify Ready Zones):** For zones with `IsCurrentClashFlag = 1`, set `ReadyForPlacementFlag = 1` ONLY if the zone is:
+            - Within the Section Box.
+            - **UNRESOLVED** (`IsResolved=0` AND `IsCluster=0` AND `IsCombined=0`).
+
+2.  **Path-Based Resolution (Path 1 vs Path 3):**
+    - **Path 1 (Replay Mode):** Uses existing zones. Flags are set based on current Revit existence and resolution status.
+    - **Path 3 (Adopt/Force Detection):** 
+        - **Validity Check:** Every existing zone is checked for validity (elements must exist and intersect).
+        - **Invalid Zone Removal:** If a zone is invalid, it is **DELETED** from the database.
+        - **Valid Zone Handling:** Valid zones are treated similarly to Path 1 (flags set for placement if unresolved).
+
+2.  **Autonomous Placement (BulkPlacementService):**
+    - Queries EXCLUSIVELY for `ReadyForPlacementFlag = 1`. 
+    - The `IsCurrentClashFlag` is ignored during this phase as its role was completed during the Refresh/Activation phase.
+    - Once placed, sets `IsResolvedFlag = 1` (or cluster/combined flag) and resets consumed flags.
+
+3.  **Completion Reset:**
+    - After successful placement, `ResetProcessedFlags` updates the `FileCombos` table, setting `IsFilterComboNew = 0`.
+    - This ensures the next run transitions from Path 2/3 (Detection) to Path 1 (Fast Replay).
+
+### 10.3 Automatic Recovery Mechanisms
+
+- **Sleeve Deletion:** If a user deletes a sleeve in Revit, the `VerifyExistingSleevesAndResetFlags` service detects the missing ElementId and resets the corresponding database flags (`IsResolved=0`, etc.) and re-enables `IsCurrentClashFlag=1` so it can be re-placed.
+- **Section Box Move:** Because the refresh uses an Atomic Update, zones moving out of the section box automatically have their `ReadyForPlacementFlag` set to `0`.
+
+### 10.4 Atomic Session Logic (SQL)
+
+```sql
+UPDATE ClashZones
+SET ReadyForPlacementFlag = CASE 
+        WHEN (zone IN SectionBox AND MatchesFilters AND NOT IsResolved) THEN 1 
+        ELSE 0 END,
+    IsCurrentClashFlag = CASE 
+        WHEN (zone IN SectionBox AND MatchesFilters) THEN 1 
+        ELSE 0 END
+WHERE (FilterId = @FilterId)
+```
+
+### 10.5 Performance Optimization through Flag Management
+
+The primary performance benefit of this architecture is **Redundant Operation Elimination**:
+
+- **Targeted Processing:** By using `ReadyForPlacementFlag` as the sole trigger for the `BulkPlacementService`, the system ignores thousands of "Resolved" or "Out-of-Scope" zones, focusing Revit API resources only on what needs to be placed **now**.
+
+### 10.6 Cross-Filter Consistency Principles
+
+The flag system operates with **Filter Independence** to ensure global data integrity across different user UI selections:
+
+- **Universal Resolution:** If a clash zone (identified by its deterministic MEP+Host+Point GUID) is resolved in one filter (e.g., "Plumbing"), it is automatically considered resolved in any other filter (e.g., "Electrical") that might detect the same intersection.
+- **Cross-Filter Skip:** When a new filter is run, the system checks the database for existing resolution flags for those intersections. If a sleeve already exists (processed by a previous filter), the new filter will skip placement for that zone.
+- **Global Flag Reset:** If a sleeve is deleted in Revit, the flag reset mechanism (`VerifyExistingSleevesAndResetFlags`) resets the flags for that intersection globally. This ensures that any filter covering that category will re-detect the zone as "Unresolved" and re-enable it for placement in the next run.
+- **Reliability:** This prevents double-placement of sleeves and ensures that the model remains the single source of truth, synchronized with the database flags regardless of which filter combination is currently active.
+

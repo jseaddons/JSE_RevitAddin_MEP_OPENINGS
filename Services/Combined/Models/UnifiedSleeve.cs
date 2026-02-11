@@ -266,6 +266,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
                 }
             }
 
+            // Duct Accessories are always in Wall; default host type to Wall when missing so combined placement uses Wall logic.
+            string hostType = clashZone.StructuralElementType ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(hostType) && (clashZone.MepElementCategory ?? string.Empty).IndexOf("Duct Accessor", StringComparison.OrdinalIgnoreCase) >= 0)
+                hostType = "Wall";
+
             return new UnifiedSleeve
             {
                 Id = sleeveId,
@@ -274,7 +279,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models
                 BoundingBox = bbox,
                 PlacementPoint = placementPoint,
                 Corners = corners,
-                HostType = clashZone.StructuralElementType,
+                HostType = hostType,
                 HostOrientation = clashZone.HostOrientation,
                 RotationAngleDeg = clashZone.MepElementRotationAngle * (180.0 / Math.PI),
                 SourceData = clashZone

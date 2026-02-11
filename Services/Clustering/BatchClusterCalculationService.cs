@@ -392,6 +392,80 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                     throw; // Re-throw to trigger rollback
                                 }
                             }
+
+                            // ✅ RESTORE LEGACY PERSISTENCE: Sync to ClusterSleeves (Legacy)
+                            // This ensures the legacy table (used by previous logic steps) also contains the pending clusters.
+                            try 
+                            {
+                                using (var legCmd = conn.CreateCommand())
+                                {
+                                    legCmd.Transaction = trans;
+                                    var legClauses = new List<string>();
+                                    
+                                    for (int k = 0; k < chunk.Count; k++)
+                                    {
+                                        var r = chunk[k];
+                                        string p = $"@l{k}_";
+                                        
+                                        double halfW = r.ClusterWidth / 2.0;
+                                        double halfH = r.ClusterHeight / 2.0;
+                                        double halfD = r.ClusterDepth / 2.0;
+                                        
+                                        legClauses.Add($"({p}id, {p}guid, {p}combo, {p}filt, {p}cat, {p}minx, {p}miny, {p}minz, {p}maxx, {p}maxy, {p}maxz, {p}w, {p}h, {p}d, {p}rot, {p}isrot, {p}px, {p}py, {p}pz, {p}ht, {p}ho, {p}guids, {p}json)");
+
+                                        legCmd.Parameters.AddWithValue($"{p}id", -1); // Pending = -1
+                                        legCmd.Parameters.AddWithValue($"{p}guid", r.ClusterGUID ?? Guid.NewGuid().ToString()); // ✅ FIX: Persist ClusterGUID
+                                        legCmd.Parameters.AddWithValue($"{p}combo", r.ComboId);
+                                        legCmd.Parameters.AddWithValue($"{p}filt", r.FilterId);
+                                        legCmd.Parameters.AddWithValue($"{p}cat", r.Category ?? "");
+                                        legCmd.Parameters.AddWithValue($"{p}minx", r.PlacementX - halfW);
+                                        legCmd.Parameters.AddWithValue($"{p}miny", r.PlacementY - halfH);
+                                        legCmd.Parameters.AddWithValue($"{p}minz", r.PlacementZ - halfD);
+                                        legCmd.Parameters.AddWithValue($"{p}maxx", r.PlacementX + halfW);
+                                        legCmd.Parameters.AddWithValue($"{p}maxy", r.PlacementY + halfH);
+                                        legCmd.Parameters.AddWithValue($"{p}maxz", r.PlacementZ + halfD);
+                                        legCmd.Parameters.AddWithValue($"{p}w", r.ClusterWidth);
+                                        legCmd.Parameters.AddWithValue($"{p}h", r.ClusterHeight);
+                                        legCmd.Parameters.AddWithValue($"{p}d", r.ClusterDepth);
+                                        legCmd.Parameters.AddWithValue($"{p}rot", r.RotationAngleRad * 57.2958); // Rad to Deg
+                                        legCmd.Parameters.AddWithValue($"{p}isrot", Math.Abs(r.RotationAngleRad) > 0.01 ? 1 : 0);
+                                        legCmd.Parameters.AddWithValue($"{p}px", r.PlacementX);
+                                        legCmd.Parameters.AddWithValue($"{p}py", r.PlacementY);
+                                        legCmd.Parameters.AddWithValue($"{p}pz", r.PlacementZ);
+                                        legCmd.Parameters.AddWithValue($"{p}ht", r.HostType ?? "");
+                                        legCmd.Parameters.AddWithValue($"{p}ho", r.HostOrientation ?? "");
+                                        legCmd.Parameters.AddWithValue($"{p}guids", r.ConstituentZoneGuids ?? "");
+                                        
+                                        // ✅ FIX: Populate JSON correctly for legacy readers
+                                        var jsonStr = "[]";
+                                        if (!string.IsNullOrEmpty(r.ConstituentZoneGuids))
+                                        {
+                                            var gList = r.ConstituentZoneGuids.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                                                .Select(g => $"\"{g.Trim()}\"");
+                                            jsonStr = $"[{string.Join(",", gList)}]";
+                                        }
+                                        legCmd.Parameters.AddWithValue($"{p}json", jsonStr);
+                                    }
+                                    
+                                    legCmd.CommandText = @"
+                                        INSERT INTO ClusterSleeves (
+                                            ClusterInstanceId, ClusterGuid, ComboId, FilterId, Category,
+                                            BoundingBoxMinX, BoundingBoxMinY, BoundingBoxMinZ,
+                                            BoundingBoxMaxX, BoundingBoxMaxY, BoundingBoxMaxZ,
+                                            ClusterWidth, ClusterHeight, ClusterDepth,
+                                            RotationAngleDeg, IsRotated,
+                                            PlacementX, PlacementY, PlacementZ,
+                                            HostType, HostOrientation,
+                                            ClashZoneGuids, ClashZoneIdsJson
+                                        ) VALUES " + string.Join(",", legClauses) + ";";
+                                    
+                                    legCmd.ExecuteNonQuery();
+                                }
+                            }
+                            catch (Exception legEx)
+                            {
+                                SafeFileLogger.SafeAppendText("batch_sql_debug.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ LEGACY SQL IGNORED: {legEx.Message}\n");
+                            }
                         }
                         
                         trans.Commit();
@@ -662,19 +736,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             using (var cmd = conn.CreateCommand())
                             {
                                 cmd.Transaction = trans;
+                                // ✅ FIX: Use robust, brace-insensitive GUID matching with REPLACE and UPPER
                                 var placeholders = string.Join(",", currentBatch.Select((_, idx) => $"@g{idx}"));
                                 cmd.CommandText = $@"
-                                    UPDATE ClashZones 
+                                    UPDATE ClashZones
                                     SET MarkedForClusterProcess = 1,
                                         UpdatedAt = CURRENT_TIMESTAMP
-                                    WHERE ClashZoneGuid IN ({placeholders})";
-                                
+                                    WHERE REPLACE(REPLACE(UPPER(ClashZoneGuid), '{{', ''), '}}', '') IN ({placeholders})";
+
                                 for (int idx = 0; idx < currentBatch.Count; idx++)
                                 {
-                                    cmd.Parameters.AddWithValue($"@g{idx}", currentBatch[idx]);
+                                    // Clean input GUID for matching
+                                    var cleanGuid = currentBatch[idx].Replace("{", "").Replace("}", "").ToUpperInvariant();
+                                    cmd.Parameters.AddWithValue($"@g{idx}", cleanGuid);
                                 }
-                                
-                                totalUpdated += cmd.ExecuteNonQuery();
+
+                                var affected = cmd.ExecuteNonQuery();
+                                totalUpdated += affected;
+                                SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] [BatchClusterCalculationService] LOUD-DEBUG: Batch of {currentBatch.Count} GUIDs -> {affected} database rows marked for cluster.\n");
                             }
                         }
                         
