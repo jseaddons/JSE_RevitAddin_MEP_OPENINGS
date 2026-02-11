@@ -5,6 +5,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Utils;
 using JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Sizing;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
 {
@@ -41,7 +42,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Strategies
         public MepElementSize GetMepElementSize(Element mepElement)
         {
             var damper = mepElement as FamilyInstance;
-            if (damper == null || damper.Category?.Id.IntegerValue != (int)BuiltInCategory.OST_DuctAccessory)
+            if (damper == null || damper.Category?.Id.GetIntegerValue() != (int)BuiltInCategory.OST_DuctAccessory)
             {
                 DebugLogger.Warning($"[DamperStrategy] Element {mepElement?.Id} is not a Duct Accessory");
                 return new MepElementSize();

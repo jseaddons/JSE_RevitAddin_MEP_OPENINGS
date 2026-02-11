@@ -3,6 +3,7 @@ using System.Linq;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS
 {
@@ -55,7 +56,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS
                                 var linkElement = linkDoc.GetElement(reference.LinkedElementId);
                                 if (linkElement != null)
                                 {
-                                    result += $"Element ID: {linkElement.Id.IntegerValue}\n";
+                                    result += $"Element ID: {linkElement.Id.GetIntegerValue()}\n";
                                     result += $"Element Name: {linkElement.Name}\n";
                                     result += $"Document: {linkDoc.Title}\n";
                                     result += $"Is Linked: True\n";
@@ -86,7 +87,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS
                                 }
                                 else
                                 {
-                                    result += $"Element ID: {reference.LinkedElementId.IntegerValue} (not found in linked document)\n";
+                                    result += $"Element ID: {reference.LinkedElementId.GetIntegerValue()} (not found in linked document)\n";
                                 }
                             }
                         }
@@ -97,14 +98,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS
                         Element selectedElement = doc.GetElement(reference);
                         if (selectedElement != null)
                         {
-                            result += $"Element ID: {selectedElement.Id.IntegerValue}\n";
+                            result += $"Element ID: {selectedElement.Id.GetIntegerValue()}\n";
                             result += $"Element Name: {selectedElement.Name}\n";
                             result += $"Document: {selectedElement.Document.Title}\n";
                             result += $"Is Linked: False\n";
                         }
                         else
                         {
-                            result += $"Element ID: {reference.ElementId.IntegerValue} (not found)\n";
+                            result += $"Element ID: {reference.ElementId.GetIntegerValue()} (not found)\n";
                         }
                     }
                 }

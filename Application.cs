@@ -246,13 +246,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS
         buttonCombined.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
         buttonCombined.ToolTip = "Manage combined sleeves (Manual Join).";
 
-        // DEPRECATED: Parameter Service button removed.
-        /*
-        // 3. V2: Parameter Service Command V2 - standalone parameter transfer functionality (NEW VERSION)
-        var button6 = panel.AddPushButton<TestParameterServiceDialogV2Command>("Parameter Service");
-        button6.SetImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png");
-        button6.SetLargeImage("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png");
-        */
+        // 3. Parameter Service - invokes command from JSE_Parameter_Service project
+        var paramServiceDll = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "JSE_Parameter_Service.dll");
+        if (File.Exists(paramServiceDll))
+        {
+            var btnParamService = new PushButtonData(
+                "cmdParameterService",
+                "Parameter\nService",
+                paramServiceDll,
+                "JSE_Parameter_Service.Commands.TestParameterServiceDialogV2Command");
+            btnParamService.Image = new System.Windows.Media.Imaging.BitmapImage(new Uri("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon16.png", UriKind.RelativeOrAbsolute));
+            btnParamService.LargeImage = new System.Windows.Media.Imaging.BitmapImage(new Uri("/JSE_RevitAddin_MEP_OPENINGS;component/Resources/Icons/RibbonIcon32.png", UriKind.RelativeOrAbsolute));
+            btnParamService.ToolTip = "Open Parameter Service (separate project).";
+            panel.AddItem(btnParamService);
+        }
 
         // 4. Update DB Command - updates DB after manual sleeve adjustments
         var buttonUpdateDb = panel.AddPushButton<Commands.UpdateDbCommand>("Update DB");

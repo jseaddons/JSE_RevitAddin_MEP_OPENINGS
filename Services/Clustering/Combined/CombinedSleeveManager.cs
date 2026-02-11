@@ -11,6 +11,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Servic
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces;
 using JSE_RevitAddin_MEP_OPENINGS.Services; // For OptimizationFlags, DebugLogger // Assuming typical interface namespace
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined
 {
@@ -184,7 +185,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined
 
                                 // D. Create Instance
                                 var instance = _document.Create.NewFamilyInstance(bbox.Min, symbol, Autodesk.Revit.DB.Structure.StructuralType.NonStructural);
-                                int instanceId = instance.Id.IntegerValue;
+                                int instanceId = instance.Id.GetIntegerValue();
 
                                 // E. Persist Link
                                 persistenceService.PersistCombinedCluster(candidate, instanceId);

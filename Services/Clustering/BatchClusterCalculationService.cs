@@ -3,6 +3,9 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+#if !NET8_0_OR_GREATER
+using System.Data.SQLite;
+#endif
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Helpers;
@@ -203,7 +206,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
         {
             try
             {
-                using (var conn = new System.Data.SQLite.SQLiteConnection($"Data Source={_databasePath};Version=3;"))
+                using (var conn = new SQLiteConnection(SqliteConnStr.Build(_databasePath)))
                 {
                     conn.Open();
                     using (var cmd = conn.CreateCommand())
@@ -253,7 +256,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
             try
             {
-                using (var conn = new System.Data.SQLite.SQLiteConnection($"Data Source={_databasePath};Version=3;"))
+                using (var conn = new SQLiteConnection(SqliteConnStr.Build(_databasePath)))
                 {
                     conn.Open();
                     using (var trans = conn.BeginTransaction())
@@ -719,7 +722,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                     return;
                 }
 
-                using (var conn = new System.Data.SQLite.SQLiteConnection($"Data Source={_databasePath};Version=3;"))
+                using (var conn = new SQLiteConnection(SqliteConnStr.Build(_databasePath)))
                 {
                     conn.Open();
                     using (var trans = conn.BeginTransaction())

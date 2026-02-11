@@ -5,6 +5,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Utils;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 {
@@ -91,13 +92,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 {
                     try
                     {
-                        param.Set(clashZone.MepElementId.IntegerValue);
+                        param.Set(clashZone.MepElementId.GetIntegerValue());
                         written++;
                         
                         if (!DeploymentConfiguration.DeploymentMode && OptimizationFlags.UseDiagnosticMode)
                         {
                             SafeFileLogger.SafeAppendText("parameter_service_debug.log",
-                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [BatchMetadataWriter] ✅ Set MEP_ElementId = {clashZone.MepElementId.IntegerValue} for sleeve {sleeve.Id}\n");
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [BatchMetadataWriter] ✅ Set MEP_ElementId = {clashZone.MepElementId.GetIntegerValue()} for sleeve {sleeve.Id}\n");
                         }
                     }
                     catch (Exception setEx)
@@ -105,7 +106,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             SafeFileLogger.SafeAppendText("parameter_service_debug.log",
-                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [BatchMetadataWriter] ❌ ERROR: Failed to set MEP_ElementId={clashZone.MepElementId?.IntegerValue} on sleeve {sleeve.Id}: {setEx.Message}\n");
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [BatchMetadataWriter] ❌ ERROR: Failed to set MEP_ElementId={clashZone.MepElementId?.GetIntegerValue()} on sleeve {sleeve.Id}: {setEx.Message}\n");
                         }
                         failed++;
                     }

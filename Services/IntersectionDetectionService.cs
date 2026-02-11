@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -487,9 +488,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     .WherePasses(new BoundingBoxIntersectsFilter(expandedOutline))
                     .ToElements();
                 
-                var filteredIds = new HashSet<int>(filteredByOutline.Select(e => e.Id.IntegerValue));
+                var filteredIds = new HashSet<int>(filteredByOutline.Select(e => e.Id.GetIntegerValue()));
                 var missedElements = expandedFiltered
-                    .Where(e => !filteredIds.Contains(e.Id.IntegerValue))
+                    .Where(e => !filteredIds.Contains(e.Id.GetIntegerValue()))
                     .Where(e => {
                         try
                         {
@@ -643,9 +644,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             .WherePasses(new BoundingBoxIntersectsFilter(expandedLinkOutline))
                             .ToElements();
                         
-                        var filteredIds = new HashSet<int>(filteredByOutline.Select(e => e.Id.IntegerValue));
+                        var filteredIds = new HashSet<int>(filteredByOutline.Select(e => e.Id.GetIntegerValue()));
                         var missedElements = expandedFiltered
-                            .Where(e => !filteredIds.Contains(e.Id.IntegerValue))
+                            .Where(e => !filteredIds.Contains(e.Id.GetIntegerValue()))
                             .Where(e => {
                                 try
                                 {
@@ -1335,7 +1336,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             skippedCount++;
                             double wallThicknessMm = RevitUnitConversionService.Instance.FromInternalMillimeters(wallThickness);
-                            System.Diagnostics.Debug.WriteLine($"[IntersectionDetectionService] SKIP: Wall {wall.Id.IntegerValue} thickness {wallThicknessMm:F1}mm < {minThicknessMm:F1}mm minimum");
+                            System.Diagnostics.Debug.WriteLine($"[IntersectionDetectionService] SKIP: Wall {wall.Id.GetIntegerValue()} thickness {wallThicknessMm:F1}mm < {minThicknessMm:F1}mm minimum");
                         }
                     }
                     else
@@ -1392,7 +1393,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         else
                         {
                             skippedCount++;
-                            System.Diagnostics.Debug.WriteLine($"[IntersectionDetectionService] SKIP: Architectural floor {floor.Id.IntegerValue} (Structural parameter not checked)");
+                            System.Diagnostics.Debug.WriteLine($"[IntersectionDetectionService] SKIP: Architectural floor {floor.Id.GetIntegerValue()} (Structural parameter not checked)");
                         }
                     }
                     else

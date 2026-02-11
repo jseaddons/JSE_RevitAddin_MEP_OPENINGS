@@ -20,6 +20,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Configuration;
 using JSE_RevitAddin_MEP_OPENINGS.Services; // For OpeningSettingsHelper
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -637,10 +638,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (placedSleeve != null)
                         {
                             SafeFileLogger.SafeAppendText("batch_mode_entry.log",
-                             $"[{DateTime.Now:HH:mm:ss}] ✅ CHECKPOINT 2: Created sleeve instance {placedSleeve.Id.IntegerValue} for Zone {clashZone.Id}\n");
+                             $"[{DateTime.Now:HH:mm:ss}] ✅ CHECKPOINT 2: Created sleeve instance {placedSleeve.Id.GetIntegerValue()} for Zone {clashZone.Id}\n");
                             
                              SafeFileLogger.SafeAppendText("placement_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ✅ PLACED: Zone {clashZone.Id}, SleeveId={placedSleeve.Id.IntegerValue}\n");
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ✅ PLACED: Zone {clashZone.Id}, SleeveId={placedSleeve.Id.GetIntegerValue()}\n");
                             
                             isSleevePlaced = true;
                             placed++;
@@ -672,7 +673,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 {
                                     if (!DeploymentConfiguration.DeploymentMode)
                                     {
-                                        DebugLogger.Warning($"[NewSleevePlacer] ?? Element {placedSleeve.Id.IntegerValue} is invalid after placement - skipping");
+                                        DebugLogger.Warning($"[NewSleevePlacer] ?? Element {placedSleeve.Id.GetIntegerValue()} is invalid after placement - skipping");
                                     }
                                     errors++;
                                     continue;
@@ -680,7 +681,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                             catch (Exception ex)
                             {
-                                string msg = $"[NewSleevePlacer] ?? VALIDATION ERROR: Element {placedSleeve.Id.IntegerValue}: {ex.Message}";
+                                string msg = $"[NewSleevePlacer] ?? VALIDATION ERROR: Element {placedSleeve.Id.GetIntegerValue()}: {ex.Message}";
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
                                     DebugLogger.Error(msg);
@@ -693,16 +694,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         // ? CRITICAL: Update ClashZone with new Sleeve ID and flag
                         // This ensures in-memory object is updated immediately (before batch flag update)
-                        clashZone.SleeveInstanceId = placedSleeve.Id.IntegerValue;
+                        clashZone.SleeveInstanceId = placedSleeve.Id.GetIntegerValue();
                         clashZone.IsResolvedFlag = true;
                         
                         // Γ£à STEP 5 SUPPORT: Track placed item for corner extraction
-                        placedSleeveResults.Add((clashZone.Id, placedSleeve.Id.IntegerValue));
+                        placedSleeveResults.Add((clashZone.Id, placedSleeve.Id.GetIntegerValue()));
                         
                         // ✅ DELEGATE TO FLAG MANAGER: Update flags using dedicated service
                         if (_flagManager != null)
                         {
-                            var updateList = new List<(Guid, int, bool)> { (clashZone.Id, placedSleeve.Id.IntegerValue, false) };
+                            var updateList = new List<(Guid, int, bool)> { (clashZone.Id, placedSleeve.Id.GetIntegerValue(), false) };
                             _flagManager.UpdateFlagsAfterPlacement(updateList);
                         }
                         
@@ -718,7 +719,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // Required for cleanup service to identify individual sleeves correctly
                         try
                         {
-                            UpdateSleeveInstanceIdImmediately(clashZone.Id, placedSleeve.Id.IntegerValue);
+                            UpdateSleeveInstanceIdImmediately(clashZone.Id, placedSleeve.Id.GetIntegerValue());
                         }
                         catch (Exception ex)
                         {
@@ -881,7 +882,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Warning($"[NewSleevePlacer] [BATCH-BBOX] Error retrieving bbox for sleeve {sleeve?.Id?.IntegerValue ?? -1}: {bboxEx.Message}");
+                            DebugLogger.Warning($"[NewSleevePlacer] [BATCH-BBOX] Error retrieving bbox for sleeve {sleeve?.Id?.GetIntegerValue() ?? -1}: {bboxEx.Message}");
                         }
                     }
                 }
@@ -1400,7 +1401,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             
             SafeFileLogger.SafeAppendText("placement_debug.log",
-                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ? INSTANCE CREATED: Zone {zone.Id}, InstanceId={instance.Id.IntegerValue}\n");
+                $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] ? INSTANCE CREATED: Zone {zone.Id}, InstanceId={instance.Id.GetIntegerValue()}\n");
             
             if (instance != null)
             {
@@ -2139,7 +2140,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var repository = new ClashZoneRepository(context, msg => { });
                     
                     // Update Instance ID
-                    repository.UpdateSleeveInstanceId(zone.Id, sleeve.Id.IntegerValue);
+                    repository.UpdateSleeveInstanceId(zone.Id, sleeve.Id.GetIntegerValue());
                     
                     // ? SOURCE OF TRUTH: Placement point = calculated sleeve placement point only (from refresh/placement step).
                     // Do NOT use sleeve.Location — corners/bbox rely on placed sleeves; placement point relies on calculated only.
@@ -2151,7 +2152,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Update Placement Data (calculated placement point only)
                     repository.UpdateSleevePlacement(
                         zone.Id,
-                        sleeve.Id.IntegerValue,
+                        sleeve.Id.GetIntegerValue(),
                         zone.SleeveWidth,
                         zone.SleeveHeight,
                         zone.SleeveDiameter,
@@ -2238,7 +2239,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("placement_errors.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] [CALC-BBOX] Error calculating bbox from dimensions for sleeve {sleeve?.Id?.IntegerValue ?? -1}: {ex.Message}\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [NewSleevePlacer] [CALC-BBOX] Error calculating bbox from dimensions for sleeve {sleeve?.Id?.GetIntegerValue() ?? -1}: {ex.Message}\n");
                 }
                 return null;
             }

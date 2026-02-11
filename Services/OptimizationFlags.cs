@@ -201,7 +201,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         /// Default: true (useful during optimization phase; disable for production noise reduction)
         /// Location: Services/MepIntersectionService.cs (end of FindIntersectionsBatchInternal)
         /// </summary>
-        public static bool LogGeometryExtractionMetrics { get; set; } = false;
+        public static bool LogGeometryExtractionMetrics { get; set; } =false;
 
         /// <summary>
         /// Enable detailed timing diagnostics for Flag Reset operation during refresh
@@ -213,6 +213,34 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         public static bool LogFlagResetDiagnostics { get; set; } = false;
 
         public static bool EnablePlacementDebugLog { get; set; } = false;
+
+        /// <summary>
+        /// Enable detailed Bulk Placement diagnostics (individual sleeves).
+        /// When true: Logs placement details to bulk_placement_debug.log.
+        /// Default: false (skipped for performance).
+        /// </summary>
+        public static bool EnableBulkPlacementDebugLog { get; set; } = false;
+
+        /// <summary>
+        /// Enable detailed Batch Clustering diagnostics (Step 4 & 5).
+        /// When true: Logs batch placement details to batch_v2.log.
+        /// Default: false (skipped for performance).
+        /// </summary>
+        public static bool EnableBatchClusteringDebugLog { get; set; } = false;
+
+        /// <summary>
+        /// Enable detailed Cluster Sizing diagnostics (RCS dimensions, swaps).
+        /// When true: Logs sizing details to cluster_debug.log and placement_sizing_debug.log.
+        /// Default: false (skipped for performance).
+        /// </summary>
+        public static bool EnableClusterSizingDebugLog { get; set; } = false;
+
+        /// <summary>
+        /// Enable detailed Proximity Check diagnostics (Clustering workflow).
+        /// When true: Logs proximity analysis details to flag_workflow.log.
+        /// Default: false (skipped for performance).
+        /// </summary>
+        public static bool EnableProximityDebugLog { get; set; } = false;
 
         /// <summary>
         /// Enable detailed placement diagnostics (e.g. corner comparisons).

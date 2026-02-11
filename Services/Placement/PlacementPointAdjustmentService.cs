@@ -193,7 +193,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             }
 
             // Check if we have a valid host element ID
-            if (zone.StructuralElementId == null || zone.StructuralElementId.IntegerValue <= 0)
+            if (zone.StructuralElementId == null || zone.StructuralElementId.GetIntegerValue() <= 0)
             {
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
@@ -213,7 +213,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ⚠️ HOST ELEMENT NOT FOUND: Zone {zone.Id}, HostId={zone.StructuralElementId.IntegerValue}, Cannot adjust to centerline (searched active and linked documents)\n");
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ⚠️ HOST ELEMENT NOT FOUND: Zone {zone.Id}, HostId={zone.StructuralElementId.GetIntegerValue()}, Cannot adjust to centerline (searched active and linked documents)\n");
                     }
                     return placementPoint;
                 }
@@ -225,7 +225,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ⚠️ HOST ELEMENT INVALID: Zone {zone.Id}, HostId={zone.StructuralElementId.IntegerValue}, Element is not valid (may have been deleted), Cannot adjust to centerline\n");
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ⚠️ HOST ELEMENT INVALID: Zone {zone.Id}, HostId={zone.StructuralElementId.GetIntegerValue()}, Element is not valid (may have been deleted), Cannot adjust to centerline\n");
                     }
                     return placementPoint;
                 }
@@ -249,7 +249,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 // ✅ OPTIMIZED: Use caching for Walls, Framing, and Floors
                 if (hostElement is Wall wall)
                 {
-                    int wallId = wall.Id.IntegerValue;
+                    int wallId = wall.Id.GetIntegerValue();
                     if (!_wallCenterlineCache.TryGetValue(wallId, out var data))
                     {
                         data = WallCenterlineHelper.GetWallInvariantData(wall, _doc);
@@ -266,9 +266,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                         centerlinePoint = WallCenterlineHelper.GetElementCenterlinePoint(hostElement, placementPoint, _doc);
                     }
                 }
-                else if (hostElement.Category.Id.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+                else if (hostElement.Category.Id.GetIntegerValue() == (int)BuiltInCategory.OST_StructuralFraming)
                 {
-                    int elemId = hostElement.Id.IntegerValue;
+                    int elemId = hostElement.Id.GetIntegerValue();
                     if (!_framingCenterlineCache.TryGetValue(elemId, out var data))
                     {
                          data = WallCenterlineHelper.GetFramingInvariantData(hostElement, _doc);
@@ -309,7 +309,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                         double deltaY = Math.Abs(centerlinePoint.Y - placementPoint.Y);
                         double deltaZ = Math.Abs(centerlinePoint.Z - placementPoint.Z);
                         SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ✅ HOST CENTERLINE ADJUSTED: Zone {zone.Id}, HostType={zone.StructuralElementType}, HostId={zone.StructuralElementId.IntegerValue}\n" +
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [PlacementPointAdjustment] ✅ HOST CENTERLINE ADJUSTED: Zone {zone.Id}, HostType={zone.StructuralElementType}, HostId={zone.StructuralElementId.GetIntegerValue()}\n" +
                             $"  Input (Intersection): ({placementPoint.X:F6}ft, {placementPoint.Y:F6}ft, {placementPoint.Z:F6}ft)\n" +
                             $"  Output (Centerline):  ({centerlinePoint.X:F6}ft, {centerlinePoint.Y:F6}ft, {centerlinePoint.Z:F6}ft)\n" +
                             $"  Delta: ΔX={deltaX * 304.8:F1}mm, ΔY={deltaY * 304.8:F1}mm, ΔZ={deltaZ * 304.8:F1}mm\n");

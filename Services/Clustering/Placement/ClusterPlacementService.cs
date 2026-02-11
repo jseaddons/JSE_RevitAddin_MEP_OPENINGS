@@ -13,6 +13,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Safety;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Geometry; // For WallRcsTransformer
 using JSE_RevitAddin_MEP_OPENINGS.Services.Placement; // For SleeveParameterService
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 // OpeningSettingsHelper is already in JSE_RevitAddin_MEP_OPENINGS.Services namespace
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
@@ -289,7 +290,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                     }
 
                     // ✅ CRITICAL: Capture ID immediately while element is valid
-                    capturedClusterSleeveId = inst.Id.IntegerValue;
+                    capturedClusterSleeveId = inst.Id.GetIntegerValue();
                     
                     // ✅ CRITICAL: Return actual placement point via out parameter
                     // This ensures database saves the correct calculated placement point instead of Revit bbox center
@@ -311,7 +312,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                             var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JSE_MEP_Openings", "Logs", versionTag);
                             Directory.CreateDirectory(logDir);
                             SafeFileLogger.SafeAppendText("cluster_debug.log", $"{DateTime.Now:O}\t" +
-                                $"ClusterSleeveId={inst?.Id?.IntegerValue ?? -1}\t" +
+                                $"ClusterSleeveId={inst?.Id?.GetIntegerValue() ?? -1}\t" +
                                 $"Family={familySymbol?.Family?.Name ?? "NULL"}\t" +
                                 $"Symbol={familySymbol?.Name ?? "NULL"}\t" +
                                 $"Type={instantiationType}\t" +
@@ -493,7 +494,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                         // This allows RefactoredClusterService to save accurate data even when Revit parameters are deferred
                         clusterSaveData = new ClusterSaveData
                         {
-                            ClusterInstanceId = inst.Id.IntegerValue,
+                            ClusterInstanceId = inst.Id.GetIntegerValue(),
                             PlacementX = placementPoint.X,
                             PlacementY = placementPoint.Y,
                             PlacementZ = placementPoint.Z,
@@ -522,7 +523,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                         
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅✅✅ PlaceClusterSleeve COMPLETED: ID={inst.Id.IntegerValue}\n");
+                            SafeFileLogger.SafeAppendText("cluster_debug.log", $"[{DateTime.Now:HH:mm:ss}] ✅✅✅ PlaceClusterSleeve COMPLETED: ID={inst.Id.GetIntegerValue()}\n");
                         }
                         
                         return true;
@@ -902,7 +903,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ⚠️ Cluster sleeve {clusterSleeve.Id.IntegerValue} is invalid - skipping\n");
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ⚠️ Cluster sleeve {clusterSleeve.Id.GetIntegerValue()} is invalid - skipping\n");
                     }
                     return;
                 }
@@ -921,7 +922,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ✅ Cluster sleeve {clusterSleeve.Id.IntegerValue}: " +
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ✅ Cluster sleeve {clusterSleeve.Id.GetIntegerValue()}: " +
                             $"Read Elevation from Level={elevationFromLevel.Value * 304.8:F1}mm from parameter (calculated by Revit after Schedule Level was set)\n");
                     }
                 }
@@ -974,7 +975,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
                                     SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ✅ FALLBACK: Cluster sleeve {clusterSleeve.Id.IntegerValue}: " +
+                                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ✅ FALLBACK: Cluster sleeve {clusterSleeve.Id.GetIntegerValue()}: " +
                                         $"Calculated Elevation from Level={elevationFromLevel.Value * 304.8:F1}mm " +
                                         $"(PlacementPoint.Z={placementPoint.Z * 304.8:F1}mm - ScheduleLevel.Elevation={scheduleLevel.Elevation * 304.8:F1}mm, Level='{scheduleLevel.Name}')\n");
                                 }
@@ -986,7 +987,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ⚠️ Cluster sleeve {clusterSleeve.Id.IntegerValue}: " +
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ⚠️ Cluster sleeve {clusterSleeve.Id.GetIntegerValue()}: " +
                                 $"Error in fallback calculation: {fallbackEx.Message}\n");
                         }
                     }
@@ -998,7 +999,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ⚠️ Cluster sleeve {clusterSleeve.Id.IntegerValue}: " +
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ⚠️ Cluster sleeve {clusterSleeve.Id.GetIntegerValue()}: " +
                             $"Elevation from Level not available (parameter not found and fallback calculation failed). Skipping Bottom of Opening calculation.\n");
                     }
                     return; // Graceful degradation - skip if Elevation from Level is not available
@@ -1006,24 +1007,24 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
 
                 // ✅ VALIDATION: Check if Elevation from Level is valid
                 if (!elevationFromLevel.HasValue ||
-                    !BottomOfOpeningCalculationService.IsValidScheduleOfLevel(elevationFromLevel.Value))
+                    !Services.Helpers.BottomOfOpeningCalculationService.IsValidScheduleOfLevel(elevationFromLevel.Value))
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ⚠️ Cluster sleeve {clusterSleeve.Id.IntegerValue}: " +
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ⚠️ Cluster sleeve {clusterSleeve.Id.GetIntegerValue()}: " +
                             $"Elevation from Level is invalid (value={elevationFromLevel?.ToString() ?? "null"}) - skipping\n");
                     }
                     return; // Graceful degradation - skip if Elevation from Level is invalid
                 }
 
                 // ✅ VALIDATION: Check if Cluster Height is valid
-                if (!BottomOfOpeningCalculationService.IsValidHeight(clusterHeight))
+                if (!Services.Helpers.BottomOfOpeningCalculationService.IsValidHeight(clusterHeight))
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ⚠️ Cluster sleeve {clusterSleeve.Id.IntegerValue}: " +
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ⚠️ Cluster sleeve {clusterSleeve.Id.GetIntegerValue()}: " +
                             $"Cluster Height is invalid (value={clusterHeight * 304.8:F1}mm) - skipping\n");
                     }
                     return; // Graceful degradation - skip if Cluster Height is invalid
@@ -1055,7 +1056,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
                                 $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ✅ DEFERRED: Added Bottom of Opening={bottomOfOpening * 304.8:F1}mm " +
                                 $"(Elevation from Level={elevationFromLevel.Value * 304.8:F1}mm, Height={clusterHeight * 304.8:F1}mm) " +
-                                $"to deferredParameters for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
+                                $"to deferredParameters for cluster sleeve {clusterSleeve.Id.GetIntegerValue()}\n");
                         }
                     }
                     else
@@ -1066,14 +1067,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
                                 $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ✅ IMMEDIATE: Set Bottom of Opening={bottomOfOpening * 304.8:F1}mm " +
                                 $"(Elevation from Level={elevationFromLevel.Value * 304.8:F1}mm, Height={clusterHeight * 304.8:F1}mm) " +
-                                $"for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
+                                $"for cluster sleeve {clusterSleeve.Id.GetIntegerValue()}\n");
                         }
                     }
                 }
                 else if (!DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ⚠️ Cluster sleeve {clusterSleeve.Id.IntegerValue}: " +
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ⚠️ Cluster sleeve {clusterSleeve.Id.GetIntegerValue()}: " +
                         $"Bottom of Opening parameter not found or read-only - cannot set value\n");
                 }
                 else
@@ -1081,7 +1082,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         SafeFileLogger.SafeAppendText("cluster_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ⚠️ Cluster sleeve {clusterSleeve.Id.IntegerValue}: " +
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SetBottomOfOpeningForCluster] ⚠️ Cluster sleeve {clusterSleeve.Id.GetIntegerValue()}: " +
                             $"'Bottom of Opening' parameter not found or read-only (tried: 'Bottom Of Opening', 'Bottom of Opening', 'BottomOfOpening' on instance and symbol)\n");
                     }
                 }
@@ -1093,7 +1094,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 {
                     SafeFileLogger.SafeAppendText("placement_errors.log",
                         $"[{DateTime.Now:HH:mm:ss.fff}] [ClusterPlacementService] [SetBottomOfOpeningForCluster] ❌ Error setting Bottom of Opening " +
-                        $"for cluster sleeve {clusterSleeve.Id.IntegerValue}: {ex.Message}\n");
+                        $"for cluster sleeve {clusterSleeve.Id.GetIntegerValue()}: {ex.Message}\n");
                 }
             }
         }
@@ -1204,21 +1205,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 {
                     instanceIdParam.Set(-1); // Always set immediately (critical for cleanup)
                     SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetMetadata] ✅ IMMEDIATE (CRITICAL): Set 'Sleeve Instance ID'=-1 for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetMetadata] ✅ IMMEDIATE (CRITICAL): Set 'Sleeve Instance ID'=-1 for cluster sleeve {clusterSleeve.Id.GetIntegerValue()}\n");
                 }
                 else
                 {
                     SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetMetadata] ⚠️ WARNING: 'Sleeve Instance ID' parameter not found or readonly for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetMetadata] ⚠️ WARNING: 'Sleeve Instance ID' parameter not found or readonly for cluster sleeve {clusterSleeve.Id.GetIntegerValue()}\n");
                 }
 
                 // Set Cluster Sleeve Instance ID
                 Parameter? clusterInstanceIdParam = GetParameter(clusterSleeve, "Cluster Sleeve Instance ID");
                 if (clusterInstanceIdParam != null && !clusterInstanceIdParam.IsReadOnly)
                 {
-                    clusterInstanceIdParam.Set(clusterSleeve.Id.IntegerValue); // Always set immediately (critical for cleanup)
+                    clusterInstanceIdParam.Set(clusterSleeve.Id.GetIntegerValue()); // Always set immediately (critical for cleanup)
                     SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetMetadata] ✅ IMMEDIATE (CRITICAL): Set 'Cluster Sleeve Instance ID'={clusterSleeve.Id.IntegerValue} for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetMetadata] ✅ IMMEDIATE (CRITICAL): Set 'Cluster Sleeve Instance ID'={clusterSleeve.Id.GetIntegerValue()} for cluster sleeve {clusterSleeve.Id.GetIntegerValue()}\n");
                     
                     // ✅ PERFORMANCE FIX: Remove per-cluster regeneration to enable batch optimization
                     // Verification will happen after batch flush in RefactoredClusterService (line 623)
@@ -1229,7 +1230,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 else
                 {
                     SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetMetadata] ⚠️ WARNING: 'Cluster Sleeve Instance ID' parameter not found or readonly for cluster sleeve {clusterSleeve.Id.IntegerValue}\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SetMetadata] ⚠️ WARNING: 'Cluster Sleeve Instance ID' parameter not found or readonly for cluster sleeve {clusterSleeve.Id.GetIntegerValue()}\n");
                 }
             }
             catch (Exception ex)
@@ -1339,7 +1340,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
         public Element? GetMepElement(Document doc, ElementId elementId)
         {
             // ✅ CRASH-SAFE: Validate inputs
-            if (doc == null || elementId == null || elementId.IntegerValue <= 0)
+            if (doc == null || elementId == null || elementId.GetIntegerValue() <= 0)
             {
                 return null;
             }
@@ -1924,7 +1925,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
 
             Parameter? clusterInstanceIdParam = GetParameter(clusterSleeve, "Cluster Sleeve Instance ID");
             if (clusterInstanceIdParam != null && !clusterInstanceIdParam.IsReadOnly)
-                clusterInstanceIdParam.Set(clusterSleeve.Id.IntegerValue);
+                clusterInstanceIdParam.Set(clusterSleeve.Id.GetIntegerValue());
         }
 
         /// <summary>
@@ -1978,7 +1979,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss}] 🔄 ROTATION: Skipping rotation for cluster sleeve {inst.Id.IntegerValue} (angle=0.0°, axis-aligned to WCS)\n");
+                        $"[{DateTime.Now:HH:mm:ss}] 🔄 ROTATION: Skipping rotation for cluster sleeve {inst.Id.GetIntegerValue()} (angle=0.0°, axis-aligned to WCS)\n");
                 }
                 return; // No rotation needed - already axis-aligned
             }
@@ -2069,7 +2070,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement
                                        offsetDegrees > 0 ? $" + {offsetDegrees:F1}°" : $" {offsetDegrees:F1}°";
                     
                     SafeFileLogger.SafeAppendText("cluster_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss}] 🔄 ROTATION: Applied {adjustedDegrees:F1}° (original: {originalDegrees:F1}°{offsetText}) to cluster sleeve {inst.Id.IntegerValue}\n");
+                        $"[{DateTime.Now:HH:mm:ss}] 🔄 ROTATION: Applied {adjustedDegrees:F1}° (original: {originalDegrees:F1}°{offsetText}) to cluster sleeve {inst.Id.GetIntegerValue()}\n");
                 }
             }
             catch (Exception ex)

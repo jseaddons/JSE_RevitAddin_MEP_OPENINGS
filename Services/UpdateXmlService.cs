@@ -7,6 +7,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using WinForms = System.Windows.Forms;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -199,7 +200,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     // Use first MEP element's ID (or aggregate if multiple)
                                     if (mepElements.Count == 1)
                                     {
-                                        clashZone.MepElementIdValue = mepElements[0].Id.IntegerValue;
+                                        clashZone.MepElementIdValue = mepElements[0].Id.GetIntegerValue();
                                     }
                                     else
                                     {
@@ -212,7 +213,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                         }
                                         else
                                         {
-                                            clashZone.MepElementIdValue = mepElements[0].Id.IntegerValue;
+                                            clashZone.MepElementIdValue = mepElements[0].Id.GetIntegerValue();
                                         }
                                     }
                                 }
@@ -310,7 +311,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
 
                                 if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[UpdateXmlService] Found {intersectingElements.Count} MEP elements intersecting cluster sleeve {sleeve.Id.IntegerValue}");
+                    DebugLogger.Info($"[UpdateXmlService] Found {intersectingElements.Count} MEP elements intersecting cluster sleeve {sleeve.Id.GetIntegerValue()}");
                 return intersectingElements;
             }
             catch (Exception ex)
@@ -451,4 +452,3 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
     }
 }
-

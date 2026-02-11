@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
 {
@@ -174,7 +175,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         
         public GeometryElement GetGeometry(Element element, Options options)
         {
-            int key = element.Id.IntegerValue;
+            int key = element.Id.GetIntegerValue();
             
             if (_geometryCache.TryGetValue(key, out var cached))
                 return cached;

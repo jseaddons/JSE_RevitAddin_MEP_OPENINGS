@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -43,8 +44,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         if (cz != null && (cz.IsResolved || cz.IsClusterResolved))
                         {
-                            int mepId = cz.MepElementId?.IntegerValue ?? cz.MepElementIdValue;
-                            int structuralId = cz.StructuralElementId?.IntegerValue ?? cz.StructuralElementIdValue;
+                            int mepId = cz.MepElementId?.GetIntegerValue() ?? cz.MepElementIdValue;
+                            int structuralId = cz.StructuralElementId?.GetIntegerValue() ?? cz.StructuralElementIdValue;
 
                             if (mepId > 0 && structuralId > 0)
                             {
@@ -77,8 +78,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (!_skipKnownPairsGeometryCheck || mepElement == null || structuralElement == null)
                 return false;
 
-            int mepId = mepElement.Id.IntegerValue;
-            int structuralId = structuralElement.Id.IntegerValue;
+            int mepId = mepElement.Id.GetIntegerValue();
+            int structuralId = structuralElement.Id.GetIntegerValue();
             return _knownValidPairs.Contains((mepId, structuralId));
         }
 
@@ -109,4 +110,3 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
     }
 }
-

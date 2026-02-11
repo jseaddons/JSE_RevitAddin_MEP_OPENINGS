@@ -9,6 +9,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Geometry;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Placement;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
 {
@@ -382,13 +383,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                                 }
                                 else if (pInstanceId.StorageType == StorageType.Integer)
                                 {
-                                    pInstanceId.Set(placedInstance.Id.IntegerValue);
+                                    pInstanceId.Set(placedInstance.Id.GetIntegerValue());
                                 }
                                 else if (pInstanceId.StorageType == StorageType.String)
                                 {
-                                    pInstanceId.Set(placedInstance.Id.IntegerValue.ToString());
+                                    pInstanceId.Set(placedInstance.Id.GetIntegerValue().ToString());
                                 }
-                                _logger($"[CombinedSleevePlacement] ✅ Set Instance ID parameter '{pInstanceId.Definition.Name}' = {placedInstance.Id.IntegerValue}");
+                                _logger($"[CombinedSleevePlacement] ✅ Set Instance ID parameter '{pInstanceId.Definition.Name}' = {placedInstance.Id.GetIntegerValue()}");
                             }
                             catch (Exception paramEx)
                             {
@@ -450,7 +451,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                                                 scheduleLevelParam.Set(mepLevel.Name);
                                             }
                                             
-                                            _logger($"[CombinedSleevePlacement] ✅ Set Schedule Level to '{mepLevel.Name}' on combined sleeve {placedInstance.Id.IntegerValue}");
+                                            _logger($"[CombinedSleevePlacement] ✅ Set Schedule Level to '{mepLevel.Name}' on combined sleeve {placedInstance.Id.GetIntegerValue()}");
                                         }
                                     }
                                 }
@@ -583,7 +584,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
             // Create combined sleeve data model
             var combinedSleeve = new CombinedSleeve
             {
-                CombinedInstanceId = placedInstance?.Id.IntegerValue ?? -1, // Use actual ID or -1 if failed
+                CombinedInstanceId = placedInstance?.Id.GetIntegerValue() ?? -1, // Use actual ID or -1 if failed
                 ComboId = comboId,
                 FilterId = filterId,
                 Categories = group.Categories,

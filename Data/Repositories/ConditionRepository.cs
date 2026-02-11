@@ -1,5 +1,7 @@
 using System;
+#if !NET8_0_OR_GREATER
 using System.Data.SQLite;
+#endif
 using System.Text.Json;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Models;

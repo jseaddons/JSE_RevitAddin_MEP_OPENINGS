@@ -1,5 +1,6 @@
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
 {
@@ -192,7 +193,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
         public static XYZ GetWallCenterlinePoint(Wall wall, XYZ intersectionPoint, Document hostDocument = null)
         {
             DebugLogger.Log($"[CENTERLINE-DEBUG] ===== WALL CENTERLINE CALCULATION =====");
-            DebugLogger.Log($"[CENTERLINE-DEBUG] Wall ID: {wall?.Id?.IntegerValue}");
+            DebugLogger.Log($"[CENTERLINE-DEBUG] Wall ID: {wall?.Id?.GetIntegerValue()}");
             DebugLogger.Log($"[CENTERLINE-DEBUG] Input intersectionPoint: {intersectionPoint}");
             DebugLogger.Log($"[CENTERLINE-DEBUG] Wall orientation: {wall?.Orientation}");
             
@@ -364,7 +365,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
         public static XYZ GetStructuralFramingCenterlinePoint(Element structuralFraming, XYZ intersectionPoint, Document hostDocument = null)
         {
             DebugLogger.Log($"[CENTERLINE-DEBUG] ===== STRUCTURAL FRAMING CENTERLINE CALCULATION =====");
-            DebugLogger.Log($"[CENTERLINE-DEBUG] Structural Framing ID: {structuralFraming?.Id?.IntegerValue}");
+            DebugLogger.Log($"[CENTERLINE-DEBUG] Structural Framing ID: {structuralFraming?.Id?.GetIntegerValue()}");
             DebugLogger.Log($"[CENTERLINE-DEBUG] Input intersectionPoint: {intersectionPoint}");
             
             if (structuralFraming == null)
@@ -374,7 +375,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
             }
             
             // Check if this is a structural framing element
-            if (structuralFraming.Category.Id.IntegerValue != (int)BuiltInCategory.OST_StructuralFraming)
+            if (structuralFraming.Category.Id.GetIntegerValue() != (int)BuiltInCategory.OST_StructuralFraming)
             {
                 DebugLogger.Log($"[CENTERLINE-DEBUG] Element is not structural framing (Category: {structuralFraming.Category.Name}), returning input point");
                 return intersectionPoint;
@@ -390,10 +391,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                 // StructuralType enum: NonStructural=0, Beam=1, Brace=2, Column=3, Footing=4, UnknownFraming=5
                 if (structuralType == Autodesk.Revit.DB.Structure.StructuralType.NonStructural)
                 {
-                    DebugLogger.Log($"[CENTERLINE-DEBUG] Framing {structuralFraming.Id.IntegerValue} is not structural (StructuralType={structuralType}), returning input point");
+                    DebugLogger.Log($"[CENTERLINE-DEBUG] Framing {structuralFraming.Id.GetIntegerValue()} is not structural (StructuralType={structuralType}), returning input point");
                     return intersectionPoint;
                 }
-                DebugLogger.Log($"[CENTERLINE-DEBUG] Framing {structuralFraming.Id.IntegerValue} is structural (StructuralType={structuralType}), proceeding with centerline calculation");
+                DebugLogger.Log($"[CENTERLINE-DEBUG] Framing {structuralFraming.Id.GetIntegerValue()} is structural (StructuralType={structuralType}), proceeding with centerline calculation");
             }
             
             try
@@ -468,7 +469,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
         public static XYZ GetFloorCenterlinePoint(Element floor, XYZ intersectionPoint)
         {
             DebugLogger.Log($"[CENTERLINE-DEBUG] ===== FLOOR CENTERLINE CALCULATION =====");
-            DebugLogger.Log($"[CENTERLINE-DEBUG] Floor ID: {floor?.Id?.IntegerValue}");
+            DebugLogger.Log($"[CENTERLINE-DEBUG] Floor ID: {floor?.Id?.GetIntegerValue()}");
             DebugLogger.Log($"[CENTERLINE-DEBUG] Input intersectionPoint: {intersectionPoint}");
             
             if (floor == null)
@@ -478,7 +479,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
             }
             
             // Check if this is a floor element
-            if (floor.Category.Id.IntegerValue != (int)BuiltInCategory.OST_Floors)
+            if (floor.Category.Id.GetIntegerValue() != (int)BuiltInCategory.OST_Floors)
             {
                 DebugLogger.Log($"[CENTERLINE-DEBUG] Element is not a floor (Category: {floor.Category.Name}), returning input point");
                 return intersectionPoint;
@@ -495,14 +496,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                     bool isStructural = structuralUsageParam.AsInteger() == 1;
                     if (!isStructural)
                     {
-                        DebugLogger.Log($"[CENTERLINE-DEBUG] Floor {floor.Id.IntegerValue} is not structural (isStructural={isStructural}), returning input point");
+                        DebugLogger.Log($"[CENTERLINE-DEBUG] Floor {floor.Id.GetIntegerValue()} is not structural (isStructural={isStructural}), returning input point");
                         return intersectionPoint;
                     }
-                    DebugLogger.Log($"[CENTERLINE-DEBUG] Floor {floor.Id.IntegerValue} is structural (isStructural={isStructural}), proceeding with centerline calculation");
+                    DebugLogger.Log($"[CENTERLINE-DEBUG] Floor {floor.Id.GetIntegerValue()} is structural (isStructural={isStructural}), proceeding with centerline calculation");
                 }
                 else
                 {
-                DebugLogger.Log($"[CENTERLINE-DEBUG] Floor {floor.Id.IntegerValue} has no structural usage parameter, proceeding with centerline calculation");
+                DebugLogger.Log($"[CENTERLINE-DEBUG] Floor {floor.Id.GetIntegerValue()} has no structural usage parameter, proceeding with centerline calculation");
                 }
             }
             
@@ -569,7 +570,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                 }
                 
                 // If no parameters found, throw error as per StructuralSleevePlacementCommand pattern
-                throw new InvalidOperationException($"Cannot determine structural framing depth: 'b' or 'Width' parameter not set for element ID {structuralFraming.Id.IntegerValue}");
+                throw new InvalidOperationException($"Cannot determine structural framing depth: 'b' or 'Width' parameter not set for element ID {structuralFraming.Id.GetIntegerValue()}");
             }
             catch (System.Exception ex)
             {
@@ -676,7 +677,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
         public static XYZ GetWallCenterlinePointFromRayTrace(Wall wall, XYZ intersectionPoint, Document hostDocument = null)
         {
             DebugLogger.Log($"[CENTERLINE-DEBUG] ===== WALL CENTERLINE FROM RAY-TRACE (LEGACY METHOD) =====");
-            DebugLogger.Log($"[CENTERLINE-DEBUG] Wall ID: {wall?.Id?.IntegerValue}");
+            DebugLogger.Log($"[CENTERLINE-DEBUG] Wall ID: {wall?.Id?.GetIntegerValue()}");
             DebugLogger.Log($"[CENTERLINE-DEBUG] Input intersectionPoint: {intersectionPoint}");
             
             if (wall == null || hostDocument == null)
@@ -841,7 +842,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
             }
             
             // Determine element type and apply appropriate centerline calculation
-            if (element.Category.Id.IntegerValue == (int)BuiltInCategory.OST_Walls)
+            if (element.Category.Id.GetIntegerValue() == (int)BuiltInCategory.OST_Walls)
             {
                 if (element is Wall wall)
                 {
@@ -854,12 +855,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                 else
                     return intersectionPoint;
             }
-            else if (element.Category.Id.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+            else if (element.Category.Id.GetIntegerValue() == (int)BuiltInCategory.OST_StructuralFraming)
             {
                 // ✅ CRITICAL FIX: Pass host document so helper can find transform for linked document framing
                 return GetStructuralFramingCenterlinePoint(element, intersectionPoint, hostDocument);
             }
-            else if (element.Category.Id.IntegerValue == (int)BuiltInCategory.OST_Floors)
+            else if (element.Category.Id.GetIntegerValue() == (int)BuiltInCategory.OST_Floors)
             {
                 return GetFloorCenterlinePoint(element, intersectionPoint);
             }

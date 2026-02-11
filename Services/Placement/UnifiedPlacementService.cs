@@ -7,6 +7,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Utils;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 {
@@ -263,7 +264,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 }
 
                 // 5. Update DB Status
-                _repository.UpdateSleevePlacement(zone.Id, instance.Id.IntegerValue, 
+                _repository.UpdateSleevePlacement(zone.Id, instance.Id.GetIntegerValue(), 
                     zone.CalculatedSleeveWidth, zone.CalculatedSleeveHeight, 0,
                     placementPoint.X, placementPoint.Y, placementPoint.Z,
                     placementPoint.X, placementPoint.Y, placementPoint.Z,
@@ -276,7 +277,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     "Placed", zone.CalculationBatchId);
                     
                 // ✅ UPDATE LOCAL OBJECT: Crucial for snapshot saving later
-                zone.SleeveInstanceId = instance.Id.IntegerValue;
+                zone.SleeveInstanceId = instance.Id.GetIntegerValue();
                 
                 return true;
             }

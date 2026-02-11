@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Services.ParameterExtraction.Interfaces;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.ParameterExtraction.Strategies
 {
@@ -20,8 +21,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ParameterExtraction.Strategies
         public bool CanHandle(Element element)
         {
             if (element?.Category == null) return false;
-            return element.Category.Id.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming ||
-                   element.Category.Id.IntegerValue == (int)BuiltInCategory.OST_StructuralColumns;
+            return element.Category.Id.GetIntegerValue() == (int)BuiltInCategory.OST_StructuralFraming ||
+                   element.Category.Id.GetIntegerValue() == (int)BuiltInCategory.OST_StructuralColumns;
         }
 
         public ElementParameterSnapshot Extract(Element element)
@@ -69,7 +70,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ParameterExtraction.Strategies
                         StorageType.Double => param.AsDouble(),
                         StorageType.Integer => param.AsInteger(),
                         StorageType.String => param.AsString(),
-                        StorageType.ElementId => param.AsElementId()?.IntegerValue,
+                        StorageType.ElementId => param.AsElementId()?.GetIntegerValue(),
                         _ => null
                     };
 

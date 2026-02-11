@@ -199,7 +199,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    DebugLogger.Info($"[RotatedClusterSleevePlacementService] ✅ Successfully placed rotated cluster sleeve {inst.Id.IntegerValue}: W={width * 304.8:F1}mm × H={height * 304.8:F1}mm, Angle={rotationAngle * 180 / Math.PI:F1}°");
+                    DebugLogger.Info($"[RotatedClusterSleevePlacementService] ✅ Successfully placed rotated cluster sleeve {inst.Id.GetIntegerValue()}: W={width * 304.8:F1}mm × H={height * 304.8:F1}mm, Angle={rotationAngle * 180 / Math.PI:F1}°");
                 }
 
                 // Step 10: Database persistence
@@ -464,7 +464,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var clusterSizeLogPath = SafeFileLogger.GetLogFilePath("cluster_size_application.log");
                 var sizeLogBuilder = new System.Text.StringBuilder();
                 sizeLogBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] ========== CLUSTER SIZE APPLICATION ==========");
-                sizeLogBuilder.AppendLine($"Cluster Sleeve ID: {inst.Id.IntegerValue}");
+                sizeLogBuilder.AppendLine($"Cluster Sleeve ID: {inst.Id.GetIntegerValue()}");
                 sizeLogBuilder.AppendLine($"Calculated dimensions:");
                 sizeLogBuilder.AppendLine($"  Width (internal): {width:F6} = {width * 304.8:F1}mm");
                 sizeLogBuilder.AppendLine($"  Height (internal): {height:F6} = {height * 304.8:F1}mm");

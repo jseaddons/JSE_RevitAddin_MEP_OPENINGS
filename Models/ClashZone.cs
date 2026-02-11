@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Xml.Serialization;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Models
 {
@@ -70,7 +71,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// </summary>
         public int MepElementIdValue
         {
-            get => MepElementId?.IntegerValue ?? -1;
+            get => MepElementId?.GetIntegerValue() ?? -1;
             set => MepElementId = value > 0 ? new ElementId(value) : ElementId.InvalidElementId;
         }
         
@@ -91,7 +92,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         /// </summary>
         public int StructuralElementIdValue
         {
-            get => StructuralElementId?.IntegerValue ?? -1;
+            get => StructuralElementId?.GetIntegerValue() ?? -1;
             set => StructuralElementId = value > 0 ? new ElementId(value) : ElementId.InvalidElementId;
         }
         

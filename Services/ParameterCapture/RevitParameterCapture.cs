@@ -5,6 +5,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Electrical;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.ParameterCapture
 {
@@ -55,7 +56,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ParameterCapture
         /// </summary>
         private Parameter LookupParameterWithCategoryFallbacks(Element element, string parameterName)
         {
-            bool isCableTray = element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_CableTray ||
+            bool isCableTray = element.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_CableTray ||
                               element.Category?.Name?.Contains("Cable Tray", StringComparison.OrdinalIgnoreCase) == true ||
                               element is CableTray;
 
@@ -157,7 +158,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ParameterCapture
                         var e = owner?.Document?.GetElement(id);
                         var name = e?.Name;
                         if (!string.IsNullOrWhiteSpace(name)) return name;
-                        return id.IntegerValue.ToString(CultureInfo.InvariantCulture);
+                        return id.GetIntegerValue().ToString(CultureInfo.InvariantCulture);
                     }
                     catch { return string.Empty; }
 
@@ -194,7 +195,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ParameterCapture
             }
 
             // FEATURE 19: Diagnostic logging for duct accessories (deployment mode aware)
-            bool isDuctAccessory = element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory;
+            bool isDuctAccessory = element.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory;
             if (isDuctAccessory && !DeploymentConfiguration.DeploymentMode)
             {
                 DebugLogger.Info($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: Starting parameter capture\n");

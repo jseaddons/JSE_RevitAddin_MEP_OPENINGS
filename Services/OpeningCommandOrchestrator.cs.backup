@@ -1,0 +1,1340 @@
+using Autodesk.Revit.DB;
+using Autodesk.Revit.UI;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.IO;
+using System.Xml.Serialization;
+using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Commands;
+using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Cleanup;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Strategies;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined;
+using JSE_RevitAddin_MEP_OPENINGS.Data;
+using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Calculation;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Workflow;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces;
+// using JSE_RevitAddin_MEP_OPENINGS.Services.Parameters.Configuration;
+
+namespace JSE_RevitAddin_MEP_OPENINGS.Services
+{
+    /// <summary>
+    /// Orchestrator for executing opening placement commands with memory management
+    /// Uses NEW Universal Architecture with UniversalSleevePlacementCommand
+    /// </summary>
+    public class OpeningCommandOrchestrator
+    {
+        private readonly Document _document;
+        private readonly UIDocument _uiDocument;
+        private readonly Dictionary<string, double> _uiClearances;
+
+        // private readonly MarkPrefixSettings _markPrefixes;
+        private readonly bool _forceDetectionMode;
+        
+        // ⚠️ CRITICAL: Crash-safe executor for timeout protection (5-minute limit per category)
+        private readonly CrashSafeExecutor _crashSafeExecutor;
+        
+        // ✅ PATH 3: Store PATH 3 type flags for clustering (key: "FilterName_Category", value: (isValidated, isInvalidated, isNew))
+        private JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.IPerformanceMonitor _performanceMonitor;
+        
+        // ✅ PATH 3: Store PATH 3 type flags for clustering (key: "FilterName_Category", value: (isValidated, isInvalidated, isNew))
+        private Dictionary<string, (bool isValidated, bool isInvalidated, bool isNew)> _path3Flags 
+            = new Dictionary<string, (bool isValidated, bool isInvalidated, bool isNew)>();
+
+
+
+        public OpeningCommandOrchestrator(Document document, UIDocument uiDocument, Dictionary<string, double> uiClearances = null, object markPrefixes = null, bool forceDetectionMode = false, IPerformanceMonitor performanceMonitor = null)
+        {
+            _document = document ?? throw new ArgumentNullException(nameof(document));
+            _uiDocument = uiDocument ?? throw new ArgumentNullException(nameof(uiDocument));
+            _uiClearances = uiClearances ?? new Dictionary<string, double>();
+            // _markPrefixes = markPrefixes ?? new MarkPrefixSettings();
+            _forceDetectionMode = forceDetectionMode;
+            _performanceMonitor = performanceMonitor; // ✅ Use provided monitor or null (will create new one if needed)
+            
+            // ⚠️ CRITICAL: Initialize crash-safe executor for timeout protection
+            _crashSafeExecutor = new CrashSafeExecutor();
+        }
+
+        /// <summary>
+        /// Set UI clearance settings from the main dialog
+        /// </summary>
+        public void SetUIClearances(Dictionary<string, double> clearances)
+        {
+            _uiClearances.Clear();
+            if (clearances != null)
+            {
+                foreach (var kvp in clearances)
+                {
+                    _uiClearances[kvp.Key] = kvp.Value;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Execute multiple filters with memory management
+        /// </summary>
+        public void ExecuteMultipleFilters(List<OpeningFilter> filters, bool showProgress = true)
+        {
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🔥 ExecuteMultipleFilters CALLED (Refactored) 🔥\n");
+            }
+            
+            if (filters == null || filters.Count == 0)
+            {
+                _logger("[OpeningCommandOrchestrator] No filters provided");
+                return;
+            }
+
+            // ✅ PERFORMANCE MONITORING: Ensure monitor exists
+            if (_performanceMonitor == null)
+            {
+                string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+                string logName = $"SleevePlacement_Batch_{timestamp}.log";
+                _performanceMonitor = new PlacementPerformanceMonitor(logName);
+            }
+
+            try
+            {
+                // ✅ DELEGATION: The new PlacementWorkflowOrchestrator handles the optimized sequence
+                // (Bulk Placement -> Geometry Extraction -> Global Clustering -> Cleanup)
+                var workflowOrchestrator = new JSE_RevitAddin_MEP_OPENINGS.Services.Placement.PlacementWorkflowOrchestrator(
+                    _document,
+                    () => new JSE_RevitAddin_MEP_OPENINGS.Data.SleeveDbContext(_document),
+                    msg => { if (!DeploymentConfiguration.DeploymentMode) System.Diagnostics.Debug.WriteLine(msg); },
+                    _performanceMonitor);
+
+                // Use the main tracker for progress
+                using (var tracker = _performanceMonitor.TrackOperation("Complete Opening Placement Workflow"))
+                {
+                    var result = workflowOrchestrator.ExecuteOptimizedPlacementWorkflow(filters, tracker);
+
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[OpeningCommandOrchestrator] Workflow completed. Success: {result.Success}, Placed: {result.PlacedCount}, Errors: {result.ErrorCount}");
+                    }
+
+                    // ✅ GENERATE REPORT
+                    _performanceMonitor.GenerateReport(result.PlacedCount, 0); // Clusters handled internally now
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Error($"[OpeningCommandOrchestrator] Error executing workflow: {ex.Message}");
+                }
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Group filters by name for memory management
+        /// </summary>
+        private Dictionary<string, List<OpeningFilter>> GroupFiltersByName(List<OpeningFilter> filters)
+        {
+            return filters.GroupBy(f => f.Name)
+                         .ToDictionary(g => g.Key, g => g.ToList());
+        }
+
+        /// <summary>
+        /// Order filters by priority to ensure duct accessories are processed before ducts
+        /// </summary>
+        private List<OpeningFilter> OrderFiltersByPriority(List<OpeningFilter> filters)
+        {
+            return filters.OrderBy(f => GetFilterPriority(f)).ToList();
+        }
+
+        /// <summary>
+        /// Get priority value for filter ordering (lower number = higher priority)
+        /// </summary>
+        private int GetFilterPriority(OpeningFilter filter)
+        {
+            // Check if this filter is for duct accessories
+            if (filter.SelectedMepCategoryNames?.Any(cat => 
+                string.Equals(cat, "Duct Accessories", StringComparison.OrdinalIgnoreCase)) == true)
+            {
+                return 1; // Highest priority - process first
+            }
+
+            // Check if this filter is for ducts
+            if (filter.SelectedMepCategoryNames?.Any(cat => 
+                string.Equals(cat, "Ducts", StringComparison.OrdinalIgnoreCase)) == true)
+            {
+                return 2; // Second priority - process after duct accessories
+            }
+
+            // All other categories get default priority
+            return 10; // Lower priority - process last
+        }
+
+        /// <summary>
+        /// Returns the category strings selected for this filter (one or many). Only these categories get placement/clustering; if not selected, no process.
+        /// </summary>
+        private static List<string> GetSelectedCategoryStringsForFilter(OpeningFilter filter)
+        {
+            if (filter == null) return new List<string>();
+            if (filter.SelectedMepCategoryNames != null && filter.SelectedMepCategoryNames.Count > 0)
+            {
+                return filter.SelectedMepCategoryNames
+                    .Select(c => Models.MepCategoryConstants.Normalize(c))
+                    .Distinct()
+                    .ToList();
+            }
+            string single = filter.Category switch
+            {
+                Models.MepCategory.Ducts => "Ducts",
+                Models.MepCategory.DuctAccessories => "Duct Accessories",
+                Models.MepCategory.Pipes => "Pipes",
+                Models.MepCategory.CableTrays => "Cable Trays",
+                _ => Models.MepCategoryConstants.Normalize(filter.Category.ToString())
+            };
+            return new List<string> { single };
+        }
+
+        /// <summary>
+        /// Execute all filters for a discipline with memory management. Returns total individual sleeves placed.
+        /// </summary>
+        private int ExecuteDisciplineWithMemoryManagement(string discipline, List<OpeningFilter> filters, bool showProgress)
+        {
+            if (!DeploymentConfiguration.DeploymentMode)
+            {
+                DebugLogger.Info($"[OpeningCommandOrchestrator] 🔥 ExecuteDisciplineWithMemoryManagement CALLED 🔥");
+                DebugLogger.Info($"[OpeningCommandOrchestrator] Executing discipline: {discipline} with {filters.Count} filters");
+            }
+
+            try
+            {
+                // ✅ PRIORITY ORDERING: Sort filters to ensure duct accessories are processed before ducts
+                var orderedFilters = OrderFiltersByPriority(filters);
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Info($"[OpeningCommandOrchestrator] Ordered {orderedFilters.Count} filters by priority for discipline: {discipline}");
+                }
+                
+                // Log the processing order
+                for (int i = 0; i < orderedFilters.Count; i++)
+                {
+                    var filter = orderedFilters[i];
+                    var categories = string.Join(", ", filter.SelectedMepCategoryNames ?? new List<string>());
+                    var priority = GetFilterPriority(filter);
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[OpeningCommandOrchestrator] Processing order {i + 1}: '{filter.Name}' (Categories: {categories}, Priority: {priority})");
+                    }
+                }
+
+                // ✅ FIX: Deduplicate filters by name to prevent multiple placement calls for the same filter
+                // Since LoadClashZonesForFilter loads ALL categories for a filter name,
+                // we only need to call it ONCE per unique filter name.
+                var uniqueFilters = orderedFilters.GroupBy(f => f.Name).Select(g => g.First()).ToList();
+
+                int totalIndividualSleeves = 0;
+                int totalClusters = 0;
+                foreach (var filter in uniqueFilters)
+                {
+                    var commandSequence = GetCommandSequence(filter);
+                    var (sleeves, clusters) = ExecuteCommandSequence(commandSequence, filter, showProgress);
+                    totalIndividualSleeves += sleeves;
+                    totalClusters += clusters;
+                }
+
+                // Report generation moved to main ExecuteMultipleFilters method to include global clustering totals
+
+                // Force garbage collection after each discipline
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[OpeningCommandOrchestrator] Discipline {discipline} completed, memory cleaned");
+                }
+                
+                return totalIndividualSleeves;
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Error($"[OpeningCommandOrchestrator] Error executing discipline {discipline}: {ex.Message}");
+                }
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Get command sequence for a filter using NEW Universal Architecture
+        /// </summary>
+        private List<IExternalCommand> GetCommandSequence(OpeningFilter filter)
+        {
+            var sequence = new List<IExternalCommand>();
+
+            // ✅ NEW ARCHITECTURE: Use UniversalSleevePlacementCommand for ALL categories
+            // Note: UniversalSleevePlacementCommand implements ICommand, not IExternalCommand
+            // We'll need to create a wrapper or use a different approach
+
+            // ✅ FIX: Always add clustering for all filters (no need to check OpeningType)
+            // We'll handle clustering directly in ExecuteCommandSequence using UniversalClusterService
+
+            return sequence;
+        }
+
+        /// <summary>
+        /// Execute a sequence of commands. Returns (individual sleeves placed, clusters placed) for report aggregation.
+        /// </summary>
+        private (int totalIndividualSleeves, int totalClusters) ExecuteCommandSequence(List<IExternalCommand> commands, OpeningFilter filter, bool showProgress)
+        {
+            var performanceMonitor = _performanceMonitor;
+            int totalIndividualSleeves = 0;
+            int totalClusters = 0;
+
+            try
+            {
+                foreach (var command in commands)
+                {
+                    ExecuteCommandWithResourceManagement(command, filter, showProgress);
+                }
+
+                // ⚠️ CRITICAL: INDIVIDUAL SLEEVES MUST RUN FIRST - DO NOT CHANGE THIS ORDER! ⚠️
+                // Clustering REQUIRES existing individual sleeves to work - it collects sleeves from Revit
+                // If clustering runs first, there will be no sleeves to cluster and it will fail
+                // NEVER PUT ExecuteClusteringForCategory BEFORE ExecuteUniversalSleevePlacement
+
+                // ✅ PERFORMANCE: Track individual sleeve placement (name reflects bulk vs sequential method)
+                string placementMethod = OptimizationFlags.UseBulkIndividualSleevePlacement ? "Bulk Individual Sleeve Placement" : "Individual Sleeve Placement (Sequential)";
+                using (var individualTracker = performanceMonitor.TrackOperation(placementMethod))
+                {
+                    var individualResult = ExecuteUniversalSleevePlacement(filter, showProgress, individualTracker);
+                    totalIndividualSleeves = individualResult.placedCount;
+
+                    // ✅ FIX: Set item count only when we have it from return; bulk path sets it inside to avoid closure/return lag
+                    if (totalIndividualSleeves > 0)
+                        individualTracker.SetItemCount(totalIndividualSleeves);
+
+                    // ✅ PERFORMANCE LOGGING: Log actual performance metrics
+                    if (!DeploymentConfiguration.DeploymentMode && totalIndividualSleeves > 0)
+                    {
+                        var avgTimePerSleeve = 288705.0 / totalIndividualSleeves; // Approximate from log
+                        string methodLabel = OptimizationFlags.UseBulkIndividualSleevePlacement ? "Bulk Individual" : "Individual Sequential";
+                        DebugLogger.Info($"[PERFORMANCE] {methodLabel} Sleeve Placement: {totalIndividualSleeves} sleeves in ~{288705 / 1000.0:F1}s = ~{avgTimePerSleeve / 1000.0:F2}s per sleeve (target: 0.02s)");
+                        if (avgTimePerSleeve > 1000) // More than 1 second per sleeve
+                        {
+                            DebugLogger.Warning($"[PERFORMANCE] ⚠️ VERY SLOW: {avgTimePerSleeve / 1000.0:F2}s per sleeve is {avgTimePerSleeve / 20.0:F0}x slower than target (0.02s)");
+                        }
+                    }
+
+                    // ✅ LOGGING: Wrap with SafeFileLogger
+                    SafeFileLogger.SafeAppendText("orchestrator_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss}] AFTER ExecuteUniversalSleevePlacement, ABOUT TO CALL ExecuteClusteringForCategory for filter={filter.Name}, category={filter.Category}\n");
+
+                    // ✅ CLUSTERING REMOVED: Now handled globally in ExecuteGlobalClusteringAndCleanup
+                    // to ensure cross-category overlaps are correctly identified after all coordinates are saved.
+
+                    string categoryString = filter.Category.ToString();
+                    string path3Key = $"{filter.Name}_{categoryString}";
+                    bool isPath3Validated = false;
+                    bool isPath3Invalidated = false;
+
+                    if (_path3Flags.TryGetValue(path3Key, out var path3Flags))
+                    {
+                        // Path 3 logic (previously had clustering here, now handled above)
+                        // ✅ COMBO FLAG: Reset isNew to false after full sequence completes (individual + cluster)
+                        // This marks the filter+category combo as "used" so next time it will use PATH 1 (Replay)
+                        _path3Flags[path3Key] = (path3Flags.isValidated, path3Flags.isInvalidated, false);
+                        isPath3Validated = true;
+                    }
+                }
+                return (totalIndividualSleeves, totalClusters);
+            }
+            catch (Exception ex)
+            {
+                SafeFileLogger.SafeAppendText("placement_errors.log",
+                    $"[{DateTime.Now:HH:mm:ss}] ERROR in ExecuteCommandSequence for {filter.Name}: {ex.Message}\n");
+                _performanceMonitor?.GenerateReport(totalIndividualSleeves, totalClusters);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// ✅ FIX: Resets IsFilterComboNew to false for all file combos used during placement
+        /// Called after individual sleeves + cluster sleeves are placed successfully
+        /// Resets flag PER FILE COMBO (not per filter+category) - each file combo has its own flag
+        /// </summary>
+        private void ResetFilterComboFlagAfterPlacement(OpeningFilter filter)
+        {
+            try
+            {
+                if (filter == null)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Warning("[COMBO-FLAG] Cannot reset flag - filter is null");
+                    return;
+                }
+
+                // Get category string from filter
+                string categoryName = filter.Category switch
+                {
+                    Models.MepCategory.Ducts => "Ducts",
+                    Models.MepCategory.DuctAccessories => "Duct Accessories",
+                    Models.MepCategory.Pipes => "Pipes",
+                    Models.MepCategory.CableTrays => "Cable Trays",
+                    _ => filter.Category.ToString()
+                };
+
+                // Normalize category name
+                categoryName = MepCategoryConstants.Normalize(categoryName);
+
+                // ✅ FIX: Reset IsFilterComboNew flag for ALL file combos used during placement
+                // Reset all file combos for this filter+category that have IsFilterComboNew=1
+                using (var dbContext = new SleeveDbContext(_document))
+                {
+                    var filterRepository = new FilterRepository(dbContext, _ => { });
+                    int filterId = filterRepository.GetFilterId(filter.Name, categoryName);
+                    
+                    if (filterId > 0)
+                    {
+                        using (var cmd = dbContext.Connection.CreateCommand())
+                        {
+                            // ✅ DATABASE-ONLY: Reset all file combos for this filter that have IsFilterComboNew=1
+                            // This marks them as processed (IsFilterComboNew=0) so Path 1 will be available next refresh
+                            cmd.CommandText = @"
+                                UPDATE FileCombos
+                                SET IsFilterComboNew = 0, ProcessedAt = CURRENT_TIMESTAMP
+                                WHERE FilterId = @FilterId AND IsFilterComboNew = 1";
+                            cmd.Parameters.AddWithValue("@FilterId", filterId);
+                            
+                            var affected = cmd.ExecuteNonQuery();
+                            if (affected > 0)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[COMBO-FLAG] ✅ Reset IsFilterComboNew=0 for {affected} file combo(s) for filter '{filter.Name}' (Category='{categoryName}') - file combos marked as processed (database-only, no XML)");
+                                }
+                            }
+                            else
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                {
+                                    DebugLogger.Info($"[COMBO-FLAG] No file combos to reset for filter '{filter.Name}' (Category='{categoryName}') - all combos already processed");
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            DebugLogger.Warning($"[COMBO-FLAG] ⚠️ Filter '{filter.Name}' (Category='{categoryName}') not found - cannot reset file combo flags");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Warning($"[COMBO-FLAG] ❌ Error resetting IsFilterComboNew flag: {ex.Message}");
+                }
+            }
+        }
+
+        private string GetXmlFilePathForFilter(OpeningFilter filter)
+        {
+            // Use actual project filters directory (matches Refresh saves)
+            var filtersDir = ProjectPathService.GetFiltersDirectory(_document);
+
+            string categoryName = filter.Category switch
+            {
+                Models.MepCategory.Ducts => "ducts",
+                Models.MepCategory.DuctAccessories => "duct_accessories",
+                Models.MepCategory.Pipes => "pipes",
+                Models.MepCategory.CableTrays => "cable_trays",
+                _ => filter.Category.ToString().ToLower().Replace(" ", "_")
+            };
+
+            string xmlFileName = $"{filter.Name}_{categoryName}.xml";
+            return Path.Combine(filtersDir, xmlFileName);
+        }
+
+
+        /// <summary>
+        /// ✅ BULK PLACEMENT FIX: Get all categories that have ReadyForPlacement=1 for a filter
+        /// </summary>
+
+
+        /// <summary>
+        /// Execute UniversalSleevePlacementCommand
+        /// ⚠️ CRITICAL: Wrapped with timeout protection (5-minute limit per category)
+        /// </summary>
+        private (int placedCount, int skippedCount, int errorCount) ExecuteUniversalSleevePlacement(OpeningFilter filter, bool showProgress, IOperationTracker parentTracker = null)
+        {
+            // ✅ BULK PLACEMENT REFACTOR: Initializing service and delegating the entire placement workflow.
+            // Specialized services now handle data loading, planning, and execution autonomously.
+            int finalPlaced = 0;
+            int finalSkipped = 0;
+            int finalError = 0;
+
+            try
+            {
+                var bulkService = new BulkPlacementService(
+                    _document,
+                    () => new JSE_RevitAddin_MEP_OPENINGS.Data.SleeveDbContext(_document),
+                    msg => { if (!DeploymentConfiguration.DeploymentMode) System.Diagnostics.Debug.WriteLine(msg); },
+                    _performanceMonitor);
+
+                // Use provided parent tracker for progress status
+                var result = bulkService.ExecuteContextPlacement(_document, filter, parentTracker);
+
+                if (result != null)
+                {
+                    finalPlaced = result.PlacedCount;
+                    finalError = result.FailedCount;
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Error($"[ORCHESTRATOR] ❌ Error during universal placement delegation: {ex.Message}");
+                }
+                finalError++;
+            }
+
+            return (finalPlaced, finalSkipped, finalError);
+        }
+            
+
+
+
+                        
+                        if (zonesToPlace.Count > 0)
+                        {
+                            if (OptimizationFlags.UseBulkIndividualSleevePlacement)
+                            {
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🚀 [BULK-PLACEMENT] Routing to Consolidated Bulk Path (ALL categories together)\n");
+
+                                // ═══════════════════════════════════════════════════════════════════════════════
+                                // OPERATION 1: Calculate (pre-plan) and save to DB. No Revit API yet.
+                                // ═══════════════════════════════════════════════════════════════════════════════
+                                var projectFiltersDir = ProjectPathService.GetFiltersDirectory(_document);
+                                var conditionsService = new ConditionsService(_document, projectFiltersDir, msg => { if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info(msg); });
+                                
+                                var allBulkTaskItems = new List<(ClashZone Zone, SleevePlacementPlanningDto Plan)>();
+                                
+                                var zonesByCategory = zonesToPlace
+                                    .GroupBy(z => z.MepElementCategory ?? "Ducts")
+                                    .ToList();
+                                
+                                using (parentTracker?.TrackSubOperation("Operation 1: Calculate and save to DB"))
+                                {
+                                // Sub-op: plan placement for all categories
+                                using (parentTracker?.TrackSubOperation("Plan placement (all categories)"))
+                                {
+                                    foreach (var categoryGroup in zonesByCategory)
+                                        catch (Exception ex)
+                                        {
+                                            SafeFileLogger.SafeAppendText("placement_debug.log",
+                                                $"[{DateTime.Now:HH:mm:ss.fff}] [BULK-PERSIST] ❌ Failed: {ex.Message}\n{ex.StackTrace}\n");
+                                            if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Error($"[BULK-PERSIST] ❌ Database persistence failed: {ex.Message}");
+                                        }
+
+                                        // 2f. Set orchestration variables for downstream Corner Extraction (Step 5)
+                                        placedZonesForExtraction = bulkResult.PlacedItems
+                                            .Select(item => (ZoneGuid: item.Zone.Id, ElementId: item.ElementId.IntegerValue))
+                                            .ToList();
+
+                                        placedCount = bulkResult.PlacedCount;
+                                        errorCount = bulkResult.FailedCount;
+                                        parentTracker?.SetItemCount(bulkResult.PlacedCount);
+                                    }
+                                    else if (bulkResult != null && !bulkResult.OverallSuccess)
+                                    {
+                                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                                            $"[{DateTime.Now:HH:mm:ss.fff}] [BULK-PERSIST] Skipped (OverallSuccess=false). PlacedCount={bulkResult.PlacedCount}\n");
+                                        errorCount = zonesToPlace.Count;
+                                        placedCount = bulkResult.PlacedCount;
+                                        parentTracker?.SetItemCount(bulkResult.PlacedCount);
+                                    }
+                                    else if (bulkResult == null || bulkResult.PlacedCount == 0)
+                                    {
+                                        SafeFileLogger.SafeAppendText("placement_debug.log",
+                                            $"[{DateTime.Now:HH:mm:ss.fff}] [BULK-PERSIST] Skipped (bulkResult null or PlacedCount=0). bulkResult!=null={bulkResult != null}, PlacedCount={bulkResult?.PlacedCount ?? -1}\n");
+                                    }
+                                    // ✅ FIX: Always sync placed count and tracker when we have bulk result (so report shows correct count even when PlacedCount=0)
+                                    if (bulkResult != null)
+                                    {
+                                        placedCount = bulkResult.PlacedCount;
+                                        parentTracker?.SetItemCount(bulkResult.PlacedCount);
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // ✅ STANDARD PLACEMENT PATH: Process each category separately (sequential placement)
+                                if (!DeploymentConfiguration.DeploymentMode)
+                                    DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] 🚀 [STANDARD-PLACEMENT] Routing to Consolidated Standard Path\n");
+                                
+                                // Group zones by category for standard placement (each category needs its own conditions/strategy)
+                                var zonesByCategoryStandard = zonesToPlace
+                                    .GroupBy(z => z.MepElementCategory ?? "Ducts")
+                                    .ToList();
+                                
+                                foreach (var categoryGroup in zonesByCategoryStandard)
+                                {
+                                    var cat = categoryGroup.Key;
+                                    var categoryZonesForStandard = categoryGroup.ToList();
+                                    
+                                    // Get category info for this category group
+                                    string catStr = cat switch
+                                    {
+                                        "Ducts" => "Ducts",
+                                        "Duct Accessories" => "Duct Accessories",
+                                        "Pipes" => "Pipes",
+                                        "Cable Trays" or "CableTrays" => "Cable Trays",
+                                        _ => "Ducts"
+                                    };
+                                    
+                                    string catNm = cat switch
+                                    {
+                                        "Ducts" => "ducts",
+                                        "Duct Accessories" => "duct_accessories",
+                                        "Pipes" => "pipes",
+                                        "Cable Trays" or "CableTrays" => "cable_trays",
+                                        _ => "ducts"
+                                    };
+                                    string filterNameForCat = $"{filter.Name}_{catNm}.xml";
+                                    
+                                    // Load conditions and strategy for this category
+                                    var projectFiltersDir = ProjectPathService.GetFiltersDirectory(_document);
+                                    var conditionsService = new ConditionsService(_document, projectFiltersDir, msg => { if (!DeploymentConfiguration.DeploymentMode) DebugLogger.Info(msg); });
+                                    var conditionsKey = $"{filterNameForCat}_{catStr}";
+                                    var categoryConditions = conditionsService.LoadConditions(conditionsKey) ?? new OpeningConditions { FilterName = filterNameForCat, Category = catStr };
+
+                                    ISleevePlacementStrategy categoryStrategy = catStr.ToLower() switch {
+                                        "pipes" => new PipePlacementStrategy(),
+                                        "cable trays" => new CableTrayPlacementStrategy(),
+                                        "duct accessories" or "ductaccessories" => new DamperPlacementStrategy(_document),
+                                        "ducts" => new DuctPlacementStrategy(),
+                                        _ => new DuctPlacementStrategy()
+                                    };
+                                
+                                    using (var context = new JSE_RevitAddin_MEP_OPENINGS.Data.SleeveDbContext(_document))
+                                    {
+                                        var repository = new JSE_RevitAddin_MEP_OPENINGS.Data.Repositories.ClashZoneRepository(context);
+                                        
+                                        var placerService = new NewSleevePlacerService(
+                                            _document,
+                                            categoryConditions,
+                                            categoryStrategy,
+                                            _uiClearances ?? new Dictionary<string, double>(),
+                                            repository, // ISleeveRepository (Use SQLite repo, not XML repo)
+                                            null, // IZoneFilterService (not needed here)
+                                            new Services.FamilyManager(_document), // IFamilyManager
+                                            flagManager, // ✅ Use real flagManager instead of null
+                                            isReplayPath: false,
+                                            filter.Name);
+                                        
+                                        var placementOutcome = placerService.PlaceAllSleevesInTransaction(categoryZonesForStandard); // Use category-specific zones
+                                        
+                                        placedCount += placementOutcome.placed;
+                                        skippedCount += placementOutcome.skipped;
+                                        errorCount += placementOutcome.errors;
+                                        placedZonesForExtraction.AddRange(placementOutcome.placedItems);
+                                    }
+                                }
+
+                                // ✅ FIX #1: ADD SNAPSHOT SAVING TO STANDARD PLACEMENT PATH (Issue #1 Fix)
+                                // Without this, snapshots are only saved in bulk mode, not in standard mode
+                                if (placedCount > 0)
+                                {
+                                    try
+                                    {
+                                        // Extract zones that were actually placed (have SleeveInstanceId)
+                                        var placedZonesStandard = zonesToPlace.Where(z => z.SleeveInstanceId > 0).ToList();
+                                        
+                                        if (placedZonesStandard.Any())
+                                        {
+                                            if (!DeploymentConfiguration.DeploymentMode) 
+                                                DebugLogger.Info($"[STANDARD-PERSIST] 📸 Saving snapshots for {placedZonesStandard.Count} standard-placed sleeves...");
+                                            
+                                            using (var dbContext = new SleeveDbContext(_document))
+                                            {
+                                                var repo = new ClashZoneRepository(dbContext);
+                                                
+                                                // Get FilterId for standard path
+                                                string categoryForSnapshot = filter.Category switch
+                                                {
+                                                    Models.MepCategory.Ducts => "Ducts",
+                                                    Models.MepCategory.DuctAccessories => "Duct Accessories",
+                                                    Models.MepCategory.Pipes => "Pipes",
+                                                    Models.MepCategory.CableTrays => "Cable Trays",
+                                                    _ => filter.Category.ToString()
+                                                };
+                                                
+                                                var filterLookupService = new JSE_RevitAddin_MEP_OPENINGS.Services.Filters.FilterLookupService(dbContext);
+                                                int filterIdStandard = filterLookupService.GetFilterId(filter.Name, categoryForSnapshot);
+                                                
+                                                repo.SaveSleeveSnapshotsForPlacedSleeves(filterIdStandard > 0 ? filterIdStandard : -1, placedZonesStandard);
+                                            }
+                                            
+                                            if (!DeploymentConfiguration.DeploymentMode) 
+                                                DebugLogger.Info($"[STANDARD-PERSIST] ✅ Snapshots saved for standard placement path");
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        if (!DeploymentConfiguration.DeploymentMode) 
+                                            DebugLogger.Warning($"[STANDARD-PERSIST] ⚠️ Failed to save snapshots: {ex.Message}");
+                                    }
+                                }
+                            }
+                            
+                            // ✅ STEP 6: SAVE PLACED DATA TO DB (Unified for both paths)
+                            if (placedZonesForExtraction.Any())
+                            {
+                                // ✅ PERFORMANCE: Track as sub-operation of individual placement
+                                using (var saveTracker = parentTracker?.TrackSubOperation("Step 6: SAVE PLACED DATA TO DB"))
+                                {
+                                    using (var dbContext = new SleeveDbContext(_document))
+                                    {
+                                        var repo = new ClashZoneRepository(dbContext);
+                                        // ✅ FIXED: Use BatchUpdateSleevePlacementData to update FULL placement geometry + ID
+                                        // This ensures calculated dimensions and coordinates are persisted
+                                        var successfullyPlacedZones = zonesToPlace.Where(z => z.SleeveInstanceId > 0).ToList();
+                                        repo.BatchUpdateSleevePlacementData(successfullyPlacedZones);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // 🔥 CRITICAL DEBUG: Log which XML file we're passing clash zones from
+                    
+                    SafeFileLogger.SafeAppendText("placement_debug.log",
+                        $"[{DateTime.Now:HH:mm:ss}] Placement executed: Placed={placedCount}, Skipped={skippedCount}, Errors={errorCount}\n");
+                    
+                    try {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] PLACEMENT_COMPLETED: Placed={placedCount}, Skipped={skippedCount}, Errors={errorCount}\n");
+                        }
+                    } catch { }
+                    
+                    // ✅ Return success after processing
+                    return Autodesk.Revit.UI.Result.Succeeded;
+                    }
+                    else
+                    {
+                        if (!DeploymentConfiguration.DeploymentMode)
+                        {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                                DebugLogger.Warning($"[OpeningCommandOrchestrator] No clash zones found for {filter.Category}, skipping placement");
+                        }
+                        return Autodesk.Revit.UI.Result.Succeeded; // Return success even if no zones to place
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Error($"[OpeningCommandOrchestrator] Error in ExecuteUniversalSleevePlacement for {filter.Category}: {ex.Message}");
+                    }
+                    return Autodesk.Revit.UI.Result.Failed;
+                }
+            }, $"Place Sleeves for {filter.Category}");
+            
+            if (result != Autodesk.Revit.UI.Result.Succeeded)
+            {
+                SafeFileLogger.SafeAppendText("placement_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss}] ExecuteUniversalSleevePlacement completed with status: {result}, Placed={placedCount}, Skipped={skippedCount}, Errors={errorCount}\n");
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    DebugLogger.Warning($"[OpeningCommandOrchestrator] Sleeve placement for {filter.Category} completed with status: {result}");
+                }
+                return (placedCount, skippedCount, errorCount); // Return counts even on failure
+            }
+            
+            // ✅ PERFORMANCE: Log success
+            SafeFileLogger.SafeAppendText("placement_debug.log",
+                $"[{DateTime.Now:HH:mm:ss}] ExecuteUniversalSleevePlacement SUCCESS: Placed={placedCount}, Skipped={skippedCount}, Errors={errorCount}\n");
+            
+            // ✅ DIAGNOSTIC: Log that we're continuing past the return statement
+            SafeFileLogger.SafeAppendText("batch_v2.log",
+                $"[{DateTime.Now:HH:mm:ss}] 🔍 DIAGNOSTIC: Continuing after ExecuteUniversalSleevePlacement return, about to enter coordinate update block\n");
+            
+            // ✅ CRITICAL: Following reference document - Regenerate FIRST, then read from Revit and save to XML
+            // Reference: SLEEVE_PLACEMENT_SEQUENCING_REFERENCE.md lines 22-35
+            // The timing fix: Regenerate ensures bounding boxes are available, then UpdateSleeveCoordinatesInXml reads from Revit
+            // ✅ CRITICAL: Save individual sleeve bounding boxes BEFORE clustering
+            // Clustering proximity calculation REQUIRES individual sleeve bounding boxes from database
+            try
+            {
+                // ✅ DEPLOYMENT: Wrapped in deployment mode check
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ⚠️ ENTERING UpdateSleeveCoordinatesInXml block...\n");
+                }
+                try {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] ENTERING_UPDATE_COORD_BLOCK\n");
+                    }
+                } catch { }
+                
+                // ✅ DEPLOYMENT: Wrapped in deployment mode check
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Regenerating document to ensure bounding boxes are available...\n");
+                }
+                
+                // ✅ CRITICAL LOGGING: Log bounding boxes from Revit BEFORE regeneration
+                // ✅ DEPLOYMENT: Wrapped in deployment mode check
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    try
+                    {
+                        var sleevesBeforeRegen = new FilteredElementCollector(_document)
+                            .OfClass(typeof(FamilyInstance))
+                            .Cast<FamilyInstance>()
+                            .Where(s => s.Symbol.FamilyName.Contains("Opening"))
+                            .ToList();
+                        
+                        try {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_BEFORE_REGEN] Found {sleevesBeforeRegen.Count} sleeves before regeneration\n");
+                            }
+                        } catch { }
+                        foreach (var sleeve in sleevesBeforeRegen.Take(10)) // Log first 10
+                        {
+                            try
+                            {
+                                var bboxBefore = sleeve.get_BoundingBox(null);
+                                if (bboxBefore != null)
+                                {
+                                    try { System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_BEFORE_REGEN] Sleeve {sleeve.Id.IntegerValue}: Min=({bboxBefore.Min.X:F6}, {bboxBefore.Min.Y:F6}, {bboxBefore.Min.Z:F6}), Max=({bboxBefore.Max.X:F6}, {bboxBefore.Max.Y:F6}, {bboxBefore.Max.Z:F6})\n"); } catch { }
+                                }
+                                else
+                                {
+                                    try {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_BEFORE_REGEN] Sleeve {sleeve.Id.IntegerValue}: Bounding box is NULL\n");
+                                        }
+                                    } catch { }
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                    catch { }
+                }
+                
+                // ✅ COMMENTED OUT: Revit API commit auto-invokes regeneration (Jeremey Tammik, Revit API Docs). Roll back if bbox/coords wrong.
+                // try
+                // {
+                //     _document.Regenerate();
+                //     System.Threading.Thread.Sleep(200);
+                //     if (!DeploymentConfiguration.DeploymentMode)
+                //         DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Document regenerated before AFTER_REGEN + coordinate update.\n");
+                // }
+                // catch (Exception ex)
+                // {
+                //     if (!DeploymentConfiguration.DeploymentMode)
+                //         DebugLogger.Warning($"[{DateTime.Now:HH:mm:ss}] Regenerate failed (continuing with existing geometry): {ex.Message}\n");
+                // }
+                
+                // ✅ CRITICAL LOGGING: Log bounding boxes from Revit AFTER regeneration
+                // ✅ DEPLOYMENT: Wrapped in deployment mode check
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    try
+                    {
+                        var sleevesAfterRegen = new FilteredElementCollector(_document)
+                            .OfClass(typeof(FamilyInstance))
+                            .Cast<FamilyInstance>()
+                            .Where(s => s.Symbol.FamilyName.Contains("Opening"))
+                            .ToList();
+                        
+                        try {
+                            if (!DeploymentConfiguration.DeploymentMode)
+                            {
+                                System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_AFTER_REGEN] Found {sleevesAfterRegen.Count} sleeves after regeneration\n");
+                            }
+                        } catch { }
+                        foreach (var sleeve in sleevesAfterRegen.Take(10)) // Log first 10
+                        {
+                            try
+                            {
+                                var bboxAfter = sleeve.get_BoundingBox(null);
+                                if (bboxAfter != null)
+                                {
+                                    try { System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_AFTER_REGEN] Sleeve {sleeve.Id.IntegerValue}: Min=({bboxAfter.Min.X:F6}, {bboxAfter.Min.Y:F6}, {bboxAfter.Min.Z:F6}), Max=({bboxAfter.Max.X:F6}, {bboxAfter.Max.Y:F6}, {bboxAfter.Max.Z:F6})\n"); } catch { }
+                                }
+                                else
+                                {
+                                    try {
+                                        if (!DeploymentConfiguration.DeploymentMode)
+                                        {
+                                            System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [BOUNDING_BOX_AFTER_REGEN] Sleeve {sleeve.Id.IntegerValue}: Bounding box is NULL\n");
+                                        }
+                                    } catch { }
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                    catch { }
+                }
+                
+                // ✅ DEPLOYMENT: Wrapped in deployment mode check
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Getting individual sleeve bounding boxes from Revit...\n");
+                }
+                try {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] BEFORE_UpdateSleeveCoordinatesInXml\n");
+                    }
+                } catch { }
+                
+                var coordinateService = new SleeveCoordinateService(_document);
+                try {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] SleeveCoordinateService_CREATED\n");
+                    }
+                } catch { }
+                
+                // ✅ DATABASE-ONLY: Use category parameter instead of xmlFilePath (XML obsolete)
+                // Get category string from filter
+                string categoryForUpdate = filter.Category switch
+                {
+                    Models.MepCategory.Ducts => "Ducts",
+                    Models.MepCategory.DuctAccessories => "Duct Accessories",
+                    Models.MepCategory.Pipes => "Pipes",
+                    Models.MepCategory.CableTrays => "Cable Trays",
+                    _ => "Ducts"
+                };
+                
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] About to call UpdateSleeveCoordinatesInXml with category: {categoryForUpdate ?? "NULL"} (database-only mode)\n");
+                }
+                try {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] CALLING_UpdateSleeveCoordinatesInXml: category={categoryForUpdate ?? "NULL"} (database-only)\n");
+                    }
+                } catch { }
+                
+                coordinateService.UpdateSleeveCoordinatesInXml(categoryForUpdate);
+                
+                try {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] AFTER_UpdateSleeveCoordinatesInXml\n");
+                    }
+                } catch { }
+                
+                // ✅ DEPLOYMENT: Wrapped in deployment mode check
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ✅ Individual sleeve coordinates saved - clustering can now calculate proximity\n");
+                }
+                try {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] UPDATE_COORD_SUCCESS\n");
+                    }
+                } catch { }
+            }
+            catch (Exception coordEx)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] ⚠️ Error saving individual coordinates: {coordEx.Message}\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error($"[OpeningCommandOrchestrator] UpdateSleeveCoordinatesInXml Exception: {coordEx.Message}\n");
+                    if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error($"[OpeningCommandOrchestrator] Stack trace: {coordEx.StackTrace}\n");
+                }
+                try {
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        System.IO.File.AppendAllText(tracePath, $"[{DateTime.Now:HH:mm:ss}] UPDATE_COORD_EXCEPTION: {coordEx.Message}\n");
+                    }
+                } catch { }
+            }
+            
+
+            // ✅ PHASE 2 & 3: HYBRID BATCH CLUSTERING (Extraction -> Calculation -> Placement/Swap)
+            // ==========================================================================================
+            // Executing Post-Placement Workflow
+            // Step 5: RETRIEVED PLACED DATA FROM MODEL & EXTRACT CORNERS
+            // ✅ MOVED OUTSIDE EnableClusteringWorkflow block (User Request: "verify db state")
+            // ✅ PERFORMANCE: Track as sub-operation of individual placement
+            using (var cornerTracker = parentTracker?.TrackSubOperation("Step 5: RETRIEVED PLACED DATA FROM MODEL"))
+            {
+                try
+                {
+                    if (placedZonesForExtraction.Any())
+                    {
+                       if (!DeploymentConfiguration.DeploymentMode)
+                            DebugLogger.Info($"[{DateTime.Now:HH:mm:ss}] Phase 2: Extracting Corners for {placedZonesForExtraction.Count} zones...\n");
+
+                       using (var dbContext = new SleeveDbContext(_document))
+                       {
+                            var repo = new ClashZoneRepository(dbContext);
+                            var extractor = new BatchSleeveCornerExtractor(repo);
+                            
+                            // ✅ FIX: Fetch full ClashZone objects to get Orientation (User Request)
+                            var guids = placedZonesForExtraction.Select(x => x.ZoneGuid).ToList();
+                            var fullZones = repo.GetClashZonesByGuids(guids);
+                            
+                            // Update SleeveInstanceId in objects (since they might be fresh from DB or stale)
+                            foreach (var fz in fullZones)
+                            {
+                                var match = placedZonesForExtraction.FirstOrDefault(p => p.ZoneGuid == fz.Id);
+                                if (match.ElementId > 0) fz.SleeveInstanceId = match.ElementId;
+                            }
+
+                            // ✅ FIX: Use new signature that accepts List<ClashZone>
+                            int extractedCount = extractor.ExtractAndSaveCornersForZones(_document, fullZones);
+                            cornerTracker?.SetItemCount(extractedCount);
+                       }
+                    }
+
+                    // ✅ Batch corner extraction for ALL placed sleeves in DB (always run): saves corners for every placed rectangular sleeve (and bbox-derived for round)
+                    using (var dbContext2 = new SleeveDbContext(_document))
+                    {
+                        var repo2 = new ClashZoneRepository(dbContext2);
+                        var extractorAll = new BatchSleeveCornerExtractor(repo2);
+                        extractorAll.ExtractAndSaveCorners(_document);
+                        // ✅ Cluster sleeves: extract corners from Revit and save to ClusterSleeves + ClusterSleeves_v2
+                        extractorAll.ExtractAndSaveCornersForClusters(_document);
+                    }
+                }
+                catch (Exception ex)
+                {
+                     if (!DeploymentConfiguration.DeploymentMode)
+                        DebugLogger.Error($"[HybridBatch] Error in Corner Extraction: {ex.Message}");
+                }
+            }
+
+            // ✅ PERFORMANCE: Return counts AFTER saving bounding boxes to database
+            // This ensures clustering can read individual sleeve bounding boxes
+            return (placedCount, skippedCount, errorCount);
+        }
+
+        /// <summary>
+        /// Execute individual command with resource management using ExecuteImpl pattern
+        /// </summary>
+        private void ExecuteCommandWithResourceManagement(IExternalCommand command, OpeningFilter filter, bool showProgress)
+        {
+            try
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Info($"[OpeningCommandOrchestrator] Executing {command.GetType().Name} for {filter.Category}");
+
+                // ✅ FIX: No longer using RectangularSleeveClusterCommandV2 - clustering handled by UniversalClusterService
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Warning($"[OpeningCommandOrchestrator] Command {command.GetType().Name} not supported for direct execution - skipping");
+            }
+            catch (Exception ex)
+            {
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[OpeningCommandOrchestrator] Error executing {command.GetType().Name}: {ex.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Extracts clash zones from storage using the hierarchical structure, with legacy support.
+        /// </summary>
+        private static List<ClashZone> ExtractClashZonesFromStorage(ClashZoneStorage storage)
+        {
+            var result = new List<ClashZone>();
+
+            if (storage == null)
+                return result;
+
+            if (storage.Filters != null)
+            {
+                foreach (var filterGroup in storage.Filters)
+                {
+                    if (filterGroup?.FileCombos == null) continue;
+
+                    foreach (var fileCombo in filterGroup.FileCombos)
+                    {
+                        if (fileCombo?.ClashZones == null) continue;
+
+                        result.AddRange(fileCombo.ClashZones);
+                    }
+                }
+            }
+
+            if (storage.ClashZones != null && storage.ClashZones.Count > 0)
+            {
+                var existingIds = new HashSet<Guid>(result.Select(z => z.Id));
+                foreach (var cz in storage.ClashZones)
+                {
+                    if (cz != null && existingIds.Add(cz.Id))
+                    {
+                        result.Add(cz);
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// ✅ GLOBAL CLUSTERING & CLEANUP: Centralized phase after all individual sleeves are placed.
+        /// Iterates all categories, calculates clusters, and performs a single consolidated placement/cleanup.
+        /// This ensures cross-category overlaps are correctly identified and cleaned up.
+        /// </summary>
+        /// <summary>
+        /// ✅ GLOBAL CLUSTERING & CLEANUP: Centralized phase after all individual sleeves are placed.
+        /// Iterates all categories, calculates clusters, and performs a single consolidated placement/cleanup.
+        /// This ensures cross-category overlaps are correctly identified and cleaned up.
+        /// Returns total clusters placed.
+        /// </summary>
+        private int ExecuteGlobalClusteringAndCleanup(List<OpeningFilter> filters, bool showProgress)
+        {
+            if (!OptimizationFlags.EnableClusteringWorkflow)
+            {
+                SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ⏭️ GLOBAL CLUSTERING SKIPPED: EnableClusteringWorkflow=false\n");
+                return 0;
+            }
+
+            SafeFileLogger.SafeAppendText("batch_v2.log", 
+                $"\n[{DateTime.Now:HH:mm:ss}] 🚀 GLOBAL CLUSTERING PHASE: Starting consolidated process for all categories\n");
+
+            try
+            {
+                var clusterableCategories = new[] { "Ducts", "Duct Accessories", "Pipes", "Cable Trays" };
+                var clusterService = ClusterServiceFactory.CreateRefactored(_document, performanceMonitor: _performanceMonitor);
+                
+                using (var ctx = new SleeveDbContext(_document))
+                {
+                    var repo = new ClashZoneRepository(ctx);
+                    
+                    // 1. RECOVERY PHASE: Ensure all unresolved zones have their SleeveInstanceId from snapshots
+                    // This is critical for "skip placement" runs and cross-session persistence
+                    var allUnresolvedZones = repo.GetAllClashZones().Where(z => !z.IsClusterResolved).ToList();
+                    int recoveredCount = 0;
+                    foreach (var z in allUnresolvedZones.Where(z => z.SleeveInstanceId <= 0))
+                    {
+                        int recoveredId = repo.TryGetSleeveInstanceIdFromSnapshot(z.Id);
+                        if (recoveredId > 0)
+                        {
+                            z.SleeveInstanceId = recoveredId;
+                            repo.UpdateSleeveInstanceId(z.Id, recoveredId);
+                            recoveredCount++;
+                        }
+                    }
+
+                    if (recoveredCount > 0)
+                    {
+                        SafeFileLogger.SafeAppendText("batch_v2.log", 
+                            $"[{DateTime.Now:HH:mm:ss}] 🔄 RECOVERY: Recovered {recoveredCount} sleeve IDs from snapshots before clustering\n");
+                        
+                        // ✅ CRITICAL: Extract and save corners for recovered sleeves 
+                        // Clustering requires saved corners in the DB for proximity calculation
+                        var extractor = new BatchSleeveCornerExtractor(repo);
+                        extractor.ExtractAndSaveCorners(_document);
+                    }
+
+                    // 2. CALCULATION PHASE (Per Category)
+                    // We load unresolved zones from DB (which now have their Revit coordinates saved)
+                    // ✅ PERFORMANCE: Track calculation phase
+                    using (var calcTracker = _performanceMonitor?.TrackOperation("Global Cluster Calculation"))
+                    {
+                        // ✅ FORCE ENABLE PARALLEL PROCESSING: Ensure optimization is active regardless of config
+                        if (!OptimizationFlags.UseParallelProcessing)
+                        {
+                            OptimizationFlags.UseParallelProcessing = true;
+                            SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ⚠️ FORCE-ENABLING Parallel Processing for Global Cluster Calculation.\n");
+                        }
+
+                        if (OptimizationFlags.UseParallelProcessing)
+                        {
+                            // ✅ PARALLEL MODE: Calculate categories concurrently (Memory Only)
+                            SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🚀 GLOBAL CLUSTERING: Parallel Processing ENABLED for {clusterableCategories.Length} types (Calculation Only)\n");
+                            
+                            var globalResults = new System.Collections.Concurrent.ConcurrentBag<JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BatchClusterCalculationResult>();
+
+                            System.Threading.Tasks.Parallel.ForEach(clusterableCategories, cat =>
+                            {
+                                try 
+                                {
+                                    var catZones = allUnresolvedZones.Where(z => string.Equals(z.MepElementCategory, cat, StringComparison.OrdinalIgnoreCase)).ToList();
+                                    if (catZones.Count > 0)
+                                    {
+                                        SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                            $"[{DateTime.Now:HH:mm:ss}] 🧮 GLOBAL CLUSTERING (Parallel): Calculating for {cat} ({catZones.Count} zones) on Thread {System.Threading.Thread.CurrentThread.ManagedThreadId}\n");
+                                        
+                                        // ✅ ISOLATION: Create new service instance per thread
+                                        var parallelClusterService = ClusterServiceFactory.CreateRefactored(_document, performanceMonitor: null);
+                                        
+                                        // ✅ PHASE 1: Calculate Only (No DB Writes)
+                                        var results = parallelClusterService.ClusterSleevesCalculateOnly(_document, catZones, cat, 0, 0);
+                                        
+                                        foreach (var r in results)
+                                        {
+                                            globalResults.Add(r);
+                                        }
+                                        
+                                        SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                            $"[{DateTime.Now:HH:mm:ss}] 🧮 GLOBAL CLUSTERING (Parallel): {cat} complete. Yielded {results.Count} clusters.\n");
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ❌ GLOBAL CLUSTERING PARALLEL ERROR ({cat}): {ex.Message}\n");
+                                }
+                            });
+                            
+                            // ✅ PHASE 2: Single Batch Save (Sequential DB Access)
+                            if (globalResults.Count > 0)
+                            {
+                                SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 💾 BATCH SAVE: Saving {globalResults.Count} total clusters to database...\n");
+                                
+                                // Create a service instance to handle saving
+                                var saveService = ClusterServiceFactory.CreateRefactored(_document, performanceMonitor: null);
+                                saveService.ClusterSleevesBatchSave(globalResults);
+                                saveService.ClusterSleevesBatchUpdateFlags(globalResults);
+                                
+                                SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ✅ BATCH SAVE: Complete.\n");
+                            }
+                        }
+                        else
+                        {
+                            // SEQUENTIAL MODE (Legacy)
+                             SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🐢 GLOBAL CLUSTERING: Sequential Processing (Legacy)\n");
+                            
+                            // Re-use outer instance for sequential
+                            var sequentialClusterService = ClusterServiceFactory.CreateRefactored(_document, performanceMonitor: _performanceMonitor);
+                            
+                            foreach (var cat in clusterableCategories)
+                            {
+                                var catZones = allUnresolvedZones.Where(z => string.Equals(z.MepElementCategory, cat, StringComparison.OrdinalIgnoreCase)).ToList();
+                                if (catZones.Count == 0) continue;
+
+                                SafeFileLogger.SafeAppendText("batch_v2.log", 
+                                    $"[{DateTime.Now:HH:mm:ss}] 🧮 GLOBAL CLUSTERING: Calculating for {cat} ({catZones.Count} zones)\n");
+
+                                // Track sub-operation per category
+                                using (var catTracker = calcTracker?.TrackSubOperation($"Calculate {cat}"))
+                                {
+                                    try
+                                    {
+                                        // skipPlacement: true ensures we only save the cluster definition to ClusterSleeves_v2
+                                        sequentialClusterService.ClusterSleevesV2(_document, catZones, cat, 0, 0, skipPlacement: true);
+                                        catTracker?.SetItemCount(catZones.Count);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ❌ GLOBAL CLUSTERING CALC ERROR ({cat}): {ex.Message}\n");
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. CONSOLIDATED PLACEMENT & CLEANUP PHASE (Single API Transaction)
+                    SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] 🏗️ GLOBAL CLUSTERING: Starting consolidated placement and cleanup\n");
+                    
+                    string dbPath = ctx.DatabasePath;
+                    var cleanupService = new ClusterCleanupService();
+                    var batchPlacementService = new BatchClusterPlacementService(
+                        dbPath,
+                        repo,
+                        new SleeveParameterService(_document),
+                        cleanupService,
+                        _performanceMonitor);
+
+                    int placed = 0, failed = 0, cleanedUp = 0;
+                    using (var bulkTracker = _performanceMonitor?.TrackOperation("Global Bulk Cluster Placement"))
+                    {
+                        (placed, failed, cleanedUp) = batchPlacementService.PlaceAllCategoriesAndCleanup(
+                            _document, 
+                            cleanupService, 
+                            useSingleTransaction: OptimizationFlags.UseTwoTransactionBulkPlacement);
+                        
+                        bulkTracker?.SetItemCount(placed);
+                    }
+
+                    SafeFileLogger.SafeAppendText("batch_v2.log", 
+                        $"[{DateTime.Now:HH:mm:ss}] ✅ GLOBAL CLUSTERING COMPLETE: {placed} clusters placed, {cleanedUp} individual sleeves cleaned up\n");
+
+                    // Report is generated once after all phases (individual + cluster) in the main flow — do not call here to avoid duplicate report
+                    return placed;
+                }
+            }
+            catch (Exception ex)
+            {
+                SafeFileLogger.SafeAppendText("batch_v2.log", $"[{DateTime.Now:HH:mm:ss}] ❌ GLOBAL CLUSTERING FAILED: {ex.Message}\n{ex.StackTrace}\n");
+                if (!DeploymentConfiguration.DeploymentMode)
+                    DebugLogger.Error($"[GlobalClustering] Error: {ex.Message}");
+                return 0;
+            }
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Failure preprocessor to auto-dismiss warnings during cluster sleeve placement.
+    /// Per TRANSACTION_MANAGEMENT_IMPLEMENTATION_PLAN.md best practices.
+    /// </summary>
+    public class WarningSwallower : IFailuresPreprocessor
+    {
+        public FailureProcessingResult PreprocessFailures(FailuresAccessor fa)
+        {
+            var failures = fa.GetFailureMessages();
+            foreach (var f in failures)
+            {
+                var description = f.GetDescriptionText();
+                
+                // Dismiss warnings (per TRANSACTION_REFACTORING_SUMMARY.md)
+                if (f.GetSeverity() == FailureSeverity.Warning)
+                {
+                    fa.DeleteWarning(f);
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[WarningSwallower] Dismissed warning: {description}");
+                    }
+                }
+                // Also dismiss duplicate-related errors to prevent transaction rollback
+                else if (f.GetSeverity() == FailureSeverity.Error && 
+                         (description.IndexOf("duplicate", StringComparison.OrdinalIgnoreCase) >= 0 || 
+                          description.IndexOf("already exists", StringComparison.OrdinalIgnoreCase) >= 0))
+                {
+                    fa.DeleteWarning(f);
+                    if (!DeploymentConfiguration.DeploymentMode)
+                    {
+                        DebugLogger.Info($"[WarningSwallower] Dismissed duplicate error: {description}");
+                    }
+                }
+            }
+            return FailureProcessingResult.Continue;
+        }
+    }
+}

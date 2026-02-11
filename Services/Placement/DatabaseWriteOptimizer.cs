@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using System.Threading.Tasks;
+#if !NET8_0_OR_GREATER
 using System.Data.SQLite;
+#endif
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
@@ -281,8 +283,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 
                 var parameters = new[]
                 {
-                    new System.Data.SQLite.SQLiteParameter("@parameterValue", update.ParameterValue),
-                    new System.Data.SQLite.SQLiteParameter("@sleeveGuid", update.SleeveGuid)
+                    new SQLiteParameter("@parameterValue", update.ParameterValue),
+                    new SQLiteParameter("@sleeveGuid", update.SleeveGuid)
                 };
 
                 using (var command = new SQLiteCommand(updateQuery, (SQLiteConnection)_dbContext.Connection))

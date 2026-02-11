@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -26,7 +27,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 return "EMPTY";
             
             // Sort element IDs for consistent hashing
-            var sortedIds = cluster.Select(s => s.Id.IntegerValue).OrderBy(id => id).ToList();
+            var sortedIds = cluster.Select(s => s.Id.GetIntegerValue()).OrderBy(id => id).ToList();
             
             // Create hash from sorted IDs + rotation angle
             var hashInput = string.Join(",", sortedIds) + $"|R:{rotationAngle:F6}";

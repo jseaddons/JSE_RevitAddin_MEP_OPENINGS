@@ -7,6 +7,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Rotation;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Geometry;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
 {
@@ -49,7 +50,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
             if (sleeves == null || sleeves.Count == 0)
                 throw new ArgumentException("Sleeves list cannot be empty");
 
-            var sleeveIds = sleeves.Select(s => s.Id.IntegerValue).ToList();
+            var sleeveIds = sleeves.Select(s => s.Id.GetIntegerValue()).ToList();
             
             JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Info(
                 $"[ManualClusterCalculationAdapter] Fetching corner data for {sleeveIds.Count} sleeves from DB");
@@ -110,7 +111,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Combined
                  
                  // Need rotation service for fallback
                  var clusterData = new List<dynamic>();
-                 foreach(var s in sleeves) clusterData.Add(new { SleeveInstanceId = s.Id.IntegerValue, ClashZone = clashZones.FirstOrDefault(c => c.SleeveInstanceId == s.Id.IntegerValue) });
+                 foreach(var s in sleeves) clusterData.Add(new { SleeveInstanceId = s.Id.GetIntegerValue(), ClashZone = clashZones.FirstOrDefault(c => c.SleeveInstanceId == s.Id.GetIntegerValue()) });
                  
                  double fbRot = _rotationService.DetermineRotationAngle(clusterData);
                  var bbox = _bboxCalculator.Calculate(clusterData, sleeves.OfType<FamilyInstance>().ToList(), fbRot);

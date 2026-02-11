@@ -139,7 +139,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             if (!DeploymentConfiguration.DeploymentMode)
             {
                 SafeFileLogger.SafeAppendText("cluster_params.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 🚀 IMMEDIATE WRITE CALLED: Instance={instance.Id.IntegerValue}, " +
+                    $"[{DateTime.Now:HH:mm:ss}] 🚀 IMMEDIATE WRITE CALLED: Instance={instance.Id.GetIntegerValue()}, " +
                     $"W={width*304.8:F1}mm, H={height*304.8:F1}mm\n");
             }
             
@@ -163,7 +163,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("cluster_params.log", 
-                        $"[{DateTime.Now:HH:mm:ss}] ✅ IMMEDIATE WRITE COMPLETE: Instance={instance.Id.IntegerValue}\n");
+                        $"[{DateTime.Now:HH:mm:ss}] ✅ IMMEDIATE WRITE COMPLETE: Instance={instance.Id.GetIntegerValue()}\n");
                 }
             }
         }
@@ -699,7 +699,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                                             // ✅ DIAGNOSTIC: Log exact value being set for critical parameters
                                             if (!DeploymentConfiguration.DeploymentMode && (paramKvp.Key == "Width" || paramKvp.Key == "Height" || paramKvp.Key == "Sleeve Width" || paramKvp.Key == "Sleeve Height"))
                                             {
-                                                SafeFileLogger.SafeAppendText("parameter_set_debug.log", $"[{DateTime.Now:HH:mm:ss.fff}] 🛠️ SET PARAM: Element={sleeveId.IntegerValue}, Param={paramKvp.Key}, Value={dVal:F6} (ft), {dVal * 304.8:F1} (mm)\n");
+                                                SafeFileLogger.SafeAppendText("parameter_set_debug.log", $"[{DateTime.Now:HH:mm:ss.fff}] 🛠️ SET PARAM: Element={sleeveId.GetIntegerValue()}, Param={paramKvp.Key}, Value={dVal:F6} (ft), {dVal * 304.8:F1} (mm)\n");
                                             }
                                         }
                                         else if (paramKvp.Value is string sVal)
@@ -711,7 +711,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                                             if (param.StorageType == StorageType.ElementId)
                                                 param.Set(elementIdVal);
                                             else if (param.StorageType == StorageType.Integer)
-                                                param.Set(elementIdVal.IntegerValue);
+                                                param.Set(elementIdVal.GetIntegerValue());
                                             else if (param.StorageType == StorageType.String)
                                             {
                                                 if (!levelCache.TryGetValue(elementIdVal, out Level level))
@@ -721,7 +721,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                                                         levelCache[elementIdVal] = level;
                                                 }
                                                 if (level != null) param.Set(level.Name);
-                                                else param.Set(elementIdVal.IntegerValue.ToString());
+                                                else param.Set(elementIdVal.GetIntegerValue().ToString());
                                             }
                                         }
                                         successCount++;
@@ -730,7 +730,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                                     {
                                         failCount++;
                                         if (!DeploymentConfiguration.DeploymentMode)
-                                            errorLog.AppendLine($"Failed to set '{paramKvp.Key}' on {sleeveId.IntegerValue}: {ex.Message}");
+                                            errorLog.AppendLine($"Failed to set '{paramKvp.Key}' on {sleeveId.GetIntegerValue()}: {ex.Message}");
                                     }
                                 }
                             }
@@ -841,7 +841,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             if (value == null) return "";
             if (value is double d) return d.ToString("R");
             if (value is int i) return i.ToString();
-            if (value is ElementId eid) return eid.IntegerValue.ToString();
+            if (value is ElementId eid) return eid.GetIntegerValue().ToString();
             return value.ToString();
         }
 
@@ -876,7 +876,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        DebugLogger.Warning($"[SleeveParameterService] ⚠️ Instance {instance.Id.IntegerValue} is invalid - skipping parameter setting");
+                        DebugLogger.Warning($"[SleeveParameterService] ⚠️ Instance {instance.Id.GetIntegerValue()} is invalid - skipping parameter setting");
                     }
                     return false;
                 }
@@ -886,7 +886,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
-                        DebugLogger.Warning($"[SleeveParameterService] ⚠️ Element ID mismatch for instance {instance.Id.IntegerValue}");
+                        DebugLogger.Warning($"[SleeveParameterService] ⚠️ Element ID mismatch for instance {instance.Id.GetIntegerValue()}");
                     }
                     return false;
                 }
@@ -897,7 +897,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             {
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
-                    DebugLogger.Error($"[SleeveParameterService] Error validating instance {instance.Id.IntegerValue}: {ex.Message}");
+                    DebugLogger.Error($"[SleeveParameterService] Error validating instance {instance.Id.GetIntegerValue()}: {ex.Message}");
                 }
                 return false;
             }
@@ -972,7 +972,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     {
                         var oldValue = targetDict[currentSleeveId][actualParamName];
                         SafeFileLogger.SafeAppendText("parameter_overwrite_debug.log",
-                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] ⚠️ PARAMETER OVERWRITE: Sleeve {currentSleeveId.IntegerValue}, " +
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] ⚠️ PARAMETER OVERWRITE: Sleeve {currentSleeveId.GetIntegerValue()}, " +
                             $"Parameter='{actualParamName}' (requested='{parameterName}'), OldValue={oldValue}, NewValue={value}\n");
                     }
                 }
@@ -1041,11 +1041,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     if (!targetDict.ContainsKey(currentSleeveId))
                         targetDict[currentSleeveId] = new Dictionary<string, object>();
                     
-                    targetDict[currentSleeveId]["Sleeve Instance ID"] = currentSleeveId.IntegerValue;
+                    targetDict[currentSleeveId]["Sleeve Instance ID"] = currentSleeveId.GetIntegerValue();
                 }
                 else
                 {
-                    sleeveInstanceIdParam.Set(currentSleeveId.IntegerValue);
+                    sleeveInstanceIdParam.Set(currentSleeveId.GetIntegerValue());
                 }
             }
             else
@@ -1054,7 +1054,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("placement_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] ⚠️⚠️⚠️ CRITICAL: Cannot set 'Sleeve Instance ID' for sleeve {currentSleeveId.IntegerValue} - parameter not found or read-only!\n" +
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] ⚠️⚠️⚠️ CRITICAL: Cannot set 'Sleeve Instance ID' for sleeve {currentSleeveId.GetIntegerValue()} - parameter not found or read-only!\n" +
                         $"  This will prevent flag management from identifying individual sleeves!\n");
                 }
             }
@@ -1074,9 +1074,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 if (!targetDict.ContainsKey(currentSleeveId))
                     targetDict[currentSleeveId] = new Dictionary<string, object>();
 
-                if (zone.MepElementId != null && zone.MepElementId.IntegerValue > 0)
+                if (zone.MepElementId != null && zone.MepElementId.GetIntegerValue() > 0)
                 {
-                    targetDict[currentSleeveId]["MEP_ElementId"] = zone.MepElementId.IntegerValue;
+                    targetDict[currentSleeveId]["MEP_ElementId"] = zone.MepElementId.GetIntegerValue();
                 }
 
                 if (!string.IsNullOrEmpty(zone.MepElementCategory))
@@ -1091,7 +1091,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             // Set MEP_ElementId
             if (zone.MepElementId != null)
             {
-                SetParameter(instance, "MEP_ElementId", zone.MepElementId.IntegerValue.ToString(), currentSleeveId, fallbackName: null, forceImmediate: true);
+                SetParameter(instance, "MEP_ElementId", zone.MepElementId.GetIntegerValue().ToString(), currentSleeveId, fallbackName: null, forceImmediate: true);
             }
 
             // Set MEP_Category
@@ -1109,7 +1109,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             if (mepElementIdParam != null && !mepElementIdParam.IsReadOnly)
             {
                 // ✅ NULL SAFETY: Check if MepElementId is null before setting
-                if (zone.MepElementId != null && zone.MepElementId.IntegerValue > 0)
+                if (zone.MepElementId != null && zone.MepElementId.GetIntegerValue() > 0)
                 {
                     // ✅ BATCH OPTIMIZATION: Defer this write if batching is enabled
                     // This is used for clustering/auditing, but these happen after the batch flush
@@ -1119,17 +1119,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                         if (!targetDict.ContainsKey(currentSleeveId))
                             targetDict[currentSleeveId] = new Dictionary<string, object>();
                         
-                        targetDict[currentSleeveId]["MEP_ElementId"] = zone.MepElementId.IntegerValue;
+                        targetDict[currentSleeveId]["MEP_ElementId"] = zone.MepElementId.GetIntegerValue();
                     }
                     else
                     {
-                        mepElementIdParam.Set(zone.MepElementId.IntegerValue);
+                        mepElementIdParam.Set(zone.MepElementId.GetIntegerValue());
                     }
                     
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         SafeFileLogger.SafeAppendText("placement_debug.log",
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] ✅ IMMEDIATE: Set 'MEP_ElementId'={zone.MepElementId.IntegerValue} for sleeve {currentSleeveId}\n");
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] ✅ IMMEDIATE: Set 'MEP_ElementId'={zone.MepElementId.GetIntegerValue()} for sleeve {currentSleeveId}\n");
                     }
                 }
                 else if (!DeploymentConfiguration.DeploymentMode)
@@ -1297,7 +1297,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                             {
                                 SafeFileLogger.SafeAppendText("placement_debug.log",
                                     $"[{DateTime.Now:HH:mm:ss.fff}] [SleeveParameterService] [SCHEDULE-LEVEL] ✅ Zone={zone.Id}, Sleeve={instance.Id}: " +
-                                    $"Set '{paramName}' to '{mepLevel.Name}' (ID: {mepLevel.Id.IntegerValue}, StorageType=ElementId) - CACHED PARAMETER\n");
+                                    $"Set '{paramName}' to '{mepLevel.Name}' (ID: {mepLevel.Id.GetIntegerValue()}, StorageType=ElementId) - CACHED PARAMETER\n");
                             }
                         }
                         else if (scheduleLevelParam.StorageType == StorageType.String)
@@ -1647,7 +1647,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
         {
             if (instance == null || string.IsNullOrWhiteSpace(parameterName)) return null;
 
-            string cacheKey = $"{instance.Id.IntegerValue}_{parameterName}";
+            string cacheKey = $"{instance.Id.GetIntegerValue()}_{parameterName}";
 
             // ✅ CACHE HIT: Return cached parameter
             if (_parameterCache.TryGetValue(cacheKey, out Parameter cachedParam))
@@ -1764,6 +1764,42 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
 
             if (templateZone != null && ShouldSetRotation(templateZone))
                 targetDict[instanceId]["MepElementRotationAngle"] = templateZone.MepElementRotationAngle;
+
+            // ✅ BOTTOM OF OPENING: Same calculation as individual sleeves (Wall/Framing only)
+            // Cluster sleeves are always RectangularOpeningOnWall, so skip family check.
+            if (OptimizationFlags.UseBottomOfOpeningCalculation && templateZone != null)
+            {
+                bool isWallOrFramingHost =
+                    templateZone.StructuralElementType == "Wall" ||
+                    templateZone.StructuralElementType == "Walls" ||
+                    string.Equals(templateZone.StructuralElementType, "Structural Framing", StringComparison.OrdinalIgnoreCase);
+
+                if (isWallOrFramingHost)
+                {
+                    // Elevation hierarchy: 1) DB value, 2) geometric fallback
+                    double? elevationFromLevel = null;
+                    if (Math.Abs(templateZone.ElevationFromLevel) > 0.0001)
+                    {
+                        elevationFromLevel = templateZone.ElevationFromLevel;
+                    }
+                    else if (!string.IsNullOrEmpty(templateZone.MepElementLevelName))
+                    {
+                        var level = GetCachedLevel(templateZone.MepElementLevelName);
+                        if (level != null)
+                            elevationFromLevel = templateZone.SleevePlacementPointZ - level.Elevation;
+                    }
+
+                    if (elevationFromLevel.HasValue)
+                    {
+                        double? bottomOfOpening = Services.Helpers.BottomOfOpeningCalculationService.CalculateBottomOfOpening(
+                            elevationFromLevel.Value, height);
+                        if (bottomOfOpening.HasValue)
+                        {
+                            targetDict[instanceId]["Bottom Of Opening"] = bottomOfOpening.Value;
+                        }
+                    }
+                }
+            }
         }
 
         /// <summary>
@@ -1812,7 +1848,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             if (!DeploymentConfiguration.DeploymentMode)
             {
                 SafeFileLogger.SafeAppendText("cluster_params.log", 
-                    $"[{DateTime.Now:HH:mm:ss}] 📊 CLUSTER LEVEL SET: Instance={instance.Id.IntegerValue}, Level={zone.MepElementLevelName}\n");
+                    $"[{DateTime.Now:HH:mm:ss}] 📊 CLUSTER LEVEL SET: Instance={instance.Id.GetIntegerValue()}, Level={zone.MepElementLevelName}\n");
             }
         }
     }

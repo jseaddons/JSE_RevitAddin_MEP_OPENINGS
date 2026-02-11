@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Services.ParameterExtraction.Interfaces;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.ParameterExtraction.Strategies
 {
@@ -62,7 +63,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ParameterExtraction.Strategies
                         StorageType.Double => param.AsDouble(),
                         StorageType.Integer => param.AsInteger(),
                         StorageType.String => param.AsString(),
-                        StorageType.ElementId => param.AsElementId()?.IntegerValue,
+                        StorageType.ElementId => param.AsElementId()?.GetIntegerValue(),
                         _ => null
                     };
 

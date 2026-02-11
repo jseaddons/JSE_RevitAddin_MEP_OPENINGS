@@ -101,10 +101,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 }
 
                 // 3. GLOBAL CLUSTERING (Calc & Placement)
-                // We always run clustering after placement to catch any new clusters formed by the new sleeves
+                // ✅ FIX: Run clustering for ALL filter categories, not just the first one
                 using (var clusterOp = parentTracker?.TrackSubOperation("3. Global Clustering"))
                 {
-                    var clusterResult = ExecuteClusteringSequence(filters.FirstOrDefault(), parentTracker);
+                    var clusterResult = ExecuteClusteringSequence(filters, parentTracker);
                     totalClusters = clusterResult.clustersPlaced;
                     totalClusteredZones = clusterResult.zonesInClusters;
                 }
@@ -151,7 +151,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             }
         }
 
-        private (int clustersPlaced, int zonesInClusters) ExecuteClusteringSequence(OpeningFilter filter, IOperationTracker parentTracker)
+        private (int clustersPlaced, int zonesInClusters) ExecuteClusteringSequence(IEnumerable<OpeningFilter> filters, IOperationTracker parentTracker)
         {
             int clustersPlaced = 0;
             int zonesInClusters = 0;
@@ -164,18 +164,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 {
                     var repo = new ClashZoneRepository(db, _logger, _perf as PerformanceMonitor);
 
-                    // A. PROXIMITY MARKING (NEW STEP - Check which zones have neighbors)
+                    // A. PROXIMITY MARKING — run for ALL categories (not just one)
+                    //    A single filter can have multiple combos spanning Ducts, Pipes, Cable Trays, etc.
+                    //    CheckProximityToOtherZones already skips cross-category comparisons (line 178-181),
+                    //    so passing all categories at once is safe and correct.
                     int markedForClustering = 0;
                     using (var proximityTracker = parentTracker?.TrackSubOperation("3a. Proximity Marking"))
                     {
                         try
                         {
                             // Default proximity tolerance: 0.5 feet (approximately 6 inches)
-                            // This can be customized via filter parameters if needed
                             double proximityTolerance = 0.5;
-                            if (filter?.Parameters != null && filter.Parameters.ContainsKey("JoinOpeningsDistance"))
+                            var firstFilter = filters?.FirstOrDefault();
+                            if (firstFilter?.Parameters != null && firstFilter.Parameters.ContainsKey("JoinOpeningsDistance"))
                             {
-                                if (double.TryParse(filter.Parameters["JoinOpeningsDistance"].ToString(), out double customTol))
+                                if (double.TryParse(firstFilter.Parameters["JoinOpeningsDistance"].ToString(), out double customTol))
                                 {
                                     proximityTolerance = customTol;
                                 }
@@ -187,16 +190,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                                 $"[{DateTime.Now:HH:mm:ss}] STEP 3A: STARTING PROXIMITY CHECK\n");
                             SafeFileLogger.SafeAppendText("flag_workflow.log",
                                 $"[{DateTime.Now:HH:mm:ss}]   Tolerance: {proximityTolerance} ft\n");
+                            SafeFileLogger.SafeAppendText("flag_workflow.log",
+                                $"[{DateTime.Now:HH:mm:ss}]   Mode: ALL categories (single filter spans multiple combos/categories)\n");
 
-                            markedForClustering = proximityMarker.MarkZonesForClustering(_doc, filter?.Category.ToString() ?? "All");
+                            // ✅ FIX: Pass null to check ALL resolved zones regardless of category.
+                            // GetZonesReadyForProximityCheck(null) returns zones across all categories.
+                            // CheckProximityToOtherZones skips cross-category pairs automatically.
+                            markedForClustering = proximityMarker.MarkZonesForClustering(_doc, null);
 
-                            _logger($"[WORKFLOW][PROXIMITY] ✅ Marked {markedForClustering} zones for clustering based on proximity");
+                            _logger($"[WORKFLOW][PROXIMITY] ✅ Marked {markedForClustering} zones for clustering (all categories)");
                         }
                         catch (Exception proximityEx)
                         {
                             _logger($"[WORKFLOW][PROXIMITY] ⚠️ Proximity marking failed: {proximityEx.Message}");
 
-                            // ✅ DIAGNOSTIC: Log proximity failure to workflow log
                             SafeFileLogger.SafeAppendText("flag_workflow.log",
                                 $"[{DateTime.Now:HH:mm:ss}] ❌❌❌ PROXIMITY MARKING EXCEPTION CAUGHT ❌❌❌\n");
                             SafeFileLogger.SafeAppendText("flag_workflow.log",
@@ -213,7 +220,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     // B. CLUSTER CALCULATION (Only for zones marked with MarkedForClusterProcess=1)
                     using (var calcTracker = parentTracker?.TrackSubOperation("3b. Cluster Calculation"))
                     {
-                        var algo = new ClusterAlgorithmService(); // Using the actual service class
+                        var algo = new ClusterAlgorithmService();
                         var rotation = new ClusterRotationService(
                             getClashZoneFunc: (id, _) => repo.GetClashZoneByInstanceId(id),
                             getClusterPlacementFunc: null
@@ -227,7 +234,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                             $"[{DateTime.Now:HH:mm:ss}]   Query: Ready=1, Current=1, IsResolved=1, MarkedForClusterProcess=1\n");
 
                         var zones = repo.GetZonesForClustering();
-                        zonesInClusters = zones.Count; // Track total zones eligible for clustering
+                        zonesInClusters = zones.Count;
 
                         SafeFileLogger.SafeAppendText("flag_workflow.log",
                             $"[{DateTime.Now:HH:mm:ss}]   Found {zones.Count} zones eligible for clustering\n");
@@ -239,18 +246,15 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                             SafeFileLogger.SafeAppendText("flag_workflow.log",
                                 $"[{DateTime.Now:HH:mm:ss}] STEP 6: CALCULATING CLUSTER ARRANGEMENTS\n");
 
-                            // Calculate results in memory
-                            var results = calcService.CalculateOnly(zones, filter?.Category.ToString() ?? "All", 0, 0, _doc);
+                            // ✅ FIX: Pass "All" as category since zones span multiple categories
+                            var results = calcService.CalculateOnly(zones, "All", 0, 0, _doc);
 
                             SafeFileLogger.SafeAppendText("flag_workflow.log",
                                 $"[{DateTime.Now:HH:mm:ss}]   Calculated {results.Count} cluster arrangements\n");
 
                             if (results.Count > 0)
                             {
-                                // Save pending clusters using BatchSave
                                 calcService.BatchSave(results);
-
-                                // ✅ FLAG UPDATE: Mark constituent zones as processed for clustering
                                 calcService.BatchUpdateFlags(results);
 
                                 SafeFileLogger.SafeAppendText("flag_workflow.log",

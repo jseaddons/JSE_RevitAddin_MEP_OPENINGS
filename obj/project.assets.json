@@ -1,27 +1,21 @@
 {
   "version": 3,
   "targets": {
-    ".NETFramework,Version=v4.8": {
+    "net8.0-windows7.0": {
       "CommunityToolkit.Mvvm/8.2.2": {
         "type": "package",
-        "dependencies": {
-          "Microsoft.Bcl.AsyncInterfaces": "7.0.0",
-          "System.ComponentModel.Annotations": "5.0.0",
-          "System.Memory": "4.5.5",
-          "System.Runtime.CompilerServices.Unsafe": "6.0.0"
-        },
         "compile": {
-          "lib/netstandard2.0/CommunityToolkit.Mvvm.dll": {
+          "lib/net6.0/CommunityToolkit.Mvvm.dll": {
             "related": ".pdb;.xml"
           }
         },
         "runtime": {
-          "lib/netstandard2.0/CommunityToolkit.Mvvm.dll": {
+          "lib/net6.0/CommunityToolkit.Mvvm.dll": {
             "related": ".pdb;.xml"
           }
         },
         "build": {
-          "buildTransitive/netstandard2.0/CommunityToolkit.Mvvm.targets": {}
+          "buildTransitive/netstandard2.1/CommunityToolkit.Mvvm.targets": {}
         }
       },
       "ILRepack/2.0.41": {
@@ -33,47 +27,57 @@
       "JetBrains.Annotations/2024.3.0": {
         "type": "package",
         "compile": {
-          "lib/net20/JetBrains.Annotations.dll": {
-            "related": ".xml"
+          "lib/netstandard2.0/JetBrains.Annotations.dll": {
+            "related": ".deps.json;.xml"
           }
         },
         "runtime": {
-          "lib/net20/JetBrains.Annotations.dll": {
-            "related": ".xml"
+          "lib/netstandard2.0/JetBrains.Annotations.dll": {
+            "related": ".deps.json;.xml"
           }
         }
       },
-      "Microsoft.Bcl.AsyncInterfaces/7.0.0": {
+      "Microsoft.Data.Sqlite/8.0.11": {
         "type": "package",
         "dependencies": {
-          "System.Threading.Tasks.Extensions": "4.5.4"
+          "Microsoft.Data.Sqlite.Core": "8.0.11",
+          "SQLitePCLRaw.bundle_e_sqlite3": "2.1.6"
         },
         "compile": {
-          "lib/net462/Microsoft.Bcl.AsyncInterfaces.dll": {
+          "lib/netstandard2.0/_._": {}
+        },
+        "runtime": {
+          "lib/netstandard2.0/_._": {}
+        }
+      },
+      "Microsoft.Data.Sqlite.Core/8.0.11": {
+        "type": "package",
+        "dependencies": {
+          "SQLitePCLRaw.core": "2.1.6"
+        },
+        "compile": {
+          "lib/net8.0/Microsoft.Data.Sqlite.dll": {
             "related": ".xml"
           }
         },
         "runtime": {
-          "lib/net462/Microsoft.Bcl.AsyncInterfaces.dll": {
-            "related": ".xml"
-          }
-        },
-        "build": {
-          "buildTransitive/net462/_._": {}
-        }
-      },
-      "Nice3point.Revit.Api.RevitAPI/2023.1.80": {
-        "type": "package",
-        "compile": {
-          "ref/net48/RevitAPI.dll": {
+          "lib/net8.0/Microsoft.Data.Sqlite.dll": {
             "related": ".xml"
           }
         }
       },
-      "Nice3point.Revit.Api.RevitAPIUI/2023.1.80": {
+      "Nice3point.Revit.Api.RevitAPI/2026.4.0": {
         "type": "package",
         "compile": {
-          "ref/net48/RevitAPIUI.dll": {
+          "ref/net8.0-windows7.0/RevitAPI.dll": {
+            "related": ".xml"
+          }
+        }
+      },
+      "Nice3point.Revit.Api.RevitAPIUI/2026.4.0": {
+        "type": "package",
+        "compile": {
+          "ref/net8.0-windows7.0/RevitAPIUI.dll": {
             "related": ".xml"
           }
         }
@@ -85,53 +89,50 @@
           "build/Nice3point.Revit.Build.Tasks.targets": {}
         }
       },
-      "Nice3point.Revit.Extensions/2023.4.1": {
+      "Nice3point.Revit.Extensions/2026.0.1": {
         "type": "package",
         "dependencies": {
           "JetBrains.Annotations": "2024.3.0"
         },
         "compile": {
-          "lib/net48/Nice3point.Revit.Extensions.dll": {
+          "lib/net8.0-windows7.0/Nice3point.Revit.Extensions.dll": {
             "related": ".xml"
           }
         },
         "runtime": {
-          "lib/net48/Nice3point.Revit.Extensions.dll": {
+          "lib/net8.0-windows7.0/Nice3point.Revit.Extensions.dll": {
             "related": ".xml"
           }
-        }
+        },
+        "frameworkReferences": [
+          "Microsoft.WindowsDesktop.App.WPF"
+        ]
       },
-      "Nice3point.Revit.Toolkit/2023.3.0": {
+      "Nice3point.Revit.Toolkit/2026.0.0": {
         "type": "package",
         "compile": {
-          "lib/net48/Nice3point.Revit.Toolkit.dll": {
+          "lib/net8.0-windows7.0/Nice3point.Revit.Toolkit.dll": {
             "related": ".xml"
           }
         },
         "runtime": {
-          "lib/net48/Nice3point.Revit.Toolkit.dll": {
+          "lib/net8.0-windows7.0/Nice3point.Revit.Toolkit.dll": {
             "related": ".xml"
           }
-        }
+        },
+        "frameworkReferences": [
+          "Microsoft.WindowsDesktop.App.WPF"
+        ]
       },
       "Serilog/4.2.0": {
         "type": "package",
-        "dependencies": {
-          "System.Diagnostics.DiagnosticSource": "8.0.1",
-          "System.Threading.Channels": "8.0.0"
-        },
-        "frameworkAssemblies": [
-          "Microsoft.CSharp",
-          "System",
-          "System.Core"
-        ],
         "compile": {
-          "lib/net471/Serilog.dll": {
+          "lib/net8.0/Serilog.dll": {
             "related": ".xml"
           }
         },
         "runtime": {
-          "lib/net471/Serilog.dll": {
+          "lib/net8.0/Serilog.dll": {
             "related": ".xml"
           }
         }
@@ -142,238 +143,170 @@
           "Serilog": "4.0.0"
         },
         "compile": {
-          "lib/net471/Serilog.Sinks.Debug.dll": {
+          "lib/net8.0/Serilog.Sinks.Debug.dll": {
             "related": ".xml"
           }
         },
         "runtime": {
-          "lib/net471/Serilog.Sinks.Debug.dll": {
+          "lib/net8.0/Serilog.Sinks.Debug.dll": {
             "related": ".xml"
           }
         }
       },
-      "Stub.System.Data.SQLite.Core.NetFramework/1.0.118": {
+      "SQLitePCLRaw.bundle_e_sqlite3/2.1.6": {
         "type": "package",
+        "dependencies": {
+          "SQLitePCLRaw.lib.e_sqlite3": "2.1.6",
+          "SQLitePCLRaw.provider.e_sqlite3": "2.1.6"
+        },
         "compile": {
-          "lib/net46/System.Data.SQLite.dll": {
-            "related": ".dll.altconfig;.xml"
-          }
+          "lib/netstandard2.0/SQLitePCLRaw.batteries_v2.dll": {}
         },
         "runtime": {
-          "lib/net46/System.Data.SQLite.dll": {
-            "related": ".dll.altconfig;.xml"
-          }
+          "lib/netstandard2.0/SQLitePCLRaw.batteries_v2.dll": {}
+        }
+      },
+      "SQLitePCLRaw.core/2.1.6": {
+        "type": "package",
+        "dependencies": {
+          "System.Memory": "4.5.3"
+        },
+        "compile": {
+          "lib/netstandard2.0/SQLitePCLRaw.core.dll": {}
+        },
+        "runtime": {
+          "lib/netstandard2.0/SQLitePCLRaw.core.dll": {}
+        }
+      },
+      "SQLitePCLRaw.lib.e_sqlite3/2.1.6": {
+        "type": "package",
+        "compile": {
+          "lib/netstandard2.0/_._": {}
+        },
+        "runtime": {
+          "lib/netstandard2.0/_._": {}
         },
         "build": {
-          "buildTransitive/net46/Stub.System.Data.SQLite.Core.NetFramework.targets": {}
-        }
-      },
-      "System.Buffers/4.5.1": {
-        "type": "package",
-        "frameworkAssemblies": [
-          "mscorlib"
-        ],
-        "compile": {
-          "ref/net45/System.Buffers.dll": {
-            "related": ".xml"
-          }
+          "buildTransitive/net8.0/SQLitePCLRaw.lib.e_sqlite3.targets": {}
         },
-        "runtime": {
-          "lib/net461/System.Buffers.dll": {
-            "related": ".xml"
-          }
-        }
-      },
-      "System.ComponentModel.Annotations/5.0.0": {
-        "type": "package",
-        "frameworkAssemblies": [
-          "System.ComponentModel.DataAnnotations",
-          "mscorlib"
-        ],
-        "compile": {
-          "ref/net461/System.ComponentModel.Annotations.dll": {
-            "related": ".xml"
-          }
-        },
-        "runtime": {
-          "lib/net461/System.ComponentModel.Annotations.dll": {}
-        }
-      },
-      "System.Data.SQLite.Core/1.0.118": {
-        "type": "package",
-        "dependencies": {
-          "Stub.System.Data.SQLite.Core.NetFramework": "[1.0.118]"
-        }
-      },
-      "System.Diagnostics.DiagnosticSource/8.0.1": {
-        "type": "package",
-        "dependencies": {
-          "System.Memory": "4.5.5",
-          "System.Runtime.CompilerServices.Unsafe": "6.0.0"
-        },
-        "compile": {
-          "lib/net462/System.Diagnostics.DiagnosticSource.dll": {
-            "related": ".xml"
-          }
-        },
-        "runtime": {
-          "lib/net462/System.Diagnostics.DiagnosticSource.dll": {
-            "related": ".xml"
-          }
-        },
-        "build": {
-          "buildTransitive/net462/_._": {}
-        }
-      },
-      "System.Memory/4.5.5": {
-        "type": "package",
-        "dependencies": {
-          "System.Buffers": "4.5.1",
-          "System.Numerics.Vectors": "4.5.0",
-          "System.Runtime.CompilerServices.Unsafe": "4.5.3"
-        },
-        "frameworkAssemblies": [
-          "System",
-          "mscorlib"
-        ],
-        "compile": {
-          "lib/net461/System.Memory.dll": {
-            "related": ".xml"
-          }
-        },
-        "runtime": {
-          "lib/net461/System.Memory.dll": {
-            "related": ".xml"
-          }
-        }
-      },
-      "System.Numerics.Vectors/4.5.0": {
-        "type": "package",
-        "frameworkAssemblies": [
-          "System.Numerics",
-          "mscorlib"
-        ],
-        "compile": {
-          "ref/net46/System.Numerics.Vectors.dll": {
-            "related": ".xml"
-          }
-        },
-        "runtime": {
-          "lib/net46/System.Numerics.Vectors.dll": {
-            "related": ".xml"
+        "runtimeTargets": {
+          "runtimes/browser-wasm/nativeassets/net8.0/e_sqlite3.a": {
+            "assetType": "native",
+            "rid": "browser-wasm"
+          },
+          "runtimes/linux-arm/native/libe_sqlite3.so": {
+            "assetType": "native",
+            "rid": "linux-arm"
+          },
+          "runtimes/linux-arm64/native/libe_sqlite3.so": {
+            "assetType": "native",
+            "rid": "linux-arm64"
+          },
+          "runtimes/linux-armel/native/libe_sqlite3.so": {
+            "assetType": "native",
+            "rid": "linux-armel"
+          },
+          "runtimes/linux-mips64/native/libe_sqlite3.so": {
+            "assetType": "native",
+            "rid": "linux-mips64"
+          },
+          "runtimes/linux-musl-arm/native/libe_sqlite3.so": {
+            "assetType": "native",
+            "rid": "linux-musl-arm"
+          },
+          "runtimes/linux-musl-arm64/native/libe_sqlite3.so": {
+            "assetType": "native",
+            "rid": "linux-musl-arm64"
+          },
+          "runtimes/linux-musl-x64/native/libe_sqlite3.so": {
+            "assetType": "native",
+            "rid": "linux-musl-x64"
+          },
+          "runtimes/linux-ppc64le/native/libe_sqlite3.so": {
+            "assetType": "native",
+            "rid": "linux-ppc64le"
+          },
+          "runtimes/linux-s390x/native/libe_sqlite3.so": {
+            "assetType": "native",
+            "rid": "linux-s390x"
+          },
+          "runtimes/linux-x64/native/libe_sqlite3.so": {
+            "assetType": "native",
+            "rid": "linux-x64"
+          },
+          "runtimes/linux-x86/native/libe_sqlite3.so": {
+            "assetType": "native",
+            "rid": "linux-x86"
+          },
+          "runtimes/maccatalyst-arm64/native/libe_sqlite3.dylib": {
+            "assetType": "native",
+            "rid": "maccatalyst-arm64"
+          },
+          "runtimes/maccatalyst-x64/native/libe_sqlite3.dylib": {
+            "assetType": "native",
+            "rid": "maccatalyst-x64"
+          },
+          "runtimes/osx-arm64/native/libe_sqlite3.dylib": {
+            "assetType": "native",
+            "rid": "osx-arm64"
+          },
+          "runtimes/osx-x64/native/libe_sqlite3.dylib": {
+            "assetType": "native",
+            "rid": "osx-x64"
+          },
+          "runtimes/win-arm/native/e_sqlite3.dll": {
+            "assetType": "native",
+            "rid": "win-arm"
+          },
+          "runtimes/win-arm64/native/e_sqlite3.dll": {
+            "assetType": "native",
+            "rid": "win-arm64"
+          },
+          "runtimes/win-x64/native/e_sqlite3.dll": {
+            "assetType": "native",
+            "rid": "win-x64"
+          },
+          "runtimes/win-x86/native/e_sqlite3.dll": {
+            "assetType": "native",
+            "rid": "win-x86"
           }
         }
       },
-      "System.Runtime.CompilerServices.Unsafe/6.0.0": {
-        "type": "package",
-        "frameworkAssemblies": [
-          "mscorlib"
-        ],
-        "compile": {
-          "lib/net461/System.Runtime.CompilerServices.Unsafe.dll": {
-            "related": ".xml"
-          }
-        },
-        "runtime": {
-          "lib/net461/System.Runtime.CompilerServices.Unsafe.dll": {
-            "related": ".xml"
-          }
-        }
-      },
-      "System.Text.Encodings.Web/6.0.1": {
+      "SQLitePCLRaw.provider.e_sqlite3/2.1.6": {
         "type": "package",
         "dependencies": {
-          "System.Buffers": "4.5.1",
-          "System.Memory": "4.5.4",
-          "System.Runtime.CompilerServices.Unsafe": "6.0.0"
+          "SQLitePCLRaw.core": "2.1.6"
         },
         "compile": {
-          "lib/net461/System.Text.Encodings.Web.dll": {
-            "related": ".xml"
-          }
+          "lib/net6.0-windows7.0/SQLitePCLRaw.provider.e_sqlite3.dll": {}
         },
         "runtime": {
-          "lib/net461/System.Text.Encodings.Web.dll": {
-            "related": ".xml"
-          }
+          "lib/net6.0-windows7.0/SQLitePCLRaw.provider.e_sqlite3.dll": {}
+        }
+      },
+      "System.Memory/4.5.3": {
+        "type": "package",
+        "compile": {
+          "ref/netcoreapp2.1/_._": {}
+        },
+        "runtime": {
+          "lib/netcoreapp2.1/_._": {}
         }
       },
       "System.Text.Json/6.0.11": {
         "type": "package",
-        "dependencies": {
-          "Microsoft.Bcl.AsyncInterfaces": "6.0.0",
-          "System.Buffers": "4.5.1",
-          "System.Memory": "4.5.4",
-          "System.Numerics.Vectors": "4.5.0",
-          "System.Runtime.CompilerServices.Unsafe": "6.0.0",
-          "System.Text.Encodings.Web": "6.0.1",
-          "System.Threading.Tasks.Extensions": "4.5.4",
-          "System.ValueTuple": "4.5.0"
-        },
         "compile": {
-          "lib/net461/System.Text.Json.dll": {
+          "lib/net6.0/System.Text.Json.dll": {
             "related": ".xml"
           }
         },
         "runtime": {
-          "lib/net461/System.Text.Json.dll": {
+          "lib/net6.0/System.Text.Json.dll": {
             "related": ".xml"
           }
         },
         "build": {
-          "buildTransitive/netstandard2.0/System.Text.Json.targets": {}
-        }
-      },
-      "System.Threading.Channels/8.0.0": {
-        "type": "package",
-        "dependencies": {
-          "System.Threading.Tasks.Extensions": "4.5.4"
-        },
-        "compile": {
-          "lib/net462/System.Threading.Channels.dll": {
-            "related": ".xml"
-          }
-        },
-        "runtime": {
-          "lib/net462/System.Threading.Channels.dll": {
-            "related": ".xml"
-          }
-        },
-        "build": {
-          "buildTransitive/net462/_._": {}
-        }
-      },
-      "System.Threading.Tasks.Extensions/4.5.4": {
-        "type": "package",
-        "dependencies": {
-          "System.Runtime.CompilerServices.Unsafe": "4.5.3"
-        },
-        "frameworkAssemblies": [
-          "mscorlib"
-        ],
-        "compile": {
-          "lib/net461/System.Threading.Tasks.Extensions.dll": {
-            "related": ".xml"
-          }
-        },
-        "runtime": {
-          "lib/net461/System.Threading.Tasks.Extensions.dll": {
-            "related": ".xml"
-          }
-        }
-      },
-      "System.ValueTuple/4.5.0": {
-        "type": "package",
-        "frameworkAssemblies": [
-          "mscorlib"
-        ],
-        "compile": {
-          "ref/net47/System.ValueTuple.dll": {}
-        },
-        "runtime": {
-          "lib/net47/System.ValueTuple.dll": {
-            "related": ".xml"
-          }
+          "buildTransitive/netcoreapp3.1/System.Text.Json.targets": {}
         }
       }
     }
@@ -450,59 +383,69 @@
         "readme.md"
       ]
     },
-    "Microsoft.Bcl.AsyncInterfaces/7.0.0": {
-      "sha512": "3aeMZ1N0lJoSyzqiP03hqemtb1BijhsJADdobn/4nsMJ8V1H+CrpuduUe4hlRdx+ikBQju1VGjMD1GJ3Sk05Eg==",
+    "Microsoft.Data.Sqlite/8.0.11": {
+      "sha512": "6JocV6S1akKlXaDVpRmmwc9d/M7wXBmiEZ7RxB5lxDk+er9Xi3P+yVYVnh+6IJ+Y6v8pecGWhGwcgH1mONcLuw==",
       "type": "package",
-      "path": "microsoft.bcl.asyncinterfaces/7.0.0",
+      "path": "microsoft.data.sqlite/8.0.11",
       "files": [
         ".nupkg.metadata",
         ".signature.p7s",
         "Icon.png",
-        "LICENSE.TXT",
-        "THIRD-PARTY-NOTICES.TXT",
-        "buildTransitive/net461/Microsoft.Bcl.AsyncInterfaces.targets",
-        "buildTransitive/net462/_._",
-        "lib/net462/Microsoft.Bcl.AsyncInterfaces.dll",
-        "lib/net462/Microsoft.Bcl.AsyncInterfaces.xml",
-        "lib/netstandard2.0/Microsoft.Bcl.AsyncInterfaces.dll",
-        "lib/netstandard2.0/Microsoft.Bcl.AsyncInterfaces.xml",
-        "lib/netstandard2.1/Microsoft.Bcl.AsyncInterfaces.dll",
-        "lib/netstandard2.1/Microsoft.Bcl.AsyncInterfaces.xml",
-        "microsoft.bcl.asyncinterfaces.7.0.0.nupkg.sha512",
-        "microsoft.bcl.asyncinterfaces.nuspec",
-        "useSharedDesignerContext.txt"
+        "PACKAGE.md",
+        "lib/netstandard2.0/_._",
+        "microsoft.data.sqlite.8.0.11.nupkg.sha512",
+        "microsoft.data.sqlite.nuspec"
       ]
     },
-    "Nice3point.Revit.Api.RevitAPI/2023.1.80": {
-      "sha512": "EzqgUgk6SJahagxCzwSnKBZn4T9f99KIyuDpwYsBceQeBKYh7/HFm4fCOKrbimUnoqw8FnhtblEUSyTjX+OhvQ==",
+    "Microsoft.Data.Sqlite.Core/8.0.11": {
+      "sha512": "PrDkI9SeU/MEP/IHriczeYmRVbzEcfp66UlZRjL5ikHIJGIYOrby55GoehLCJzJiTwJ+rGkjSRctZnWgfC95fg==",
       "type": "package",
-      "path": "nice3point.revit.api.revitapi/2023.1.80",
+      "path": "microsoft.data.sqlite.core/8.0.11",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "Icon.png",
+        "PACKAGE.md",
+        "lib/net6.0/Microsoft.Data.Sqlite.dll",
+        "lib/net6.0/Microsoft.Data.Sqlite.xml",
+        "lib/net8.0/Microsoft.Data.Sqlite.dll",
+        "lib/net8.0/Microsoft.Data.Sqlite.xml",
+        "lib/netstandard2.0/Microsoft.Data.Sqlite.dll",
+        "lib/netstandard2.0/Microsoft.Data.Sqlite.xml",
+        "microsoft.data.sqlite.core.8.0.11.nupkg.sha512",
+        "microsoft.data.sqlite.core.nuspec"
+      ]
+    },
+    "Nice3point.Revit.Api.RevitAPI/2026.4.0": {
+      "sha512": "cQwPOISRrEagaV37EHyI2Obx7qNDkAHQofIK4AFMZti0w5gQaOejVdl2Yff0s7FAh2i7S2t13WC6APTnnpHi0g==",
+      "type": "package",
+      "path": "nice3point.revit.api.revitapi/2026.4.0",
       "files": [
         ".nupkg.metadata",
         ".signature.p7s",
         "License.md",
         "Readme.md",
         "images/PackageIcon.png",
-        "nice3point.revit.api.revitapi.2023.1.80.nupkg.sha512",
+        "nice3point.revit.api.revitapi.2026.4.0.nupkg.sha512",
         "nice3point.revit.api.revitapi.nuspec",
-        "ref/net48/RevitAPI.dll",
-        "ref/net48/RevitAPI.xml"
+        "ref/net8.0-windows7.0/RevitAPI.dll",
+        "ref/net8.0-windows7.0/RevitAPI.xml"
       ]
     },
-    "Nice3point.Revit.Api.RevitAPIUI/2023.1.80": {
-      "sha512": "vEEiQcQePogrpjxzzLCTGEwWTV+L34rXhJ3m18oY+Tza+ywueyR/AyYvRZS11Fvbab80P3QuHXIJjhUq2LTf8w==",
+    "Nice3point.Revit.Api.RevitAPIUI/2026.4.0": {
+      "sha512": "m8hdKl54hagP6UFhKgqzwzaH+gLNwA+GCTZQAfzbx2i3QEirqL4R/XJjszLaym3rXBkyaIlQMvTvXZ6ZbJnnGg==",
       "type": "package",
-      "path": "nice3point.revit.api.revitapiui/2023.1.80",
+      "path": "nice3point.revit.api.revitapiui/2026.4.0",
       "files": [
         ".nupkg.metadata",
         ".signature.p7s",
         "License.md",
         "Readme.md",
         "images/PackageIcon.png",
-        "nice3point.revit.api.revitapiui.2023.1.80.nupkg.sha512",
+        "nice3point.revit.api.revitapiui.2026.4.0.nupkg.sha512",
         "nice3point.revit.api.revitapiui.nuspec",
-        "ref/net48/RevitAPIUI.dll",
-        "ref/net48/RevitAPIUI.xml"
+        "ref/net8.0-windows7.0/RevitAPIUI.dll",
+        "ref/net8.0-windows7.0/RevitAPIUI.xml"
       ]
     },
     "Nice3point.Revit.Build.Tasks/3.0.1": {
@@ -529,35 +472,35 @@
         "tasks/net8.0/Nice3point.Revit.Build.Tasks.dll"
       ]
     },
-    "Nice3point.Revit.Extensions/2023.4.1": {
-      "sha512": "8vcgPh2ODotCLNDL6zPSo8hT7A+nnRlVuw19E6eFPaeYrcV4NgHeud3NuZ57IiyVifAi1Ndti1yODVmRvhYVJA==",
+    "Nice3point.Revit.Extensions/2026.0.1": {
+      "sha512": "OuOJTaT8Xom+abcDBDAyeiSgy4SRh02OBIlUKpSj2eLcgQ4ny3UylmXaMx7JanhJia+J/6fHVwwniiAd46is6g==",
       "type": "package",
-      "path": "nice3point.revit.extensions/2023.4.1",
+      "path": "nice3point.revit.extensions/2026.0.1",
       "files": [
         ".nupkg.metadata",
         ".signature.p7s",
         "License.md",
         "Readme.md",
         "images/PackageIcon.png",
-        "lib/net48/Nice3point.Revit.Extensions.dll",
-        "lib/net48/Nice3point.Revit.Extensions.xml",
-        "nice3point.revit.extensions.2023.4.1.nupkg.sha512",
+        "lib/net8.0-windows7.0/Nice3point.Revit.Extensions.dll",
+        "lib/net8.0-windows7.0/Nice3point.Revit.Extensions.xml",
+        "nice3point.revit.extensions.2026.0.1.nupkg.sha512",
         "nice3point.revit.extensions.nuspec"
       ]
     },
-    "Nice3point.Revit.Toolkit/2023.3.0": {
-      "sha512": "S1BriOVLBy0nYmxXk+ORO2oQ0+jX8KwlHN4bDE1Z8V1LkDqq0U6b0OqguojGUdKG4XwBMFfqb446hTajUBItcw==",
+    "Nice3point.Revit.Toolkit/2026.0.0": {
+      "sha512": "oumOLDLE/NIkZ7sGocx2aVAJrtnQTp4MXsUziJMKmG3tFeT3MaodU4agcQQiqa/iknU+stl/6XNjHz2vejugrg==",
       "type": "package",
-      "path": "nice3point.revit.toolkit/2023.3.0",
+      "path": "nice3point.revit.toolkit/2026.0.0",
       "files": [
         ".nupkg.metadata",
         ".signature.p7s",
         "License.md",
         "Readme.md",
         "images/PackageIcon.png",
-        "lib/net48/Nice3point.Revit.Toolkit.dll",
-        "lib/net48/Nice3point.Revit.Toolkit.xml",
-        "nice3point.revit.toolkit.2023.3.0.nupkg.sha512",
+        "lib/net8.0-windows7.0/Nice3point.Revit.Toolkit.dll",
+        "lib/net8.0-windows7.0/Nice3point.Revit.Toolkit.xml",
+        "nice3point.revit.toolkit.2026.0.0.nupkg.sha512",
         "nice3point.revit.toolkit.nuspec"
       ]
     },
@@ -609,333 +552,114 @@
         "serilog.sinks.debug.nuspec"
       ]
     },
-    "Stub.System.Data.SQLite.Core.NetFramework/1.0.118": {
-      "sha512": "oKvqJyhos18gUWQ7DphJwke15HsmXjcfaYm/qymJDkXHraqwDy0BqYMbbwDSJ/bmcbhug3jQEZ1N1FjynGFFyg==",
+    "SQLitePCLRaw.bundle_e_sqlite3/2.1.6": {
+      "sha512": "BmAf6XWt4TqtowmiWe4/5rRot6GerAeklmOPfviOvwLoF5WwgxcJHAxZtySuyW9r9w+HLILnm8VfJFLCUJYW8A==",
       "type": "package",
-      "path": "stub.system.data.sqlite.core.netframework/1.0.118",
+      "path": "sqlitepclraw.bundle_e_sqlite3/2.1.6",
       "files": [
         ".nupkg.metadata",
         ".signature.p7s",
-        "build/net20/Stub.System.Data.SQLite.Core.NetFramework.targets",
-        "build/net20/x64/SQLite.Interop.dll",
-        "build/net20/x86/SQLite.Interop.dll",
-        "build/net40/Stub.System.Data.SQLite.Core.NetFramework.targets",
-        "build/net40/x64/SQLite.Interop.dll",
-        "build/net40/x86/SQLite.Interop.dll",
-        "build/net45/Stub.System.Data.SQLite.Core.NetFramework.targets",
-        "build/net45/x64/SQLite.Interop.dll",
-        "build/net45/x86/SQLite.Interop.dll",
-        "build/net451/Stub.System.Data.SQLite.Core.NetFramework.targets",
-        "build/net451/x64/SQLite.Interop.dll",
-        "build/net451/x86/SQLite.Interop.dll",
-        "build/net46/Stub.System.Data.SQLite.Core.NetFramework.targets",
-        "build/net46/x64/SQLite.Interop.dll",
-        "build/net46/x86/SQLite.Interop.dll",
-        "buildTransitive/net20/Stub.System.Data.SQLite.Core.NetFramework.targets",
-        "buildTransitive/net40/Stub.System.Data.SQLite.Core.NetFramework.targets",
-        "buildTransitive/net45/Stub.System.Data.SQLite.Core.NetFramework.targets",
-        "buildTransitive/net451/Stub.System.Data.SQLite.Core.NetFramework.targets",
-        "buildTransitive/net46/Stub.System.Data.SQLite.Core.NetFramework.targets",
-        "lib/net20/System.Data.SQLite.dll",
-        "lib/net20/System.Data.SQLite.dll.altconfig",
-        "lib/net20/System.Data.SQLite.xml",
-        "lib/net40/System.Data.SQLite.dll",
-        "lib/net40/System.Data.SQLite.dll.altconfig",
-        "lib/net40/System.Data.SQLite.xml",
-        "lib/net45/System.Data.SQLite.dll",
-        "lib/net45/System.Data.SQLite.dll.altconfig",
-        "lib/net45/System.Data.SQLite.xml",
-        "lib/net451/System.Data.SQLite.dll",
-        "lib/net451/System.Data.SQLite.dll.altconfig",
-        "lib/net451/System.Data.SQLite.xml",
-        "lib/net46/System.Data.SQLite.dll",
-        "lib/net46/System.Data.SQLite.dll.altconfig",
-        "lib/net46/System.Data.SQLite.xml",
-        "stub.system.data.sqlite.core.netframework.1.0.118.nupkg.sha512",
-        "stub.system.data.sqlite.core.netframework.nuspec"
+        "lib/monoandroid90/SQLitePCLRaw.batteries_v2.dll",
+        "lib/net461/SQLitePCLRaw.batteries_v2.dll",
+        "lib/net6.0-android31.0/SQLitePCLRaw.batteries_v2.dll",
+        "lib/net6.0-android31.0/SQLitePCLRaw.batteries_v2.xml",
+        "lib/net6.0-ios14.0/SQLitePCLRaw.batteries_v2.dll",
+        "lib/net6.0-ios14.2/SQLitePCLRaw.batteries_v2.dll",
+        "lib/net6.0-tvos10.0/SQLitePCLRaw.batteries_v2.dll",
+        "lib/netstandard2.0/SQLitePCLRaw.batteries_v2.dll",
+        "lib/xamarinios10/SQLitePCLRaw.batteries_v2.dll",
+        "sqlitepclraw.bundle_e_sqlite3.2.1.6.nupkg.sha512",
+        "sqlitepclraw.bundle_e_sqlite3.nuspec"
       ]
     },
-    "System.Buffers/4.5.1": {
-      "sha512": "Rw7ijyl1qqRS0YQD/WycNst8hUUMgrMH4FCn1nNm27M4VxchZ1js3fVjQaANHO5f3sN4isvP4a+Met9Y4YomAg==",
+    "SQLitePCLRaw.core/2.1.6": {
+      "sha512": "wO6v9GeMx9CUngAet8hbO7xdm+M42p1XeJq47ogyRoYSvNSp0NGLI+MgC0bhrMk9C17MTVFlLiN6ylyExLCc5w==",
       "type": "package",
-      "path": "system.buffers/4.5.1",
+      "path": "sqlitepclraw.core/2.1.6",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "lib/netstandard2.0/SQLitePCLRaw.core.dll",
+        "sqlitepclraw.core.2.1.6.nupkg.sha512",
+        "sqlitepclraw.core.nuspec"
+      ]
+    },
+    "SQLitePCLRaw.lib.e_sqlite3/2.1.6": {
+      "sha512": "2ObJJLkIUIxRpOUlZNGuD4rICpBnrBR5anjyfUFQep4hMOIeqW+XGQYzrNmHSVz5xSWZ3klSbh7sFR6UyDj68Q==",
+      "type": "package",
+      "path": "sqlitepclraw.lib.e_sqlite3/2.1.6",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "buildTransitive/net461/SQLitePCLRaw.lib.e_sqlite3.targets",
+        "buildTransitive/net6.0/SQLitePCLRaw.lib.e_sqlite3.targets",
+        "buildTransitive/net7.0/SQLitePCLRaw.lib.e_sqlite3.targets",
+        "buildTransitive/net8.0/SQLitePCLRaw.lib.e_sqlite3.targets",
+        "lib/net461/_._",
+        "lib/netstandard2.0/_._",
+        "runtimes/browser-wasm/nativeassets/net6.0/e_sqlite3.a",
+        "runtimes/browser-wasm/nativeassets/net7.0/e_sqlite3.a",
+        "runtimes/browser-wasm/nativeassets/net8.0/e_sqlite3.a",
+        "runtimes/linux-arm/native/libe_sqlite3.so",
+        "runtimes/linux-arm64/native/libe_sqlite3.so",
+        "runtimes/linux-armel/native/libe_sqlite3.so",
+        "runtimes/linux-mips64/native/libe_sqlite3.so",
+        "runtimes/linux-musl-arm/native/libe_sqlite3.so",
+        "runtimes/linux-musl-arm64/native/libe_sqlite3.so",
+        "runtimes/linux-musl-x64/native/libe_sqlite3.so",
+        "runtimes/linux-ppc64le/native/libe_sqlite3.so",
+        "runtimes/linux-s390x/native/libe_sqlite3.so",
+        "runtimes/linux-x64/native/libe_sqlite3.so",
+        "runtimes/linux-x86/native/libe_sqlite3.so",
+        "runtimes/maccatalyst-arm64/native/libe_sqlite3.dylib",
+        "runtimes/maccatalyst-x64/native/libe_sqlite3.dylib",
+        "runtimes/osx-arm64/native/libe_sqlite3.dylib",
+        "runtimes/osx-x64/native/libe_sqlite3.dylib",
+        "runtimes/win-arm/native/e_sqlite3.dll",
+        "runtimes/win-arm64/native/e_sqlite3.dll",
+        "runtimes/win-x64/native/e_sqlite3.dll",
+        "runtimes/win-x86/native/e_sqlite3.dll",
+        "runtimes/win10-arm/nativeassets/uap10.0/e_sqlite3.dll",
+        "runtimes/win10-arm64/nativeassets/uap10.0/e_sqlite3.dll",
+        "runtimes/win10-x64/nativeassets/uap10.0/e_sqlite3.dll",
+        "runtimes/win10-x86/nativeassets/uap10.0/e_sqlite3.dll",
+        "sqlitepclraw.lib.e_sqlite3.2.1.6.nupkg.sha512",
+        "sqlitepclraw.lib.e_sqlite3.nuspec"
+      ]
+    },
+    "SQLitePCLRaw.provider.e_sqlite3/2.1.6": {
+      "sha512": "PQ2Oq3yepLY4P7ll145P3xtx2bX8xF4PzaKPRpw9jZlKvfe4LE/saAV82inND9usn1XRpmxXk7Lal3MTI+6CNg==",
+      "type": "package",
+      "path": "sqlitepclraw.provider.e_sqlite3/2.1.6",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "lib/net6.0-windows7.0/SQLitePCLRaw.provider.e_sqlite3.dll",
+        "lib/net6.0/SQLitePCLRaw.provider.e_sqlite3.dll",
+        "lib/netstandard2.0/SQLitePCLRaw.provider.e_sqlite3.dll",
+        "sqlitepclraw.provider.e_sqlite3.2.1.6.nupkg.sha512",
+        "sqlitepclraw.provider.e_sqlite3.nuspec"
+      ]
+    },
+    "System.Memory/4.5.3": {
+      "sha512": "3oDzvc/zzetpTKWMShs1AADwZjQ/36HnsufHRPcOjyRAAMLDlu2iD33MBI2opxnezcVUtXyqDXXjoFMOU9c7SA==",
+      "type": "package",
+      "path": "system.memory/4.5.3",
       "files": [
         ".nupkg.metadata",
         ".signature.p7s",
         "LICENSE.TXT",
         "THIRD-PARTY-NOTICES.TXT",
-        "lib/net461/System.Buffers.dll",
-        "lib/net461/System.Buffers.xml",
-        "lib/netcoreapp2.0/_._",
-        "lib/netstandard1.1/System.Buffers.dll",
-        "lib/netstandard1.1/System.Buffers.xml",
-        "lib/netstandard2.0/System.Buffers.dll",
-        "lib/netstandard2.0/System.Buffers.xml",
-        "lib/uap10.0.16299/_._",
-        "ref/net45/System.Buffers.dll",
-        "ref/net45/System.Buffers.xml",
-        "ref/netcoreapp2.0/_._",
-        "ref/netstandard1.1/System.Buffers.dll",
-        "ref/netstandard1.1/System.Buffers.xml",
-        "ref/netstandard2.0/System.Buffers.dll",
-        "ref/netstandard2.0/System.Buffers.xml",
-        "ref/uap10.0.16299/_._",
-        "system.buffers.4.5.1.nupkg.sha512",
-        "system.buffers.nuspec",
-        "useSharedDesignerContext.txt",
-        "version.txt"
-      ]
-    },
-    "System.ComponentModel.Annotations/5.0.0": {
-      "sha512": "dMkqfy2el8A8/I76n2Hi1oBFEbG1SfxD2l5nhwXV3XjlnOmwxJlQbYpJH4W51odnU9sARCSAgv7S3CyAFMkpYg==",
-      "type": "package",
-      "path": "system.componentmodel.annotations/5.0.0",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "Icon.png",
-        "LICENSE.TXT",
-        "THIRD-PARTY-NOTICES.TXT",
-        "lib/MonoAndroid10/_._",
-        "lib/MonoTouch10/_._",
-        "lib/net45/_._",
-        "lib/net461/System.ComponentModel.Annotations.dll",
-        "lib/netcore50/System.ComponentModel.Annotations.dll",
-        "lib/netstandard1.4/System.ComponentModel.Annotations.dll",
-        "lib/netstandard2.0/System.ComponentModel.Annotations.dll",
-        "lib/netstandard2.1/System.ComponentModel.Annotations.dll",
-        "lib/netstandard2.1/System.ComponentModel.Annotations.xml",
-        "lib/portable-net45+win8/_._",
-        "lib/win8/_._",
-        "lib/xamarinios10/_._",
-        "lib/xamarinmac20/_._",
-        "lib/xamarintvos10/_._",
-        "lib/xamarinwatchos10/_._",
-        "ref/MonoAndroid10/_._",
-        "ref/MonoTouch10/_._",
-        "ref/net45/_._",
-        "ref/net461/System.ComponentModel.Annotations.dll",
-        "ref/net461/System.ComponentModel.Annotations.xml",
-        "ref/netcore50/System.ComponentModel.Annotations.dll",
-        "ref/netcore50/System.ComponentModel.Annotations.xml",
-        "ref/netcore50/de/System.ComponentModel.Annotations.xml",
-        "ref/netcore50/es/System.ComponentModel.Annotations.xml",
-        "ref/netcore50/fr/System.ComponentModel.Annotations.xml",
-        "ref/netcore50/it/System.ComponentModel.Annotations.xml",
-        "ref/netcore50/ja/System.ComponentModel.Annotations.xml",
-        "ref/netcore50/ko/System.ComponentModel.Annotations.xml",
-        "ref/netcore50/ru/System.ComponentModel.Annotations.xml",
-        "ref/netcore50/zh-hans/System.ComponentModel.Annotations.xml",
-        "ref/netcore50/zh-hant/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.1/System.ComponentModel.Annotations.dll",
-        "ref/netstandard1.1/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.1/de/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.1/es/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.1/fr/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.1/it/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.1/ja/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.1/ko/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.1/ru/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.1/zh-hans/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.1/zh-hant/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.3/System.ComponentModel.Annotations.dll",
-        "ref/netstandard1.3/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.3/de/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.3/es/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.3/fr/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.3/it/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.3/ja/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.3/ko/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.3/ru/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.3/zh-hans/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.3/zh-hant/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.4/System.ComponentModel.Annotations.dll",
-        "ref/netstandard1.4/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.4/de/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.4/es/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.4/fr/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.4/it/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.4/ja/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.4/ko/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.4/ru/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.4/zh-hans/System.ComponentModel.Annotations.xml",
-        "ref/netstandard1.4/zh-hant/System.ComponentModel.Annotations.xml",
-        "ref/netstandard2.0/System.ComponentModel.Annotations.dll",
-        "ref/netstandard2.0/System.ComponentModel.Annotations.xml",
-        "ref/netstandard2.1/System.ComponentModel.Annotations.dll",
-        "ref/netstandard2.1/System.ComponentModel.Annotations.xml",
-        "ref/portable-net45+win8/_._",
-        "ref/win8/_._",
-        "ref/xamarinios10/_._",
-        "ref/xamarinmac20/_._",
-        "ref/xamarintvos10/_._",
-        "ref/xamarinwatchos10/_._",
-        "system.componentmodel.annotations.5.0.0.nupkg.sha512",
-        "system.componentmodel.annotations.nuspec",
-        "useSharedDesignerContext.txt",
-        "version.txt"
-      ]
-    },
-    "System.Data.SQLite.Core/1.0.118": {
-      "sha512": "2V1PsfBeqWlZxF/VtB8lQKPfDBayCU8zD5Xc3Mq7cILOa2ZqpPDSwMP0fTfk1gtGSStSk//DxKiGy6zwCQs7Uw==",
-      "type": "package",
-      "path": "system.data.sqlite.core/1.0.118",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "system.data.sqlite.core.1.0.118.nupkg.sha512",
-        "system.data.sqlite.core.nuspec"
-      ]
-    },
-    "System.Diagnostics.DiagnosticSource/8.0.1": {
-      "sha512": "vaoWjvkG1aenR2XdjaVivlCV9fADfgyhW5bZtXT23qaEea0lWiUljdQuze4E31vKM7ZWJaSUsbYIKE3rnzfZUg==",
-      "type": "package",
-      "path": "system.diagnostics.diagnosticsource/8.0.1",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "Icon.png",
-        "LICENSE.TXT",
-        "THIRD-PARTY-NOTICES.TXT",
-        "buildTransitive/net461/System.Diagnostics.DiagnosticSource.targets",
-        "buildTransitive/net462/_._",
-        "buildTransitive/net6.0/_._",
-        "buildTransitive/netcoreapp2.0/System.Diagnostics.DiagnosticSource.targets",
-        "lib/net462/System.Diagnostics.DiagnosticSource.dll",
-        "lib/net462/System.Diagnostics.DiagnosticSource.xml",
-        "lib/net6.0/System.Diagnostics.DiagnosticSource.dll",
-        "lib/net6.0/System.Diagnostics.DiagnosticSource.xml",
-        "lib/net7.0/System.Diagnostics.DiagnosticSource.dll",
-        "lib/net7.0/System.Diagnostics.DiagnosticSource.xml",
-        "lib/net8.0/System.Diagnostics.DiagnosticSource.dll",
-        "lib/net8.0/System.Diagnostics.DiagnosticSource.xml",
-        "lib/netstandard2.0/System.Diagnostics.DiagnosticSource.dll",
-        "lib/netstandard2.0/System.Diagnostics.DiagnosticSource.xml",
-        "system.diagnostics.diagnosticsource.8.0.1.nupkg.sha512",
-        "system.diagnostics.diagnosticsource.nuspec",
-        "useSharedDesignerContext.txt"
-      ]
-    },
-    "System.Memory/4.5.5": {
-      "sha512": "XIWiDvKPXaTveaB7HVganDlOCRoj03l+jrwNvcge/t8vhGYKvqV+dMv6G4SAX2NoNmN0wZfVPTAlFwZcZvVOUw==",
-      "type": "package",
-      "path": "system.memory/4.5.5",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "LICENSE.TXT",
-        "THIRD-PARTY-NOTICES.TXT",
-        "lib/net461/System.Memory.dll",
-        "lib/net461/System.Memory.xml",
         "lib/netcoreapp2.1/_._",
         "lib/netstandard1.1/System.Memory.dll",
         "lib/netstandard1.1/System.Memory.xml",
         "lib/netstandard2.0/System.Memory.dll",
         "lib/netstandard2.0/System.Memory.xml",
         "ref/netcoreapp2.1/_._",
-        "system.memory.4.5.5.nupkg.sha512",
+        "system.memory.4.5.3.nupkg.sha512",
         "system.memory.nuspec",
         "useSharedDesignerContext.txt",
         "version.txt"
-      ]
-    },
-    "System.Numerics.Vectors/4.5.0": {
-      "sha512": "QQTlPTl06J/iiDbJCiepZ4H//BVraReU4O4EoRw1U02H5TLUIT7xn3GnDp9AXPSlJUDyFs4uWjWafNX6WrAojQ==",
-      "type": "package",
-      "path": "system.numerics.vectors/4.5.0",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "LICENSE.TXT",
-        "THIRD-PARTY-NOTICES.TXT",
-        "lib/MonoAndroid10/_._",
-        "lib/MonoTouch10/_._",
-        "lib/net46/System.Numerics.Vectors.dll",
-        "lib/net46/System.Numerics.Vectors.xml",
-        "lib/netcoreapp2.0/_._",
-        "lib/netstandard1.0/System.Numerics.Vectors.dll",
-        "lib/netstandard1.0/System.Numerics.Vectors.xml",
-        "lib/netstandard2.0/System.Numerics.Vectors.dll",
-        "lib/netstandard2.0/System.Numerics.Vectors.xml",
-        "lib/portable-net45+win8+wp8+wpa81/System.Numerics.Vectors.dll",
-        "lib/portable-net45+win8+wp8+wpa81/System.Numerics.Vectors.xml",
-        "lib/uap10.0.16299/_._",
-        "lib/xamarinios10/_._",
-        "lib/xamarinmac20/_._",
-        "lib/xamarintvos10/_._",
-        "lib/xamarinwatchos10/_._",
-        "ref/MonoAndroid10/_._",
-        "ref/MonoTouch10/_._",
-        "ref/net45/System.Numerics.Vectors.dll",
-        "ref/net45/System.Numerics.Vectors.xml",
-        "ref/net46/System.Numerics.Vectors.dll",
-        "ref/net46/System.Numerics.Vectors.xml",
-        "ref/netcoreapp2.0/_._",
-        "ref/netstandard1.0/System.Numerics.Vectors.dll",
-        "ref/netstandard1.0/System.Numerics.Vectors.xml",
-        "ref/netstandard2.0/System.Numerics.Vectors.dll",
-        "ref/netstandard2.0/System.Numerics.Vectors.xml",
-        "ref/uap10.0.16299/_._",
-        "ref/xamarinios10/_._",
-        "ref/xamarinmac20/_._",
-        "ref/xamarintvos10/_._",
-        "ref/xamarinwatchos10/_._",
-        "system.numerics.vectors.4.5.0.nupkg.sha512",
-        "system.numerics.vectors.nuspec",
-        "useSharedDesignerContext.txt",
-        "version.txt"
-      ]
-    },
-    "System.Runtime.CompilerServices.Unsafe/6.0.0": {
-      "sha512": "/iUeP3tq1S0XdNNoMz5C9twLSrM/TH+qElHkXWaPvuNOt+99G75NrV0OS2EqHx5wMN7popYjpc8oTjC1y16DLg==",
-      "type": "package",
-      "path": "system.runtime.compilerservices.unsafe/6.0.0",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "Icon.png",
-        "LICENSE.TXT",
-        "THIRD-PARTY-NOTICES.TXT",
-        "buildTransitive/netcoreapp2.0/System.Runtime.CompilerServices.Unsafe.targets",
-        "buildTransitive/netcoreapp3.1/_._",
-        "lib/net461/System.Runtime.CompilerServices.Unsafe.dll",
-        "lib/net461/System.Runtime.CompilerServices.Unsafe.xml",
-        "lib/net6.0/System.Runtime.CompilerServices.Unsafe.dll",
-        "lib/net6.0/System.Runtime.CompilerServices.Unsafe.xml",
-        "lib/netcoreapp3.1/System.Runtime.CompilerServices.Unsafe.dll",
-        "lib/netcoreapp3.1/System.Runtime.CompilerServices.Unsafe.xml",
-        "lib/netstandard2.0/System.Runtime.CompilerServices.Unsafe.dll",
-        "lib/netstandard2.0/System.Runtime.CompilerServices.Unsafe.xml",
-        "system.runtime.compilerservices.unsafe.6.0.0.nupkg.sha512",
-        "system.runtime.compilerservices.unsafe.nuspec",
-        "useSharedDesignerContext.txt"
-      ]
-    },
-    "System.Text.Encodings.Web/6.0.1": {
-      "sha512": "E5M5AE2OUTlCrf4omZvzzziUJO9CofBl+lXHaN5IKePPJvHqYFYYpaDPgCpR4VwaFbEebfnjOxxEBtPtsqAxpQ==",
-      "type": "package",
-      "path": "system.text.encodings.web/6.0.1",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "Icon.png",
-        "LICENSE.TXT",
-        "THIRD-PARTY-NOTICES.TXT",
-        "buildTransitive/netcoreapp2.0/System.Text.Encodings.Web.targets",
-        "buildTransitive/netcoreapp3.1/_._",
-        "lib/net461/System.Text.Encodings.Web.dll",
-        "lib/net461/System.Text.Encodings.Web.xml",
-        "lib/net6.0/System.Text.Encodings.Web.dll",
-        "lib/net6.0/System.Text.Encodings.Web.xml",
-        "lib/netcoreapp3.1/System.Text.Encodings.Web.dll",
-        "lib/netcoreapp3.1/System.Text.Encodings.Web.xml",
-        "lib/netstandard2.0/System.Text.Encodings.Web.dll",
-        "lib/netstandard2.0/System.Text.Encodings.Web.xml",
-        "runtimes/browser/lib/net6.0/System.Text.Encodings.Web.dll",
-        "runtimes/browser/lib/net6.0/System.Text.Encodings.Web.xml",
-        "system.text.encodings.web.6.0.1.nupkg.sha512",
-        "system.text.encodings.web.nuspec",
-        "useSharedDesignerContext.txt"
       ]
     },
     "System.Text.Json/6.0.11": {
@@ -991,133 +715,20 @@
         "system.text.json.nuspec",
         "useSharedDesignerContext.txt"
       ]
-    },
-    "System.Threading.Channels/8.0.0": {
-      "sha512": "CMaFr7v+57RW7uZfZkPExsPB6ljwzhjACWW1gfU35Y56rk72B/Wu+sTqxVmGSk4SFUlPc3cjeKND0zktziyjBA==",
-      "type": "package",
-      "path": "system.threading.channels/8.0.0",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "Icon.png",
-        "LICENSE.TXT",
-        "PACKAGE.md",
-        "THIRD-PARTY-NOTICES.TXT",
-        "buildTransitive/net461/System.Threading.Channels.targets",
-        "buildTransitive/net462/_._",
-        "buildTransitive/net6.0/_._",
-        "buildTransitive/netcoreapp2.0/System.Threading.Channels.targets",
-        "lib/net462/System.Threading.Channels.dll",
-        "lib/net462/System.Threading.Channels.xml",
-        "lib/net6.0/System.Threading.Channels.dll",
-        "lib/net6.0/System.Threading.Channels.xml",
-        "lib/net7.0/System.Threading.Channels.dll",
-        "lib/net7.0/System.Threading.Channels.xml",
-        "lib/net8.0/System.Threading.Channels.dll",
-        "lib/net8.0/System.Threading.Channels.xml",
-        "lib/netstandard2.0/System.Threading.Channels.dll",
-        "lib/netstandard2.0/System.Threading.Channels.xml",
-        "lib/netstandard2.1/System.Threading.Channels.dll",
-        "lib/netstandard2.1/System.Threading.Channels.xml",
-        "system.threading.channels.8.0.0.nupkg.sha512",
-        "system.threading.channels.nuspec",
-        "useSharedDesignerContext.txt"
-      ]
-    },
-    "System.Threading.Tasks.Extensions/4.5.4": {
-      "sha512": "zteT+G8xuGu6mS+mzDzYXbzS7rd3K6Fjb9RiZlYlJPam2/hU7JCBZBVEcywNuR+oZ1ncTvc/cq0faRr3P01OVg==",
-      "type": "package",
-      "path": "system.threading.tasks.extensions/4.5.4",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "LICENSE.TXT",
-        "THIRD-PARTY-NOTICES.TXT",
-        "lib/MonoAndroid10/_._",
-        "lib/MonoTouch10/_._",
-        "lib/net461/System.Threading.Tasks.Extensions.dll",
-        "lib/net461/System.Threading.Tasks.Extensions.xml",
-        "lib/netcoreapp2.1/_._",
-        "lib/netstandard1.0/System.Threading.Tasks.Extensions.dll",
-        "lib/netstandard1.0/System.Threading.Tasks.Extensions.xml",
-        "lib/netstandard2.0/System.Threading.Tasks.Extensions.dll",
-        "lib/netstandard2.0/System.Threading.Tasks.Extensions.xml",
-        "lib/portable-net45+win8+wp8+wpa81/System.Threading.Tasks.Extensions.dll",
-        "lib/portable-net45+win8+wp8+wpa81/System.Threading.Tasks.Extensions.xml",
-        "lib/xamarinios10/_._",
-        "lib/xamarinmac20/_._",
-        "lib/xamarintvos10/_._",
-        "lib/xamarinwatchos10/_._",
-        "ref/MonoAndroid10/_._",
-        "ref/MonoTouch10/_._",
-        "ref/netcoreapp2.1/_._",
-        "ref/xamarinios10/_._",
-        "ref/xamarinmac20/_._",
-        "ref/xamarintvos10/_._",
-        "ref/xamarinwatchos10/_._",
-        "system.threading.tasks.extensions.4.5.4.nupkg.sha512",
-        "system.threading.tasks.extensions.nuspec",
-        "useSharedDesignerContext.txt",
-        "version.txt"
-      ]
-    },
-    "System.ValueTuple/4.5.0": {
-      "sha512": "okurQJO6NRE/apDIP23ajJ0hpiNmJ+f0BwOlB/cSqTLQlw5upkf+5+96+iG2Jw40G1fCVCyPz/FhIABUjMR+RQ==",
-      "type": "package",
-      "path": "system.valuetuple/4.5.0",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "LICENSE.TXT",
-        "THIRD-PARTY-NOTICES.TXT",
-        "lib/MonoAndroid10/_._",
-        "lib/MonoTouch10/_._",
-        "lib/net461/System.ValueTuple.dll",
-        "lib/net461/System.ValueTuple.xml",
-        "lib/net47/System.ValueTuple.dll",
-        "lib/net47/System.ValueTuple.xml",
-        "lib/netcoreapp2.0/_._",
-        "lib/netstandard1.0/System.ValueTuple.dll",
-        "lib/netstandard1.0/System.ValueTuple.xml",
-        "lib/netstandard2.0/_._",
-        "lib/portable-net40+sl4+win8+wp8/System.ValueTuple.dll",
-        "lib/portable-net40+sl4+win8+wp8/System.ValueTuple.xml",
-        "lib/uap10.0.16299/_._",
-        "lib/xamarinios10/_._",
-        "lib/xamarinmac20/_._",
-        "lib/xamarintvos10/_._",
-        "lib/xamarinwatchos10/_._",
-        "ref/MonoAndroid10/_._",
-        "ref/MonoTouch10/_._",
-        "ref/net461/System.ValueTuple.dll",
-        "ref/net47/System.ValueTuple.dll",
-        "ref/netcoreapp2.0/_._",
-        "ref/netstandard2.0/_._",
-        "ref/portable-net40+sl4+win8+wp8/System.ValueTuple.dll",
-        "ref/uap10.0.16299/_._",
-        "ref/xamarinios10/_._",
-        "ref/xamarinmac20/_._",
-        "ref/xamarintvos10/_._",
-        "ref/xamarinwatchos10/_._",
-        "system.valuetuple.4.5.0.nupkg.sha512",
-        "system.valuetuple.nuspec",
-        "useSharedDesignerContext.txt",
-        "version.txt"
-      ]
     }
   },
   "projectFileDependencyGroups": {
-    ".NETFramework,Version=v4.8": [
+    "net8.0-windows7.0": [
       "CommunityToolkit.Mvvm >= 8.2.2",
       "ILRepack >= 2.0.41",
-      "Nice3point.Revit.Api.RevitAPI >= 2023.*",
-      "Nice3point.Revit.Api.RevitAPIUI >= 2023.*",
+      "Microsoft.Data.Sqlite >= 8.0.11",
+      "Nice3point.Revit.Api.RevitAPI >= 2026.*",
+      "Nice3point.Revit.Api.RevitAPIUI >= 2026.*",
       "Nice3point.Revit.Build.Tasks >= 3.*",
-      "Nice3point.Revit.Extensions >= 2023.*",
-      "Nice3point.Revit.Toolkit >= 2023.*",
+      "Nice3point.Revit.Extensions >= 2026.*",
+      "Nice3point.Revit.Toolkit >= 2026.*",
       "Serilog >= 4.2.0",
       "Serilog.Sinks.Debug >= 3.0.0",
-      "System.Data.SQLite.Core >= 1.0.118",
       "System.Text.Json >= 6.0.11"
     ]
   },
@@ -1138,15 +749,15 @@
         "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
       ],
       "originalTargetFrameworks": [
-        "net48"
+        "net8.0-windows"
       ],
       "sources": {
         "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
         "https://api.nuget.org/v3/index.json": {}
       },
       "frameworks": {
-        "net48": {
-          "targetAlias": "net48",
+        "net8.0-windows7.0": {
+          "targetAlias": "net8.0-windows",
           "projectReferences": {}
         }
       },
@@ -1163,8 +774,8 @@
       "SdkAnalysisLevel": "10.0.100"
     },
     "frameworks": {
-      "net48": {
-        "targetAlias": "net48",
+      "net8.0-windows7.0": {
+        "targetAlias": "net8.0-windows",
         "dependencies": {
           "CommunityToolkit.Mvvm": {
             "target": "Package",
@@ -1174,13 +785,17 @@
             "target": "Package",
             "version": "[2.0.41, )"
           },
+          "Microsoft.Data.Sqlite": {
+            "target": "Package",
+            "version": "[8.0.11, )"
+          },
           "Nice3point.Revit.Api.RevitAPI": {
             "target": "Package",
-            "version": "[2023.*, )"
+            "version": "[2026.*, )"
           },
           "Nice3point.Revit.Api.RevitAPIUI": {
             "target": "Package",
-            "version": "[2023.*, )"
+            "version": "[2026.*, )"
           },
           "Nice3point.Revit.Build.Tasks": {
             "target": "Package",
@@ -1188,11 +803,11 @@
           },
           "Nice3point.Revit.Extensions": {
             "target": "Package",
-            "version": "[2023.*, )"
+            "version": "[2026.*, )"
           },
           "Nice3point.Revit.Toolkit": {
             "target": "Package",
-            "version": "[2023.*, )"
+            "version": "[2026.*, )"
           },
           "Serilog": {
             "target": "Package",
@@ -1202,16 +817,45 @@
             "target": "Package",
             "version": "[3.0.0, )"
           },
-          "System.Data.SQLite.Core": {
-            "target": "Package",
-            "version": "[1.0.118, )"
-          },
           "System.Text.Json": {
             "target": "Package",
             "version": "[6.0.11, )"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.102\\RuntimeIdentifierGraph.json"
+        "imports": [
+          "net461",
+          "net462",
+          "net47",
+          "net471",
+          "net472",
+          "net48",
+          "net481"
+        ],
+        "assetTargetFallback": true,
+        "warn": true,
+        "downloadDependencies": [
+          {
+            "name": "Microsoft.AspNetCore.App.Ref",
+            "version": "[8.0.23, 8.0.23]"
+          },
+          {
+            "name": "Microsoft.NETCore.App.Ref",
+            "version": "[8.0.23, 8.0.23]"
+          },
+          {
+            "name": "Microsoft.WindowsDesktop.App.Ref",
+            "version": "[8.0.23, 8.0.23]"
+          }
+        ],
+        "frameworkReferences": {
+          "Microsoft.NETCore.App": {
+            "privateAssets": "all"
+          },
+          "Microsoft.WindowsDesktop.App": {
+            "privateAssets": "none"
+          }
+        },
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.102/PortableRuntimeIdentifierGraph.json"
       }
     }
   }

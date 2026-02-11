@@ -66,7 +66,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                     hostFilter = new ElementIntersectsSolidFilter(sectionBoxSolid);
                 }
                 
-                DebugLogger.Info($"[SectionBoxDiag] Host elements count={hostElements.Count}, sampleIds={string.Join(",", hostIds.Take(6).Select(id => id.IntegerValue.ToString()))}");
+                DebugLogger.Info($"[SectionBoxDiag] Host elements count={hostElements.Count}, sampleIds={string.Join(",", hostIds.Take(6).Select(id => id.GetIntegerValue().ToString()))}");
                 var passingHostIds = new FilteredElementCollector(uiDoc.Document, hostIds)
                     .WherePasses(hostFilter)
                     .ToElementIds();
@@ -91,11 +91,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                                 elemBBox.Min, elemBBox.Max))
                             {
                                 manualPassingIds.Add(elem.Id);
-                                DebugLogger.Info($"[SectionBoxDiag] ✅ Manual check: Element {elem.Id.IntegerValue} PASSES (BBox intersects)");
+                                DebugLogger.Info($"[SectionBoxDiag] ✅ Manual check: Element {elem.Id.GetIntegerValue()} PASSES (BBox intersects)");
                             }
                             else
                             {
-                                DebugLogger.Info($"[SectionBoxDiag] ❌ Manual check: Element {elem.Id.IntegerValue} FAILS (BBox does not intersect)");
+                                DebugLogger.Info($"[SectionBoxDiag] ❌ Manual check: Element {elem.Id.GetIntegerValue()} FAILS (BBox does not intersect)");
                             }
                         }
                         passingHostIds = manualPassingIds;
@@ -195,7 +195,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                         // DebugLogger.Info($"[SectionBoxDiag] link='{group.Key}' passingCount={passingLinkIds.Count}");
                         foreach (var id in passingLinkIds.Take(3))
                         {
-                            var e = elementsInLink.FirstOrDefault(el => el.Id.IntegerValue == id.IntegerValue);
+                            var e = elementsInLink.FirstOrDefault(el => el.Id.GetIntegerValue() == id.GetIntegerValue());
                             if (e != null)
                             {
                                 var bbox = e.get_BoundingBox(null);

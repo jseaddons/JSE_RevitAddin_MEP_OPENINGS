@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+#if !NET8_0_OR_GREATER
 using System.Data.SQLite;
+#endif
 using System.Linq;
 using System.Text.Json;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
@@ -575,7 +577,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                         }
                     }
                     }
+#if NET8_0_OR_GREATER
+                    catch (SQLiteException colEx) when (colEx.Message.Contains("AdoptToDocumentFlag"))
+#else
                     catch (System.Data.SQLite.SQLiteException colEx) when (colEx.Message.Contains("AdoptToDocumentFlag"))
+#endif
                     {
                         // ✅ MIGRATION FALLBACK: AdoptToDocumentFlag column doesn't exist yet
                         // Try loading from old OpeningSettings column for backward compatibility

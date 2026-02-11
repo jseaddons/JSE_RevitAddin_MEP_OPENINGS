@@ -1,5 +1,6 @@
 using System;
 using Autodesk.Revit.DB;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -94,7 +95,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
                 else if (structuralElement is FamilyInstance famInst && 
-                         famInst.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+                         famInst.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_StructuralFraming)
                 {
                     var direction = GetWallDirection(famInst);
                     if (direction != null)
@@ -172,4 +173,3 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
     }
 }
-

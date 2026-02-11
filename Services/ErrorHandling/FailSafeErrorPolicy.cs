@@ -96,7 +96,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ErrorHandling
                 ArgumentNullException => "Warning",
                 ArgumentException => "Warning",
                 InvalidOperationException => "Error",
+#if NET8_0_OR_GREATER
+                Microsoft.Data.Sqlite.SqliteException => "Error",
+#else
                 System.Data.SQLite.SQLiteException => "Error",
+#endif
                 _ => "Error"
             };
         }

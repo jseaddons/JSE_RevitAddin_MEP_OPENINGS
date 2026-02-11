@@ -4,6 +4,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Geometry;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
 {
@@ -61,7 +62,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
                     {
                         DebugLogger.Warning($"[RotatedBoundingBoxCalculator] DB Lookup Failed for Sleeve {sId}. Using Fallsback.");
                         // Try Revit API as fallback
-                        var sleeve = actualSleeves.FirstOrDefault(s => s.Id.IntegerValue == sId);
+                        var sleeve = actualSleeves.FirstOrDefault(s => s.Id.GetIntegerValue() == sId);
                         if (sleeve != null)
                         {
                             var bbox = sleeve.get_BoundingBox(null);
@@ -336,4 +337,3 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.BoundingBox
         }
     }
 }
-

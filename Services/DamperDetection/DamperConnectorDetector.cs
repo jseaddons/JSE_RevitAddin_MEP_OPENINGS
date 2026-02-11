@@ -4,6 +4,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Mechanical;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
 {
@@ -89,7 +90,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
                 if (EnableDebugLogging)
                 {
                     SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: No ConnectorManager, returning '+X' (fallback)\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.GetIntegerValue() ?? -1}: No ConnectorManager, returning '+X' (fallback)\n");
                 }
                 return "+X"; // Default fallback
             }
@@ -104,7 +105,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
                     if (EnableDebugLogging)
                     {
                         SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Null transform, returning '+X' (fallback)\n");
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.GetIntegerValue() ?? -1}: Null transform, returning '+X' (fallback)\n");
                     }
                     return "+X";
                 }
@@ -114,7 +115,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
                 if (EnableDebugLogging)
                 {
                     SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Exception getting transform: {ex.Message}, returning '+X' (fallback)\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.GetIntegerValue() ?? -1}: Exception getting transform: {ex.Message}, returning '+X' (fallback)\n");
                 }
                 return "+X";
             }
@@ -138,7 +139,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
                 if (EnableDebugLogging)
                 {
                     SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Exception getting bounding box: {ex.Message}, using transform origin\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.GetIntegerValue() ?? -1}: Exception getting bounding box: {ex.Message}, using transform origin\n");
                 }
                 damperCenter = damperTransform.Origin ?? XYZ.Zero;
             }
@@ -199,7 +200,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
                 if (EnableDebugLogging)
                 {
                     SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Exception iterating connectors: {ex.Message}\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.GetIntegerValue() ?? -1}: Exception iterating connectors: {ex.Message}\n");
                 }
             }
 
@@ -208,7 +209,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
                 if (EnableDebugLogging)
                 {
                     SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: No connectors found, returning '+X' (fallback)\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.GetIntegerValue() ?? -1}: No connectors found, returning '+X' (fallback)\n");
                 }
                 return "+X";
             }
@@ -236,7 +237,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
                     if (EnableDebugLogging)
                     {
                         SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
-                            $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Null CoordinateSystem, returning '+X' (fallback)\n");
+                            $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.GetIntegerValue() ?? -1}: Null CoordinateSystem, returning '+X' (fallback)\n");
                     }
                     return "+X";
                 }
@@ -251,7 +252,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
                 if (EnableDebugLogging)
                 {
                     SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Exception accessing connector properties: {ex.Message}, returning '+X' (fallback)\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.GetIntegerValue() ?? -1}: Exception accessing connector properties: {ex.Message}, returning '+X' (fallback)\n");
                 }
                 return "+X";
             }
@@ -276,7 +277,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
                 if (EnableDebugLogging)
                 {
                     SafeFileLogger.SafeAppendText("damper_connector_debug.log", 
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.IntegerValue ?? -1}: Exception calculating absolutes: {ex.Message}\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] Damper ID={damper?.Id?.GetIntegerValue() ?? -1}: Exception calculating absolutes: {ex.Message}\n");
                 }
             }
             
@@ -329,7 +330,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
             if (EnableDebugLogging)
             {
                 string logMessage = $"[{DateTime.Now:HH:mm:ss.fff}] [DetectConnectorSideWorld] " +
-                    $"Damper ID={damper?.Id?.IntegerValue ?? -1}, " +
+                    $"Damper ID={damper?.Id?.GetIntegerValue() ?? -1}, " +
                     $"Family='{damper?.Symbol?.Family?.Name ?? "Unknown"}', " +
                     $"Type='{damper?.Symbol?.Name ?? "Unknown"}', " +
                     $"FacingFlipped={isFacingFlipped}, HandFlipped={isHandFlipped}, " +
@@ -390,4 +391,3 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
         }
     }
 }
-

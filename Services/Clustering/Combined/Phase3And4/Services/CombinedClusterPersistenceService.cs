@@ -6,6 +6,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase1And2.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Interfaces;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Services
 {
@@ -226,7 +227,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Combined.Phase3And4.Se
                 {
                     return floor.get_Parameter(BuiltInParameter.FLOOR_ATTR_THICKNESS_PARAM)?.AsDouble() ?? 0.1;
                 }
-                else if (element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+                else if (element.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_StructuralFraming)
                 {
                     // Structural framing: read TYPE parameter 'b'/'d'/'Width'/'Depth'
                     try

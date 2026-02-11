@@ -17,6 +17,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Combined;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Combined.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Geometry;
 using JSE_RevitAddin_MEP_OPENINGS.Data; // For GlobalData
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 // Explicit Alias for UI Types
 using Visibility = System.Windows.Visibility;
@@ -485,7 +486,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                         
                         // We need to fetch the original sleeve data (ClashZone or ClusterSleeveData)
                         // The repository has methods for this.
-                        var selectedIntIds = _selectedIds.Select(id => id.IntegerValue).ToList();
+                        var selectedIntIds = _selectedIds.Select(id => id.GetIntegerValue()).ToList();
                         
                         var individualSleeves = _repo.GetClashZonesBySleeveIds(selectedIntIds);
                         // Note: GetClashZonesBySleeveIds might return multiple zones for same sleeve? Usually 1:1 for uncombined.
@@ -511,7 +512,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                             SleeveType type = SleeveType.Individual;
                             
                             // Try Individual
-                            var cz = individualSleeves.FirstOrDefault(z => z.SleeveInstanceId == id.IntegerValue);
+                            var cz = individualSleeves.FirstOrDefault(z => z.SleeveInstanceId == id.GetIntegerValue());
                             if (cz != null)
                             {
                                 sourceData = cz;
@@ -529,7 +530,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                                 // But we know it exists in ClashZoneRepository.
                                 if (_repo is ClashZoneRepository concreteRepo)
                                 {
-                                     var clusters = concreteRepo.GetClusterSleevesByInstanceIds(new List<int> { id.IntegerValue });
+                                     var clusters = concreteRepo.GetClusterSleevesByInstanceIds(new List<int> { id.GetIntegerValue() });
                                      if(clusters != null && clusters.Count > 0)
                                      {
                                          sourceData = clusters[0];
@@ -550,7 +551,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                             
                             var unified = new UnifiedSleeve
                             {
-                                Id = type == SleeveType.Individual ? $"I_{id.IntegerValue}" : $"C_{id.IntegerValue}",
+                                Id = type == SleeveType.Individual ? $"I_{id.GetIntegerValue()}" : $"C_{id.GetIntegerValue()}",
                                 Type = type,
                                 Category = elem.Category?.Name ?? "Unknown",
                                 BoundingBox = elem.get_BoundingBox(null),
@@ -795,7 +796,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.UI
                         catch { /* Ignore join errors */ }
 
                         // 6. Persistence (removed - using new placement service instead)
-                        // _persistService.PersistCombinedCluster(candidate, instance.Id.IntegerValue);
+                        // _persistService.PersistCombinedCluster(candidate, instance.Id.GetIntegerValue());
                     }
                 }
             }

@@ -10,6 +10,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Refresh;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Geometry;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -71,7 +72,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             File.AppendAllText(logPath, 
-                            $"SLEEVE {sleeve.Id.IntegerValue}:\n");
+                            $"SLEEVE {sleeve.Id.GetIntegerValue()}:\n");
                         }
                         System.IO.File.AppendAllText(logPath, 
                             $"  Min: ({min.X:F6}, {min.Y:F6}, {min.Z:F6})\n");
@@ -80,7 +81,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             File.AppendAllText(logPath, 
-                            $"  Host: {sleeve.Host?.Id?.IntegerValue}\n");
+                            $"  Host: {sleeve.Host?.Id?.GetIntegerValue()}\n");
                         }
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
@@ -725,7 +726,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             // ✅ CRITICAL LOGGING: Log each sleeve found after wait time
                                                         if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[SLEEVE-FOUND] {DateTime.Now:HH:mm:ss.fff} - RevitElementId = {sleeve.Id.IntegerValue}, Category = {category}, Family = {sleeve.Symbol.FamilyName}\n");
+                                DebugLogger.Info($"[SLEEVE-FOUND] {DateTime.Now:HH:mm:ss.fff} - RevitElementId = {sleeve.Id.GetIntegerValue()}, Category = {category}, Family = {sleeve.Symbol.FamilyName}\n");
                         }
                         
                         var bbox = sleeve.get_BoundingBox(null);
@@ -745,7 +746,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             
                             var sleeveData = new SleeveData
                             {
-                                SleeveInstanceId = sleeve.Id.IntegerValue,
+                                SleeveInstanceId = sleeve.Id.GetIntegerValue(),
                                 Corner1 = corner1,
                                 Corner2 = corner2,
                                 Corner3 = corner3,
@@ -764,7 +765,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
                                                                 if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[REGENERATE-CLUSTER-XML] Sleeve {sleeve.Id.IntegerValue}: Min=({bbox.Min.X:F6}, {bbox.Min.Y:F6}, {bbox.Min.Z:F6}), Max=({bbox.Max.X:F6}, {bbox.Max.Y:F6}, {bbox.Max.Z:F6})\n");
+                                    DebugLogger.Info($"[REGENERATE-CLUSTER-XML] Sleeve {sleeve.Id.GetIntegerValue()}: Min=({bbox.Min.X:F6}, {bbox.Min.Y:F6}, {bbox.Min.Z:F6}), Max=({bbox.Max.X:F6}, {bbox.Max.Y:F6}, {bbox.Max.Z:F6})\n");
                             }
                         }
                     }
@@ -816,7 +817,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             // ✅ CRITICAL DEBUGGING: Log MEP element details
                                                         if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[CATEGORY-DEBUG] Sleeve {sleeve.Id.IntegerValue}: MEP_ElementId={mepElementId.AsInteger()}, MEP_Category='{mepCategory}', MEP_Type='{mepElement.GetType().Name}'\n");
+                                DebugLogger.Info($"[CATEGORY-DEBUG] Sleeve {sleeve.Id.GetIntegerValue()}: MEP_ElementId={mepElementId.AsInteger()}, MEP_Category='{mepCategory}', MEP_Type='{mepElement.GetType().Name}'\n");
                         }
                         
                         if (!string.IsNullOrEmpty(mepCategory))
@@ -829,7 +830,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
                                                                 if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[CATEGORY-DEBUG] Sleeve {sleeve.Id.IntegerValue}: MEP Category='{mepCategory}', Family='{sleeve.Symbol.FamilyName}'\n");
+                                    DebugLogger.Info($"[CATEGORY-DEBUG] Sleeve {sleeve.Id.GetIntegerValue()}: MEP Category='{mepCategory}', Family='{sleeve.Symbol.FamilyName}'\n");
                             }
                         }
                     }
@@ -842,7 +843,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     // ✅ CRITICAL DEBUGGING: Log fallback logic
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[CATEGORY-FALLBACK] Sleeve {sleeve.Id.IntegerValue}: FamilyName='{familyName}', Using fallback logic\n");
+                        DebugLogger.Info($"[CATEGORY-FALLBACK] Sleeve {sleeve.Id.GetIntegerValue()}: FamilyName='{familyName}', Using fallback logic\n");
                 }
                 
                 if (familyName.Contains("duct")) return "Ducts";
@@ -856,7 +857,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[CATEGORY-CONTEXT] Sleeve {sleeve.Id.IntegerValue}: Determined category from context: '{category}'\n");
+                        DebugLogger.Info($"[CATEGORY-CONTEXT] Sleeve {sleeve.Id.GetIntegerValue()}: Determined category from context: '{category}'\n");
                 }
                 
                 return category;
@@ -866,7 +867,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[CATEGORY-ERROR] Sleeve {sleeve.Id.IntegerValue}: {ex.Message}\n");
+                        DebugLogger.Info($"[CATEGORY-ERROR] Sleeve {sleeve.Id.GetIntegerValue()}: {ex.Message}\n");
                 }
                 
                 // ✅ CRITICAL FIX: Try context-based detection even in error case
@@ -876,7 +877,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                                                 if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[CATEGORY-ERROR-RECOVERY] Sleeve {sleeve.Id.IntegerValue}: Recovered with context category: '{category}'\n");
+                            DebugLogger.Info($"[CATEGORY-ERROR-RECOVERY] Sleeve {sleeve.Id.GetIntegerValue()}: Recovered with context category: '{category}'\n");
                     }
                     return category;
                 }
@@ -902,7 +903,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                                                 if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[CATEGORY-PARAM-CHECK] Sleeve {sleeve.Id.IntegerValue}: MEP_Category parameter exists, value='{categoryValue}', IsReadOnly={mepCategoryParam.IsReadOnly}\n");
+                            DebugLogger.Info($"[CATEGORY-PARAM-CHECK] Sleeve {sleeve.Id.GetIntegerValue()}: MEP_Category parameter exists, value='{categoryValue}', IsReadOnly={mepCategoryParam.IsReadOnly}\n");
                     }
                     
                     if (!string.IsNullOrEmpty(categoryValue))
@@ -910,7 +911,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                                                         if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[CATEGORY-PARAM-SUCCESS] Sleeve {sleeve.Id.IntegerValue}: Using MEP_Category parameter: '{categoryValue}'\n");
+                                DebugLogger.Info($"[CATEGORY-PARAM-SUCCESS] Sleeve {sleeve.Id.GetIntegerValue()}: Using MEP_Category parameter: '{categoryValue}'\n");
                         }
                         return categoryValue;
                     }
@@ -920,7 +921,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                                                 if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[CATEGORY-PARAM-MISSING] Sleeve {sleeve.Id.IntegerValue}: MEP_Category parameter not found\n");
+                            DebugLogger.Info($"[CATEGORY-PARAM-MISSING] Sleeve {sleeve.Id.GetIntegerValue()}: MEP_Category parameter not found\n");
                     }
                 }
                 
@@ -932,7 +933,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                                                 if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Info($"[CATEGORY-CIRCULAR] Sleeve {sleeve.Id.IntegerValue}: Circular family detected, assuming Pipes\n");
+                            DebugLogger.Info($"[CATEGORY-CIRCULAR] Sleeve {sleeve.Id.GetIntegerValue()}: Circular family detected, assuming Pipes\n");
                     }
                     return "Pipes";
                 }
@@ -950,7 +951,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
                                                                 if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[CATEGORY-WALL] Sleeve {sleeve.Id.IntegerValue}: Wall-hosted, assuming Pipes\n");
+                                    DebugLogger.Info($"[CATEGORY-WALL] Sleeve {sleeve.Id.GetIntegerValue()}: Wall-hosted, assuming Pipes\n");
                             }
                             return "Pipes";
                         }
@@ -960,7 +961,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
                                                                 if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[CATEGORY-FLOOR] Sleeve {sleeve.Id.IntegerValue}: Floor-hosted, assuming Ducts\n");
+                                    DebugLogger.Info($"[CATEGORY-FLOOR] Sleeve {sleeve.Id.GetIntegerValue()}: Floor-hosted, assuming Ducts\n");
                             }
                             return "Ducts";
                         }
@@ -981,7 +982,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                                                         if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[CATEGORY-SIZE] Sleeve {sleeve.Id.IntegerValue}: Small size ({avgSize:F2}m), assuming Pipes\n");
+                                DebugLogger.Info($"[CATEGORY-SIZE] Sleeve {sleeve.Id.GetIntegerValue()}: Small size ({avgSize:F2}m), assuming Pipes\n");
                         }
                         return "Pipes";
                     }
@@ -990,7 +991,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[CATEGORY-CONTEXT-FAILED] Sleeve {sleeve.Id.IntegerValue}: All context methods failed, using Unknown\n");
+                        DebugLogger.Info($"[CATEGORY-CONTEXT-FAILED] Sleeve {sleeve.Id.GetIntegerValue()}: All context methods failed, using Unknown\n");
                 }
                 return "Unknown";
             }
@@ -999,7 +1000,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[CATEGORY-CONTEXT-ERROR] Sleeve {sleeve.Id.IntegerValue}: Context detection error: {ex.Message}\n");
+                        DebugLogger.Info($"[CATEGORY-CONTEXT-ERROR] Sleeve {sleeve.Id.GetIntegerValue()}: Context detection error: {ex.Message}\n");
                 }
                 return "Unknown";
             }
@@ -1035,7 +1036,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                                                         if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[ORIENTATION-DEBUG] Sleeve {sleeve.Id.IntegerValue}: Found clash zone, Orientation='{clashZone.MepElementOrientationDirection}'\n");
+                                DebugLogger.Info($"[ORIENTATION-DEBUG] Sleeve {sleeve.Id.GetIntegerValue()}: Found clash zone, Orientation='{clashZone.MepElementOrientationDirection}'\n");
                         }
                         return clashZone.MepElementOrientationDirection ?? "";
                     }
@@ -1044,7 +1045,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                                                         if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[ORIENTATION-DEBUG] Sleeve {sleeve.Id.IntegerValue}: No clash zone found for MEP_ElementId {mepElementIdValue}\n");
+                                DebugLogger.Info($"[ORIENTATION-DEBUG] Sleeve {sleeve.Id.GetIntegerValue()}: No clash zone found for MEP_ElementId {mepElementIdValue}\n");
                         }
                     }
                 }
@@ -1056,7 +1057,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[ORIENTATION-ERROR] Sleeve {sleeve.Id.IntegerValue}: {ex.Message}\n");
+                        DebugLogger.Info($"[ORIENTATION-ERROR] Sleeve {sleeve.Id.GetIntegerValue()}: {ex.Message}\n");
                 }
                 return ""; // Safe default
             }
@@ -1303,7 +1304,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 if (allSleeves.Count > 0)
                 {
-                    var firstFewIds = allSleeves.Take(10).Select(s => s.Id.IntegerValue).ToList();
+                    var firstFewIds = allSleeves.Take(10).Select(s => s.Id.GetIntegerValue()).ToList();
                                         if (!DeploymentConfiguration.DeploymentMode)
                         DebugLogger.Info($"[UpdateSleeveCoordinates] First 10 sleeve IDs in Revit: [{string.Join(", ", firstFewIds)}]\n");
                 }
@@ -1313,7 +1314,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             try
             {
                 var clashZoneSleeveIds = clashZones.Where(cz => cz.SleeveInstanceId > 0).Select(cz => cz.SleeveInstanceId).ToList();
-                var revitSleeveIds = allSleeves.Select(s => s.Id.IntegerValue).ToList();
+                var revitSleeveIds = allSleeves.Select(s => s.Id.GetIntegerValue()).ToList();
                 var matchingIds = clashZoneSleeveIds.Intersect(revitSleeveIds).ToList();
                 System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UPDATE_COORD_DEBUG] Looking for {clashZoneSleeveIds.Count} sleeve IDs: [{string.Join(", ", clashZoneSleeveIds.Take(10))}...]\n");
                 System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [UPDATE_COORD_DEBUG] Found {revitSleeveIds.Count} sleeves in Revit: [{string.Join(", ", revitSleeveIds.Take(10))}...]\n");
@@ -1426,11 +1427,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 if (distance < 0.00328) // 1mm tolerance in feet
                                 {
                                     matchedSleeve = sleeve;
-                                    clashZone.SleeveInstanceId = sleeve.Id.IntegerValue; // ✅ FIX: Update the instance ID
+                                    clashZone.SleeveInstanceId = sleeve.Id.GetIntegerValue(); // ✅ FIX: Update the instance ID
                                     // ✅ DEPLOYMENT: Wrapped in deployment mode check
                                     if (!DeploymentConfiguration.DeploymentMode)
                                     {
-                                        System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [POSITION-MATCH] Found sleeve {sleeve.Id.IntegerValue} by position for zone {clashZone.Id} using {matchPointType}, distance: {distance:F6}ft, MatchPoint=({matchX:F3}, {matchY:F3}, {matchZ:F3}), bbox.Min=({bbox.Min.X:F3}, {bbox.Min.Y:F3}, {bbox.Min.Z:F3})\n");
+                                        System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [POSITION-MATCH] Found sleeve {sleeve.Id.GetIntegerValue()} by position for zone {clashZone.Id} using {matchPointType}, distance: {distance:F6}ft, MatchPoint=({matchX:F3}, {matchY:F3}, {matchZ:F3}), bbox.Min=({bbox.Min.X:F3}, {bbox.Min.Y:F3}, {bbox.Min.Z:F3})\n");
                                     }
                                     break;
                                 }
@@ -1440,7 +1441,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // ✅ DEBUG: Log if no match found but there was a closest sleeve
                         if (matchedSleeve == null && closestSleeve != null && !DeploymentConfiguration.DeploymentMode)
                         {
-                            System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [POSITION-MATCH-FAILED] Zone {clashZone.Id}: No match within 1mm tolerance using {matchPointType}. Closest sleeve {closestSleeve.Id.IntegerValue} at distance {minDistance:F6}ft ({minDistance * 304.8:F2}mm). MatchPoint=({matchX:F3}, {matchY:F3}, {matchZ:F3})\n");
+                            System.IO.File.AppendAllText(placementDebugPath, $"[{DateTime.Now:HH:mm:ss}] [POSITION-MATCH-FAILED] Zone {clashZone.Id}: No match within 1mm tolerance using {matchPointType}. Closest sleeve {closestSleeve.Id.GetIntegerValue()} at distance {minDistance:F6}ft ({minDistance * 304.8:F2}mm). MatchPoint=({matchX:F3}, {matchY:F3}, {matchZ:F3})\n");
                         }
                     }
                     else if (matchedSleeve == null && matchX == 0 && matchY == 0 && !DeploymentConfiguration.DeploymentMode)

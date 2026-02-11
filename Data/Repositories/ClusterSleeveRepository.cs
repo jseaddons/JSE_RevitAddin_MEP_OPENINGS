@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+#if !NET8_0_OR_GREATER
 using System.Data.SQLite;
+#endif
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -1057,15 +1059,19 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
                 int savedCount = 0;
 
-                // ✅ FIX: Generate ONE batch ID for the entire save operation (not per row)
-                // Use timestamp format: yyyyMMdd_HHmmss_Category_FilterId
-                var firstCluster = clusters.FirstOrDefault();
-                var category = firstCluster?.Category ?? "Unknown";
-                var filterId = firstCluster?.FilterId ?? 0;
-                var sharedBatchId = $"{DateTime.Now:yyyyMMdd_HHmmss}_{category}_{filterId}";
+                // ✅ FIX: Generate batchId PER CATEGORY (not one for all clusters)
+                // When clusters span multiple categories, each gets its own category-specific batchId
+                var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                var batchIdByScope = new Dictionary<string, string>();
+                foreach (var c in clusters)
+                {
+                    var scopeKey = $"{c.Category ?? "Unknown"}_{c.FilterId}";
+                    if (!batchIdByScope.ContainsKey(scopeKey))
+                        batchIdByScope[scopeKey] = $"{timestamp}_{c.Category ?? "Unknown"}_{c.FilterId}";
+                }
 
                 SafeFileLogger.SafeAppendText("batch_v2.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [CLUSTER_V2_WRITE_REPO] Using shared ClusterBatchId={sharedBatchId} for {clusters.Count} clusters\n");
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [CLUSTER_V2_WRITE_REPO] Saving {clusters.Count} clusters across {batchIdByScope.Count} category scopes: {string.Join(", ", batchIdByScope.Values)}\n");
 
                 foreach (var cluster in clusters)
                 {
@@ -1084,8 +1090,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             ? JsonSerializer.Serialize(cluster.ClashZoneIds.Select(g => g.ToString()).ToList())
                             : "[]";
 
-                        // ✅ FIX: Use the shared batch ID for all clusters in this save operation
-                        var clusterBatchId = sharedBatchId;
+                        // ✅ FIX: Use category-specific batch ID (not one shared ID for all categories)
+                        var scopeKey = $"{cluster.Category ?? "Unknown"}_{cluster.FilterId}";
+                        var clusterBatchId = batchIdByScope.ContainsKey(scopeKey) ? batchIdByScope[scopeKey] : $"{timestamp}_{scopeKey}";
                         SafeFileLogger.SafeAppendText("batch_v2.log",
                             $"[{DateTime.Now:HH:mm:ss.fff}] [CLUSTER_V2_WRITE_REPO] Saving Cluster: ClusterGuid={clusterGuid}, PlacementX={cluster.PlacementX:F3}, PlacementY={cluster.PlacementY:F3}, PlacementZ={cluster.PlacementZ:F3}\n");
 
@@ -1119,7 +1126,9 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 @Corner3X, @Corner3Y, @Corner3Z,
                                 @Corner4X, @Corner4Y, @Corner4Z,
                                 @SleeveFamilyName,
-                                CURRENT_TIMESTAMP, NULL, 'Pending'
+                                CURRENT_TIMESTAMP,
+                                CASE WHEN @ClusterInstanceId > 0 THEN CURRENT_TIMESTAMP ELSE NULL END,
+                                CASE WHEN @ClusterInstanceId > 0 THEN 'Placed' ELSE 'Pending' END
                             )";
 
                         // Clear and re-add all parameters for the INSERT

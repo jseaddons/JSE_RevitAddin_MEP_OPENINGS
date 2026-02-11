@@ -6734,41 +6734,6 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Views
             }
         }
 
-        /// <summary>
-        /// Launches the Parameter Service dialog with integration to update main UI dropdowns
-        /// </summary>
-        public void LaunchParameterService()
-        {
-            try
-            {
-                DebugLogger.Info("=== LAUNCHING PARAMETER SERVICE V2 WITH MAIN UI INTEGRATION ===");
-                
-                // ✅ V2: Use ParameterServiceDialogV2 (old version moved to Backup folder)
-                using (var parameterServiceDialog = new ParameterServiceDialogV2(_document, _uiDocument))
-                {
-                    var result = parameterServiceDialog.ShowDialog();
-                    
-                    if (result == WinForms.DialogResult.OK)
-                    {
-                        DebugLogger.Info("Parameter service completed successfully.");
-                        _statusLabel.Text = "Parameter service completed!";
-                    }
-                    else
-                    {
-                        DebugLogger.Info("Parameter service cancelled");
-                        _statusLabel.Text = "Parameter service cancelled";
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Error($"Error launching parameter service: {ex.Message}");
-                WinForms.MessageBox.Show($"Error launching parameter service: {ex.Message}", "Error", 
-                    WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
-                _statusLabel.Text = "Error launching parameter service";
-            }
-        }
-
         private void OnRefreshClick(object? sender, EventArgs e)
         {
             // IMMEDIATE LOGGING BEFORE ANYTHING ELSE

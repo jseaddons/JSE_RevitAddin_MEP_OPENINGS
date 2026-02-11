@@ -1,5 +1,6 @@
 using Autodesk.Revit.DB;
 using System.Collections.Generic;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Helpers
 {
@@ -55,7 +56,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Helpers
                 if (heightParam == null && DamperHeightFallback.Contains(name))
                     heightParam = param;
 
-                if (name == "Diameter" || name == "DIMENSION_DIAMETER" || param.Id.IntegerValue == (int)BuiltInParameter.RBS_PIPE_DIAMETER_PARAM)
+                if (name == "Diameter" || name == "DIMENSION_DIAMETER" || param.Id.GetIntegerValue() == (int)BuiltInParameter.RBS_PIPE_DIAMETER_PARAM)
                     snapshot.Diameter = param.AsDouble();
             }
             if (widthParam != null)

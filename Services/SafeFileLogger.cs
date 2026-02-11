@@ -331,25 +331,57 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 return; // Skip all file writes in deployment mode
             }
-            // ✅ Suppress placement_debug.log unless explicitly enabled (writes too many lines)
-            if (string.Equals(fileName, "placement_debug.log", StringComparison.OrdinalIgnoreCase)
-                && !OptimizationFlags.EnablePlacementDebugLog)
+
+            if (ShouldSuppress(fileName))
                 return;
+
             SafeAppendTextAlways(fileName, message);
         }
 
         /// <summary>
-        /// Safely append text to a log file. When DeploymentMode is true, skips writing except for placement_performance.log (so you can still see placement timing).
+        /// Global suppression logic for verbose diagnostic logs.
         /// </summary>
+        private static bool ShouldSuppress(string fileName)
+        {
+            if (string.Equals(fileName, "placement_debug.log", StringComparison.OrdinalIgnoreCase)
+                && !OptimizationFlags.EnablePlacementDebugLog)
+                return true;
+
+            if (string.Equals(fileName, "bulk_placement_debug.log", StringComparison.OrdinalIgnoreCase)
+                && !OptimizationFlags.EnableBulkPlacementDebugLog)
+                return true;
+
+            if (string.Equals(fileName, "flag_workflow.log", StringComparison.OrdinalIgnoreCase)
+                && !OptimizationFlags.EnableProximityDebugLog)
+                return true;
+
+            if (string.Equals(fileName, "batch_v2.log", StringComparison.OrdinalIgnoreCase)
+                && !OptimizationFlags.EnableBatchClusteringDebugLog)
+                return true;
+            
+            if (string.Equals(fileName, "proximity_debug.log", StringComparison.OrdinalIgnoreCase)
+                && !OptimizationFlags.EnableProximityDebugLog)
+                return true;
+
+            if (string.Equals(fileName, "cluster_debug.log", StringComparison.OrdinalIgnoreCase)
+                && !OptimizationFlags.EnableClusterSizingDebugLog)
+                return true;
+
+            if (string.Equals(fileName, "placement_sizing_debug.log", StringComparison.OrdinalIgnoreCase)
+                && !OptimizationFlags.EnableClusterSizingDebugLog)
+                return true;
+
+            return false;
+        }
+
         public static void SafeAppendTextAlways(string fileName, string message)
         {
             // ✅ DEPLOYMENT: In production, skip most logging — but always write placement performance log so you can see timing
             if (DeploymentConfiguration.DeploymentMode &&
                 !string.Equals(fileName, "placement_performance.log", StringComparison.OrdinalIgnoreCase))
                 return;
-            // ✅ Suppress placement_debug.log unless explicitly enabled (writes too many lines)
-            if (string.Equals(fileName, "placement_debug.log", StringComparison.OrdinalIgnoreCase)
-                && !OptimizationFlags.EnablePlacementDebugLog)
+            
+            if (ShouldSuppress(fileName))
                 return;
 
             string logPathFinal = null;

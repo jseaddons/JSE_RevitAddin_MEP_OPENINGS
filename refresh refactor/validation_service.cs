@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
 {
@@ -163,8 +164,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         {
             try
             {
-                int mepId = zone.MepElementId?.IntegerValue ?? zone.MepElementIdValue;
-                int hostId = zone.StructuralElementId?.IntegerValue ?? zone.StructuralElementIdValue;
+                int mepId = zone.MepElementId?.GetIntegerValue() ?? zone.MepElementIdValue;
+                int hostId = zone.StructuralElementId?.GetIntegerValue() ?? zone.StructuralElementIdValue;
                 
                 // Simple hash combining MEP + Host IDs
                 unchecked

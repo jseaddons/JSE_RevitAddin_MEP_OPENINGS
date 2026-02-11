@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -145,7 +146,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         // If database query failed, include all (fallback)
                         if (individualSleeveIds.Count == 0) return true; // Fallback: include all
                         
-                        return individualSleeveIds.Contains(fi.Id.IntegerValue);
+                        return individualSleeveIds.Contains(fi.Id.GetIntegerValue());
                     })
                     .ToList();
                 
@@ -700,5 +701,4 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
     }
 }
-
 

@@ -84,8 +84,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 try
                 {
-                    var mepElement = (clashZone.MepElementId != null && clashZone.MepElementId.IntegerValue != -1) ? document.GetElement(clashZone.MepElementId) : null;
-                    var structuralElement = (clashZone.StructuralElementId != null && clashZone.StructuralElementId.IntegerValue != -1) ? document.GetElement(clashZone.StructuralElementId) : null;
+                    var mepElement = (clashZone.MepElementId != null && clashZone.MepElementId.GetIntegerValue() != -1) ? document.GetElement(clashZone.MepElementId) : null;
+                    var structuralElement = (clashZone.StructuralElementId != null && clashZone.StructuralElementId.GetIntegerValue() != -1) ? document.GetElement(clashZone.StructuralElementId) : null;
                     
                     if (mepElement != null && structuralElement != null)
                     {
@@ -429,7 +429,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
                 else if (structuralElement is FamilyInstance framingInstance && 
-                         framingInstance.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+                         framingInstance.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_StructuralFraming)
                 {
                     // For framing, use the element centerline method
                     calculatedWallCenterline = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetElementCenterlinePoint(
@@ -528,14 +528,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     // Since intersections were already validated, we trust the element exists unless proven otherwise
                     
                     // Only skip if we can PROVE the element was deleted (check for negative/invalid IDs)
-                    if (mepElement.Id.IntegerValue <= 0)
+                    if (mepElement.Id.GetIntegerValue() <= 0)
                     {
                         _log($"SKIP: Invalid MEP element ID - MEP={mepElement.Id}");
                         if (isDuctWall) ductWallSkippedInvalid++;
                         continue;
                     }
                     
-                    if (structuralElement.Id.IntegerValue <= 0)
+                    if (structuralElement.Id.GetIntegerValue() <= 0)
                     {
                         _log($"SKIP: Invalid structural element ID - Structural={structuralElement.Id}");
                         if (isDuctWall) ductWallSkippedInvalid++;
@@ -849,7 +849,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                         }
                         else if (structuralElement is FamilyInstance framingInstanceInvalid && 
-                                 framingInstanceInvalid.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+                                 framingInstanceInvalid.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_StructuralFraming)
                         {
                             // For framing, use the element centerline method
                             calculatedWallCenterlineInvalid = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetElementCenterlinePoint(
@@ -1232,7 +1232,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             Dictionary<(int MepId, int HostId, string PointKey), Guid> preFetchedGuids = new Dictionary<(int MepId, int HostId, string PointKey), Guid>();
             if (OptimizationFlags.UseBatchGuidLookup && _guidManager != null)
             {
-                var targets = currentIntersections.Select(i => (i.Item1.Id.IntegerValue, i.Item2.Id.IntegerValue, i.Item4.X, i.Item4.Y, i.Item4.Z)).ToList();
+                var targets = currentIntersections.Select(i => (i.Item1.Id.GetIntegerValue(), i.Item2.Id.GetIntegerValue(), i.Item4.X, i.Item4.Y, i.Item4.Z)).ToList();
                 preFetchedGuids = _guidManager.BatchFetchGuidsDatabaseFirst(targets);
                 _log($"[STREAMLINED] Pre-fetched {preFetchedGuids.Count} GUIDs from database");
             }
@@ -1246,7 +1246,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var existingSleeveIds = new FilteredElementCollector(document)
                 .OfClass(typeof(FamilyInstance))
                 .ToElementIds()
-                .Select(id => id.IntegerValue)
+                .Select(id => id.GetIntegerValue())
                 .ToHashSet();
             swSleeve.Stop();
             _log($"[STREAMLINED] Collected {existingSleeveIds.Count} potential sleeve candidates in {swSleeve.ElapsedMilliseconds}ms");
@@ -1312,13 +1312,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     try
                     {
                         var orientation = GetMepElementOrientation(mep);
-                        orientationCache[mep.Id.IntegerValue] = orientation;
+                        orientationCache[mep.Id.GetIntegerValue()] = orientation;
                     }
                     catch (Exception ex)
                     {
                         _log($"[ORIENTATION-CACHE] Error calculating orientation for {mep.Id}: {ex.Message}");
                         // Use default if calculation fails
-                        orientationCache[mep.Id.IntegerValue] = XYZ.BasisX;
+                        orientationCache[mep.Id.GetIntegerValue()] = XYZ.BasisX;
                     }
                 }
                 
@@ -1330,7 +1330,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 // Minimal validation - only check for null and invalid IDs
                 if (mepElement == null || structuralElement == null ||
-                    mepElement.Id.IntegerValue <= 0 || structuralElement.Id.IntegerValue <= 0)
+                    mepElement.Id.GetIntegerValue() <= 0 || structuralElement.Id.GetIntegerValue() <= 0)
                 {
                     continue;
                 }
@@ -1342,7 +1342,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (OptimizationFlags.UseBatchGuidLookup)
                 {
                     string pointKey = $"{Math.Round(intersectionPoint.X, 4)}_{Math.Round(intersectionPoint.Y, 4)}_{Math.Round(intersectionPoint.Z, 4)}";
-                    if (preFetchedGuids.TryGetValue((mepElement.Id.IntegerValue, structuralElement.Id.IntegerValue, pointKey), out var guid))
+                    if (preFetchedGuids.TryGetValue((mepElement.Id.GetIntegerValue(), structuralElement.Id.GetIntegerValue(), pointKey), out var guid))
                     {
                         // ✅ PHASE 3 OPTIMIZATION: O(1) lookup in zone map
                         zoneMap.TryGetValue(guid, out existingClashZone);
@@ -1381,7 +1381,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 wallStreamlined, seedPoint, document);
                         }
                         else if (structuralElement is FamilyInstance framingInstanceStreamlined && 
-                                 framingInstanceStreamlined.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+                                 framingInstanceStreamlined.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_StructuralFraming)
                         {
                             calculatedCenterlineStreamlined = JSE_RevitAddin_MEP_OPENINGS.Helpers.WallCenterlineHelper.GetElementCenterlinePoint(
                                 structuralElement, seedPoint, document);
@@ -1648,7 +1648,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     mepElement = linkDoc.GetElement(clashZone.MepElementId);
                                     if (mepElement != null)
                                     {
-                                        _log($"Found MEP element {clashZone.MepElementId?.IntegerValue ?? -1} in linked document {linkDoc.Title}");
+                                        _log($"Found MEP element {clashZone.MepElementId?.GetIntegerValue() ?? -1} in linked document {linkDoc.Title}");
                                         break;
                                     }
                                 }
@@ -1663,7 +1663,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 catch (Exception ex)
                 {
-                    _log($"Error getting MEP element {clashZone.MepElementId?.IntegerValue ?? -1} for clash zone {clashZone.Id}: {ex.Message} - REMOVING invalid clash zone");
+                    _log($"Error getting MEP element {clashZone.MepElementId?.GetIntegerValue() ?? -1} for clash zone {clashZone.Id}: {ex.Message} - REMOVING invalid clash zone");
                     return false; // Remove invalid clash zone
                 }
                 
@@ -2005,8 +2005,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             foreach (var cz in _clashZoneStorage.ClashZones)
             {
-                int mepId = cz.MepElementId?.IntegerValue ?? cz.MepElementIdValue;
-                int structId = cz.StructuralElementId?.IntegerValue ?? cz.StructuralElementIdValue;
+                int mepId = cz.MepElementId?.GetIntegerValue() ?? cz.MepElementIdValue;
+                int structId = cz.StructuralElementId?.GetIntegerValue() ?? cz.StructuralElementIdValue;
                 
                 var key = (mepId, structId);
                 if (!_clashZoneLookup.ContainsKey(key))
@@ -2023,8 +2023,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private ClashZone? FindExistingClashZone(ElementId mepElementId, ElementId structuralElementId, XYZ intersectionPoint)
         {
             // ✅ CRITICAL FIX: Compare by IntegerValue to handle XML deserialization cases
-            int mepIdValue = mepElementId?.IntegerValue ?? -1;
-            int structuralIdValue = structuralElementId?.IntegerValue ?? -1;
+            int mepIdValue = mepElementId?.GetIntegerValue() ?? -1;
+            int structuralIdValue = structuralElementId?.GetIntegerValue() ?? -1;
             
             if (mepIdValue <= 0 || structuralIdValue <= 0)
             {
@@ -2425,7 +2425,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // Only calculate for walls and framing (floors don't need centerline adjustment)
                 if (structuralElement is Wall || 
                     (structuralElement is FamilyInstance framingInstance && 
-                     framingInstance.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming))
+                     framingInstance.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_StructuralFraming))
                 {
                     if (structuralElement is Wall hostWallForCenterline)
                     {
@@ -2481,8 +2481,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             Dictionary<string, string>? mepParamDict = null;
             Dictionary<string, string>? hostParamDict = null;
             
-            if (mepParamsCache != null) mepParamsCache.TryGetValue(mepElement.Id.IntegerValue, out mepParamDict);
-            if (hostParamsCache != null) hostParamsCache.TryGetValue(structuralElement.Id.IntegerValue, out hostParamDict);
+            if (mepParamsCache != null) mepParamsCache.TryGetValue(mepElement.Id.GetIntegerValue(), out mepParamDict);
+            if (hostParamsCache != null) hostParamsCache.TryGetValue(structuralElement.Id.GetIntegerValue(), out hostParamDict);
             if (swOp != null) { swOp.Stop(); _log($"[PROFILER] Cache lookup: {swOp.ElapsedMilliseconds}ms"); }
 
             // IMPORTANT: The intersection point is already at the wall center (mid-plane)
@@ -2511,8 +2511,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
             {
-                DebugLogger.Info($"[CLASH-ZONE-CREATE] MEP Element {mepElement?.Id?.IntegerValue ?? -1}: Document='{mepElementDoc?.Title ?? "null"}' (IsLinked={mepElementDoc != document})");
-                DebugLogger.Info($"[CLASH-ZONE-CREATE] Structural Element {structuralElement?.Id?.IntegerValue ?? -1}: Document='{structuralElementDoc?.Title ?? "null"}' (IsLinked={structuralElementDoc != document})");
+                DebugLogger.Info($"[CLASH-ZONE-CREATE] MEP Element {mepElement?.Id?.GetIntegerValue() ?? -1}: Document='{mepElementDoc?.Title ?? "null"}' (IsLinked={mepElementDoc != document})");
+                DebugLogger.Info($"[CLASH-ZONE-CREATE] Structural Element {structuralElement?.Id?.GetIntegerValue() ?? -1}: Document='{structuralElementDoc?.Title ?? "null"}' (IsLinked={structuralElementDoc != document})");
             }
             
             // Get MEP dimensions
@@ -2523,7 +2523,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Get MEP orientation (with cache)
             if (swOp != null) swOp.Restart();
             XYZ mepOrientation;
-            if (orientationCache != null && orientationCache.TryGetValue(mepElement.Id.IntegerValue, out var cachedOrientation))
+            if (orientationCache != null && orientationCache.TryGetValue(mepElement.Id.GetIntegerValue(), out var cachedOrientation))
             {
                 mepOrientation = cachedOrientation;
                 if (OptimizationFlags.UseDiagnosticMode)
@@ -2707,7 +2707,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var odMm = pipeOuterDiameter > 0 ? (pipeOuterDiameter * 304.8) : 0.0;
                         var nomMm = pipeNominalDiameter > 0 ? (pipeNominalDiameter * 304.8) : 0.0;
                         SafeFileLogger.SafeAppendText("Refresh_debug.log",
-                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] 🔍 PIPE DIAMETERS: Element {mepElement.Id.IntegerValue}, OuterDiameter={pipeOuterDiameter:F6}ft ({odMm:F1}mm), NominalDiameter={pipeNominalDiameter:F6}ft ({nomMm:F1}mm), Doc={mepElement.Document?.Title}\n");
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] 🔍 PIPE DIAMETERS: Element {mepElement.Id.GetIntegerValue()}, OuterDiameter={pipeOuterDiameter:F6}ft ({odMm:F1}mm), NominalDiameter={pipeNominalDiameter:F6}ft ({nomMm:F1}mm), Doc={mepElement.Document?.Title}\n");
                     }
                 }
                 catch (Exception ex)
@@ -2715,7 +2715,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
                     {
                         SafeFileLogger.SafeAppendText("Refresh_debug.log",
-                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ⚠️ ERROR extracting pipe diameters for element {mepElement.Id.IntegerValue}: {ex.Message}\n");
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ⚠️ ERROR extracting pipe diameters for element {mepElement.Id.GetIntegerValue()}: {ex.Message}\n");
                     }
                 }
             }
@@ -2733,7 +2733,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 var category = mepElement.Category?.Name ?? "Unknown";
                 SafeFileLogger.SafeAppendText("Refresh_debug.log",
-                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ✅ MepElementFormattedSize for {category} (ID={mepElement.Id.IntegerValue}): '{formattedSize}', MepElementSizeParameterValue: '{sizeParameterValue}'\n");
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ✅ MepElementFormattedSize for {category} (ID={mepElement.Id.GetIntegerValue()}): '{formattedSize}', MepElementSizeParameterValue: '{sizeParameterValue}'\n");
             }
             var systemAbbreviation = GetMepSystemAbbreviation(mepElement);
             
@@ -2761,7 +2761,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode && mepCategory == "Duct Accessories")
             {
                 SafeFileLogger.SafeAppendText("damper_connector_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [ClashZoneService] WallOrientation='{wallOrientation ?? "NULL"}' for StructuralElement={structuralElement?.Id?.IntegerValue ?? -1}, Type={structuralElement?.GetType()?.Name ?? "Unknown"}\n");
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [ClashZoneService] WallOrientation='{wallOrientation ?? "NULL"}' for StructuralElement={structuralElement?.Id?.GetIntegerValue() ?? -1}, Type={structuralElement?.GetType()?.Name ?? "Unknown"}\n");
                 // ✅ BUILD STAMP near wall-orientation log for absolute certainty
                 try
                 {
@@ -3044,14 +3044,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var widthMm = clashZone.MepElementWidth * 304.8;
                 var heightMm = clashZone.MepElementHeight * 304.8;
                 SafeFileLogger.SafeAppendText("refresh_mep_sizes.log",
-                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CREATE-CLASH-ZONE] Zone {clashZone.Id}: MEP={mepElement?.Id?.IntegerValue ?? -1}, Category='{mepCategory}', MepElementWidth={clashZone.MepElementWidth:F6}ft ({widthMm:F1}mm), MepElementHeight={clashZone.MepElementHeight:F6}ft ({heightMm:F1}mm), Source='GetMepElementDimensions', finalWidth={finalWidth:F6}ft, finalHeight={finalHeight:F6}ft\n");
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [CREATE-CLASH-ZONE] Zone {clashZone.Id}: MEP={mepElement?.Id?.GetIntegerValue() ?? -1}, Category='{mepCategory}', MepElementWidth={clashZone.MepElementWidth:F6}ft ({widthMm:F1}mm), MepElementHeight={clashZone.MepElementHeight:F6}ft ({heightMm:F1}mm), Source='GetMepElementDimensions', finalWidth={finalWidth:F6}ft, finalHeight={finalHeight:F6}ft\n");
             }
             
             // ✅ CRITICAL: Log thickness values to verify they're being retrieved correctly from linked files
             // Log in millimeters for readability
             if (!DeploymentConfiguration.DeploymentMode)
             {
-                DebugLogger.Info($"[CLASH-ZONE-CREATE] Thickness values for Structural Element {structuralElement?.Id?.IntegerValue ?? -1} (Document='{structuralElement?.Document?.Title ?? "null"}'): Structural={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.StructuralElementThickness):F1}mm, Wall={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.WallThickness):F1}mm, Framing={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.FramingThickness):F1}mm");
+                DebugLogger.Info($"[CLASH-ZONE-CREATE] Thickness values for Structural Element {structuralElement?.Id?.GetIntegerValue() ?? -1} (Document='{structuralElement?.Document?.Title ?? "null"}'): Structural={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.StructuralElementThickness):F1}mm, Wall={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.WallThickness):F1}mm, Framing={RevitUnitConversionService.Instance.FromInternalMillimeters(clashZone.FramingThickness):F1}mm");
             }
             
             // ✅ CRITICAL: Set deterministic GUID for stable identification across detection runs
@@ -3064,8 +3064,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // This can reuse existing GUIDs from database, preventing duplicates
             if (_guidManager != null)
             {
-                int mepId = clashZone.MepElementId?.IntegerValue ?? clashZone.MepElementIdValue;
-                int hostId = clashZone.StructuralElementId?.IntegerValue ?? clashZone.StructuralElementIdValue;
+                int mepId = clashZone.MepElementId?.GetIntegerValue() ?? clashZone.MepElementIdValue;
+                int hostId = clashZone.StructuralElementId?.GetIntegerValue() ?? clashZone.StructuralElementIdValue;
                 
                 // ✅ Use IntersectionPoint (actual MEP/host intersection) for deterministic GUID
                 // This is stable - only changes if elements move, perfect for GUID generation
@@ -3106,7 +3106,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var thMm = RevitUnitConversionService.Instance.FromInternalMillimeters(th);
                 if (OptimizationFlags.UseDiagnosticMode && !DeploymentConfiguration.DeploymentMode)
                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[CLASH-THICKNESS-ASSIGN] structuralId={structuralElement.Id.IntegerValue} thickness={th:F6}ft ({thMm:F1}mm)");
+                        DebugLogger.Info($"[CLASH-THICKNESS-ASSIGN] structuralId={structuralElement.Id.GetIntegerValue()} thickness={th:F6}ft ({thMm:F1}mm)");
             }
             catch { }
             
@@ -3175,7 +3175,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             else if (element is Floor)
                 return "Floor";
             else if (element is FamilyInstance famInst && 
-                     famInst.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+                     famInst.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_StructuralFraming)
                 return "Structural Framing";
             else
                 return "Unknown";
@@ -3620,7 +3620,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 foreach (var sleeve in categorySleeves)
                 {
-                    int sleeveId = sleeve.Id.IntegerValue;
+                    int sleeveId = sleeve.Id.GetIntegerValue();
                     sleeveIds.Add(sleeveId);
                     
                     // Get sleeve location
@@ -3761,7 +3761,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                if (element is Wall || (element?.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_Walls))
+                if (element is Wall || (element?.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_Walls))
                 {
                     return GetWallThickness(element);
                 }
@@ -3769,7 +3769,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 {
                     return floor.get_Parameter(BuiltInParameter.FLOOR_ATTR_THICKNESS_PARAM)?.AsDouble() ?? 0.1;
                 }
-                else if ((element?.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming))
+                else if ((element?.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_StructuralFraming))
                 {
                     // Structural framing: read TYPE parameter 'b' (case-insensitive) regardless of instance/type wrapper
                     try
@@ -3783,7 +3783,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                                                         if (!DeploymentConfiguration.DeploymentMode)
                                                         if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Warning($"[FRAMING-THICKNESS] Could not get type element for framing {element.Id.IntegerValue}");
+                                DebugLogger.Warning($"[FRAMING-THICKNESS] Could not get type element for framing {element.Id.GetIntegerValue()}");
                             return 0.1;
                         }
 
@@ -3805,7 +3805,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     {
                                                                                 if (!DeploymentConfiguration.DeploymentMode)
                                                                                 if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[FRAMING-THICKNESS] Found parameter '{paramName}' = {bVal:F6}ft on framing {element.Id.IntegerValue}");
+                                            DebugLogger.Info($"[FRAMING-THICKNESS] Found parameter '{paramName}' = {bVal:F6}ft on framing {element.Id.GetIntegerValue()}");
                                         break;
                                     }
                                 }
@@ -3844,7 +3844,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 }
                                                                 if (!DeploymentConfiguration.DeploymentMode)
                                                                 if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[FRAMING-THICKNESS-PARAMS] typeId={typeId.IntegerValue}: {string.Join(", ", parts)}");
+                                    DebugLogger.Info($"[FRAMING-THICKNESS-PARAMS] typeId={typeId.GetIntegerValue()}: {string.Join(", ", parts)}");
                             }
                             catch (Exception ex)
                             {
@@ -3860,7 +3860,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             var valMm = RevitUnitConversionService.Instance.FromInternalMillimeters(bVal);
                                                         if (!DeploymentConfiguration.DeploymentMode)
                                                         if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[FRAMING-THICKNESS] id={element.Id.IntegerValue}: key={(p?.Definition?.Name ?? "<null>")} value={valMm:F1}mm");
+                                DebugLogger.Info($"[FRAMING-THICKNESS] id={element.Id.GetIntegerValue()}: key={(p?.Definition?.Name ?? "<null>")} value={valMm:F1}mm");
                         }
                         catch (Exception ex)
                         {
@@ -3908,7 +3908,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 // (Covers FaceWalls or other elements that might not cast to Wall but are walls)
                 if (thickness <= 0.001)
                 {
-                    bool isWallCategory = element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_Walls;
+                    bool isWallCategory = element.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_Walls;
                     if (isWallCategory || element is Wall)
                     {
                         // 1) Try Built-in parameter "Width" on Instance
@@ -3947,20 +3947,20 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (thickness <= 0.001)
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Error($"[WALL-THICKNESS] Wall {element.Id.IntegerValue}: Could not determine thickness (returned 0.0). Category={element.Category?.Name}");
+                        DebugLogger.Error($"[WALL-THICKNESS] Wall {element.Id.GetIntegerValue()}: Could not determine thickness (returned 0.0). Category={element.Category?.Name}");
                     
                     return 0.1; // Minimal fallback (approx 30mm)
                 }
                 
                 if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[WALL-THICKNESS] Wall {element.Id.IntegerValue}: thickness={RevitUnitConversionService.Instance.FromInternalMillimeters(thickness):F1}mm");
+                    DebugLogger.Info($"[WALL-THICKNESS] Wall {element.Id.GetIntegerValue()}: thickness={RevitUnitConversionService.Instance.FromInternalMillimeters(thickness):F1}mm");
                 
                 return thickness;
             }
             catch (Exception ex)
             {
                 if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Error($"[GetWallThickness] Critical error for wall {element?.Id?.IntegerValue}: {ex.Message}");
+                    DebugLogger.Error($"[GetWallThickness] Critical error for wall {element?.Id?.GetIntegerValue()}: {ex.Message}");
                 return 0.1; // Safety fallback
             }
         }
@@ -3972,7 +3972,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             try
             {
-                if ((element?.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming))
+                if ((element?.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_StructuralFraming))
                 {
                     // Structural framing: read TYPE parameter 'b' (case-insensitive) regardless of instance/type wrapper
                     try
@@ -3986,7 +3986,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                                                         if (!DeploymentConfiguration.DeploymentMode)
                                                         if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Warning($"[FRAMING-THICKNESS] Could not get type element for framing {element.Id.IntegerValue}");
+                                DebugLogger.Warning($"[FRAMING-THICKNESS] Could not get type element for framing {element.Id.GetIntegerValue()}");
                             return 0.0;
                         }
 
@@ -4008,7 +4008,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                     {
                                                                                 if (!DeploymentConfiguration.DeploymentMode)
                                                                                 if (!DeploymentConfiguration.DeploymentMode)
-                                            DebugLogger.Info($"[FRAMING-THICKNESS] Found parameter '{paramName}' = {bVal:F6}ft ({RevitUnitConversionService.Instance.FromInternalMillimeters(bVal):F1}mm) on framing {element.Id.IntegerValue}");
+                                            DebugLogger.Info($"[FRAMING-THICKNESS] Found parameter '{paramName}' = {bVal:F6}ft ({RevitUnitConversionService.Instance.FromInternalMillimeters(bVal):F1}mm) on framing {element.Id.GetIntegerValue()}");
                                         break;
                                     }
                                 }
@@ -4047,7 +4047,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 }
                                                                 if (!DeploymentConfiguration.DeploymentMode)
                                                                 if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Info($"[FRAMING-THICKNESS-PARAMS] typeId={typeId.IntegerValue}: {string.Join(", ", parts)}");
+                                    DebugLogger.Info($"[FRAMING-THICKNESS-PARAMS] typeId={typeId.GetIntegerValue()}: {string.Join(", ", parts)}");
                             }
                             catch (Exception ex)
                             {
@@ -4098,7 +4098,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
                         SafeFileLogger.SafeAppendText("Refresh_debug.log",
-                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ⚠️ Size parameter not found for element {mepElement.Id.IntegerValue}, Category={mepElement.Category?.Name}, Doc={mepElement.Document?.Title}\n");
+                            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ⚠️ Size parameter not found for element {mepElement.Id.GetIntegerValue()}, Category={mepElement.Category?.Name}, Doc={mepElement.Document?.Title}\n");
                     }
                     return string.Empty;
                 }
@@ -4113,7 +4113,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             SafeFileLogger.SafeAppendText("Refresh_debug.log",
-                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ✅ Size parameter (String): Element {mepElement.Id.IntegerValue}, Value='{sizeString}', Doc={mepElement.Document?.Title}\n");
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ✅ Size parameter (String): Element {mepElement.Id.GetIntegerValue()}, Value='{sizeString}', Doc={mepElement.Document?.Title}\n");
                         }
                         return sizeString.Trim();
                     }
@@ -4128,7 +4128,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             SafeFileLogger.SafeAppendText("Refresh_debug.log",
-                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ✅ Size parameter (ValueString): Element {mepElement.Id.IntegerValue}, Value='{sizeString}', StorageType={sizeParam.StorageType}, Doc={mepElement.Document?.Title}\n");
+                                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ✅ Size parameter (ValueString): Element {mepElement.Id.GetIntegerValue()}, Value='{sizeString}', StorageType={sizeParam.StorageType}, Doc={mepElement.Document?.Title}\n");
                         }
                         return sizeString.Trim();
                     }
@@ -4138,7 +4138,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("Refresh_debug.log",
-                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ⚠️ Size parameter exists but value is empty for element {mepElement.Id.IntegerValue}, StorageType={sizeParam.StorageType}, Doc={mepElement.Document?.Title}\n");
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ⚠️ Size parameter exists but value is empty for element {mepElement.Id.GetIntegerValue()}, StorageType={sizeParam.StorageType}, Doc={mepElement.Document?.Title}\n");
                 }
             }
             catch (Exception ex)
@@ -4146,7 +4146,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("Refresh_debug.log",
-                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ❌ ERROR reading Size parameter for element {mepElement?.Id.IntegerValue ?? -1}: {ex.Message}, Doc={mepElement?.Document?.Title}\n");
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [ClashZoneService] ❌ ERROR reading Size parameter for element {mepElement?.Id.GetIntegerValue() ?? -1}: {ex.Message}, Doc={mepElement?.Document?.Title}\n");
                     DebugLogger.Warning($"[ClashZoneService] Error reading Size parameter value: {ex.Message}");
                 }
             }
@@ -4260,7 +4260,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var value = abbrevParam.AsString() ?? string.Empty;
                     
                     // DEBUG: Log System Abbreviation for duct accessories
-                    if (mepElement.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
+                    if (mepElement.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory)
                     {
                                                 if (!DeploymentConfiguration.DeploymentMode)
                                                 if (!DeploymentConfiguration.DeploymentMode)
@@ -4281,7 +4281,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var abbreviation = systemName.Length > 3 ? systemName.Substring(0, 3).ToUpper() : systemName.ToUpper();
                         
                         // DEBUG: Log System Name fallback for duct accessories
-                        if (mepElement.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
+                        if (mepElement.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory)
                         {
                                                         if (!DeploymentConfiguration.DeploymentMode)
                                                         if (!DeploymentConfiguration.DeploymentMode)
@@ -4293,7 +4293,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 }
                 
                 // DEBUG: Log no System Abbreviation found for duct accessories
-                if (mepElement.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
+                if (mepElement.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory)
                 {
                                         if (!DeploymentConfiguration.DeploymentMode)
                                         if (!DeploymentConfiguration.DeploymentMode)
@@ -4369,7 +4369,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     return XYZ.BasisZ;
                 }
                 else if (element is FamilyInstance famInst && 
-                         famInst.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+                         famInst.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_StructuralFraming)
                 {
                     // For structural framing, use default upward direction
                     return XYZ.BasisZ;
@@ -5026,7 +5026,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 // ✅ SIMPLE: If it's a Duct Accessory category, treat it as a damper for avoidance logic
                 // No need to check family name - category is sufficient
-                return element.Category?.Id.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory;
+                return element.Category?.Id.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory;
             }
             catch
             {
@@ -5247,7 +5247,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                 }
                 else if (mepElement is FamilyInstance ductAccessory && 
-                         ductAccessory.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory &&
+                         ductAccessory.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory &&
                          ductAccessory.Location is LocationCurve ductAccessoryCurve)
                 {
                     var line = ductAccessoryCurve.Curve as Line;
@@ -5312,7 +5312,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         return direction; // For horizontal cable trays, use centerline direction
                     }
                 }
-                else if (mepElement.Category?.Id.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
+                else if (mepElement.Category?.Id.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory)
                 {
                     // ✅ FIX: Handle dampers (FamilyInstance) - get orientation from transform
                     var damper = mepElement as FamilyInstance;
@@ -5524,7 +5524,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private void UpdateExistingClashZone(ClashZone existingZone, Element mepElement, Element structuralElement, XYZ intersectionPoint, BoundingBoxXYZ boundingBox, Document document, HashSet<string>? parameterWhitelist = null, HashSet<int>? existingSleeveIds = null, HashSet<string>? existingOpeningPointKeys = null, Dictionary<int, Dictionary<string, string>>? mepParamsCache = null, Dictionary<int, Dictionary<string, string>>? hostParamsCache = null)
         {
             Dictionary<string, string>? mepParamDict = null;
-            if (mepParamsCache != null) mepParamsCache.TryGetValue(mepElement.Id.IntegerValue, out mepParamDict);
+            if (mepParamsCache != null) mepParamsCache.TryGetValue(mepElement.Id.GetIntegerValue(), out mepParamDict);
             
             // OPTIMIZATION: Check if category needs to be updated
             var mepCategory = GetElementCategoryName(mepElement, mepParamDict);

@@ -25,6 +25,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.PreCalculation;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Clustering.Existence;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Geometry;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 {
@@ -523,7 +524,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                                     cmd.Transaction = tx;
 
                                                     // 1. CLEANUP STANDARD CLUSTERS
-                                                    var clusterIdList = string.Join(",", clustersToDelete.Select(id => id.IntegerValue)); // These are ClusterSleeveInstanceIds
+                                                    var clusterIdList = string.Join(",", clustersToDelete.Select(id => id.GetIntegerValue())); // These are ClusterSleeveInstanceIds
 
                                                     if (!string.IsNullOrEmpty(clusterIdList))
                                                     {
@@ -543,7 +544,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                                     // Find zones associated with deleted clusters that ALSO have CombinedCluster metrics
                                                     var combinedIds = allClashZones
                                                         .Where(z => z.CombinedClusterSleeveInstanceId > 0 &&
-                                                                   (clustersToDelete.Any(id => id.IntegerValue == z.ClusterSleeveInstanceId) || isPath3Invalidated))
+                                                                   (clustersToDelete.Any(id => id.GetIntegerValue() == z.ClusterSleeveInstanceId) || isPath3Invalidated))
                                                         .Select(z => z.CombinedClusterSleeveInstanceId)
                                                         .Distinct()
                                                         .ToList();
@@ -1438,7 +1439,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         {
                             validBeforeCleanup++;
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] ✅ PRE-CLEANUP: Cluster sleeve {cluster.Id.IntegerValue} EXISTS: Name='{cluster.Name}', IsValid={cluster.IsValidObject}\n");
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ PRE-CLEANUP: Cluster sleeve {cluster.Id.GetIntegerValue()} EXISTS: Name='{cluster.Name}', IsValid={cluster.IsValidObject}\n");
                         }
                     }
                     SafeFileLogger.SafeAppendText("cluster_debug.log",
@@ -1494,7 +1495,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             var location = cluster.Location as LocationPoint;
                             var locPoint = location?.Point;
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss}] ✅ POST-CLEANUP: Cluster sleeve {cluster.Id.IntegerValue} EXISTS: Name='{cluster.Name}', " +
+                                $"[{DateTime.Now:HH:mm:ss}] ✅ POST-CLEANUP: Cluster sleeve {cluster.Id.GetIntegerValue()} EXISTS: Name='{cluster.Name}', " +
                                 $"Location=({locPoint?.X:F2}, {locPoint?.Y:F2}, {locPoint?.Z:F2})\n");
                         }
                     }
@@ -1718,7 +1719,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                         catch { }
 
                                         SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                            $"[{DateTime.Now:HH:mm:ss}] ✅ VISIBILITY: Cluster sleeve {cluster.Id.IntegerValue} EXISTS:\n" +
+                                            $"[{DateTime.Now:HH:mm:ss}] ✅ VISIBILITY: Cluster sleeve {cluster.Id.GetIntegerValue()} EXISTS:\n" +
                                             $"  Name='{cluster.Name}', Family='{cluster.Symbol?.Family?.Name ?? "NULL"}',\n" +
                                             $"  Location=({locPoint?.X:F3}, {locPoint?.Y:F3}, {locPoint?.Z:F3}),\n" +
                                             $"  Level='{levelName}',\n" +
@@ -2267,7 +2268,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         // applied in ClusterPlacementService for wall-hosted clusters.
                         
                         SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                            $"[{DateTime.Now:HH:mm:ss}] ✅ PLACEMENT COMPLETE: Cluster {placedClusterSleeve.Id.IntegerValue} placed and parameters deferred.\n");
+                            $"[{DateTime.Now:HH:mm:ss}] ✅ PLACEMENT COMPLETE: Cluster {placedClusterSleeve.Id.GetIntegerValue()} placed and parameters deferred.\n");
                     }
 
                 
@@ -2468,22 +2469,22 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             try
                             {
                                 // ✅ TRIPLE-CHECK: Verify this is NOT the cluster sleeve
-                                if (capturedClusterSleeveId.HasValue && id.IntegerValue == capturedClusterSleeveId.Value)
+                                if (capturedClusterSleeveId.HasValue && id.GetIntegerValue() == capturedClusterSleeveId.Value)
                                 {
                                     SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                                        $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ CRITICAL: Attempted to delete cluster sleeve {id.IntegerValue} - SKIPPING!\n");
+                                        $"[{DateTime.Now:HH:mm:ss}] ⚠️⚠️⚠️ CRITICAL: Attempted to delete cluster sleeve {id.GetIntegerValue()} - SKIPPING!\n");
                                     continue;
                                 }
                                 
                                 doc.Delete(id);
                                 deletedIndividualCount++;
                                 SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                                    $"[{DateTime.Now:HH:mm:ss}] ✅ DELETED individual sleeve {id.IntegerValue}\n");
+                                    $"[{DateTime.Now:HH:mm:ss}] ✅ DELETED individual sleeve {id.GetIntegerValue()}\n");
                             }
                             catch (Exception delEx)
                             {
                                 SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                                    $"[{DateTime.Now:HH:mm:ss}] ❌ Failed to delete sleeve {id.IntegerValue}: {delEx.Message}\n");
+                                    $"[{DateTime.Now:HH:mm:ss}] ❌ Failed to delete sleeve {id.GetIntegerValue()}: {delEx.Message}\n");
                             }
                         }
                         
@@ -2660,7 +2661,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                             if (placedClusterSleeve != null)
                             {
                                 // ✅ CRITICAL: Capture ID immediately while element is valid
-                                capturedClusterSleeveId = placedClusterSleeve.Id.IntegerValue;
+                                capturedClusterSleeveId = placedClusterSleeve.Id.GetIntegerValue();
                                 
                                 // Set dimensions
                                 var widthParam = placedClusterSleeve.LookupParameter("Width");
@@ -2893,7 +2894,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                 $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-PARAMS] Flushing {_deferredClusterParameters.Count} cluster sleeve parameters...\n");
             
             SafeFileLogger.SafeAppendText("cluster_debug.log",
-                $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-FLUSH] 🔍 DETAILS: Flushing {_deferredClusterParameters.Count} cluster sleeves. IDs: {string.Join(", ", _deferredClusterParameters.Keys.Select(id => id.IntegerValue))}\n");
+                $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-FLUSH] 🔍 DETAILS: Flushing {_deferredClusterParameters.Count} cluster sleeves. IDs: {string.Join(", ", _deferredClusterParameters.Keys.Select(id => id.GetIntegerValue()))}\n");
 
             foreach (var kvp in _deferredClusterParameters)
             {
@@ -2920,7 +2921,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                         if (paramName == "Depth" || paramName == "Wall Width" || paramName == "Width" || paramName == "Height")
                         {
                             SafeFileLogger.SafeAppendText("cluster_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-FLUSH-PARAM] Sleeve={elementId.IntegerValue}, Parameter='{paramName}', Value={paramValue}\n");
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [BATCH-FLUSH-PARAM] Sleeve={elementId.GetIntegerValue()}, Parameter='{paramName}', Value={paramValue}\n");
                         }
                         
                         // ✅ CRITICAL FIX: Try parameter name variations for "Bottom of Opening" (same as in ClusterPlacementService)
@@ -3838,7 +3839,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 
                         try
                         {
-                            int clusterInstanceId = clusterSleeve.Id.IntegerValue;
+                            int clusterInstanceId = clusterSleeve.Id.GetIntegerValue();
                             
                             // Get clash zone IDs for this cluster
                             if (!_clusterToClashZoneIds.TryGetValue(clusterInstanceId, out var clashZoneIds) || clashZoneIds == null || clashZoneIds.Count == 0)

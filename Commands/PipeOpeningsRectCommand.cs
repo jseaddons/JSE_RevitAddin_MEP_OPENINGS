@@ -63,7 +63,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 // If section-box filtering yields 0 but raw collection had items, fall back to raw to avoid silent no-op
                 if (sleeves.Count == 0 && rawSleeves.Count > 0)
                 {
-                    var sampleIds = rawSleeves.Take(10).Select(fi => fi.Id.IntegerValue.ToString()).ToList();
+                    var sampleIds = rawSleeves.Take(10).Select(fi => fi.Id.GetIntegerValue().ToString()).ToList();
                     DebugLogger.Log($"[PipeOpeningsRect] Section-box filtering yielded 0 results; falling back to raw collection of {rawSleeves.Count} sleeves. SampleIds={string.Join(",", sampleIds)}");
                     sleeves = rawSleeves;
                 }
@@ -125,8 +125,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                 // Ensure all sleeves have a valid Level and Schedule Level parameter before clustering
                 foreach (var sleeve in sleeves)
                 {
-                    DebugLogger.Log($"Processing sleeve {sleeve.Id.IntegerValue} for level assignment");
-                    AppendCommandLog($"Processing sleeve {sleeve.Id.IntegerValue} for level assignment");
+                    DebugLogger.Log($"Processing sleeve {sleeve.Id.GetIntegerValue()} for level assignment");
+                    AppendCommandLog($"Processing sleeve {sleeve.Id.GetIntegerValue()} for level assignment");
                     // Try to get reference level from parameter or helper
                     Level? refLevelNullable = HostLevelHelper.GetHostReferenceLevel(doc, sleeve);
                     Level refLevel;
@@ -134,12 +134,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     {
                         var pt = (sleeve.Location as LocationPoint)?.Point ?? sleeve.GetTransform().Origin;
                         refLevel = GetNearestPositiveZLevel(doc, pt);
-                        DebugLogger.Log($"Using nearest positive Z level for sleeve {sleeve.Id.IntegerValue}: {refLevel?.Name ?? "null"}");
+                        DebugLogger.Log($"Using nearest positive Z level for sleeve {sleeve.Id.GetIntegerValue()}: {refLevel?.Name ?? "null"}");
                     }
                     else
                     {
                         refLevel = refLevelNullable;
-                        DebugLogger.Log($"Got reference level from helper for sleeve {sleeve.Id.IntegerValue}: {refLevel.Name}");
+                        DebugLogger.Log($"Got reference level from helper for sleeve {sleeve.Id.GetIntegerValue()}: {refLevel.Name}");
                     }
                     if (refLevel != null)
                     {
@@ -149,37 +149,37 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                         if (levelParam != null && !levelParam.IsReadOnly && levelParam.StorageType == StorageType.ElementId)
                         {
                             levelParam.Set(refLevel.Id);
-                            DebugLogger.Log($"Set Level parameter for sleeve {sleeve.Id.IntegerValue} to {refLevel.Name}");
+                            DebugLogger.Log($"Set Level parameter for sleeve {sleeve.Id.GetIntegerValue()} to {refLevel.Name}");
                         }
                         // Set Schedule Level if available
                         var schedLevelParam = sleeve.LookupParameter("Schedule Level");
                         if (schedLevelParam != null && !schedLevelParam.IsReadOnly)
                         {
-                            DebugLogger.Log($"Setting Schedule Level for sleeve {sleeve.Id.IntegerValue}, StorageType: {schedLevelParam.StorageType}");
+                            DebugLogger.Log($"Setting Schedule Level for sleeve {sleeve.Id.GetIntegerValue()}, StorageType: {schedLevelParam.StorageType}");
                             if (schedLevelParam.StorageType == StorageType.ElementId)
                             {
                                 schedLevelParam.Set(refLevel.Id);
-                                DebugLogger.Log($"Set sleeve {sleeve.Id.IntegerValue} Schedule Level to ElementId: {refLevel.Id.IntegerValue} ({refLevel.Name})");
+                                DebugLogger.Log($"Set sleeve {sleeve.Id.GetIntegerValue()} Schedule Level to ElementId: {refLevel.Id.GetIntegerValue()} ({refLevel.Name})");
                             }
                             else if (schedLevelParam.StorageType == StorageType.String)
                             {
                                 schedLevelParam.Set(refLevel.Name);
-                                DebugLogger.Log($"Set sleeve {sleeve.Id.IntegerValue} Schedule Level to String: '{refLevel.Name}'");
+                                DebugLogger.Log($"Set sleeve {sleeve.Id.GetIntegerValue()} Schedule Level to String: '{refLevel.Name}'");
                             }
                             else if (schedLevelParam.StorageType == StorageType.Integer)
                             {
-                                schedLevelParam.Set(refLevel.Id.IntegerValue);
-                                DebugLogger.Log($"Set sleeve {sleeve.Id.IntegerValue} Schedule Level to Integer: {refLevel.Id.IntegerValue} ({refLevel.Name})");
+                                schedLevelParam.Set(refLevel.Id.GetIntegerValue());
+                                DebugLogger.Log($"Set sleeve {sleeve.Id.GetIntegerValue()} Schedule Level to Integer: {refLevel.Id.GetIntegerValue()} ({refLevel.Name})");
                             }
                         }
                         else
                         {
-                            DebugLogger.Log($"Sleeve {sleeve.Id.IntegerValue} has no Schedule Level parameter or it's read-only");
+                            DebugLogger.Log($"Sleeve {sleeve.Id.GetIntegerValue()} has no Schedule Level parameter or it's read-only");
                         }
                     }
                     else
                     {
-                        DebugLogger.Log($"No reference level found for sleeve {sleeve.Id.IntegerValue}");
+                        DebugLogger.Log($"No reference level found for sleeve {sleeve.Id.GetIntegerValue()}");
                     }
                 }
 
@@ -273,8 +273,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Commands
                     if (heightParam != null && !heightParam.IsReadOnly) heightParam.Set(depth); // Z
                     if (depthParam != null && !depthParam.IsReadOnly) depthParam.Set(hostThickness); // X
                     placedCount++;
-                    DebugLogger.Log($"Rectangular opening created with id {inst.Id.IntegerValue} (total placed: {placedCount})");
-                    AppendCommandLog($"Rectangular opening created with id {inst.Id.IntegerValue} (total placed: {placedCount}) width={UnitUtils.ConvertFromInternalUnits(width, UnitTypeId.Millimeters):F1}mm height={UnitUtils.ConvertFromInternalUnits(height, UnitTypeId.Millimeters):F1}mm depth={UnitUtils.ConvertFromInternalUnits(depth, UnitTypeId.Millimeters):F1}mm mid={mid}");
+                    DebugLogger.Log($"Rectangular opening created with id {inst.Id.GetIntegerValue()} (total placed: {placedCount})");
+                    AppendCommandLog($"Rectangular opening created with id {inst.Id.GetIntegerValue()} (total placed: {placedCount}) width={UnitUtils.ConvertFromInternalUnits(width, UnitTypeId.Millimeters):F1}mm height={UnitUtils.ConvertFromInternalUnits(height, UnitTypeId.Millimeters):F1}mm depth={UnitUtils.ConvertFromInternalUnits(depth, UnitTypeId.Millimeters):F1}mm mid={mid}");
                     // Delete originals
                     foreach (var s in cluster)
                     {

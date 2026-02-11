@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+#if !NET8_0_OR_GREATER
 using System.Data.SQLite;
+#endif
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories

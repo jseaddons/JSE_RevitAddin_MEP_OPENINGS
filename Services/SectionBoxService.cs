@@ -2,6 +2,9 @@ using System;
 using Autodesk.Revit.DB;
 using System.Data;
 using System.Data.Common;
+#if !NET8_0_OR_GREATER
+using System.Data.SQLite;
+#endif
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -42,21 +45,21 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             using (var cmd = dbConnection.CreateCommand())
             {
                 cmd.CommandText = @"REPLACE INTO SessionContext (Key, Value, UpdatedAt) VALUES (@k1, @v1, @dt), (@k2, @v2, @dt), (@k3, @v3, @dt), (@k4, @v4, @dt), (@k5, @v5, @dt), (@k6, @v6, @dt), (@k7, @v7, @dt)";
-                cmd.Parameters.Add(new System.Data.SQLite.SQLiteParameter("@k1", "SectionBoxMinX"));
-                cmd.Parameters.Add(new System.Data.SQLite.SQLiteParameter("@v1", wMinX));
-                cmd.Parameters.Add(new System.Data.SQLite.SQLiteParameter("@k2", "SectionBoxMinY"));
-                cmd.Parameters.Add(new System.Data.SQLite.SQLiteParameter("@v2", wMinY));
-                cmd.Parameters.Add(new System.Data.SQLite.SQLiteParameter("@k3", "SectionBoxMinZ"));
-                cmd.Parameters.Add(new System.Data.SQLite.SQLiteParameter("@v3", wMinZ));
-                cmd.Parameters.Add(new System.Data.SQLite.SQLiteParameter("@k4", "SectionBoxMaxX"));
-                cmd.Parameters.Add(new System.Data.SQLite.SQLiteParameter("@v4", wMaxX));
-                cmd.Parameters.Add(new System.Data.SQLite.SQLiteParameter("@k5", "SectionBoxMaxY"));
-                cmd.Parameters.Add(new System.Data.SQLite.SQLiteParameter("@v5", wMaxY));
-                cmd.Parameters.Add(new System.Data.SQLite.SQLiteParameter("@k6", "SectionBoxMaxZ"));
-                cmd.Parameters.Add(new System.Data.SQLite.SQLiteParameter("@v6", wMaxZ));
-                cmd.Parameters.Add(new System.Data.SQLite.SQLiteParameter("@k7", "SectionBoxIsActive"));
-                cmd.Parameters.Add(new System.Data.SQLite.SQLiteParameter("@v7", 1));
-                cmd.Parameters.Add(new System.Data.SQLite.SQLiteParameter("@dt", DateTime.UtcNow));
+                cmd.Parameters.Add(new SQLiteParameter("@k1", "SectionBoxMinX"));
+                cmd.Parameters.Add(new SQLiteParameter("@v1", wMinX));
+                cmd.Parameters.Add(new SQLiteParameter("@k2", "SectionBoxMinY"));
+                cmd.Parameters.Add(new SQLiteParameter("@v2", wMinY));
+                cmd.Parameters.Add(new SQLiteParameter("@k3", "SectionBoxMinZ"));
+                cmd.Parameters.Add(new SQLiteParameter("@v3", wMinZ));
+                cmd.Parameters.Add(new SQLiteParameter("@k4", "SectionBoxMaxX"));
+                cmd.Parameters.Add(new SQLiteParameter("@v4", wMaxX));
+                cmd.Parameters.Add(new SQLiteParameter("@k5", "SectionBoxMaxY"));
+                cmd.Parameters.Add(new SQLiteParameter("@v5", wMaxY));
+                cmd.Parameters.Add(new SQLiteParameter("@k6", "SectionBoxMaxZ"));
+                cmd.Parameters.Add(new SQLiteParameter("@v6", wMaxZ));
+                cmd.Parameters.Add(new SQLiteParameter("@k7", "SectionBoxIsActive"));
+                cmd.Parameters.Add(new SQLiteParameter("@v7", 1));
+                cmd.Parameters.Add(new SQLiteParameter("@dt", DateTime.UtcNow));
                 cmd.ExecuteNonQuery();
             }
         }

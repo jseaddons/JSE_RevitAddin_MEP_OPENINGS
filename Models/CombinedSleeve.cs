@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Models
 {
@@ -21,7 +22,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public int CombinedSleeveId { get; set; }
         
         /// <summary>
-        /// Revit element ID (ElementId.IntegerValue)
+        /// Revit element ID (ElementId.GetIntegerValue())
         /// </summary>
         public int CombinedInstanceId { get; set; }
         

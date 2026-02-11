@@ -7,6 +7,7 @@ using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Refresh;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -788,8 +789,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (zone == null || zone.Id == Guid.Empty)
                 return false;
 
-            var mepId = zone.MepElementId?.IntegerValue ?? zone.MepElementIdValue;
-            var hostId = zone.StructuralElementId?.IntegerValue ?? zone.StructuralElementIdValue;
+            var mepId = zone.MepElementId?.GetIntegerValue() ?? zone.MepElementIdValue;
+            var hostId = zone.StructuralElementId?.GetIntegerValue() ?? zone.StructuralElementIdValue;
             if (mepId <= 0 || hostId <= 0)
                 return false;
 
@@ -906,8 +907,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (zone.Id == Guid.Empty)
                 return true;
 
-            var mepId = zone.MepElementId?.IntegerValue ?? zone.MepElementIdValue;
-            var hostId = zone.StructuralElementId?.IntegerValue ?? zone.StructuralElementIdValue;
+            var mepId = zone.MepElementId?.GetIntegerValue() ?? zone.MepElementIdValue;
+            var hostId = zone.StructuralElementId?.GetIntegerValue() ?? zone.StructuralElementIdValue;
             if (mepId <= 0 || hostId <= 0)
                 return true;
 
@@ -1204,4 +1205,3 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
     }
 }
-

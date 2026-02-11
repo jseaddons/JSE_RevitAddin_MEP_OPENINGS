@@ -134,7 +134,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         // ✅ ALWAYS LOG: Log every element to see what's being processed
                         var categoryName = mepElem.Category?.Name ?? "NULL";
-                        var categoryId = mepElem.Category?.Id?.IntegerValue ?? -1;
+                        var categoryId = mepElem.Category?.Id?.GetIntegerValue() ?? -1;
                         log?.Invoke($"[R24-FIX] [{processedCount}/{mepElements.Count}] Processing element {mepElem.Id} (Category={categoryName}, CategoryId={categoryId})");
                         
                         // ✅ CRITICAL FIX: Check for dampers FIRST, before trying to get line
@@ -309,7 +309,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         private static bool IsDamperElement(Element element)
         {
             // ✅ CRITICAL FIX: Check category FIRST - Duct Accessories are dampers
-            if (element?.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
+            if (element?.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory)
             {
                 // ✅ EXCLUDE: Skip VCD and VOLUME dampers (not in walls)
                 if (element is FamilyInstance fi && fi.Symbol != null)

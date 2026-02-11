@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Models
 {
@@ -14,7 +15,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
             if (x == null || y == null)
                 return false;
 
-            return x.ElementId.IntegerValue == y.ElementId.IntegerValue;
+            return x.ElementId.GetIntegerValue() == y.ElementId.GetIntegerValue();
         }
 
         public int GetHashCode(Reference obj)
@@ -22,7 +23,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
             if (obj == null)
                 return 0;
 
-            return obj.ElementId.IntegerValue.GetHashCode();
+            return obj.ElementId.GetIntegerValue().GetHashCode();
         }
     }
 }

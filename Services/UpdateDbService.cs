@@ -7,6 +7,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Data.Entities;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Refresh;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -208,7 +209,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             // Actually, for manual sleeves we might want to allow it even without distinct MEP (Placeholder?).
             // But DB schema constraints might fail. Let's assume user placed it ON a pipe.
 
-            int mepId = mepElement?.Id.IntegerValue ?? -1;
+            int mepId = mepElement?.Id.GetIntegerValue() ?? -1;
             string mepCat = mepElement?.Category?.Name ?? "Manual";
 
             // Dimensions
@@ -242,7 +243,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 
                 // RotationAngle = (sleeve.Location as LocationPoint)?.Rotation ?? 0, 
                 IsResolved = true, 
-                SleeveInstanceId = sleeve.Id.IntegerValue,
+                SleeveInstanceId = sleeve.Id.GetIntegerValue(),
                 PlacementSource = PlacementSourceType.Individual,
                 DetectedAt = DateTime.Now,
                 LastUpdated = DateTime.Now

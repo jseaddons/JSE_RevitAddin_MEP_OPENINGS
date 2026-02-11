@@ -377,8 +377,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
             report.AppendLine($"╚════════════════════════════════════════════════════════════════════════════════════╝");
             report.AppendLine();
             report.AppendLine("WHY CLUSTER TAKES MORE TIME THAN INDIVIDUAL (contrast study):");
-            report.AppendLine("  1. Regenerate (Cluster) - full doc.Regenerate() after flush to ensure accurate corner geometry calculations.");
-            report.AppendLine("  2. Step 6 SAVE TO DB - Batched in modern workflow (single transaction for all updates).");
+            report.AppendLine("  1. Transaction Commit - Revit regenerates all placed elements on commit.");
+            report.AppendLine("  2. Step 6 PERSIST TO DB (Deferred) - runs AFTER Revit tx commit (does not block UI).");
             report.AppendLine();
             
             // Filter operations related to cluster placement
@@ -460,7 +460,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 var n = name.Trim();
                 return n.IndexOf("Operation 2", StringComparison.OrdinalIgnoreCase) >= 0
                     || n.IndexOf("ExecuteBulkPlacement", StringComparison.OrdinalIgnoreCase) >= 0
-                    || n.IndexOf("Cluster Placement Total", StringComparison.OrdinalIgnoreCase) >= 0;
+                    || n.IndexOf("Cluster Placement Total", StringComparison.OrdinalIgnoreCase) >= 0
+                    || n.IndexOf("CLUSTER PLACEMENT MAIN LOOP", StringComparison.OrdinalIgnoreCase) >= 0;
             }
 
             // Cluster sub-ops (e.g. Flush Deferred Parameters (Cluster), Regenerate (Cluster), Step 6: SAVE PLACED DATA TO DB)

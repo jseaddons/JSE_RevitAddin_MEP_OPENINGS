@@ -116,7 +116,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                   
                   // Fix: zone.MepElementId is of type ElementId, so compare IntegerValue > 0
                   Transform damperLinkTransform = null; // Store link transform for damper coordinate conversion
-                  if (zone.MepElementId?.IntegerValue > 0) 
+                  if (zone.MepElementId?.GetIntegerValue() > 0) 
                   {
                       // Fix: zone.MepElementId is already ElementId, do not wrap in new ElementId()
                       damperElement = _doc.GetElement(zone.MepElementId);

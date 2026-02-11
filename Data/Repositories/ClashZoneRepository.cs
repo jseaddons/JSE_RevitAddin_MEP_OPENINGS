@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+#if !NET8_0_OR_GREATER
 using System.Data.SQLite;
+#endif
 using System.Text.Json;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Entities;
@@ -10,6 +12,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Refresh;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 // Implements the missing interface member for BatchUpdateFlagsWithCurrentClash
 // Must be inside the class
@@ -316,8 +319,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 
         private string GetUniqueKey(ClashZone zone, int comboId)
         {
-            var mepId = zone.MepElementId?.IntegerValue ?? zone.MepElementIdValue;
-            var hostId = zone.StructuralElementId?.IntegerValue ?? zone.StructuralElementIdValue;
+            var mepId = zone.MepElementId?.GetIntegerValue() ?? zone.MepElementIdValue;
+            var hostId = zone.StructuralElementId?.GetIntegerValue() ?? zone.StructuralElementIdValue;
             var interX = Math.Round(zone.IntersectionPoint?.X ?? zone.IntersectionPointX, 6);
             var interY = Math.Round(zone.IntersectionPoint?.Y ?? zone.IntersectionPointY, 6);
             var interZ = Math.Round(zone.IntersectionPoint?.Z ?? zone.IntersectionPointZ, 6);
@@ -339,8 +342,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     if (!comboMap.ContainsKey(zone.Id)) continue;
 
                     int cid = comboMap[zone.Id];
-                    int mid = zone.MepElementId?.IntegerValue ?? zone.MepElementIdValue;
-                    int hid = zone.StructuralElementId?.IntegerValue ?? zone.StructuralElementIdValue;
+                    int mid = zone.MepElementId?.GetIntegerValue() ?? zone.MepElementIdValue;
+                    int hid = zone.StructuralElementId?.GetIntegerValue() ?? zone.StructuralElementIdValue;
                     double x = zone.IntersectionPoint?.X ?? zone.IntersectionPointX;
                     double y = zone.IntersectionPoint?.Y ?? zone.IntersectionPointY;
                     double z = zone.IntersectionPoint?.Z ?? zone.IntersectionPointZ;
@@ -499,8 +502,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                                 if (!comboMap.ContainsKey(zone.Id)) continue;
 
                                 var comboId = comboMap[zone.Id];
-                                var mepId = zone.MepElementId?.IntegerValue ?? zone.MepElementIdValue;
-                                var hostId = zone.StructuralElementId?.IntegerValue ?? zone.StructuralElementIdValue;
+                                var mepId = zone.MepElementId?.GetIntegerValue() ?? zone.MepElementIdValue;
+                                var hostId = zone.StructuralElementId?.GetIntegerValue() ?? zone.StructuralElementIdValue;
                                 var interX = zone.IntersectionPoint?.X ?? zone.IntersectionPointX;
                                 var interY = zone.IntersectionPoint?.Y ?? zone.IntersectionPointY;
                                 var interZ = zone.IntersectionPoint?.Z ?? zone.IntersectionPointZ;
@@ -555,8 +558,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             if (!comboMap.ContainsKey(zone.Id)) continue;
 
                             var comboId = comboMap[zone.Id];
-                            var mepId = zone.MepElementId?.IntegerValue ?? zone.MepElementIdValue;
-                            var hostId = zone.StructuralElementId?.IntegerValue ?? zone.StructuralElementIdValue;
+                            var mepId = zone.MepElementId?.GetIntegerValue() ?? zone.MepElementIdValue;
+                            var hostId = zone.StructuralElementId?.GetIntegerValue() ?? zone.StructuralElementIdValue;
                             var interX = zone.IntersectionPoint?.X ?? zone.IntersectionPointX;
                             var interY = zone.IntersectionPoint?.Y ?? zone.IntersectionPointY;
                             var interZ = zone.IntersectionPoint?.Z ?? zone.IntersectionPointZ;
@@ -1333,8 +1336,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     var comboId = comboMap[zone.Id];
 
                     // Extract values (intersection X/Y/Z not updated in bulk – keep MepIntersectionService value)
-                    var mepId = zone.MepElementId?.IntegerValue ?? zone.MepElementIdValue;
-                    var hostId = zone.StructuralElementId?.IntegerValue ?? zone.StructuralElementIdValue;
+                    var mepId = zone.MepElementId?.GetIntegerValue() ?? zone.MepElementIdValue;
+                    var hostId = zone.StructuralElementId?.GetIntegerValue() ?? zone.StructuralElementIdValue;
 
                     // Determine flags (preserve database resets)
                     bool finalIsResolved = zone.IsResolved;
@@ -1945,8 +1948,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     {
                         var zone = currentBatch[j];
                         var comboId = comboMap[zone.Id];
-                        var mepId = zone.MepElementId?.IntegerValue ?? zone.MepElementIdValue;
-                        var hostId = zone.StructuralElementId?.IntegerValue ?? zone.StructuralElementIdValue;
+                        var mepId = zone.MepElementId?.GetIntegerValue() ?? zone.MepElementIdValue;
+                        var hostId = zone.StructuralElementId?.GetIntegerValue() ?? zone.StructuralElementIdValue;
                         var interX = zone.IntersectionPoint?.X ?? zone.IntersectionPointX;
                         var interY = zone.IntersectionPoint?.Y ?? zone.IntersectionPointY;
                         var interZ = zone.IntersectionPoint?.Z ?? zone.IntersectionPointZ;
@@ -2634,8 +2637,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             {
                 cmd.Transaction = transaction;
 
-                var mepElementId = clashZone.MepElementId?.IntegerValue ?? clashZone.MepElementIdValue;
-                var hostElementId = clashZone.StructuralElementId?.IntegerValue ?? clashZone.StructuralElementIdValue;
+                var mepElementId = clashZone.MepElementId?.GetIntegerValue() ?? clashZone.MepElementIdValue;
+                var hostElementId = clashZone.StructuralElementId?.GetIntegerValue() ?? clashZone.StructuralElementIdValue;
                 var intersectionX = clashZone.IntersectionPoint?.X ?? clashZone.IntersectionPointX;
                 var intersectionY = clashZone.IntersectionPoint?.Y ?? clashZone.IntersectionPointY;
                 var intersectionZ = clashZone.IntersectionPoint?.Z ?? clashZone.IntersectionPointZ;
@@ -3008,8 +3011,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             else if (clashZone.IsResolvedFlag && clashZone.SleeveInstanceId > 0)
                 sleeveState = 1; // IndividualPlaced
 
-            var mepElementId = clashZone.MepElementId?.IntegerValue ?? clashZone.MepElementIdValue;
-            var hostElementId = clashZone.StructuralElementId?.IntegerValue ?? clashZone.StructuralElementIdValue;
+            var mepElementId = clashZone.MepElementId?.GetIntegerValue() ?? clashZone.MepElementIdValue;
+            var hostElementId = clashZone.StructuralElementId?.GetIntegerValue() ?? clashZone.StructuralElementIdValue;
             var intersectionPoint = clashZone.IntersectionPoint;
             var orientationX = clashZone.MepElementOrientationX;
             var orientationY = clashZone.MepElementOrientationY;
@@ -3242,7 +3245,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 // ✅ LOGGING: Log filtered parameters for debugging
                 if (filteredOut.Count > 0 && !DeploymentConfiguration.DeploymentMode)
                 {
-                    _logger($"[SQLite] ⚠️ Filtered out {filteredOut.Count} empty MEP parameters for zone {clashZone.Id} (MEP={clashZone.MepElementId?.IntegerValue ?? clashZone.MepElementIdValue}): {string.Join(", ", filteredOut)}");
+                    _logger($"[SQLite] ⚠️ Filtered out {filteredOut.Count} empty MEP parameters for zone {clashZone.Id} (MEP={clashZone.MepElementId?.GetIntegerValue() ?? clashZone.MepElementIdValue}): {string.Join(", ", filteredOut)}");
                 }
 
                 // ✅ LOGGING: Log parameter count comparison
@@ -3300,7 +3303,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                 // ✅ LOGGING: Log filtered parameters for debugging
                 if (filteredOutHost.Count > 0 && !DeploymentConfiguration.DeploymentMode)
                 {
-                    _logger($"[SQLite] ⚠️ Filtered out {filteredOutHost.Count} empty Host parameters for zone {clashZone.Id} (Host={clashZone.StructuralElementId?.IntegerValue ?? clashZone.StructuralElementIdValue}): {string.Join(", ", filteredOutHost)}");
+                    _logger($"[SQLite] ⚠️ Filtered out {filteredOutHost.Count} empty Host parameters for zone {clashZone.Id} (Host={clashZone.StructuralElementId?.GetIntegerValue() ?? clashZone.StructuralElementIdValue}): {string.Join(", ", filteredOutHost)}");
                 }
 
                 if (hostDict.Count > 0)
@@ -4494,7 +4497,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                     // MEP_ElementId is required for parameter transfer command to work correctly
                     // For individual sleeves, use the zone's MepElementId
                     // For cluster sleeves, this will be aggregated (comma-separated) below
-                    if (!useHost && zone.MepElementId != null && zone.MepElementId.IntegerValue > 0)
+                    if (!useHost && zone.MepElementId != null && zone.MepElementId.GetIntegerValue() > 0)
                     {
                         // Check if MEP_ElementId already exists in bag
                         bool hasMepElementId = bag.Any(kv => kv != null &&
@@ -4505,7 +4508,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
                             bag.Add(new Models.SerializableKeyValue
                             {
                                 Key = "MEP_ElementId",
-                                Value = zone.MepElementId.IntegerValue.ToString()
+                                Value = zone.MepElementId.GetIntegerValue().ToString()
                             });
                         }
                     }
@@ -8926,7 +8929,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
             };
         }
 
-        private ClusterSleeve MapClusterSleeve(System.Data.SQLite.SQLiteDataReader reader)
+        private ClusterSleeve MapClusterSleeve(SQLiteDataReader reader)
         {
             return new ClusterSleeve
             {

@@ -1,4 +1,5 @@
 using Autodesk.Revit.DB;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Helpers
 {
@@ -12,7 +13,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Helpers
     {
         if (host == null) return null;
         
-        int hostId = host.Id.IntegerValue;
+        int hostId = host.Id.GetIntegerValue();
         // JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Starting GetHostReferenceLevel for host {hostId} (Document: '{host.Document.Title}', IsLinked: {host.Document.IsLinked})");
         
         // FIXED: Always try to get the level from the linked document first for consistency
@@ -29,7 +30,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Helpers
                 if (linkedRefLevelParam != null && linkedRefLevelParam.StorageType == StorageType.ElementId)
                 {
                     ElementId linkedLevelId = linkedRefLevelParam.AsElementId();
-                    // JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Linked level ElementId: {linkedLevelId.IntegerValue} (Valid: {linkedLevelId != ElementId.InvalidElementId})");
+                    // JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Linked level ElementId: {linkedLevelId.GetIntegerValue()} (Valid: {linkedLevelId != ElementId.InvalidElementId})");
                     
                     if (linkedLevelId != ElementId.InvalidElementId)
                     {
@@ -37,7 +38,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Helpers
                         Level? linkedLevel = host.Document.GetElement(linkedLevelId) as Level;
                         if (linkedLevel != null)
                         {
-                            // JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Found level in linked doc: '{linkedLevel.Name}' (ID: {linkedLevel.Id.IntegerValue})");
+                            // JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Found level in linked doc: '{linkedLevel.Name}' (ID: {linkedLevel.Id.GetIntegerValue()})");
                             
                             // Find a matching level in the active document by name
                             var matchingLevel = new FilteredElementCollector(doc)
@@ -47,7 +48,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Helpers
                             
                             if (matchingLevel != null)
                             {
-                                JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Found matching level in active doc: '{matchingLevel.Name}' (ID: {matchingLevel.Id.IntegerValue}) - RETURNING THIS");
+                                JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Found matching level in active doc: '{matchingLevel.Name}' (ID: {matchingLevel.Id.GetIntegerValue()}) - RETURNING THIS");
                                 return matchingLevel;
                             }
                             else
@@ -56,12 +57,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Helpers
                                 
                                 // Log all available levels in active document for debugging
                                 var allLevels = new FilteredElementCollector(doc).OfClass(typeof(Level)).Cast<Level>().ToList();
-                                // JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Available levels in active doc: {string.Join(", ", allLevels.Select(l => $"'{l.Name}' (ID: {l.Id.IntegerValue})"))}");
+                                // JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Available levels in active doc: {string.Join(", ", allLevels.Select(l => $"'{l.Name}' (ID: {l.Id.GetIntegerValue()})"))}");
                             }
                         }
                         else
                         {
-                            JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Could not get level from linked document for ElementId {linkedLevelId.IntegerValue}");
+                            JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Could not get level from linked document for ElementId {linkedLevelId.GetIntegerValue()}");
                         }
                     }
                 }
@@ -80,13 +81,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Helpers
         if (refLevelParam != null && refLevelParam.StorageType == StorageType.ElementId)
         {
             ElementId levelId = refLevelParam.AsElementId();
-            JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Fallback ElementId: {levelId.IntegerValue} (Valid: {levelId != ElementId.InvalidElementId})");
+            JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Fallback ElementId: {levelId.GetIntegerValue()} (Valid: {levelId != ElementId.InvalidElementId})");
             if (levelId != ElementId.InvalidElementId)
             {
                 Level? level = doc.GetElement(levelId) as Level;
                 if (level != null)
                 {
-                    JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Found fallback level in active doc: '{level.Name}' (ID: {level.Id.IntegerValue}) - RETURNING THIS");
+                    JSE_RevitAddin_MEP_OPENINGS.Services.DebugLogger.Log($"[HostLevelHelper] DEBUG: Host {hostId} - Found fallback level in active doc: '{level.Name}' (ID: {level.Id.GetIntegerValue()}) - RETURNING THIS");
                     return level;
                 }
             }
@@ -105,7 +106,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Helpers
         {
             if (host == null) return null;
 
-            int hostId = host.Id.IntegerValue;
+            int hostId = host.Id.GetIntegerValue();
 
             // ✅ PRIORITY 1: Try to get from linked document first
             if (host.Document.IsLinked)

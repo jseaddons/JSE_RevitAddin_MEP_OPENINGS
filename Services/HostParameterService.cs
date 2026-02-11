@@ -5,6 +5,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using WinForms = System.Windows.Forms;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -447,7 +448,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         
                         // ✅ PERFORMANCE: Only add shared parameters (they have positive IDs and are part of the ~20)
                         // Skip instance/type parameters that aren't shared (user only wants shared params from families)
-                        bool isSharedParameter = param.Id.IntegerValue > 0 && param.IsShared;
+                        bool isSharedParameter = param.Id.GetIntegerValue() > 0 && param.IsShared;
                         
                         if (isSharedParameter && 
                             !paramName.StartsWith("Internal") &&

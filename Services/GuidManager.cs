@@ -5,6 +5,7 @@ using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -210,8 +211,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (clashZones == null || clashZones.Count == 0)
                 return null;
                 
-            int mepIdValue = mepId?.IntegerValue ?? -1;
-            int hostIdValue = hostId?.IntegerValue ?? -1;
+            int mepIdValue = mepId?.GetIntegerValue() ?? -1;
+            int hostIdValue = hostId?.GetIntegerValue() ?? -1;
             
             if (mepIdValue <= 0 || hostIdValue <= 0)
                 return null;
@@ -219,8 +220,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var match = clashZones.FirstOrDefault(cz => 
             {
                 if (cz == null) return false;
-                int czMepId = cz.MepElementId?.IntegerValue ?? cz.MepElementIdValue;
-                int czStructuralId = cz.StructuralElementId?.IntegerValue ?? cz.StructuralElementIdValue;
+                int czMepId = cz.MepElementId?.GetIntegerValue() ?? cz.MepElementIdValue;
+                int czStructuralId = cz.StructuralElementId?.GetIntegerValue() ?? cz.StructuralElementIdValue;
                 return czMepId == mepIdValue && czStructuralId == hostIdValue;
             });
             
@@ -259,8 +260,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 if (cz == null) continue;
                 
-                int czMepId = cz.MepElementId?.IntegerValue ?? cz.MepElementIdValue;
-                int czStructuralId = cz.StructuralElementId?.IntegerValue ?? cz.StructuralElementIdValue;
+                int czMepId = cz.MepElementId?.GetIntegerValue() ?? cz.MepElementIdValue;
+                int czStructuralId = cz.StructuralElementId?.GetIntegerValue() ?? cz.StructuralElementIdValue;
                 
                 // First check: MEP and Host must match
                 if (czMepId != mepIdValue || czStructuralId != structuralIdValue)
@@ -346,4 +347,3 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
     }
 }
-

@@ -7,6 +7,7 @@ using System.IO;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Electrical;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 
@@ -148,7 +149,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 if (element == null) continue;
 
-                var id = element.Id.IntegerValue;
+                var id = element.Id.GetIntegerValue();
                 if (results.ContainsKey(id)) continue;
 
                 // Capture using the legacy logic
@@ -208,7 +209,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
             
             // DEBUG: Log all available parameters for duct accessories
-            if (element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory && OptimizationFlags.UseDiagnosticMode)
+            if (element.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory && OptimizationFlags.UseDiagnosticMode)
             {
                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: Starting parameter capture\n");
@@ -226,7 +227,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             }
 
             // ✅ CRITICAL: Check if element is a Cable Tray (needed for parameter mapping)
-            bool isCableTray = element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_CableTray ||
+            bool isCableTray = element.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_CableTray ||
                               element.Category?.Name?.Contains("Cable Tray", StringComparison.OrdinalIgnoreCase) == true ||
                               element is CableTray;
             
@@ -322,7 +323,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         element.LookupParameter("Abbr");
                     
                     // DEBUG: Log System Abbreviation search for duct accessories
-                    if (element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory && OptimizationFlags.UseDiagnosticMode)
+                    if (element.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory && OptimizationFlags.UseDiagnosticMode)
                     {
                         if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Info($"[{DateTime.Now}] [PARAM_CAPTURE] DUCT ACCESSORY {element.Id}: System Abbreviation fallback search - Parameter found: {p != null}\n");
@@ -432,7 +433,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         try
                         {
                             var elemId = p.AsElementId();
-                            paramDetails += $", ElementId={elemId?.IntegerValue ?? -1}";
+                            paramDetails += $", ElementId={elemId?.GetIntegerValue() ?? -1}";
                         }
                         catch { }
                     }
@@ -604,7 +605,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                             
                             // Fallback to ElementId integer value
-                            return id.IntegerValue.ToString(CultureInfo.InvariantCulture);
+                            return id.GetIntegerValue().ToString(CultureInfo.InvariantCulture);
                         }
                     }
                     catch { }
@@ -643,7 +644,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             if (paramName.Equals("Size", StringComparison.OrdinalIgnoreCase))
             {
                 // ✅ DEBUG: Log all parameter names for Duct Accessories to find Size
-                if (!DeploymentConfiguration.DeploymentMode && element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
+                if (!DeploymentConfiguration.DeploymentMode && element.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory)
                 {
                     var allParamNames = element.Parameters.Cast<Parameter>()
                         .Where(p => p?.Definition?.Name != null)
@@ -662,7 +663,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         param.Definition.Name.Equals("Size", StringComparison.OrdinalIgnoreCase))
                     {
                         // ✅ DEBUG: Log Size parameter found
-                        if (!DeploymentConfiguration.DeploymentMode && element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
+                        if (!DeploymentConfiguration.DeploymentMode && element.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory)
                         {
                             SafeFileLogger.SafeAppendText("param_debug.log", 
                                 $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [SIZE-FOUND] Element {element.Id}: Size param found! HasValue={param.HasValue}, StorageType={param.StorageType}\n");
@@ -798,5 +799,4 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
     }
 }
-
 

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+#if !NET8_0_OR_GREATER
 using System.Data.SQLite;
+#endif
 using System.Linq;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Models;

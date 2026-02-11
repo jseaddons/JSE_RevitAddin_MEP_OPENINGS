@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Electrical;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.ParameterCapture
 {
@@ -59,7 +60,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ParameterCapture
         public string MapParameterName(string requestedName, Element element)
         {
             // Same Cable Tray mapping as snapshot policy
-            bool isCableTray = element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_CableTray ||
+            bool isCableTray = element.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_CableTray ||
                               element.Category?.Name?.Contains("Cable Tray", StringComparison.OrdinalIgnoreCase) == true ||
                               element is CableTray;
 

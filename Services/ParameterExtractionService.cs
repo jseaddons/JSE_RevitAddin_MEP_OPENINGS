@@ -4,6 +4,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
 using System.Windows.Forms;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -109,8 +110,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         Name = param.Definition?.Name ?? "Unknown",
                         Type = param.StorageType.ToString(),
                         IsInstanceParameter = isInstance,
-                        BuiltInParameter = param.Id.IntegerValue < 0 ?
-                            (BuiltInParameter)param.Id.IntegerValue : null
+                        BuiltInParameter = param.Id.GetIntegerValue() < 0 ?
+                            (BuiltInParameter)param.Id.GetIntegerValue() : null
                     };
 
                     // Try to get some sample values
@@ -153,7 +154,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         return param.AsDouble().ToString();
                     case StorageType.ElementId:
                         var elemId = param.AsElementId();
-                        return elemId.IntegerValue.ToString();
+                        return elemId.GetIntegerValue().ToString();
                     default:
                         return string.Empty;
                 }

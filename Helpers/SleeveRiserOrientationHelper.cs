@@ -3,6 +3,7 @@ using Autodesk.Revit.DB.Mechanical;
 using Autodesk.Revit.DB.Electrical;
 using System;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
 {
@@ -20,7 +21,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                 string logFile = @"C:\JSE_CSharp_Projects\JSE_RevitAddin_MEP_OPENINGS\JSE_RevitAddin_MEP_OPENINGS\Log\riser_debug.log";
                 using (var writer = new System.IO.StreamWriter(logFile, true)) // append mode
                 {
-                    string elementId = element?.Id?.IntegerValue.ToString() ?? "<null>";
+                    string elementId = element?.Id?.GetIntegerValue().ToString() ?? "<null>";
                     if (bbox == null)
                     {
                         writer.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] ElementId={elementId} Bounding box is null, cannot determine orientation. No rotation applied.");

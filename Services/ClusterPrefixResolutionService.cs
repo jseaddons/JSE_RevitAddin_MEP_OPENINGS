@@ -6,6 +6,7 @@ using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -41,7 +42,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             try
             {
-                int sleeveId = sleeve.Id.IntegerValue;
+                int sleeveId = sleeve.Id.GetIntegerValue();
                 List<ClashZone> zones = new List<ClashZone>();
 
                 // Determine if this is a cluster or combined sleeve

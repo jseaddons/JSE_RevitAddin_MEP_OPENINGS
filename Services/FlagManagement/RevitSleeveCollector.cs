@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
 {
@@ -56,7 +57,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                         if (!sleevesByCategory.ContainsKey(sleeveCategory))
                             sleevesByCategory[sleeveCategory] = new HashSet<int>();
                         
-                        int sleeveId = sleeve.Id.IntegerValue;
+                        int sleeveId = sleeve.Id.GetIntegerValue();
                         sleevesByCategory[sleeveCategory].Add(sleeveId);
                     }
                 }
@@ -91,7 +92,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                             s.Category?.Name == "Mechanical Equipment") &&
                            (hasSleeveKeyword || isKnownFamily);
                 })
-                .Select(s => s.Id.IntegerValue)
+                .Select(s => s.Id.GetIntegerValue())
                 .ToList();
 
             return new HashSet<int>(allSleeveIds);
@@ -130,7 +131,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
                     }
                     return false;
                 })
-                .Select(s => s.Id.IntegerValue)
+                .Select(s => s.Id.GetIntegerValue())
                 .ToList();
             
             return new HashSet<int>(categorySleeves);
@@ -168,4 +169,3 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement
         }
     }
 }
-

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -82,7 +83,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     _openingStatuses[status.OpeningId] = status;
                 }
 
-                _statusManager.UpdateStatus($"Registered opening {status.OpeningId.IntegerValue} for {opening.MepType}", StatusType.Info);
+                _statusManager.UpdateStatus($"Registered opening {status.OpeningId.GetIntegerValue()} for {opening.MepType}", StatusType.Info);
                 
                 OpeningStatusUpdated?.Invoke(this, new OpeningStatusUpdatedEventArgs(status));
             }
@@ -127,7 +128,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     _openingStatuses[status.OpeningId] = status;
                 }
 
-                _statusManager.UpdateStatus($"Registered opening {status.OpeningId.IntegerValue} for {mepType}", StatusType.Info);
+                _statusManager.UpdateStatus($"Registered opening {status.OpeningId.GetIntegerValue()} for {mepType}", StatusType.Info);
                 
                 OpeningStatusUpdated?.Invoke(this, new OpeningStatusUpdatedEventArgs(status));
             }
@@ -241,7 +242,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 if (!_openingStatuses.TryGetValue(openingId, out var status))
                 {
-                    _statusManager.UpdateStatus($"Opening {openingId.IntegerValue} not found in tracking", StatusType.Warning);
+                    _statusManager.UpdateStatus($"Opening {openingId.GetIntegerValue()} not found in tracking", StatusType.Warning);
                     return;
                 }
 
@@ -264,7 +265,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     UpdateOpeningPosition(doc, status, newLocation);
                     status.UpdateLocation(newLocation);
                     
-                    _statusManager.UpdateStatus($"Updated opening {status.OpeningId.IntegerValue}", StatusType.Success);
+                    _statusManager.UpdateStatus($"Updated opening {status.OpeningId.GetIntegerValue()}", StatusType.Success);
                 }
                 catch (Exception ex)
                 {
@@ -283,7 +284,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 if (_openingStatuses.Remove(openingId))
                 {
-                    _statusManager.UpdateStatus($"Unregistered opening {openingId.IntegerValue}", StatusType.Info);
+                    _statusManager.UpdateStatus($"Unregistered opening {openingId.GetIntegerValue()}", StatusType.Info);
                 }
             }
         }

@@ -11,6 +11,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Geometry;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Filters;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Parallel;
 using JSE_RevitAddin_MEP_OPENINGS.Utils;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
 {
@@ -432,7 +433,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                             // ✅ SAFETY: Fail-safe - continue with next sleeve instead of aborting entire batch
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                DebugLogger.Error($"[SleevePersistenceService] Failed to persist sleeve {sleeve?.Id?.IntegerValue ?? -1} for zone {zone?.Id}: {ex.Message}");
+                                DebugLogger.Error($"[SleevePersistenceService] Failed to persist sleeve {sleeve?.Id?.GetIntegerValue() ?? -1} for zone {zone?.Id}: {ex.Message}");
                                 DebugLogger.Error($"[SleevePersistenceService] Stack trace: {ex.StackTrace}");
                             }
                             // Continue with next sleeve (fail-safe)
@@ -654,4 +655,3 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
         }
     }
 }
-

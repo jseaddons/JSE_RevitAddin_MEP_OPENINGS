@@ -65,7 +65,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 var dist = location.DistanceTo(fiLocation);
                 var distMm = UnitUtils.ConvertFromInternalUnits(dist, UnitTypeId.Millimeters);
                                 if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Log($"[OpeningDuplicationChecker] Candidate cluster: {fi.Symbol.Family.Name} - {fi.Symbol.Name} (ID:{fi.Id.IntegerValue}) at {fiLocation} (dist {distMm:F1}mm)");
+                    DebugLogger.Log($"[OpeningDuplicationChecker] Candidate cluster: {fi.Symbol.Family.Name} - {fi.Symbol.Name} (ID:{fi.Id.GetIntegerValue()}) at {fiLocation} (dist {distMm:F1}mm)");
                 if (dist <= tolerance)
                     found.Add(fi);
             }
@@ -224,12 +224,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (transform != null && isClose)
                 {
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Log($"[OpeningDuplicationChecker] Candidate sleeve: {fi.Symbol.Family.Name} - {fi.Symbol.Name} (ID:{fi.Id.IntegerValue}) original={originalLocation} transformed={fiLocation}");
+                        DebugLogger.Log($"[OpeningDuplicationChecker] Candidate sleeve: {fi.Symbol.Family.Name} - {fi.Symbol.Name} (ID:{fi.Id.GetIntegerValue()}) original={originalLocation} transformed={fiLocation}");
                 }
                 else if (transform == null && isClose)
                 {
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Log($"[OpeningDuplicationChecker] Candidate sleeve: {fi.Symbol.Family.Name} - {fi.Symbol.Name} (ID:{fi.Id.IntegerValue}) at {fiLocation}");
+                        DebugLogger.Log($"[OpeningDuplicationChecker] Candidate sleeve: {fi.Symbol.Family.Name} - {fi.Symbol.Name} (ID:{fi.Id.GetIntegerValue()}) at {fiLocation}");
                 }
                 
                 if (isClose)
@@ -241,7 +241,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (dist <= tolerance)
                 {
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Log($"[OpeningDuplicationChecker]   -> Within tolerance, will be considered a duplicate (ID:{fi.Id.IntegerValue})");
+                        DebugLogger.Log($"[OpeningDuplicationChecker]   -> Within tolerance, will be considered a duplicate (ID:{fi.Id.GetIntegerValue()})");
                     found.Add(fi);
                 }
             }
@@ -320,14 +320,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var famName = fi.Symbol?.Family?.Name ?? "<unknown family>";
                     var symName = fi.Symbol?.Name ?? "<unknown symbol>";
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Log($"[OpeningDuplicationChecker] Candidate cluster: {famName} - {symName} (ID:{fi.Id.IntegerValue}) original={originalLocation} transformed={fiLocation}");
+                        DebugLogger.Log($"[OpeningDuplicationChecker] Candidate cluster: {famName} - {symName} (ID:{fi.Id.GetIntegerValue()}) original={originalLocation} transformed={fiLocation}");
                 }
                 else
                 {
                     var famName = fi.Symbol?.Family?.Name ?? "<unknown family>";
                     var symName = fi.Symbol?.Name ?? "<unknown symbol>";
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Log($"[OpeningDuplicationChecker] Candidate cluster: {famName} - {symName} (ID:{fi.Id.IntegerValue}) at {fiLocation}");
+                        DebugLogger.Log($"[OpeningDuplicationChecker] Candidate cluster: {famName} - {symName} (ID:{fi.Id.GetIntegerValue()}) at {fiLocation}");
                 }
 
                 var dist = location.DistanceTo(fiLocation);
@@ -357,7 +357,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 return Enumerable.Empty<RevitLinkInstance>();
             }
             // Build a cache key from document path (falls back to title) and active view id so we refresh when the view changes
-            var cacheKey = string.Concat(doc.PathName ?? doc.Title, "|", doc.ActiveView?.Id.IntegerValue.ToString() ?? "0");
+            var cacheKey = string.Concat(doc.PathName ?? doc.Title, "|", doc.ActiveView?.Id.GetIntegerValue().ToString() ?? "0");
 
             // If we have a cached list of link instance ids for this doc+view, try to re-resolve them and return quickly
             if (_visibleLinksCache.TryGetValue(cacheKey, out var cachedIds))
@@ -421,7 +421,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             try
             {
-                _visibleLinksCache[cacheKey] = visibleLinks.Select(l => l.Id.IntegerValue).ToList();
+                _visibleLinksCache[cacheKey] = visibleLinks.Select(l => l.Id.GetIntegerValue()).ToList();
             }
             catch
             {
@@ -482,13 +482,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     }
                     var clusterFamilyName = cluster.Symbol?.Family?.Name ?? "<unknown family>";
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Log($"[OpeningDuplicationChecker] FIXED: Checking cluster bounding box: {clusterFamilyName} (ID:{cluster.Id.IntegerValue}) - NO expansion tolerance used");
+                        DebugLogger.Log($"[OpeningDuplicationChecker] FIXED: Checking cluster bounding box: {clusterFamilyName} (ID:{cluster.Id.GetIntegerValue()}) - NO expansion tolerance used");
                     var boundingBox = cluster.get_BoundingBox(null);
                         if (boundingBox != null)
                         {
                             // FIXED: Use ONLY the cluster's actual bounding box - no expansion
                             // This ensures individual sleeves cannot be placed anywhere within the cluster area
-                            DebugLogger.Log($"[OpeningDuplicationChecker] FIXED: Cluster bbox (ACTUAL) for ID:{cluster.Id.IntegerValue} min={boundingBox.Min} max={boundingBox.Max}; checking location={location}");
+                            DebugLogger.Log($"[OpeningDuplicationChecker] FIXED: Cluster bbox (ACTUAL) for ID:{cluster.Id.GetIntegerValue()} min={boundingBox.Min} max={boundingBox.Max}; checking location={location}");
 
                             // Use a 2D XY check for cluster membership (clusters are typically planar in XY).
                             // Z can vary due to thin family instances or placement offsets; using XY avoids false negatives
@@ -500,7 +500,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             {
                                 var clusterFamilyName2 = cluster.Symbol?.Family?.Name ?? "<unknown family>";
                                                                 if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Log($"[OpeningDuplicationChecker] FIXED: Location {location} is within cluster {clusterFamilyName2} (ID:{cluster.Id.IntegerValue}) ACTUAL bounds (min={boundingBox.Min} max={boundingBox.Max})");
+                                    DebugLogger.Log($"[OpeningDuplicationChecker] FIXED: Location {location} is within cluster {clusterFamilyName2} (ID:{cluster.Id.GetIntegerValue()}) ACTUAL bounds (min={boundingBox.Min} max={boundingBox.Max})");
                                 return true;
                             }
                         }
@@ -508,7 +508,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 catch (Exception ex)
                 {
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Log($"[OpeningDuplicationChecker] Warning: Could not check bounding box for cluster {cluster.Id.IntegerValue}: {ex.Message}");
+                        DebugLogger.Log($"[OpeningDuplicationChecker] Warning: Could not check bounding box for cluster {cluster.Id.GetIntegerValue()}: {ex.Message}");
                 }
             }
             return false;
@@ -557,7 +557,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 foreach (var cluster in clusterSleeves)
                 {
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Log($"  - Cluster: {cluster.Symbol.Family.Name} - {cluster.Symbol.Name} (ID:{cluster.Id.IntegerValue})");
+                        DebugLogger.Log($"  - Cluster: {cluster.Symbol.Family.Name} - {cluster.Symbol.Name} (ID:{cluster.Id.GetIntegerValue()})");
                 }
                 return true;
             }
@@ -679,7 +679,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     {
                         double distMm = UnitUtils.ConvertFromInternalUnits(location.DistanceTo(sleeveLocation), UnitTypeId.Millimeters);
                                                 if (!DeploymentConfiguration.DeploymentMode)
-                            DebugLogger.Log($"[OpeningDuplicationChecker] Optimized DUPLICATE MATCH: Individual sleeve ID:{sleeve.Id.IntegerValue} family='{sleeve.Symbol?.Family?.Name ?? "<unknown>"}' symbol='{sleeve.Symbol?.Name ?? "<unknown>"}' distance={distMm:F1}mm tolerance={UnitUtils.ConvertFromInternalUnits(tolerance, UnitTypeId.Millimeters):F1}mm hostType={(hostType ?? "<none>")}");
+                            DebugLogger.Log($"[OpeningDuplicationChecker] Optimized DUPLICATE MATCH: Individual sleeve ID:{sleeve.Id.GetIntegerValue()} family='{sleeve.Symbol?.Family?.Name ?? "<unknown>"}' symbol='{sleeve.Symbol?.Name ?? "<unknown>"}' distance={distMm:F1}mm tolerance={UnitUtils.ConvertFromInternalUnits(tolerance, UnitTypeId.Millimeters):F1}mm hostType={(hostType ?? "<none>")}");
                     }
                     catch { }
                     return true;
@@ -705,7 +705,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             try
                             {
                                                                 if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Log($"[OpeningDuplicationChecker] FIXED: Cluster sleeve ID:{sleeve.Id.IntegerValue} family='{fam}' ACTUAL bounds min=({boundingBox.Min.X:F3},{boundingBox.Min.Y:F3},{boundingBox.Min.Z:F3}) max=({boundingBox.Max.X:F3},{boundingBox.Max.Y:F3},{boundingBox.Max.Z:F3}) - Location {location} is INSIDE cluster area");
+                                    DebugLogger.Log($"[OpeningDuplicationChecker] FIXED: Cluster sleeve ID:{sleeve.Id.GetIntegerValue()} family='{fam}' ACTUAL bounds min=({boundingBox.Min.X:F3},{boundingBox.Min.Y:F3},{boundingBox.Min.Z:F3}) max=({boundingBox.Max.X:F3},{boundingBox.Max.Y:F3},{boundingBox.Max.Z:F3}) - Location {location} is INSIDE cluster area");
                             }
                             catch { }
                             return true;
@@ -738,11 +738,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             var summary = new StringBuilder();
             if (individual.Any())
             {
-                summary.AppendLine($"Individual sleeves: {string.Join(", ", individual.Select(s => $"{s.Symbol.Name} (ID:{s.Id.IntegerValue})"))}");
+                summary.AppendLine($"Individual sleeves: {string.Join(", ", individual.Select(s => $"{s.Symbol.Name} (ID:{s.Id.GetIntegerValue()})"))}");
             }
             if (clusters.Any())
             {
-                summary.AppendLine($"Cluster sleeves: {string.Join(", ", clusters.Select(s => $"{s.Symbol.Name} (ID:{s.Id.IntegerValue})"))}");
+                summary.AppendLine($"Cluster sleeves: {string.Join(", ", clusters.Select(s => $"{s.Symbol.Name} (ID:{s.Id.GetIntegerValue()})"))}");
             }
             if (!individual.Any() && !clusters.Any())
             {

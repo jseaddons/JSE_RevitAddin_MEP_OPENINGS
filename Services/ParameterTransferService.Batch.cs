@@ -6,6 +6,7 @@ using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 using System.IO;
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
@@ -107,7 +108,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     OpeningId = id,
                     SleeveInstanceId = GetIntegerParameter(el, "Sleeve Instance ID"),
                     ClusterInstanceId = GetIntegerParameter(el, "Cluster Sleeve Instance ID"),
-                    CombinedInstanceId = id.IntegerValue
+                    CombinedInstanceId = id.GetIntegerValue()
                 };
                 identities.Add(identity);
             }
@@ -205,7 +206,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (SetParameterValueSafely(param, action.Value))
                 {
                     setSuccessCount++;
-                    successfullyTransferredSleeveIds.Add(action.OpeningId.IntegerValue);
+                    successfullyTransferredSleeveIds.Add(action.OpeningId.GetIntegerValue());
                 }
                 else
                 {

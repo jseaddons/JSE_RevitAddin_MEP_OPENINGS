@@ -2,6 +2,7 @@ using Autodesk.Revit.DB;
 using System;
 using System.IO;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
 {
@@ -68,7 +69,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.DamperDetection
                 bool useWorldCoordinates = requiresMepClearance;
                 // ✅ DIAGNOSTIC: Log wall orientation being passed
                 SafeFileLogger.SafeAppendText("damper_connector_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [DamperConnectorService] Calling DetectConnectorSide with wallOrientation='{wallOrientation ?? "NULL"}' for damper {damper?.Id?.IntegerValue ?? -1}\n");
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [DamperConnectorService] Calling DetectConnectorSide with wallOrientation='{wallOrientation ?? "NULL"}' for damper {damper?.Id?.GetIntegerValue() ?? -1}\n");
                 // ✅ BUILD STAMP at service level for traceability
                 try
                 {

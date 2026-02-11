@@ -5,6 +5,7 @@ using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces;
 using JSE_RevitAddin_MEP_OPENINGS.Utils;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -73,7 +74,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 if (!DeploymentConfiguration.DeploymentMode && _deferredParameters.Count <= 5)
                 {
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Info($"[BATCH-PARAMS] 📝 Deferred parameter '{parameterName}' = {value} for element {elementId.IntegerValue}");
+                        DebugLogger.Info($"[BATCH-PARAMS] 📝 Deferred parameter '{parameterName}' = {value} for element {elementId.GetIntegerValue()}");
                 }
             }
         }
@@ -126,7 +127,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 if (!DeploymentConfiguration.DeploymentMode)
                     DebugLogger.Info($"[BATCH-PARAMS] 🔄 Flushing {parametersToFlush.Count} elements with {totalParams} total parameters...");
                                 if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Info($"[BATCH-PARAMS] 📊 Element IDs: [{string.Join(", ", parametersToFlush.Keys.Select(id => id.IntegerValue))}]");
+                    DebugLogger.Info($"[BATCH-PARAMS] 📊 Element IDs: [{string.Join(", ", parametersToFlush.Keys.Select(id => id.GetIntegerValue()))}]");
             }
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -186,7 +187,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             failCount += parameters.Count;
                             if (!DeploymentConfiguration.DeploymentMode)
                             {
-                                DebugLogger.Warning($"[BATCH-PARAMS] ❌ Element {elementId.IntegerValue} not found, skipping {parameters.Count} parameters");
+                                DebugLogger.Warning($"[BATCH-PARAMS] ❌ Element {elementId.GetIntegerValue()} not found, skipping {parameters.Count} parameters");
                             }
                             continue;
                         }
@@ -241,7 +242,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 failCount++;
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
-                                    DebugLogger.Warning($"[BATCH-PARAMS] Failed to set parameter '{paramKvp.Key}' on element {elementId.IntegerValue}: {paramEx.Message}");
+                                    DebugLogger.Warning($"[BATCH-PARAMS] Failed to set parameter '{paramKvp.Key}' on element {elementId.GetIntegerValue()}: {paramEx.Message}");
                                 }
                             }
                         }
@@ -251,7 +252,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         failCount += parameters.Count;
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
-                            DebugLogger.Error($"[BATCH-PARAMS] Failed to process element {elementId.IntegerValue}: {elementEx.Message}");
+                            DebugLogger.Error($"[BATCH-PARAMS] Failed to process element {elementId.GetIntegerValue()}: {elementEx.Message}");
                         }
                     }
                 }

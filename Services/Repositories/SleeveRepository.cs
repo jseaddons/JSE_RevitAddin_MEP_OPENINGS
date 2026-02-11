@@ -5,6 +5,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Repositories
 {
@@ -171,7 +172,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Repositories
                         {
                             var sleeveData = new SleeveData
                             {
-                                SleeveInstanceId = sleeve.Id.IntegerValue,
+                                SleeveInstanceId = sleeve.Id.GetIntegerValue(),
                                 Corner1 = new XYZ(bbox.Min.X, bbox.Min.Y, bbox.Min.Z),
                                 Corner2 = new XYZ(bbox.Max.X, bbox.Min.Y, bbox.Min.Z),
                                 Corner3 = new XYZ(bbox.Max.X, bbox.Max.Y, bbox.Max.Z),

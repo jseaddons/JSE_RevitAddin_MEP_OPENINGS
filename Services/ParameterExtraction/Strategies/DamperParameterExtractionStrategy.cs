@@ -4,6 +4,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Mechanical;
 using JSE_RevitAddin_MEP_OPENINGS.Services.ParameterExtraction.Interfaces;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.ParameterExtraction.Strategies
 {
@@ -57,7 +58,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ParameterExtraction.Strategies
             if (category == null) return false;
 
             // Check for Duct Accessories category (contains dampers)
-            return category.Id.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory;
+            return category.Id.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory;
         }
 
         /// <summary>
@@ -103,7 +104,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ParameterExtraction.Strategies
                     StorageType.Double => param.AsDouble(),
                     StorageType.Integer => param.AsInteger(),
                     StorageType.String => param.AsString(),
-                    StorageType.ElementId => param.AsElementId()?.IntegerValue,
+                    StorageType.ElementId => param.AsElementId()?.GetIntegerValue(),
                     _ => null
                 };
 

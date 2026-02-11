@@ -8,6 +8,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.Placement;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Refresh;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -250,7 +251,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                                 true, // IsResolved
                                 (bool?)false, // IsClusterResolved - Reset for individual placement
                                 (bool?)null, // IsCombinedResolved (Preserve)
-                                p.ElementId.IntegerValue,
+                                p.ElementId.GetIntegerValue(),
                                 -1, // ClusterID
                                 (bool?)false, // IsClusteredFlag - Reset for individual placement
                                 (bool?)false, // MarkedForCluster - RESET to false (will be re-evaluated by proximity check)
@@ -563,7 +564,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         var cachedLoc = (instance.Location as LocationPoint)?.Point;
                         SafeFileLogger.SafeAppendText("bulk_placement_debug.log",
                             $"[{DateTime.Now:HH:mm:ss.fff}] [CACHE-RETRIEVE] [{i+1}/{idList.Count}] Zone={zone.Id.ToString().Substring(0,8)}, " +
-                            $"InstId={elementId.IntegerValue}, CachedLocation=({cachedLoc?.X:F6}, {cachedLoc?.Y:F6}, {cachedLoc?.Z:F6})\n");
+                            $"InstId={elementId.GetIntegerValue()}, CachedLocation=({cachedLoc?.X:F6}, {cachedLoc?.Y:F6}, {cachedLoc?.Z:F6})\n");
 
                         bool isWallOrFraming = IsWallOrFraming(zone);
 
@@ -599,8 +600,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             zone,
                             plan.RequiredDepthFt);
 
-                        _parameterService.SetSleeveInstanceId(instance, elementId.IntegerValue);
-                        zone.SleeveInstanceId = elementId.IntegerValue;
+                        _parameterService.SetSleeveInstanceId(instance, elementId.GetIntegerValue());
+                        zone.SleeveInstanceId = elementId.GetIntegerValue();
 
                         result.PlacedItems.Add((zone, elementId));
                         result.PlacedCount++;
@@ -674,7 +675,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 // ⚡ LOG THE AXIS POINT BEING USED FOR ROTATION
                 SafeFileLogger.SafeAppendText("bulk_placement_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [APPLY-ROTATION] InstId={instance.Id.IntegerValue}, " +
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [APPLY-ROTATION] InstId={instance.Id.GetIntegerValue()}, " +
                     $"RevitAxisPoint=({axisPoint1?.X:F6}, {axisPoint1?.Y:F6}, {axisPoint1?.Z:F6}), " +
                     $"ExpectedPoint=({expectedPlacementPoint.X:F6}, {expectedPlacementPoint.Y:F6}, {expectedPlacementPoint.Z:F6}), " +
                     $"RotationRad={rotationRad:F6}\n");

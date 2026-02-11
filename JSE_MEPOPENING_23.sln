@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
-VisualStudioVersion = 18.2.11415.280 d18.0
+VisualStudioVersion = 18.2.11415.280
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JSE_RevitAddin_MEP_OPENINGS", "JSE_RevitAddin_MEP_OPENINGS.csproj", "{36639406-FB80-443A-9D72-A10F363F0112}"
 EndProject
@@ -15,8 +15,8 @@ Global
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{36639406-FB80-443A-9D72-A10F363F0112}.Debug|Any CPU.ActiveCfg = Release R23|Any CPU
-		{36639406-FB80-443A-9D72-A10F363F0112}.Debug|Any CPU.Build.0 = Release R23|Any CPU
+		{36639406-FB80-443A-9D72-A10F363F0112}.Debug|Any CPU.ActiveCfg = Release R26|Any CPU
+		{36639406-FB80-443A-9D72-A10F363F0112}.Debug|Any CPU.Build.0 = Release R26|Any CPU
 		{36639406-FB80-443A-9D72-A10F363F0112}.Debug|x64.ActiveCfg = Debug R23|Any CPU
 		{36639406-FB80-443A-9D72-A10F363F0112}.Debug|x64.Build.0 = Debug R23|Any CPU
 		{36639406-FB80-443A-9D72-A10F363F0112}.Debug|x86.ActiveCfg = Debug R23|Any CPU
@@ -30,5 +30,8 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {A7B4F375-BE01-4C06-83AF-8C652BCF9D4A}
 	EndGlobalSection
 EndGlobal

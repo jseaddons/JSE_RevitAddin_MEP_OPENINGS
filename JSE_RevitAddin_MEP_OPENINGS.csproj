@@ -121,7 +121,8 @@
     <PackageReference Include="Serilog.Sinks.Debug" Version="3.0.0" />
     <PackageReference Include="ILRepack" Version="2.0.41" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
-    <PackageReference Include="System.Data.SQLite.Core" Version="1.0.118.0" />
+    <PackageReference Include="System.Data.SQLite.Core" Version="1.0.118.0" Condition="!$(TargetFramework.StartsWith('net8'))" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.11" Condition="$(TargetFramework.StartsWith('net8'))" />
     <PackageReference Include="System.Text.Json" Version="6.0.11" />
   </ItemGroup>
 
@@ -160,8 +161,8 @@
     </None>
   </ItemGroup>
 
-  <!-- ✅ Ensure SQLite native DLLs are copied to output directory for team deployment -->
-  <ItemGroup>
+  <!-- ✅ Ensure SQLite native DLLs are copied to output directory for team deployment (R23/R24 only) -->
+  <ItemGroup Condition="!$(TargetFramework.StartsWith('net8'))">
     <!-- Managed provider assembly -->
     <None Include="$(NuGetPackageRoot)system.data.sqlite.core\1.0.118.0\lib\net46\System.Data.SQLite.dll" Condition="Exists('$(NuGetPackageRoot)system.data.sqlite.core\1.0.118.0\lib\net46\System.Data.SQLite.dll')">
       <Link>System.Data.SQLite.dll</Link>

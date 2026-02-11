@@ -92,7 +92,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         linkTransform = linkInstanceInHost.GetTotalTransform();
                         hasLinkTransform = linkTransform != null && !linkTransform.IsIdentity;
                         var originStr = linkTransform != null ? FormatXYZ(linkTransform.Origin) : "<identity>";
-                        var linkIdStr = linkInstanceInHost?.Id.IntegerValue.ToString() ?? "<no-id>";
+                        var linkIdStr = linkInstanceInHost?.Id.GetIntegerValue().ToString() ?? "<no-id>";
                                                 if (!DeploymentConfiguration.DeploymentMode)
                             DebugLogger.Log($"[EfficientIntersectionService] DIAG using MEP link transform from RevitLinkInstance Id={linkIdStr}, Origin={originStr}");
                     }
@@ -236,7 +236,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             }
                         }
 
-                        var eid = h.GetReference()?.ElementId.IntegerValue ?? -1;
+                        var eid = h.GetReference()?.ElementId.GetIntegerValue() ?? -1;
                         if (eid == -1) continue;
                         if (!hitMap.TryGetValue(eid, out var list))
                         {
@@ -340,7 +340,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                 catch (Exception ex)
                 {
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Log($"[EfficientIntersectionService] Error processing structural element {structuralElement.Id.IntegerValue}: {ex.Message}");
+                        DebugLogger.Log($"[EfficientIntersectionService] Error processing structural element {structuralElement.Id.GetIntegerValue()}: {ex.Message}");
                 }
             }
             
@@ -514,7 +514,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     var linkTitle = linkDoc != null ? linkDoc.Title : "<no-link-doc>";
                     var origin = linkTransform != null ? FormatXYZ(linkTransform.Origin) : "<identity>";
                                         if (!DeploymentConfiguration.DeploymentMode)
-                        DebugLogger.Log($"[EfficientIntersectionService] DIAG LinkInstance Id={linkInstance.Id.IntegerValue}, LinkDoc='{linkTitle}', TransformOrigin={origin}");
+                        DebugLogger.Log($"[EfficientIntersectionService] DIAG LinkInstance Id={linkInstance.Id.GetIntegerValue()}, LinkDoc='{linkTitle}', TransformOrigin={origin}");
                 }
                 catch (Exception ex)
                 {
@@ -657,7 +657,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             catch (Exception ex)
             {
                                 if (!DeploymentConfiguration.DeploymentMode)
-                    DebugLogger.Log($"[EfficientIntersectionService] Solid intersection error for element {structuralElement.Id.IntegerValue}: {ex.Message}");
+                    DebugLogger.Log($"[EfficientIntersectionService] Solid intersection error for element {structuralElement.Id.GetIntegerValue()}: {ex.Message}");
             }
 
             return intersectionPoints;
@@ -738,7 +738,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             {
                                 double wallThicknessMm = RevitUnitConversionService.Instance.FromInternalMillimeters(wallThickness);
                                                                 if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Log($"[EfficientIntersectionService] SKIP: Wall {wall.Id.IntegerValue} thickness {wallThicknessMm:F1}mm < {minThicknessMm:F1}mm minimum");
+                                    DebugLogger.Log($"[EfficientIntersectionService] SKIP: Wall {wall.Id.GetIntegerValue()} thickness {wallThicknessMm:F1}mm < {minThicknessMm:F1}mm minimum");
                             }
                         }
                     }

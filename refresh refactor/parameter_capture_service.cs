@@ -4,6 +4,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
 {
@@ -706,7 +707,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 {
                     // Built-in fallbacks for essential parameters that may not have direct parameter names
                     // ✅ CRITICAL: Check if element is a Cable Tray (needs "Service Type" instead of "System Type")
-                    bool isCableTray = element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_CableTray ||
+                    bool isCableTray = element.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_CableTray ||
                                       element.Category?.Name?.Contains("Cable Tray", StringComparison.OrdinalIgnoreCase) == true ||
                                       element is Autodesk.Revit.DB.Electrical.CableTray;
                     
@@ -765,7 +766,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     case StorageType.ElementId:
                         // ✅ CRITICAL FIX: Resolve ElementId to actual element name (for Level, etc.)
                         var id = param.AsElementId();
-                        if (id != null && id.IntegerValue > 0 && owner != null)
+                        if (id != null && id.GetIntegerValue() > 0 && owner != null)
                         {
                             try
                             {
@@ -775,10 +776,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                                     // For Level parameters, get the Level name
                                     if (referencedElement is Level level)
                                     {
-                                        return level.Name ?? id.IntegerValue.ToString();
+                                        return level.Name ?? id.GetIntegerValue().ToString();
                                     }
                                     // For other ElementId types, get the element name
-                                    return referencedElement.Name ?? id.IntegerValue.ToString();
+                                    return referencedElement.Name ?? id.GetIntegerValue().ToString();
                                 }
                             }
                             catch
@@ -786,7 +787,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                                 // Fall back to ID if resolution fails
                             }
                         }
-                        return id?.IntegerValue.ToString() ?? string.Empty;
+                        return id?.GetIntegerValue().ToString() ?? string.Empty;
                     
                     default:
                         return string.Empty;
@@ -833,7 +834,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 }
                 
                 // ✅ ADDITIONAL: Try more variations for pipes specifically
-                if (param == null && element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_PipeCurves)
+                if (param == null && element.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_PipeCurves)
                 {
                     param = element.LookupParameter("System Type");
                     if (param != null) paramSource = "System Type (direct)";
@@ -886,7 +887,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 try
                 {
                     var systemTypeId = param.AsElementId();
-                    if (systemTypeId != null && systemTypeId.IntegerValue > 0)
+                    if (systemTypeId != null && systemTypeId.GetIntegerValue() > 0)
                     {
                         var systemTypeElement = element.Document?.GetElement(systemTypeId);
                         if (systemTypeElement != null)
@@ -1066,7 +1067,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 try
                 {
                     var id = parameter.AsElementId();
-                    if (id != null && id.IntegerValue > 0 && owner != null)
+                    if (id != null && id.GetIntegerValue() > 0 && owner != null)
                     {
                         var referenced = owner.Document?.GetElement(id);
                         if (referenced != null)
@@ -1074,13 +1075,13 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                             // ✅ CRITICAL FIX: For Level parameters, get the Level name
                             if (referenced is Level level)
                             {
-                                return level.Name ?? id.IntegerValue.ToString();
+                                return level.Name ?? id.GetIntegerValue().ToString();
                             }
                             // For other ElementId types, get the element name
-                            return referenced.Name ?? id.IntegerValue.ToString();
+                            return referenced.Name ?? id.GetIntegerValue().ToString();
                         }
                     }
-                    return id?.IntegerValue.ToString() ?? string.Empty;
+                    return id?.GetIntegerValue().ToString() ?? string.Empty;
                 }
                 catch
                 {

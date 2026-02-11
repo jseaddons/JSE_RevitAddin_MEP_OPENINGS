@@ -3,6 +3,7 @@ using Autodesk.Revit.UI;
 using System.Collections.Generic;
 using System.Linq;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
 {
@@ -115,7 +116,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                     {
                         skippedCount++;
                         double wallThicknessMm = UnitUtils.ConvertFromInternalUnits(wallThickness, UnitTypeId.Millimeters);
-                        DebugLogger.Info($"[MepElementCollectorHelper] SKIP: Wall {wall.Id.IntegerValue} thickness {wallThicknessMm:F1}mm < {minThicknessMm:F1}mm minimum");
+                        DebugLogger.Info($"[MepElementCollectorHelper] SKIP: Wall {wall.Id.GetIntegerValue()} thickness {wallThicknessMm:F1}mm < {minThicknessMm:F1}mm minimum");
                     }
                 }
                 
@@ -153,7 +154,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                 foreach (var sample in raw.Take(3))
                 {
                     var el = sample.element;
-                    int idVal = el?.Id.IntegerValue ?? -1;
+                    int idVal = el?.Id.GetIntegerValue() ?? -1;
                     string cat = el?.Category != null ? el.Category.Name : "<no-category>";
                     DebugLogger.Info($"[SectionBoxDiag] Raw sample: Id={idVal}, Category={cat}, IsLinked={(sample.transform!=null)}");
                 }
@@ -175,7 +176,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Helpers
                 foreach (var sample in filtered.Take(3))
                 {
                     var el = sample.element;
-                    int idVal = el?.Id.IntegerValue ?? -1;
+                    int idVal = el?.Id.GetIntegerValue() ?? -1;
                     string cat = el?.Category != null ? el.Category.Name : "<no-category>";
                     DebugLogger.Info($"[SectionBoxDiag] Filtered sample: Id={idVal}, Category={cat}, IsLinked={(sample.transform!=null)}");
                 }

@@ -5,6 +5,7 @@ using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces;
 using JSE_RevitAddin_MEP_OPENINGS.Utils;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -22,7 +23,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
             var ids = sleeveElementIds
                 .Where(e => e != null && e != ElementId.InvalidElementId)
-                .Select(e => e.IntegerValue)
+                .Select(e => e.GetIntegerValue())
                 .Distinct()
                 .ToList();
             if (ids.Count == 0) return 0;
@@ -212,7 +213,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                 // ✅ OPTIMIZATION 4: Use cached parameter if available
                 Parameter param = null;
-                var elementId = element.Id.IntegerValue;
+                var elementId = element.Id.GetIntegerValue();
                 if (parameterCache.TryGetValue(elementId, out var paramDict) && paramDict.TryGetValue(parameterName, out param))
                 {
                     // Use cached parameter

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Mechanical;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
 {
@@ -346,7 +347,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         {
             try
             {
-                if (element?.Category?.Id.IntegerValue != (int)BuiltInCategory.OST_DuctAccessory)
+                if (element?.Category?.Id.GetIntegerValue() != (int)BuiltInCategory.OST_DuctAccessory)
                     return false;
                 
                 // ✅ EXCLUDE: Skip VCD and VOLUME dampers (not in walls)

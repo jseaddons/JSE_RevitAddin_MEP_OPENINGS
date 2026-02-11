@@ -1,5 +1,7 @@
 using System;
+#if !NET8_0_OR_GREATER
 using System.Data.SQLite;
+#endif
 using System.Threading;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Data;
@@ -113,19 +115,28 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.FilterManagement
         /// </summary>
         private bool IsRetryableError(Exception ex)
         {
+#if NET8_0_OR_GREATER
+            // Microsoft.Data.Sqlite: SqliteErrorCode is int (SQLITE_BUSY=5, SQLITE_LOCKED=6)
+            if (ex is SQLiteException sqlEx)
+            {
+                return sqlEx.SqliteErrorCode == 5 || sqlEx.SqliteErrorCode == 6;
+            }
+            if (ex.InnerException is SQLiteException innerSqlEx)
+            {
+                return innerSqlEx.SqliteErrorCode == 5 || innerSqlEx.SqliteErrorCode == 6;
+            }
+#else
             if (ex is SQLiteException sqlEx)
             {
                 return sqlEx.ResultCode == SQLiteErrorCode.Busy ||
                        sqlEx.ResultCode == SQLiteErrorCode.Locked;
             }
-
-            // Check inner exception
             if (ex.InnerException is SQLiteException innerSqlEx)
             {
                 return innerSqlEx.ResultCode == SQLiteErrorCode.Busy ||
                        innerSqlEx.ResultCode == SQLiteErrorCode.Locked;
             }
-
+#endif
             return false;
         }
     }

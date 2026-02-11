@@ -1,5 +1,7 @@
 using System;
+#if !NET8_0_OR_GREATER
 using System.Data.SQLite;
+#endif
 
 class Program
 {

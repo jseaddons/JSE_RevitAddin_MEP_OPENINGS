@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
 {
@@ -48,7 +49,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data.Repositories
         /// <summary>
         /// Retrieves a combined sleeve by its Revit instance ID.
         /// </summary>
-        /// <param name="instanceId">Revit ElementId.IntegerValue</param>
+        /// <param name="instanceId">Revit ElementId.GetIntegerValue()</param>
         /// <returns>Combined sleeve data, or null if not found</returns>
         CombinedSleeve GetCombinedSleeveByInstanceId(int instanceId);
         

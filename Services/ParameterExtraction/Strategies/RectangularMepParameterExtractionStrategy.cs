@@ -4,6 +4,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Electrical;
 using Autodesk.Revit.DB.Mechanical;
 using JSE_RevitAddin_MEP_OPENINGS.Services.ParameterExtraction.Interfaces;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.ParameterExtraction.Strategies
 {
@@ -22,7 +23,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ParameterExtraction.Strategies
             if (element == null) return false;
 
             // Check Category
-            var builtinCat = (BuiltInCategory)element.Category.Id.IntegerValue;
+            var builtinCat = (BuiltInCategory)element.Category.Id.GetIntegerValue();
             bool isCategoryMatch = builtinCat == BuiltInCategory.OST_DuctCurves ||
                                    builtinCat == BuiltInCategory.OST_CableTray;
 
@@ -88,7 +89,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.ParameterExtraction.Strategies
                     StorageType.Double => param.AsDouble(),
                     StorageType.Integer => param.AsInteger(),
                     StorageType.String => param.AsString(),
-                    StorageType.ElementId => param.AsElementId()?.IntegerValue,
+                    StorageType.ElementId => param.AsElementId()?.GetIntegerValue(),
                     _ => null
                 };
 

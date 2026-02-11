@@ -8,6 +8,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Data.Repositories;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Interfaces.Refactor;
 using JSE_RevitAddin_MEP_OPENINGS.Services.Logging;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
 {
@@ -101,7 +102,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
                 await Task.Run(() =>
                 {
                     // Update zone with instance ID
-                    zone.SleeveInstanceId = instance.Id.IntegerValue;
+                    zone.SleeveInstanceId = instance.Id.GetIntegerValue();
                     zone.IsResolved = true;
                     
                     // Update database using existing repository (intersection point is no longer touched in repository)
@@ -183,4 +184,3 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Persistence
         }
     }
 }
-

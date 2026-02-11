@@ -177,7 +177,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 }
 
                 // ✅ PERFORMANCE: Build O(1) wall transform dictionary
-                var wallTransforms = walls.ToDictionary(w => w.Item1.Id.IntegerValue, w => w.Item2);
+                var wallTransforms = walls.ToDictionary(w => w.Item1.Id.GetIntegerValue(), w => w.Item2);
 
                 // ✅ STEP 3: Pre-fetch Parameter caches (High Impact)
                 // These are passed into CreateClashZoneForDamper to avoid Revit API calls
@@ -227,7 +227,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
 
                             // 2. O(1) Deduplication Check (Location-based)
                             // Groups dampers within tolerance (0.1ft) automatically
-                            string locationKey = $"{wall.Id.IntegerValue}_{Math.Round(placementPoint.X / tolerance)}_{Math.Round(placementPoint.Y / tolerance)}_{Math.Round(placementPoint.Z / tolerance)}";
+                            string locationKey = $"{wall.Id.GetIntegerValue()}_{Math.Round(placementPoint.X / tolerance)}_{Math.Round(placementPoint.Y / tolerance)}_{Math.Round(placementPoint.Z / tolerance)}";
                             
                             if (processedLocationKeys.Contains(locationKey))
                             {
@@ -236,16 +236,16 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                             }
 
                             // 3. Wall Transform Lookup (O(1))
-                            wallTransforms.TryGetValue(wall.Id.IntegerValue, out var wallTransform);
+                            wallTransforms.TryGetValue(wall.Id.GetIntegerValue(), out var wallTransform);
 
                             // 4. Parameter Caching for Walls (Lazy batch)
-                            if (!wallParamsCache.ContainsKey(wall.Id.IntegerValue))
+                            if (!wallParamsCache.ContainsKey(wall.Id.GetIntegerValue()))
                             {
-                                wallParamsCache[wall.Id.IntegerValue] = CaptureHostParametersRestricted(wall);
+                                wallParamsCache[wall.Id.GetIntegerValue()] = CaptureHostParametersRestricted(wall);
                             }
 
                             // 5. Existing Zone Check (O(1))
-                            string mepHostKey = $"{damper.Id.IntegerValue}_{wall.Id.IntegerValue}";
+                            string mepHostKey = $"{damper.Id.GetIntegerValue()}_{wall.Id.GetIntegerValue()}";
                             existingZoneMap.TryGetValue(mepHostKey, out ClashZone? existingZone);
 
                             // 6. Create or Update Zone
@@ -848,8 +848,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             HashSet<string>? openingPointKeys = null,
             Dictionary<ElementId, (string Name, double Elevation)>? levelIdCache = null)
         {
-            int mepIdValue = damper.Id.IntegerValue;
-            int structuralIdValue = wall.Id.IntegerValue;
+            int mepIdValue = damper.Id.GetIntegerValue();
+            int structuralIdValue = wall.Id.GetIntegerValue();
             double tolerance = 0.1; // 0.1ft = ~30mm (same as GUID tolerance)
 
             // ✅ STEP 1: Check if zone already exists for this MEP+Host pair (from previous refresh)
@@ -858,8 +858,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 var existingZone = existingClashZones.FirstOrDefault(cz =>
                 {
                     if (cz == null) return false;
-                    int czMepId = cz.MepElementId?.IntegerValue ?? cz.MepElementIdValue;
-                    int czStructuralId = cz.StructuralElementId?.IntegerValue ?? cz.StructuralElementIdValue;
+                    int czMepId = cz.MepElementId?.GetIntegerValue() ?? cz.MepElementIdValue;
+                    int czStructuralId = cz.StructuralElementId?.GetIntegerValue() ?? cz.StructuralElementIdValue;
                     return czMepId == mepIdValue && czStructuralId == structuralIdValue;
                 });
 
@@ -895,7 +895,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 var existingZoneByLocation = currentResults.FirstOrDefault(cz =>
                 {
                     if (cz == null) return false;
-                    int czStructuralId = cz.StructuralElementId?.IntegerValue ?? cz.StructuralElementIdValue;
+                    int czStructuralId = cz.StructuralElementId?.GetIntegerValue() ?? cz.StructuralElementIdValue;
                     if (czStructuralId != structuralIdValue) return false;
 
                     // Check if placement points are within tolerance
@@ -1077,7 +1077,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
 
                 // ✅ STEP 1: Capture MEP parameters (use cached if available)
                 Dictionary<string, string> mepParameters;
-                if (damperParamsCache != null && damperParamsCache.TryGetValue(damper.Id.IntegerValue, out var cachedMepParams))
+                if (damperParamsCache != null && damperParamsCache.TryGetValue(damper.Id.GetIntegerValue(), out var cachedMepParams))
                 {
                     mepParameters = cachedMepParams;
                 }
@@ -1088,7 +1088,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
 
                 // ✅ STEP 2: Capture Host parameters (use cached if available)
                 Dictionary<string, string> hostParameters;
-                if (wallParamsCache != null && wallParamsCache.TryGetValue(wall.Id.IntegerValue, out var cachedHostParams))
+                if (wallParamsCache != null && wallParamsCache.TryGetValue(wall.Id.GetIntegerValue(), out var cachedHostParams))
                 {
                     hostParameters = cachedHostParams;
                 }
@@ -1154,7 +1154,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 double framingThickness = 0.0;
                 double structuralElementThickness = 0.0;
 
-                if (wall is Wall || (wall?.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_Walls))
+                if (wall is Wall || (wall?.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_Walls))
                 {
                     if (wall is Wall wallElement)
                     {
@@ -1188,7 +1188,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     structuralElementThickness = wallThickness;
                 }
                 else if (wall is FamilyInstance framingInstance &&
-                         framingInstance.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+                         framingInstance.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_StructuralFraming)
                 {
                     // Minimal check for framing thickness
                     structuralElementThickness = 0.0;
@@ -1210,7 +1210,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     // ✅ PRIORITY 0: Try ID-based Cache (FASTEST - O(1))
                     // Bypasses slow HostLevelHelper logic
                     bool levelFound = false;
-                    if (levelIdCache != null && damper.LevelId != null && damper.LevelId.IntegerValue > 0)
+                    if (levelIdCache != null && damper.LevelId != null && damper.LevelId.GetIntegerValue() > 0)
                     {
                         if (levelIdCache.TryGetValue(damper.LevelId, out var cachedLevel))
                         {
@@ -1378,7 +1378,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                     // Only calculate for walls and framing (floors don't need centerline adjustment)
                     if (wall is Wall ||
                         (wall is FamilyInstance framingInstance &&
-                         framingInstance.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming))
+                         framingInstance.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_StructuralFraming))
                     {
                         // ✅ DAMPER-SPECIFIC: Calculate wall centerline point using SIMPLE BBOX METHOD (no ray tracing)
                         // This avoids the projection/ray tracing issue that finds wall face instead of centerline
@@ -1713,8 +1713,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 // ✅ DAMPER-SPECIFIC: For dampers, use placementPoint (damper centroid) for GUID generation
                 // PlacementPoint is stable - only changes if damper moves, perfect for GUID generation
                 // This matches non-damper logic which uses IntersectionPoint (also stable)
-                int mepId = damper.Id.IntegerValue;
-                int hostId = wall.Id.IntegerValue;
+                int mepId = damper.Id.GetIntegerValue();
+                int hostId = wall.Id.GetIntegerValue();
                 Guid deterministicGuid;
 
                 // ✅ USE OFFSET-FREE POINT for GUID - stable, only changes if damper moves
@@ -2044,7 +2044,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             // ✅ DIAGNOSTIC: Log element type for debugging
             if (!DeploymentConfiguration.DeploymentMode)
             {
-                _logger($"[DamperProcessing] 🔍 GetStructuralElementType: Element={element.Id}, Type={element.GetType().Name}, Category={element.Category?.Name ?? "NULL"}, CategoryId={element.Category?.Id?.IntegerValue ?? -1}");
+                _logger($"[DamperProcessing] 🔍 GetStructuralElementType: Element={element.Id}, Type={element.GetType().Name}, Category={element.Category?.Name ?? "NULL"}, CategoryId={element.Category?.Id?.GetIntegerValue() ?? -1}");
             }
             
             if (element is Wall)
@@ -2064,7 +2064,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
                 return "Floor";
             }
             else if (element is FamilyInstance famInst && 
-                     famInst.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming)
+                     famInst.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_StructuralFraming)
             {
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
@@ -2075,7 +2075,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
             else
             {
                 // ✅ CRITICAL: Check if it's a wall by category even if not Wall type (linked documents)
-                if (element.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_Walls)
+                if (element.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_Walls)
                 {
                     if (!DeploymentConfiguration.DeploymentMode)
                     {
@@ -2102,12 +2102,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Refresh
         {
             if (x == null && y == null) return true;
             if (x == null || y == null) return false;
-            return x.Id.IntegerValue == y.Id.IntegerValue;
+            return x.Id.GetIntegerValue() == y.Id.GetIntegerValue();
         }
 
         public int GetHashCode(Element obj)
         {
-            return obj?.Id?.IntegerValue.GetHashCode() ?? 0;
+            return obj?.Id?.GetIntegerValue().GetHashCode() ?? 0;
         }
     }
 }

@@ -346,17 +346,17 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         // PHASE 1 OPTIMIZATION 2: Category whitelist filtering methods
         public static bool IsMepCategoryWhitelisted(Element element)
         {
-            if (element.Category?.Id?.IntegerValue == null) return false;
+            if (element.Category?.Id?.GetIntegerValue() == null) return false;
             
-            var categoryId = (BuiltInCategory)element.Category.Id.IntegerValue;
+            var categoryId = (BuiltInCategory)element.Category.Id.GetIntegerValue();
             return MEP_CATEGORY_WHITELIST.Contains(categoryId);
         }
         
         public static bool IsStructuralCategoryWhitelisted(Element element)
         {
-            if (element.Category?.Id?.IntegerValue == null) return false;
+            if (element.Category?.Id?.GetIntegerValue() == null) return false;
             
-            var categoryId = (BuiltInCategory)element.Category.Id.IntegerValue;
+            var categoryId = (BuiltInCategory)element.Category.Id.GetIntegerValue();
             return STRUCTURAL_CATEGORY_WHITELIST.Contains(categoryId);
         }
         
@@ -364,7 +364,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             // ✅ CRITICAL FIX: Check category FIRST - Duct Accessories are dampers
             // This ensures all Duct Accessories are detected, even if family name doesn't contain "Damper"
-            if (element?.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory)
+            if (element?.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory)
             {
                 // ✅ EXCLUDE: Skip VCD and VOLUME dampers (not in walls)
                 if (element is FamilyInstance fi && fi.Symbol != null)
@@ -435,7 +435,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     // CHECK 1: Is it a Damper/Accessory? (Non-Linear)
                     // User Rule: Only Duct Accessories are non-linear. All else are linear.
-                    bool isAccessory = e.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory;
+                    bool isAccessory = e.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory;
                     
                     if (isAccessory || IsDamperElement(e))
                     {
@@ -636,7 +636,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                     double w = structBBox.Max.X - structBBox.Min.X;
                     double h = structBBox.Max.Y - structBBox.Min.Y;
                     double d = structBBox.Max.Z - structBBox.Min.Z;
-                    SafeFileLogger.SafeAppendText(IntersectionDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] STRUCT[{structElement.Id.IntegerValue}] BBOX_ft W={w:F3} H={h:F3} D={d:F3} Cat={(BuiltInCategory)structElement.Category.Id.IntegerValue}\n");
+                    SafeFileLogger.SafeAppendText(IntersectionDebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] STRUCT[{structElement.Id.GetIntegerValue()}] BBOX_ft W={w:F3} H={h:F3} D={d:F3} Cat={(BuiltInCategory)structElement.Category.Id.GetIntegerValue()}\n");
                 }
                 structuralData.Add((structElement, structTransform, structBBox, cacheKey));
             }
@@ -823,7 +823,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         };
                     }
 
-                    bool isDamper = IsDamperElement(mepElement) || mepElement.Category?.Id?.IntegerValue == (int)BuiltInCategory.OST_DuctAccessory;
+                    bool isDamper = IsDamperElement(mepElement) || mepElement.Category?.Id?.GetIntegerValue() == (int)BuiltInCategory.OST_DuctAccessory;
                     Line? line = null;
                     if (!isDamper)
                     {
@@ -1387,7 +1387,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         {
             if (!OptimizationFlags.UseStableGeometryCacheKeys)
             {
-                return $"{e.Id.IntegerValue}_{t?.GetHashCode() ?? 0}"; // legacy unstable
+                return $"{e.Id.GetIntegerValue()}_{t?.GetHashCode() ?? 0}"; // legacy unstable
             }
             // Use UniqueId + rounded origin & basis vectors for transform (if any)
             if (t == null)
@@ -1485,7 +1485,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             {
                                 lastLoggedSkipCount = spatiallyFilteredCount;
                                 var wallType = structuralElement.GetType().Name;
-                                var wallId = structuralElement.Id.IntegerValue;
+                                var wallId = structuralElement.Id.GetIntegerValue();
                                 var distance = GetDistanceToMepElement(mepBBox, structBBox, null);
                                 log($"[MepIntersectionService] SPATIAL FILTER: Skipped {spatiallyFilteredCount} elements so far. Latest: {wallType} ID:{wallId} - Distance: {distance:F2}ft");
                             }
@@ -1495,7 +1495,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     // ✅ MEMORY OPTIMIZATION: Get geometry from LRU cache or compute it
                     // ✅ R2024 FIX: Get ALL solids for compound walls
-                    string cacheKey = $"{structuralElement.Id.IntegerValue}_{linkTransform?.GetHashCode() ?? 0}";
+                    string cacheKey = $"{structuralElement.Id.GetIntegerValue()}_{linkTransform?.GetHashCode() ?? 0}";
                     List<Solid> solids;
                     
                     if (!TryGetFromGeometryCache(cacheKey, out var cachedSolid))
@@ -1647,7 +1647,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             {
                                 lastLoggedSkipCount = spatiallyFilteredCount;
                                 var wallType = structuralElement.GetType().Name;
-                                var wallId = structuralElement.Id.IntegerValue;
+                                var wallId = structuralElement.Id.GetIntegerValue();
                                 var distance = GetDistanceToMepElement(mepBBox, structBBox, null);
                                 log($"[MepIntersectionService] SPATIAL FILTER: Skipped {spatiallyFilteredCount} elements so far. Latest: {wallType} ID:{wallId} - Distance: {distance:F2}ft");
                             }
@@ -1657,7 +1657,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
                     // ✅ MEMORY OPTIMIZATION: Get from LRU cache or compute
                     // ✅ R2024 FIX: Get ALL solids for compound walls
-                    string cacheKey = $"{structuralElement.Id.IntegerValue}_{linkTransform?.GetHashCode() ?? 0}";
+                    string cacheKey = $"{structuralElement.Id.GetIntegerValue()}_{linkTransform?.GetHashCode() ?? 0}";
                     List<Solid> solids;
                     if (!TryGetFromGeometryCache(cacheKey, out var cachedSolid))
                     {
@@ -2792,7 +2792,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             if (OptimizationFlags.UseDiagnosticMode)
                             {
                                 double wallThicknessMm = UnitConverter.FromInternalMillimeters(wallThickness);
-                                System.Diagnostics.Debug.WriteLine($"[MepIntersectionService] SKIP: Wall {wall.Id.IntegerValue} thickness {wallThicknessMm:F1}mm < {minThicknessMm:F1}mm minimum");
+                                System.Diagnostics.Debug.WriteLine($"[MepIntersectionService] SKIP: Wall {wall.Id.GetIntegerValue()} thickness {wallThicknessMm:F1}mm < {minThicknessMm:F1}mm minimum");
                             }
                         }
                     }
@@ -2855,7 +2855,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                             {
                                 double wallThicknessMm = UnitConverter.FromInternalMillimeters(wallThickness);
                                                                 if (!DeploymentConfiguration.DeploymentMode)
-                                    DebugLogger.Log($"[MepIntersectionService] SKIP: Wall {element.Id.IntegerValue} thickness {wallThicknessMm:F1}mm < {minThicknessMm:F1}mm minimum");
+                                    DebugLogger.Log($"[MepIntersectionService] SKIP: Wall {element.Id.GetIntegerValue()} thickness {wallThicknessMm:F1}mm < {minThicknessMm:F1}mm minimum");
                             }
                         }
                     }
@@ -2916,7 +2916,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
                         {
                             skippedCount++;
                                                         if (!DeploymentConfiguration.DeploymentMode)
-                                DebugLogger.Info($"[MepIntersectionService] SKIP: Architectural floor {floor.Id.IntegerValue} (Structural parameter not checked)");
+                                DebugLogger.Info($"[MepIntersectionService] SKIP: Architectural floor {floor.Id.GetIntegerValue()} (Structural parameter not checked)");
                         }
                     }
                     else
@@ -3178,10 +3178,10 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
 
         // Stub methods to maintain API compatibility
         public static bool IsMepCategoryWhitelisted(Element element) => 
-            MEP_CATEGORY_WHITELIST.Contains((BuiltInCategory)element.Category.Id.IntegerValue);
+            MEP_CATEGORY_WHITELIST.Contains((BuiltInCategory)element.Category.Id.GetIntegerValue());
         
         public static bool IsStructuralCategoryWhitelisted(Element element) => 
-            STRUCTURAL_CATEGORY_WHITELIST.Contains((BuiltInCategory)element.Category.Id.IntegerValue);
+            STRUCTURAL_CATEGORY_WHITELIST.Contains((BuiltInCategory)element.Category.Id.GetIntegerValue());
         
         // ✅ R2024 FIX: No static caches - these methods are no-ops
         public static void ClearGeometryCache() 

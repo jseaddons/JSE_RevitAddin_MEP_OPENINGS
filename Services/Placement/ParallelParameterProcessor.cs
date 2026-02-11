@@ -250,14 +250,14 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                     var sleeve = await GetSleeveInstanceAsync(update.SleeveId);
                     if (sleeve == null)
                     {
-                        result.ErrorMessages.Add($"Sleeve not found: {update.SleeveId.IntegerValue}");
+                        result.ErrorMessages.Add($"Sleeve not found: {update.SleeveId.GetIntegerValue()}");
                         return result;
                     }
 
                     // ✅ PARAMETER VALIDATION: Validate parameter before setting
                     if (!ValidateParameter(sleeve, update.ParameterName, update.ParameterValue))
                     {
-                        result.ErrorMessages.Add($"Invalid parameter: {update.ParameterName} for sleeve {update.SleeveId.IntegerValue}");
+                        result.ErrorMessages.Add($"Invalid parameter: {update.ParameterName} for sleeve {update.SleeveId.GetIntegerValue()}");
                         return result;
                     }
 
@@ -271,12 +271,12 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             SafeFileLogger.SafeAppendText("parallel_parameter_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [ParallelParameterProcessor] [THREAD-{currentThreadId}] ✅ Set parameter '{update.ParameterName}' = {update.ParameterValue} for sleeve {update.SleeveId.IntegerValue}\n");
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [ParallelParameterProcessor] [THREAD-{currentThreadId}] ✅ Set parameter '{update.ParameterName}' = {update.ParameterValue} for sleeve {update.SleeveId.GetIntegerValue()}\n");
                         }
                     }
                     else
                     {
-                        result.ErrorMessages.Add($"Failed to set parameter '{update.ParameterName}' for sleeve {update.SleeveId.IntegerValue}");
+                        result.ErrorMessages.Add($"Failed to set parameter '{update.ParameterName}' for sleeve {update.SleeveId.GetIntegerValue()}");
                     }
                 }
                 finally
@@ -320,7 +320,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                         if (!DeploymentConfiguration.DeploymentMode)
                         {
                             SafeFileLogger.SafeAppendText("parallel_parameter_debug.log",
-                                $"[{DateTime.Now:HH:mm:ss.fff}] [ParallelParameterProcessor] [CONFLICT-DETECTION] ⚠️ Conflict detected: Sleeve {update.SleeveId.IntegerValue}, Parameter '{update.ParameterName}'\n");
+                                $"[{DateTime.Now:HH:mm:ss.fff}] [ParallelParameterProcessor] [CONFLICT-DETECTION] ⚠️ Conflict detected: Sleeve {update.SleeveId.GetIntegerValue()}, Parameter '{update.ParameterName}'\n");
                         }
                     }
                     else
@@ -400,7 +400,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("parallel_parameter_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [ParallelParameterProcessor] [SLEEVE-ACCESS] Error getting sleeve {sleeveId.IntegerValue}: {ex.Message}\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [ParallelParameterProcessor] [SLEEVE-ACCESS] Error getting sleeve {sleeveId.GetIntegerValue()}: {ex.Message}\n");
                 }
                 
                 return null;
@@ -478,7 +478,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Placement
                 if (!DeploymentConfiguration.DeploymentMode)
                 {
                     SafeFileLogger.SafeAppendText("parallel_parameter_debug.log",
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [ParallelParameterProcessor] [PARAMETER-SETTING] Error setting parameter '{parameterName}' for sleeve {sleeve.Id.IntegerValue}: {ex.Message}\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [ParallelParameterProcessor] [PARAMETER-SETTING] Error setting parameter '{parameterName}' for sleeve {sleeve.Id.GetIntegerValue()}: {ex.Message}\n");
                 }
                 
                 return false;

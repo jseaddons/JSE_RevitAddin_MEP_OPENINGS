@@ -4,6 +4,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using JSE_RevitAddin_MEP_OPENINGS.Models;
 using JSE_RevitAddin_MEP_OPENINGS.Services;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services
 {
@@ -52,8 +53,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             
             // ✅ CRITICAL: Only match by (MEP ID, Structural ID) pair - NO intersection point check
             // This prevents creating new clash zones with new GUIDs when pair already exists
-            int mepIdValue = mepElementId.IntegerValue;
-            int structuralIdValue = structuralElementId.IntegerValue;
+            int mepIdValue = mepElementId.GetIntegerValue();
+            int structuralIdValue = structuralElementId.GetIntegerValue();
             
             if (mepIdValue <= 0 || structuralIdValue <= 0)
                 return null;
@@ -64,8 +65,8 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
             {
                 if (cz == null) return false;
                 
-                int czMepId = cz.MepElementId?.IntegerValue ?? cz.MepElementIdValue;
-                int czStructuralId = cz.StructuralElementId?.IntegerValue ?? cz.StructuralElementIdValue;
+                int czMepId = cz.MepElementId?.GetIntegerValue() ?? cz.MepElementIdValue;
+                int czStructuralId = cz.StructuralElementId?.GetIntegerValue() ?? cz.StructuralElementIdValue;
                 
                 return czMepId == mepIdValue && czStructuralId == structuralIdValue;
             });
@@ -93,4 +94,3 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services
         }
     }
 }
-

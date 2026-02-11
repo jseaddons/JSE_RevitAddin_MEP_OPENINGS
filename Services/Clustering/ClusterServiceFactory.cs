@@ -18,6 +18,7 @@ using JSE_RevitAddin_MEP_OPENINGS.Services.FlagManagement;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
 {
@@ -351,7 +352,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                 // This sets IsResolvedFlag=1 and IsClusterResolvedFlag=1 via the repository logic
                                 repository.UpdateClusterPlacement(
                                     clashZoneId: clashZone.Id,
-                                    clusterInstanceId: clusterSleeveId.IntegerValue,
+                                    clusterInstanceId: clusterSleeveId.GetIntegerValue(),
                                     minX: bbox?.Min.X ?? 0,
                                     minY: bbox?.Min.Y ?? 0,
                                     minZ: bbox?.Min.Z ?? 0,
@@ -371,7 +372,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Services.Clustering
                                 if (!DeploymentConfiguration.DeploymentMode)
                                 {
                                     SafeFileLogger.SafeAppendText("cluster_debug.log", 
-                                        $"[{DateTime.Now:HH:mm:ss}] ✅ DELEGATE: Marked ClashZone {clashZone.Id} as resolved for Cluster {clusterSleeveId.IntegerValue}\n");
+                                        $"[{DateTime.Now:HH:mm:ss}] ✅ DELEGATE: Marked ClashZone {clashZone.Id} as resolved for Cluster {clusterSleeveId.GetIntegerValue()}\n");
                                 }
                             }
                         }

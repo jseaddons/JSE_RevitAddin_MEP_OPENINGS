@@ -1,4 +1,5 @@
 using System;
+using JSE_RevitAddin_MEP_OPENINGS.Helpers;
 
 namespace JSE_RevitAddin_MEP_OPENINGS.Models
 {
@@ -63,7 +64,7 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Models
         public int? ClusterSleeveId { get; set; }
         
         /// <summary>
-        /// Revit element ID for cluster sleeve (ElementId.IntegerValue)
+        /// Revit element ID for cluster sleeve (ElementId.GetIntegerValue())
         /// Null if this is an individual constituent
         /// </summary>
         public int? ClusterInstanceId { get; set; }

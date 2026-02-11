@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+#if !NET8_0_OR_GREATER
 using System.Data.SQLite;
+#endif
 using System.IO;
 using System.Reflection;
 using System.Text.RegularExpressions;
@@ -56,8 +58,11 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                 var assemblyDirectory = Path.GetDirectoryName(assemblyLocation) ?? string.Empty;
 
                 _logger($"[SQLite] Assembly directory: {assemblyDirectory}");
+#if !NET8_0_OR_GREATER
+                // System.Data.SQLite native DLL verification (not needed for Microsoft.Data.Sqlite on NET8+)
                 VerifyDependency("System.Data.SQLite.dll", assemblyDirectory);
                 VerifyDependency(Path.Combine("x64", "SQLite.Interop.dll"), assemblyDirectory);
+#endif
 
                 var filtersDirectory = ProjectPathService.GetFiltersDirectory(document);
                 Directory.CreateDirectory(filtersDirectory);
@@ -68,14 +73,18 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                 _databasePath = Path.Combine(filtersDirectory, $"{safeProjectName}_SleevePersistence.db");
                 _logger($"[SQLite] Database path: {_databasePath}");
 
+#if NET8_0_OR_GREATER
+                // Microsoft.Data.Sqlite: plain connection string; ForeignKeys/JournalMode set via PRAGMAs below
+                _connection = new SQLiteConnection($"Data Source={_databasePath}");
+#else
                 var builder = new SQLiteConnectionStringBuilder
                 {
                     DataSource = _databasePath,
                     ForeignKeys = true,
                     JournalMode = SQLiteJournalModeEnum.Wal
                 };
-
                 _connection = new SQLiteConnection(builder.ConnectionString);
+#endif
                 _connection.Open();
                 _logger("[SQLite] ✅ Connection opened successfully");
 
@@ -169,6 +178,38 @@ namespace JSE_RevitAddin_MEP_OPENINGS.Data
                 _logger($"[SQLite] Stack trace: {ex.StackTrace}");
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Lightweight constructor for background-thread usage.
+        /// Accepts a pre-resolved database path (no Revit Document dependency).
+        /// Skips schema verification (assumes DB already exists and is migrated).
+        /// </summary>
+        public SleeveDbContext(string databasePath, Action<string>? logger = null)
+        {
+            if (string.IsNullOrEmpty(databasePath)) throw new ArgumentNullException(nameof(databasePath));
+            _logger = logger ?? (_ => { });
+            _databasePath = databasePath;
+
+#if NET8_0_OR_GREATER
+            _connection = new SQLiteConnection($"Data Source={_databasePath}");
+#else
+            var builder = new SQLiteConnectionStringBuilder
+            {
+                DataSource = _databasePath,
+                ForeignKeys = true,
+                JournalMode = SQLiteJournalModeEnum.Wal
+            };
+            _connection = new SQLiteConnection(builder.ConnectionString);
+#endif
+            _connection.Open();
+
+            using (var cmd = _connection.CreateCommand()) { cmd.CommandText = "PRAGMA foreign_keys = ON;"; cmd.ExecuteNonQuery(); }
+            using (var cmd = _connection.CreateCommand()) { cmd.CommandText = "PRAGMA journal_mode = WAL;"; cmd.ExecuteNonQuery(); }
+            using (var cmd = _connection.CreateCommand()) { cmd.CommandText = "PRAGMA synchronous = NORMAL;"; cmd.ExecuteNonQuery(); }
+            using (var cmd = _connection.CreateCommand()) { cmd.CommandText = "PRAGMA cache_size = -65536;"; cmd.ExecuteNonQuery(); }
+            using (var cmd = _connection.CreateCommand()) { cmd.CommandText = "PRAGMA temp_store = MEMORY;"; cmd.ExecuteNonQuery(); }
+            using (var cmd = _connection.CreateCommand()) { cmd.CommandText = "PRAGMA mmap_size = 268435456;"; cmd.ExecuteNonQuery(); }
         }
 
         private void VerifyDependency(string relativePath, string assemblyDirectory)
